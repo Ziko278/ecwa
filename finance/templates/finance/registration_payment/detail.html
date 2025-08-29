@@ -1,0 +1,200 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+<div class="col-12">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="card-title mb-0">Payment Details</h4>
+                <div>
+                    <a href="{% url 'print_registration_receipt' payment.pk %}"
+                       target="_blank" class="btn btn-success me-2">
+                        <i class="mdi mdi-printer"></i> Print Receipt
+                    </a>
+                    <a href="{% url 'registration_payment_index' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to List
+                    </a>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Transaction Info -->
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="mdi mdi-receipt"></i> Transaction Information
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <table class="table table-borderless">
+                                        <tr>
+                                            <td><strong>Transaction ID:</strong></td>
+                                            <td>
+                                                <span class="badge bg-primary fs-6">{{ payment.transaction_id }}</span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Patient Name:</strong></td>
+                                            <td>{{ payment.full_name|title }}</td>
+                                        </tr>
+                                        {% if payment.old_card_number %}
+                                        <tr>
+                                            <td><strong>Hospital Card:</strong></td>
+                                            <td>{{ payment.old_card_number }}</td>
+                                        </tr>
+                                        {% endif %}
+                                        <tr>
+                                            <td><strong>Payment Method:</strong></td>
+                                            <td>
+                                                <span class="badge {% if payment.payment_method == 'cash' %}bg-success{% elif payment.payment_method == 'transfer' %}bg-info{% else %}bg-warning{% endif %}">
+                                                    {{ payment.payment_method|title }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <table class="table table-borderless">
+                                        <tr>
+                                            <td><strong>Date:</strong></td>
+                                            <td>{{ payment.date|date:"l, F d, Y" }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Time:</strong></td>
+                                            <td>{{ payment.created_at|date:"H:i A" }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Processed By:</strong></td>
+                                            <td>{% if payment.created_by.user_staff_profile.staff %}
+                <span>{{ payment.created_by.user_staff_profile.staff|title|default:"SYSTEM" }}</span>
+                {% else %}
+                <span>{{ payment.created_by|upper|default:"SYSTEM" }}</span>
+                {% endif %}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Status:</strong></td>
+                                            <td>
+                                                <span class="badge bg-success">{{ payment.registration_status|title }}</span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Summary -->
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="mdi mdi-cash"></i> Payment Summary
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-borderless">
+                                <tr>
+                                    <td><strong>Registration:</strong></td>
+                                    <td class="text-end">₦{{ payment.registration_fee.amount }}</td>
+                                </tr>
+                                <tr>
+                                    <td><small>{{ payment.registration_fee.title }}</small></td>
+                                    <td></td>
+                                </tr>
+
+                                {% if payment.consultation_fee %}
+                                <tr>
+                                    <td><strong>Consultation:</strong></td>
+                                    <td class="text-end">₦{{ payment.consultation_amount }}</td>
+                                </tr>
+                                <tr>
+                                    <td><small>{{ payment.consultation_fee }}</small></td>
+                                    <td></td>
+                                </tr>
+                                {% endif %}
+
+                                <tr class="border-top">
+                                    <td><strong class="h5">Total Amount:</strong></td>
+                                    <td class="text-end"><strong class="h4 text-success">₦{{ payment.amount }}</strong></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">Quick Actions</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <a href="{% url 'print_registration_receipt' payment.pk %}"
+                                   target="_blank" class="btn btn-success">
+                                    <i class="mdi mdi-printer"></i> Print Receipt
+                                </a>
+                                <a href="{% url 'registration_payment_create' %}" class="btn btn-outline-primary">
+                                    <i class="mdi mdi-plus"></i> New Payment
+                                </a>
+                                <a href="{% url 'registration_payment_index' %}" class="btn btn-outline-secondary">
+                                    <i class="mdi mdi-format-list-bulleted"></i> All Payments
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Information -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">
+                                <i class="mdi mdi-information-outline"></i> Additional Information
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <h6>Service Details</h6>
+                                    <ul class="list-unstyled">
+                                        <li><strong>Registration Type:</strong> {{ payment.registration_fee.title }}</li>
+                                        <li><strong>Patient Category:</strong> {{ payment.registration_fee.patient_type|title }} Patient</li>
+                                        {% if payment.consultation_paid %}
+                                        <li><strong>Consultation:</strong> Included</li>
+                                        <li><strong>Consultation Type:</strong> {{ payment.consultation_fee }}</li>
+                                        {% else %}
+                                        <li><strong>Consultation:</strong> Not Included</li>
+                                        {% endif %}
+                                    </ul>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Payment Information</h6>
+                                    <ul class="list-unstyled">
+                                        <li><strong>Payment Method:</strong> {{ payment.payment_method|title }}</li>
+                                        <li><strong>Registration Status:</strong> {{ payment.registration_status|title }}</li>
+                                        <li><strong>Created:</strong> {{ payment.created_at|date:"M d, Y H:i A" }}</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Transaction Notes</h6>
+                                    <div class="alert alert-info">
+                                        <small>
+                                            <i class="mdi mdi-information"></i>
+                                            This transaction ID should be presented at the registration department
+                                            for processing. Keep this receipt for your records.
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

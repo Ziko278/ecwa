@@ -1,0 +1,198 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Add Drug Product" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#drugProductHelperModal"><b>Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="{% url 'drug_create' %}">
+                    <button title="Add Drug Product" type="button" style="width:100%" class="btn btn-sm btn-primary">Add Drug Product</button>
+                </a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'export_drug_list' %}">
+                    <button title="Export Drugs to CSV" type="button" style="width:100%" class="btn btn-sm btn-success">Export to CSV</button>
+                </a></li>
+            </ul>
+        </div>
+
+
+        <div class="card-body">
+            <h5 class="card-title">List of Drug Products</h5>
+            {% include 'admin_site/partials/error.html' %}
+
+            {# Search Form #}
+            <form method="GET" action="{% url 'drug_index' %}" class="mb-4">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <div class="form-floating">
+                            {{ search_form.search_term }}
+                            <label for="{{ search_form.search_term.id_for_label }}">Search Term (Name, SKU)</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-floating">
+                            {{ search_form.category }}
+                            <label for="{{ search_form.category.id_for_label }}">Category</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-floating">
+                            {{ search_form.manufacturer }}
+                            <label for="{{ search_form.manufacturer.id_for_label }}">Manufacturer</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-floating">
+                            {{ search_form.form_type }}
+                            <label for="{{ search_form.form_type.id_for_label }}">Form Type</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-floating">
+                            {{ search_form.stock_status }}
+                            <label for="{{ search_form.stock_status.id_for_label }}">Stock Status</label>
+                        </div>
+                    </div>
+                    <div class="col-md-1">
+                        <button type="submit" class="btn btn-primary w-100">Filter</button>
+                    </div>
+                </div>
+                <div class="row g-3 align-items-end mt-2">
+                    <div class="col-md-3">
+                        <div class="form-floating">
+                            {{ search_form.is_active }}
+                            <label for="{{ search_form.is_active.id_for_label }}">Active Status</label>
+                        </div>
+                    </div>
+                     <div class="col-md-1">
+                        <a href="{% url 'drug_index' %}" class="btn btn-secondary w-100">Clear</a>
+                    </div>
+                </div>
+            </form>
+
+            <table class="table table-borderless datatable">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Generic Name</th>
+                    <th scope="col">Brand Name</th>
+                    <th scope="col">SKU</th>
+                    <th scope="col">Manufacturer</th>
+                    <th class="text-center" scope="col">Store Qty</th>
+                    <th class="text-center" scope="col">Pharmacy Qty</th>
+                    <th class="text-center" scope="col">Total Qty</th>
+                    <th class="text-center" scope="col">Status</th>
+                    <th scope="col" class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+
+                {% for drug in drug_list %}
+                <tr>
+                    <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
+                    <td>
+                        <a href="{% url 'generic_drug_detail' drug.formulation.generic_drug.id %}">
+                            {{ drug.formulation.generic_drug.generic_name|title }}
+                        </a>
+                        <small class="d-block text-muted">{{ drug.formulation.strength }} {{ drug.formulation.get_form_type_display }}</small>
+                    </td>
+                    <td>{% if drug.brand_name %}{{ drug.brand_name|title }}{% else %}---{% endif %}</td>
+                    <td>{{ drug.sku|upper }}</td>
+                    <td><a href="{% url 'manufacturer_index' %}?search_term={{ drug.manufacturer.name }}">{{ drug.manufacturer.name|title }}</a></td>
+                    <td class="text-center">{{ drug.store_quantity|floatformat:0|intcomma }}</td>
+                    <td class="text-center">{{ drug.pharmacy_quantity|floatformat:0|intcomma }}</td>
+                    <td class="text-center">
+                        {% if drug.is_low_stock %}
+                            <span class="badge bg-warning">{{ drug.total_quantity|floatformat:0|intcomma }}</span>
+                        {% else %}
+                            {{ drug.total_quantity|floatformat:0|intcomma }}
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% if drug.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <a title="Drug Product Detail" href="{% url 'drug_detail' drug.id %}" class="btn btn-primary btn-sm"><i class="bi bi-eye"></i></a>
+                        <a title="Edit Drug Product" href="{% url 'drug_edit' drug.id %}" class="btn btn-warning btn-sm"><i class="bi bi-pencil-square"></i></a>
+                        <a title="Delete Drug Product" href="{% url 'drug_delete' drug.id %}" class="btn btn-danger btn-sm"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="10"><h3 class="text-center">No Drug Products Added Yet</h3></td></tr>
+                {% endfor %}
+
+
+                </tbody>
+            </table>
+
+            {# Pagination controls #}
+            {% if is_paginated %}
+            <nav aria-label="Page navigation example" class="mt-3">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?{{ request.GET.urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Previous</span></li>
+                    {% endif %}
+
+                    {% for i in paginator.page_range %}
+                        {% if page_obj.number == i %}
+                            <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                        {% else %}
+                            <li class="page-item"><a class="page-link" href="?{{ request.GET.urlencode }}&page={{ i }}">{{ i }}</a></li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?{{ request.GET.urlencode }}&page={{ page_obj.next_page_number }}">Next</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Next</span></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<!-- Drug Product Helper Modal -->
+<div class="modal fade" id="drugProductHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Drug Product Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    **Drug Products** are the actual inventory items you manage. Each product is linked to a **Formulation** (e.g., Paracetamol 500mg Tablet) and a **Manufacturer**.
+                </p>
+
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> You can track quantities in the **Store/Warehouse** and at the **Pharmacy Counter** separately. Set a **Minimum Stock Level** to receive alerts for low stock.
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> The **SKU (Stock Keeping Unit)** must be unique for each drug product.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

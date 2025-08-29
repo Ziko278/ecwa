@@ -1,0 +1,102 @@
+{% extends 'website/layout.html' %}
+{% load static %}
+
+{% block title %}
+Our Doctors - {{ site_info.name }}
+{% endblock title %}
+
+{% block content %}
+<div class="breadcumb-wrapper" style="height:400px" data-bg-src="{% static 'website/img/images/bg.webp' %}">
+    <div class="container">
+        <div class="breadcumb-content">
+            <h1 class="breadcumb-title">Our Doctors</h1>
+            <ul class="breadcumb-menu">
+                <li><a href="{% url 'home' %}">Home</a></li>
+                <li>Doctors</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<section class="space team-area-2">
+    <div class="container">
+        <div class="title-area text-center">
+            <span class="sub-title after-none before-none">Our Specialists</span>
+            <h2 class="sec-title">Meet Our Experienced Medical Team</h2>
+            <p class="mb-5">Our doctors are leaders in their respective fields, dedicated to providing the highest level of care. Each physician brings a wealth of experience, skill, and compassion to our hospital, ensuring you are in the most capable hands.</p>
+        </div>
+        <div class="row gy-4">
+            <div class="col-sm-6 col-lg-4 col-xl-4">
+                <div class="th-team team-card2">
+                    <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor1.jpg' %}" alt="Team"></div></div>
+                    <div class="team-card-content">
+                        <h3 class="box-title">Dr. Michel Connor</h3>
+                        <span class="team-desig">Cardiologist</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-4 col-xl-4">
+                 <div class="th-team team-card2">
+                    <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor2.jpg' %}" alt="Team"></div></div>
+                    <div class="team-card-content">
+                        <h3 class="box-title">Dr. Jessica Lauren</h3>
+                        <span class="team-desig">Pediatrician</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-4 col-xl-4">
+                 <div class="th-team team-card2">
+                    <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor1.jpg' %}" alt="Team"></div></div>
+                    <div class="team-card-content">
+                        <h3 class="box-title">Dr. Daniel Thomas</h3>
+                        <span class="team-desig">General Surgeon</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-4 col-xl-4">
+                <div class="th-team team-card2">
+                    <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor2.jpg' %}" alt="Team"></div></div>
+                    <div class="team-card-content">
+                        <h3 class="box-title">Dr. Sarah Adams</h3>
+                        <span class="team-desig">Neurologist</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-4 col-xl-4">
+                 <div class="th-team team-card2">
+                    <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor1.jpg' %}" alt="Team"></div></div>
+                    <div class="team-card-content">
+                        <h3 class="box-title">Dr. David Lee</h3>
+                        <span class="team-desig">Orthopedic Surgeon</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-4 col-xl-4">
+                 <div class="th-team team-card2">
+                    <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor2.jpg' %}" alt="Team"></div></div>
+                    <div class="team-card-content">
+                        <h3 class="box-title">Dr. Maria Garcia</h3>
+                        <span class="team-desig">Ophthalmologist</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="space-bottom">
+    <div class="container">
+        <div class="bg-theme" style="padding: 50px; border-radius: 10px;">
+            <div class="row justify-content-center align-items-center">
+                <div class="col-lg-8 text-center">
+                     <div class="title-area text-center">
+                        <h2 class="sec-title text-white">Join Our Team of Experts</h2>
+                        <p class="text-white">Are you a medical professional passionate about making a difference? We are always looking for talented individuals to join our growing family. Explore a rewarding career with us.</p>
+                        <a href="{% url 'contact' %}" class="th-btn style-border">Contact HR Department</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock content %}

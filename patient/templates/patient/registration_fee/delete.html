@@ -1,0 +1,29 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Registration Fee</h4>
+            <p>Registration Fee: <i>{{ registration_fee.title|upper }} ({{ registration_fee.patient_type|upper }})</i></p>
+
+            <p>This registration fee will be permanently deleted.</p>
+
+            {% if registration_fee.registrationpaymentmodel_set.all|length > 0 %}
+                <p>
+                    {{ registration_fee.registrationpaymentmodel_set.all|length }} payment{{ registration_fee.registrationpaymentmodel_set.all|length|pluralize }}
+                    linked to this registration fee will also be affected.
+                </p>
+            {% else %}
+                <p>There are currently no payments linked to this registration fee.</p>
+            {% endif %}
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'registration_fee_index' %}">Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% load static %}
+{% load humanize %}
+{% if patient %}
+<div class="card card-profile" style="height:280px">
+    <div class="admin-user" style="margin-top:-20px">
+        <div class="img-wrraper" style="margin-top:-20px">
+            <div class="">
+                <img {% if patient.image %} src="{{ patient.image.url }}" {% else %} src="{% static 'admin_site/images/user1.jpg' %}" {% endif %} class="rounded-circle">
+            </div>
+        </div>
+        <div class="user-details">
+            <div class="title">
+                <h4>{{ patient|title }} ({{ patient.card_number|upper }})</h4>
+                <h6>{% if patient.mobile %} {{ patient.mobile }} {% endif %}</h6>
+                {% if payment_type == 'consultation' %}
+                    {% if patient.registration_type %}
+                    <h4>Consultation Fee: <b>N{{ patient.registration_type.consultation_fee|floatformat|intcomma }}</b></h4>
+                    <button class="btn btn-primary">Take Payment</button>
+                    {% else %}
+                    <h4>Consultation Fee: <b>Fee Not Set</b></h4>
+                    {% endif %}
+                {% elif payment_type == 'test' %}
+                <a href="{% url 'patient_test_list' patient.id %}" class="btn btn-primary">Proceed</a>
+                {% elif payment_type == 'prescription' %}
+                <a href="{% url 'patient_prescription_list' patient.id %}" class="btn btn-primary">Proceed</a>
+                {% elif payment_type == 'admission' %}
+                <a href="{% url 'admission_create' %}?pk={{patient.id}}" class="btn btn-primary">Proceed</a>
+                {% elif payment_type == 'delivery' %}
+                <a href="{% url 'delivery_create' %}?pk={{patient.id}}" class="btn btn-primary">Proceed</a>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% else %}
+<div class="card" >
+    <div class="card-body">
+        <h1 class="card-title text-center"><b>INVALID CARD NUMBER</b></h1>
+    </div>
+</div>
+{% endif %}

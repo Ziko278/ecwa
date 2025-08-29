@@ -1,0 +1,444 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Patient Dashboard</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item active">Dashboard</li>
+        </ol>
+    </nav>
+</div>
+
+<section class="section dashboard">
+    <div class="row">
+
+        <!-- Summary Cards Row 1 -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card sales-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Patients</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-people"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ total_patients }}</h6>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card revenue-card">
+                <div class="card-body">
+                    <h5 class="card-title">Male Patients</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-gender-male"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ male_patients }}</h6>
+                            <span class="text-muted small pt-2 ps-1">{{ male_patients|floatformat:0 }}% of total</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card customers-card">
+                <div class="card-body">
+                    <h5 class="card-title">Female Patients</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-gender-female"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ female_patients }}</h6>
+                            <span class="text-muted small pt-2 ps-1">{{ female_patients|floatformat:0 }}% of total</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Pending</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-clock-history text-warning"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ pending_registrations }}</h6>
+                            {% if pending_registrations > 0 %}
+                                <span class="text-warning small pt-2 ps-1">Needs attention</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Patient Type Statistics -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Old Patients Statistics</h5>
+
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-primary">{{ old_patients_total }}</h6>
+                                    <span class="text-muted small">Total</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ old_patients_today }}</h6>
+                                    <span class="text-muted small">Today</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 mt-3">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ old_patients_week }}</h6>
+                                    <span class="text-muted small">This Week</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 mt-3">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ old_patients_month }}</h6>
+                                    <span class="text-muted small">This Month</span>
+                                    {% if old_patients_growth > 0 %}
+                                        <br><span class="text-success small fw-bold">+{{ old_patients_growth }}%</span>
+                                    {% elif old_patients_growth < 0 %}
+                                        <br><span class="text-danger small fw-bold">{{ old_patients_growth }}%</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">New Patients Statistics</h5>
+
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-success">{{ new_patients_total }}</h6>
+                                    <span class="text-muted small">Total</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ new_patients_today }}</h6>
+                                    <span class="text-muted small">Today</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 mt-3">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ new_patients_week }}</h6>
+                                    <span class="text-muted small">This Week</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 mt-3">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ new_patients_month }}</h6>
+                                    <span class="text-muted small">This Month</span>
+                                    {% if new_patients_growth > 0 %}
+                                        <br><span class="text-success small fw-bold">+{{ new_patients_growth }}%</span>
+                                    {% elif new_patients_growth < 0 %}
+                                        <br><span class="text-danger small fw-bold">{{ new_patients_growth }}%</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row">
+        <!-- Weekly Registration Chart -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Registration Trends <span>/Last 7 Days</span></h5>
+                    <div id="registrationChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gender Distribution -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Gender Distribution</h5>
+                    <div id="genderChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Age Groups and Monthly Trends -->
+    <div class="row">
+        <!-- Age Groups Chart -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Age Group Distribution</h5>
+                    <div id="ageGroupChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Monthly Trends -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Registration Trends</h5>
+                    <div id="monthlyTrendChart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Revenue Statistics -->
+    <div class="row">
+        <div class="col-lg-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-currency-dollar text-success"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_revenue|floatformat:2 }}</h6>
+                            <span class="text-muted small">All time</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Today's Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-cash text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ revenue_today|floatformat:2 }}</h6>
+                            <span class="text-muted small">Today</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-graph-up text-warning"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ revenue_month|floatformat:2 }}</h6>
+                            <span class="text-muted small">This month</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<!-- Chart Scripts -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+    // Registration Trends Chart (Last 7 days)
+    const registrationData = {{ registration_chart_data|safe }};
+
+    new ApexCharts(document.querySelector("#registrationChart"), {
+        series: [
+            {
+                name: 'New Patients',
+                data: registrationData.map(d => d.new_patients)
+            },
+            {
+                name: 'Old Patients',
+                data: registrationData.map(d => d.old_patients)
+            }
+        ],
+        chart: {
+            height: 350,
+            type: 'area',
+            toolbar: { show: false }
+        },
+        markers: { size: 4 },
+        colors: ['#2eca6a', '#4154f1'],
+        fill: {
+            type: "gradient",
+            gradient: {
+                shadeIntensity: 1,
+                opacityFrom: 0.3,
+                opacityTo: 0.4,
+                stops: [0, 90, 100]
+            }
+        },
+        dataLabels: { enabled: false },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            categories: registrationData.map(d => d.date),
+            type: 'datetime'
+        },
+        tooltip: {
+            x: { format: 'dd/MM/yyyy' }
+        }
+    }).render();
+
+    // Gender Distribution Pie Chart
+    const genderData = {{ gender_distribution|safe }};
+
+    echarts.init(document.querySelector("#genderChart")).setOption({
+        tooltip: { trigger: 'item' },
+        legend: {
+            top: '5%',
+            left: 'center'
+        },
+        series: [{
+            name: 'Gender',
+            type: 'pie',
+            radius: ['40%', '70%'],
+            avoidLabelOverlap: false,
+            label: {
+                show: false,
+                position: 'center'
+            },
+            emphasis: {
+                label: {
+                    show: true,
+                    fontSize: '18',
+                    fontWeight: 'bold'
+                }
+            },
+            labelLine: { show: false },
+            data: genderData
+        }]
+    });
+
+    // Age Group Bar Chart
+    const ageGroupData = {{ age_groups|safe }};
+
+    echarts.init(document.querySelector("#ageGroupChart")).setOption({
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' }
+        },
+        grid: {
+            left: '3%',
+            right: '4%',
+            bottom: '3%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            data: ageGroupData.map(d => d.name)
+        },
+        yAxis: { type: 'value' },
+        series: [{
+            name: 'Patients',
+            type: 'bar',
+            data: ageGroupData.map(d => d.value),
+            itemStyle: {
+                color: '#4154f1'
+            }
+        }]
+    });
+
+    // Monthly Trends Chart
+    const monthlyData = {{ monthly_trends|safe }};
+
+    new ApexCharts(document.querySelector("#monthlyTrendChart"), {
+        series: [
+            {
+                name: 'New Patients',
+                data: monthlyData.map(d => d.new_patients)
+            },
+            {
+                name: 'Old Patients',
+                data: monthlyData.map(d => d.old_patients)
+            },
+            {
+                name: 'Total',
+                data: monthlyData.map(d => d.total)
+            }
+        ],
+        chart: {
+            height: 350,
+            type: 'line',
+            toolbar: { show: false }
+        },
+        stroke: {
+            width: [2, 2, 4],
+            curve: 'smooth'
+        },
+        colors: ['#2eca6a', '#4154f1', '#ff771d'],
+        xaxis: {
+            categories: monthlyData.map(d => d.month)
+        },
+        markers: {
+            size: 4
+        },
+        tooltip: {
+            shared: true,
+            intersect: false
+        }
+    }).render();
+
+});
+
+function printDashboard() {
+    window.open('{% url "patient_dashboard_print" %}', '_blank');
+}
+</script>
+
+{% endblock %}

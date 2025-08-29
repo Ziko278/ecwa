@@ -1,0 +1,54 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<form action="" method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <!-- row -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card profile-card card-bx m-b30">
+                <div class="card-header">
+                    <h6 class="title"><b>Patient Setting</b></h6>
+                </div>
+
+                <div class="card-body">
+                    <div class="row pt-2">
+                        <div class="col-sm-6 m-b30 py-4">
+                            <label class="form-label">Auto Generate Patient Card Number</label>
+                            <br />
+                            {{ form.auto_generate_patient_id }}
+                        </div>
+
+                        <div class="col-sm-6 m-b30 py-4">
+                            <label class="form-label">Patient ID Prefix</label>
+                            <br />
+                            {{ form.patient_id_prefix }}
+                        </div>
+
+                        <div class="col-sm-6 m-b30 py-4">
+                            <label class="form-label">Generate New Card Number</label>
+                            <br />
+                            {{ form.generate_new_card_number }}
+                        </div>
+
+                        <div class="col-sm-6 m-b30 py-4">
+                            <label class="form-label">Registration Fee (₦)</label>
+                            <br />
+                            {{ form.registration_fee }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-footer">
+                    <input class="btn btn-primary" type="submit" value="SAVE" />
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</form>
+
+{% endblock %}

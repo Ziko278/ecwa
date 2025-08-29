@@ -1,0 +1,46 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Drug Product</h4>
+            <p>Drug Product: <i>{{ drug.brand_name|default:drug.formulation.generic_drug.generic_name|title }} (SKU: {{ drug.sku|upper }})</i></p>
+
+            <p>This drug product record will be permanently deleted from your inventory.</p>
+            
+            {% if drug.stock_entries.all|length > 0 %}
+                <p class="text-danger">
+                    **Warning:** This drug product has {{ drug.stock_entries.all|length }} associated stock entry{{ drug.stock_entries.all|length|pluralize }}.
+                    Deleting this product will also delete all its individual stock entries.
+                    This will impact historical inventory data and stock movements.
+                </p>
+            {% else %}
+                <p>There are no individual stock entries currently associated with this drug product.</p>
+            {% endif %}
+
+            {% if drug.transfers.all|length > 0 %}
+                <p class="text-danger">
+                    **Warning:** This drug product has {{ drug.transfers.all|length }} associated transfer{{ drug.transfers.all|length|pluralize }} records.
+                    These records will also be deleted, affecting transfer history.
+                </p>
+            {% endif %}
+
+            {% if drug.stock_outs.all|length > 0 %}
+                <p class="text-danger">
+                    **Warning:** This drug product has {{ drug.stock_outs.all|length }} associated stock out{{ drug.stock_outs.all|length|pluralize }} records.
+                    These records will also be deleted, affecting sales/wastage history.
+                </p>
+            {% endif %}
+
+            <p class="text-danger">**This action cannot be undone.**</p>
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'drug_index' %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

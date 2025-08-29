@@ -1,0 +1,22 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Consultation Fee</h4>
+            <p>Fee Details: <i>{{ fee.specialization.name|title }} - {{ fee.get_patient_category_display }} {% if fee.insurance %}({{ fee.insurance.name|title }}){% endif %} (₦{{ fee.amount|floatformat:2 }})</i></p>
+
+            <p>This consultation fee entry will be permanently deleted.</p>
+            <p class="text-danger">**This action cannot be undone.**</p>
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'consultation_fee_index' %}">Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

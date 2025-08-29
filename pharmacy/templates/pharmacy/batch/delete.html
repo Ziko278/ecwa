@@ -1,0 +1,22 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Drug Batch</h4>
+            <p>Batch: <i>{{ batch.name|upper }}</i></p> {# Using upper() for consistency with index.html display #}
+
+            <p>This drug batch will be permanently deleted.</p>
+            {# Assuming no direct dependent models for DrugBatchModel like GenericDrug for Category, so a simpler message #}
+            <p>There are typically no other records directly dependent on a batch, but any related inventory will need to be re-evaluated.</p>
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'drug_batch_index' %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

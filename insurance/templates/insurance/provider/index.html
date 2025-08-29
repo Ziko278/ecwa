@@ -1,0 +1,196 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Provider actions" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#providerHelperModal"><b>Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#">
+                        <button title="Add Provider" type="button" style="width:100%" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addProviderModal">Add Provider</button>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">List of Insurance Providers</h5>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <table class="table table-borderless datatable">
+                <thead>
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Provider</th>
+                        <th scope="col">Type</th>
+                        <th scope="col">Contact</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Created</th>
+                        <th scope="col" class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for provider in provider_list %}
+                    <tr>
+                        <th scope="row">{{ forloop.counter }}</th>
+                        <td title="created at {{ provider.created_at|date }}">{{ provider.name|upper }}</td>
+                        <td>{{ provider.get_provider_type_display }}</td>
+                        <td>
+                            {% if provider.contact_person %}{{ provider.contact_person }}<br>{% endif %}
+                            {% if provider.contact_email %}<a href="mailto:{{ provider.contact_email }}">{{ provider.contact_email }}</a><br>{% endif %}
+                            {% if provider.contact_phone_number %}{{ provider.contact_phone_number }}{% endif %}
+                        </td>
+                        <td>
+                            {% if provider.status == 'active' %}
+                                <span class="badge bg-success">ACTIVE</span>
+                            {% else %}
+                                <span class="badge bg-danger">INACTIVE</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ provider.created_at|date:"Y-m-d H:i" }}</td>
+                        <td class="text-center">
+                            <a title="Provider Detail" href="{% url 'insurance_provider_detail' provider.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
+                            <button title="Edit Provider" type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#editProvider{{ forloop.counter }}"><i class="bi bi-pencil-square"></i></button>
+                            <a title="Delete Provider" href="{% url 'insurance_provider_delete' provider.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            {% if not provider_list %}
+                 <h3 class="text-center">No Insurance Provider Added Yet</h3>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<!-- Provider Helper Modal -->
+<div class="modal fade" id="providerHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Insurance Provider Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    Providers represent umbrella organisations (e.g., NHIS or private schemes). HMOs and coverage plans are organised under these providers.
+                </p>
+
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> Use descriptive provider names and mark inactive providers appropriately to prevent accidental selection.
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> Contact details are optional but helpful when reconciling claims or contacting the insurer.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Provider Modal -->
+<form method="POST" action="{% url 'insurance_provider_create' %}">
+    {% csrf_token %}
+    <div class="modal fade" id="addProviderModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Add Provider</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-floating mb-3">
+                        {{ form.name }}
+                        <label for="id_name">Provider Name <span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {{ form.provider_type }}
+                        <label for="id_provider_type">Provider Type</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {{ form.description }}
+                        <label for="id_description">Description</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {{ form.status }}
+                        <label for="id_status">Status</label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Provider</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% for provider in provider_list %}
+<form method="POST" action="{% url 'insurance_provider_update' provider.id %}">
+    {% csrf_token %}
+    <div class="modal fade" id="editProvider{{ forloop.counter }}" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit Provider</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-floating mb-3">
+                        <input type="text" name="name" value="{{ provider.name }}" autocomplete="off" required class="form-control">
+                        <label>Provider Name <span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <select name="provider_type" class="form-control">
+                            <option value="government" {% if provider.provider_type == 'government' %}selected{% endif %}>Government</option>
+                            <option value="private" {% if provider.provider_type == 'private' %}selected{% endif %}>Private</option>
+                        </select>
+                        <label>Provider Type</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <textarea name="description" class="form-control" rows="3">{{ provider.description }}</textarea>
+                        <label>Description</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <select name="status" class="form-control">
+                            <option value="active" {% if provider.status == 'active' %}selected{% endif %}>Active</option>
+                            <option value="inactive" {% if provider.status == 'inactive' %}selected{% endif %}>Inactive</option>
+                        </select>
+                        <label>Status</label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endfor %}
+
+{% endblock %}

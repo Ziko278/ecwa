@@ -1,0 +1,310 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+{% block 'main' %}
+
+<form action="" class="row g-3 needs-validation" enctype="multipart/form-data" method="POST" novalidate>
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">STAFF FINGER PRINT CAPTURING</h5>
+            <div class="card">
+                <div class="card-body" style="padding:20px">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <image {% if staff.image %} src="{{ staff.image.url }}" {% else %} src="{% static 'admin_dashboard/images/default_image.jpg' %}" {% endif %} style="width:100px;height:100px;border-radius:5px;" />
+                                    <p style="margin-top:5px;"><span class="text-center {% if staff.status|lower == 'active' %} text-success {% else %} text-danger {% endif %} "> {{staff.status|upper}} </span> </p>
+                                </div>
+                                <div class="col-md-8">
+                                    <p><b>Name: </b>{{ staff|title }}</p>
+                                    <p><b>Staff ID: </b>{{staff.staff_id|upper}}</p>
+                                    <p><b>Phone: </b>{% if staff.mobile %} {{staff.mobile}} {% else %} No Phone Number Provided {% endif %}</p>
+                                    <p><b>Position: </b>{{staff.position|title}} ({{staff.department|title}}) </p>
+                                    <p><b>Gender: </b>{{staff.gender|title}} </p>
+                                 </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+
+
+            <!-- Vertical Pills Tabs -->
+            <div class="d-flex align-items-start">
+                <div aria-orientation="vertical" class="nav flex-column nav-pills me-3" id="v-pills-tab"
+                     role="tablist" style="width:150px">
+                    <button aria-controls="v-pills-home" aria-selected="true" class="nav-link active"
+                            data-bs-target="#v-pills-home" data-bs-toggle="pill" id="v-pills-home-tab" role="tab"
+                            type="button">Left Thumb
+                    </button>
+                    <br>
+                    <button aria-controls="v-pills-profile" aria-selected="false" class="nav-link"
+                            data-bs-target="#v-pills-profile" data-bs-toggle="pill" id="v-pills-profile-tab" role="tab"
+                            type="button">Work Data
+                    </button>
+                    <br>
+                    <button aria-controls="v-pills-messages" aria-selected="false" class="nav-link"
+                            data-bs-target="#v-pills-messages" data-bs-toggle="pill" id="v-pills-messages-tab"
+                            role="tab"
+                            type="button">Finance
+                    </button>
+                    <br>
+
+                    <button aria-controls="v-pills-health" aria-selected="false" class="nav-link"
+                            data-bs-target="#v-pills-health" data-bs-toggle="pill" id="v-pills-health-tab"
+                            role="tab"
+                            type="button">Health
+                    </button>
+                </div>
+                <div class="tab-content" id="v-pills-tabContent" style="width:100%">
+                    <div aria-labelledby="v-pills-home-tab" class="tab-pane fade show active" id="v-pills-home"
+                         role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <input name="created_by" type="hidden" value="{{ request.user.id }}"/>
+                                        {{form.first_name}}
+                                        <label for="floatingInput"> First Name <span
+                                                style="color:red"><b>*</b></span></label>
+                                        <div class="invalid-tooltip">First Name is required!</div>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.middle_name}}
+                                        <label for="floatingPassword">Middle Name</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.last_name}}
+                                        <label for="floatingPassword">Last Name <span style="color:red">*</span></label>
+                                        <div class="invalid-tooltip">last name is required!</div>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.mobile}}
+                                        <label for="floatingInput"> Phone Number <span
+                                                style="color:red">*</span></label>
+                                        <div class="invalid-tooltip">Phone number is required!</div>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.email}}
+                                        <label for="floatingInput">Email</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.address}}
+                                        <label for="floatingPassword">Address</label>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.gender}}
+                                        <label for="floatingInput">Gender <span style="color:red">*</span></label>
+                                        <div class="invalid-tooltip">Select Gender</div>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select class="form-control" id="state" name="state">
+                                            <option value="">-----------------</option>
+                                            {% for state, lga_list in state_list.items %}
+                                            <option lga="<option value=''>----------</option>
+                  {% for lga in lga_list %}
+                  <option value='{{lga|lower}}'>{{lga|upper}}</option>
+                  {% endfor %}
+                  " value="{{state|lower}}">
+
+                                                {{state|upper}}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                        <label for="floatingInput">State </label>
+                                        <div class="invalid-tooltip">Select State</div>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select class="form-control" id="lga" name="lga">
+                                            <option value="">----------</option>
+                                        </select>
+                                        <label for="floatingInput">LGA </label>
+                                        <div class="invalid-tooltip">Select LGA</div>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.date_of_birth}}
+                                        <label for="floatingPassword">Date of Birth</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.image}}
+                                        <label for="floatingPassword">Image</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.religion}}
+                                        <label for="floatingPassword">Religion</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.marital_status}}
+                                        <label for="floatingPassword">Marital Status</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div aria-labelledby="v-pills-profile-tab" class="tab-pane fade" id="v-pills-profile"
+                         role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select class="form-control" id="id_department" name="department" required>
+                                            <option position="<option value=''>----------</option>" value="">
+                                                ----------
+                                            </option>
+                                            {% for department in department_list %}
+                                            <option position="<option value=''>----------</option>
+                {% for position in department.positions.all %}
+                <option value='{{position.id}}'>{{position.name|upper}}</option>
+                {% endfor %}
+                " value="{{department.id}}">
+
+                                                {{department.name|upper}}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                        <label for="floatingInput"> Department <span style="color:red">*</span></label>
+                                        <div class="invalid-tooltip">Select Department</div>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select class="form-control" id="id_position" name="position" required>
+                                            <option value="">----------</option>
+                                        </select>
+                                        <label for="floatingPassword">Position <span style="color:red">*</span></label>
+                                        <div class="invalid-tooltip">Select Position</div>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select class="form-control" id="id_level" name="level">
+                                            <option value="">----------</option>
+                                        </select>
+                                        <label for="floatingPassword">Level <span style="color:red"></span></label>
+                                        <div class="invalid-tooltip">Select Position</div>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.group}}
+                                        <label for="floatingPassword">Permission Group <span
+                                                style="color:red"></span></label>
+                                        <div class="invalid-tooltip">Select Group</div>
+                                    </div>
+
+                                    {% if not staff_setting.auto_generate_staff_id %}
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <input class="form-control" name="staff_id" required type="text">
+                                        <label for="floatingPassword">Staff ID</label>
+                                    </div>
+
+                                    {% endif %}
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.employment_date}}
+                                        <label for="floatingInput">Employment Date</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.cv}}
+                                        <label for="floatingPassword">Upload CV</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.contract_type}}
+                                        <label for="floatingPassword">Contract Type <span
+                                                style="color:red"><b>*</b></span></label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.contract_start_date}}
+                                        <label for="floatingPassword">Contract Start Date</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.contract_end_date}}
+                                        <label for="floatingPassword">Contract End Date</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.contract_status}}
+                                        <label for="floatingPassword">Contract Status</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div aria-labelledby="v-pills-messages-tab" class="tab-pane fade" id="v-pills-messages"
+                         role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.salary}}
+                                        <label for="floatingInput"> Salary</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.bank_name}}
+                                        <label for="floatingInput"> Bank Name</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.account_number}}
+                                        <label for="floatingPassword"> Account Number</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.account_name}}
+                                        <label for="floatingPassword"> Account Name</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div aria-labelledby="v-pills-health-tab" class="tab-pane fade" id="v-pills-health"
+                         role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.blood_group}}
+                                        <label for="floatingInput"> Blood Group</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.genotype}}
+                                        <label for="floatingInput"> Genotype</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{form.health_note}}
+                                        <label for="floatingPassword"> Health Note</label>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+
+                        <div class="form-floating mb-3 col-md-12">
+                            <br/>
+                            <button class="btn btn-primary" style="float:right" type="submit">Register Staff</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- End Vertical Pills Tabs -->
+
+        </div>
+    </div>
+
+</form>
+{%endblock %}

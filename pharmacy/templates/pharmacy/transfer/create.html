@@ -1,0 +1,251 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="card-title text-primary">Record New Drug Transfer</h4>
+                <div>
+                    <a href="{% url 'drug_transfer_index' %}" class="btn btn-inverse-primary btn-sm me-2">Back to Transfers</a>
+                    {# Helper button with correct styling #}
+                    <button type="button" class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#transferHelperModal">
+                        <b>Helper</b>
+                    </button>
+                </div>
+            </div>
+
+            {% include 'admin_site/partials/error.html' %} {# To display Django messages (success, error, etc.) #}
+
+            <form method="post" class="forms-sample">
+                {% csrf_token %}
+                <div class="row">
+                    {# Drug field with client-side search functionality #}
+                    <div class="col-md-6 mb-3">
+                        <div class="form-floating">
+                            {# Search input for filtering the select options #}
+                            <input type="text" class="form-control" id="drug-filter-input" placeholder="Filter drugs...">
+                            <label for="drug-filter-input">Filter Drug</label>
+                        </div>
+                        <div class="form-floating mt-3">
+                            {# Manually rendering the select to include data attributes for quantities #}
+                            <select class="form-select" id="id_drug" name="drug" aria-label="Drug Name">
+                                <option value="">---------</option>
+                                {% for drug in drugs %}
+                                    <option value="{{ drug.pk }}"
+                                            data-store-quantity="{{ drug.store_quantity|default:0 }}"
+                                            data-pharmacy-quantity="{{ drug.pharmacy_quantity|default:0 }}">
+                                        {{ drug }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <label for="id_drug">Drug Name<span style="color:red"><b>*</b></span></label>
+                            {% if form.drug.errors %}<div class="text-danger mt-1">{{ form.drug.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+
+                    {# Store Quantity Display Field #}
+                    <div class="col-md-6 mb-3">
+                        <div class="form-floating">
+                            <input type="number" class="form-control" id="store-quantity-display" readonly placeholder="0">
+                            <label for="store-quantity-display">Store Quantity</label>
+                        </div>
+                    </div>
+
+                    {# Pharmacy Quantity Display Field #}
+                    <div class="col-md-6 mb-3">
+                        <div class="form-floating">
+                            <input type="number" class="form-control" id="pharmacy-quantity-display" readonly placeholder="0">
+                            <label for="pharmacy-quantity-display">Pharmacy Quantity</label>
+                        </div>
+                    </div>
+
+                    {# Quantity to Transfer field #}
+                    <div class="col-md-6 mb-3">
+                        <div class="form-floating">
+                            {{ form.quantity }} {# This input's max attribute will be set by JS #}
+                            <label for="{{ form.quantity.id_for_label }}">Quantity to Transfer<span style="color:red"><b>*</b></span></label>
+                            {% if form.quantity.errors %}<div class="text-danger mt-1">{{ form.quantity.errors }}</div>{% endif %}
+                            <small class="text-muted" id="quantity-help-text"></small>
+                        </div>
+                    </div>
+
+                    {# Notes field - takes full width #}
+                    <div class="col-md-12 mb-3">
+                        <div class="form-floating">
+                            {{ form.notes }}
+                            <label for="{{ form.notes.id_for_label }}">Notes</label>
+                            {% if form.notes.errors %}<div class="text-danger mt-1">{{ form.notes.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary me-2">Record Transfer</button>
+                <a href="{% url 'drug_transfer_index' %}" class="btn btn-light">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Transfer Helper Modal -->
+<div class="modal fade" id="transferHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Drug Transfer Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    This form is used to record the movement of drugs **from the Store/Warehouse to the Pharmacy Counter**.
+                </p>
+
+                <div class="alert alert-info">
+                    <strong>Drug Filter:</strong> Use the filter box to quickly narrow down the list of drugs in the selection dropdown.
+                </div>
+
+                <div class="alert alert-info">
+                    <strong>Quantities:</strong> After selecting a drug, its current **Store Quantity** and **Pharmacy Quantity** will be displayed.
+                </div>
+
+                 <div class="alert alert-info">
+                    <strong>Quantity to Transfer:</strong> The maximum amount you can transfer is limited to the current **Store Quantity** of the selected drug.
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Important:</strong> Recording this transfer will automatically **reduce** the quantity in the Store and **increase** the quantity at the Pharmacy Counter.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# --- JavaScript for Client-Side Drug Filtering, Quantity Display, and Quantity Constraint --- #}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const drugFilterInput = document.getElementById('drug-filter-input');
+        const drugSelect = document.getElementById('id_drug'); // Assuming ID is 'id_drug'
+        const storeQuantityDisplay = document.getElementById('store-quantity-display');
+        const pharmacyQuantityDisplay = document.getElementById('pharmacy-quantity-display');
+        const quantityToTransferInput = document.getElementById('id_quantity'); // Assuming ID is 'id_quantity'
+        const quantityHelpText = document.getElementById('quantity-help-text');
+
+        // Store all original options when the page loads, including their data attributes
+        const originalOptions = Array.from(drugSelect.options).map(option => ({
+            value: option.value,
+            text: option.textContent,
+            storeQuantity: option.dataset.storeQuantity,
+            pharmacyQuantity: option.dataset.pharmacyQuantity
+        }));
+
+        // Function to filter and update the select options
+        const filterDrugs = (searchTerm) => {
+            const lowerCaseSearchTerm = searchTerm.toLowerCase();
+            // Clear current options, but keep the first '---------' option if it exists
+            drugSelect.innerHTML = '';
+            const defaultOptionData = originalOptions.find(opt => opt.value === '');
+            if (defaultOptionData) {
+                const defaultOptionElement = document.createElement('option');
+                defaultOptionElement.value = defaultOptionData.value;
+                defaultOptionElement.textContent = defaultOptionData.text;
+                drugSelect.add(defaultOptionElement);
+            }
+
+            let matchesFound = false;
+            originalOptions.forEach(optionData => {
+                // Skip the default empty option if it was handled
+                if (optionData.value === '' && defaultOptionData) return;
+
+                if (optionData.text.toLowerCase().includes(lowerCaseSearchTerm)) {
+                    const optionElement = document.createElement('option');
+                    optionElement.value = optionData.value;
+                    optionElement.textContent = optionData.text;
+                    optionElement.dataset.storeQuantity = optionData.storeQuantity;
+                    optionElement.dataset.pharmacyQuantity = optionData.pharmacyQuantity;
+                    drugSelect.add(optionElement);
+                    matchesFound = true;
+                }
+            });
+
+            if (!matchesFound && searchTerm !== '') {
+                const noResultOption = document.createElement('option');
+                noResultOption.value = "";
+                noResultOption.textContent = "No drugs found";
+                noResultOption.disabled = true;
+                drugSelect.add(noResultOption);
+            }
+
+            // If the currently selected value is no longer in the list, reset it
+            const currentSelectedValue = drugSelect.value;
+            const optionExists = Array.from(drugSelect.options).some(option => option.value === currentSelectedValue);
+            if (!optionExists && drugSelect.options.length > 0) {
+                drugSelect.value = ''; // Reset to default or first available
+            }
+            // Trigger the change event handler to update quantities and max constraint
+            drugSelect.dispatchEvent(new Event('change'));
+        };
+
+        // Function to update quantity displays and set max constraint
+        const updateQuantitiesAndConstraint = () => {
+            const selectedOption = drugSelect.options[drugSelect.selectedIndex];
+            const isDrugSelected = selectedOption && selectedOption.value !== '';
+
+            if (isDrugSelected) {
+                const storeQty = parseFloat(selectedOption.dataset.storeQuantity || '0');
+                const pharmacyQty = parseFloat(selectedOption.dataset.pharmacyQuantity || '0');
+
+                storeQuantityDisplay.value = storeQty;
+                pharmacyQuantityDisplay.value = pharmacyQty;
+
+                quantityToTransferInput.max = storeQty;
+                quantityToTransferInput.placeholder = `Max ${storeQty}`;
+                quantityHelpText.textContent = `Maximum transfer quantity: ${storeQty}`;
+
+                // If current value exceeds max, adjust it
+                if (parseFloat(quantityToTransferInput.value) > storeQty) {
+                    quantityToTransferInput.value = storeQty;
+                }
+            } else {
+                // No drug selected, clear displays and remove constraints
+                storeQuantityDisplay.value = '';
+                pharmacyQuantityDisplay.value = '';
+                quantityToTransferInput.removeAttribute('max');
+                quantityToTransferInput.placeholder = '';
+                quantityHelpText.textContent = '';
+                quantityToTransferInput.value = ''; // Clear input if no drug selected
+            }
+            // Re-apply floating label fix
+            applyFloatingLabelFix();
+        };
+
+        // Event listener for filter input
+        drugFilterInput.addEventListener('input', function() {
+            filterDrugs(this.value.trim());
+        });
+
+        // Event listener for drug selection change
+        drugSelect.addEventListener('change', updateQuantitiesAndConstraint);
+
+        // Initialize Bootstrap's floating labels for all relevant inputs
+        const applyFloatingLabelFix = () => {
+            document.querySelectorAll('.form-floating > .form-control, .form-floating > .form-select, .form-floating > textarea').forEach(function(input) {
+                if (input.value || input.tagName === 'SELECT' && input.value !== '') {
+                    input.classList.add('active');
+                } else {
+                    input.classList.remove('active');
+                }
+            });
+        };
+
+        // Apply fix initially
+        applyFloatingLabelFix();
+        // Trigger initial update in case a drug is pre-selected by Django
+        updateQuantitiesAndConstraint();
+    });
+</script>
+
+{% endblock %}

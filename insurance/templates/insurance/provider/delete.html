@@ -1,0 +1,32 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Insurance Provider</h4>
+
+            <p>Provider: <i>{{ provider.name|upper }}</i></p>
+
+            <p>The Provider will be permanently deleted.</p>
+
+            {% if provider.hmo_set.all|length > 0 %}
+                <p>
+                    {{ provider.hmo_set.all|length }} HMO{{ provider.hmo_set.all|length|pluralize }}
+                    under this provider will also be deleted.
+                </p>
+            {% else %}
+                <p>There are currently no HMOs under this provider.</p>
+            {% endif %}
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'insurance_provider_index' %}">Cancel</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

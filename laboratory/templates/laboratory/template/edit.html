@@ -1,0 +1,652 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h4 class="card-title">Edit Lab Test Template</h4>
+                    <p class="card-description">Update the details for <strong>{{ template.name }}</strong></p>
+                </div>
+                <div>
+                    <a href="{% url 'lab_template_detail' template.pk %}" class="btn btn-info btn-sm me-2">
+                        <i class="mdi mdi-eye"></i> View Details
+                    </a>
+                    <a href="{% url 'lab_template_index' %}" class="btn btn-secondary btn-sm">
+                        <i class="mdi mdi-arrow-left"></i> Back to List
+                    </a>
+                </div>
+            </div>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form method="post" id="templateForm">
+                {% csrf_token %}
+
+                <!-- Basic Information -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.name }}
+                            <label for="id_name">Template Name<span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.code }}
+                            <label for="id_code">Template Code</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.category }}
+                            <label for="id_category">Category</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.price }}
+                            <label for="id_price">Price (₦)</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sample Information -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.sample_type }}
+                            <label for="id_sample_type">Sample Type</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.sample_volume }}
+                            <label for="id_sample_volume">Sample Volume</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="form-check mb-3">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="id_is_active">
+                                Active Template
+                                <small class="text-muted d-block">Inactive templates cannot be used for new orders</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Test Parameters Section -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Test Parameters</h5>
+                        <div class="badge badge-info">
+                            <span id="parameterCount">0</span> parameters
+                        </div>
+                    </div>
+                    
+                    <div class="card border-light">
+                        <div class="card-body">
+                            <div id="parametersContainer">
+                                <!-- Parameters will be loaded here -->
+                            </div>
+                            
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <button type="button" class="btn btn-success btn-sm" id="addParameterBtn">
+                                    <i class="mdi mdi-plus"></i> Add Parameter
+                                </button>
+                                
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-primary" onclick="reorderParameters('up')" title="Move Up">
+                                        <i class="mdi mdi-arrow-up"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" onclick="reorderParameters('down')" title="Move Down">
+                                        <i class="mdi mdi-arrow-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden field for actual JSON data -->
+                <input type="hidden" id="id_test_parameters" name="test_parameters" value='{{ form.test_parameters.value|default:"{\"parameters\": []}" }}'>
+
+                <!-- Change Log -->
+                <div class="mb-4">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">Template Information</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <small class="text-muted">
+                                        <strong>Created:</strong> {{ template.created_at|date:"M d, Y g:i A" }}<br>
+                                        <strong>Last Updated:</strong> {{ template.updated_at|date:"M d, Y g:i A" }}
+                                    </small>
+                                </div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">
+                                        <strong>Current Parameters:</strong> {{ template.parameter_names|length }}<br>
+                                        <strong>Total Orders:</strong> <span id="totalOrders">{{ total_orders|default:0 }}</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="mdi mdi-content-save"></i> Update Template
+                        </button>
+                        <button type="button" class="btn btn-success me-2" onclick="previewChanges()">
+                            <i class="mdi mdi-eye"></i> Preview Changes
+                        </button>
+                    </div>
+                    <div>
+                        <a href="{% url 'lab_template_detail' template.pk %}" class="btn btn-secondary me-2">
+                            <i class="mdi mdi-close"></i> Cancel
+                        </a>
+                        {% if template.is_active and total_orders > 0 %}
+                        <button type="button" class="btn btn-warning" onclick="showWarning()">
+                            <i class="mdi mdi-alert"></i> Has Active Orders
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Parameter Template (Hidden) -->
+<template id="parameterTemplate">
+    <div class="parameter-item border rounded p-3 mb-3" style="background-color: #f8f9fa;">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input parameter-select">
+                <label class="form-check-label">Select for reorder</label>
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-primary btn-sm duplicate-parameter" title="Duplicate">
+                    <i class="mdi mdi-content-copy"></i>
+                </button>
+                <button type="button" class="btn btn-danger btn-sm remove-parameter-btn" title="Remove">
+                    <i class="mdi mdi-delete"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control parameter-name" placeholder="Parameter Name" required>
+                    <label>Parameter Name *</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control parameter-code" placeholder="Code">
+                    <label>Code</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-floating mb-3">
+                    <select class="form-control parameter-type">
+                        <option value="numeric">Numeric</option>
+                        <option value="text">Text</option>
+                        <option value="select">Select Options</option>
+                        <option value="boolean">Yes/No</option>
+                    </select>
+                    <label>Type</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check form-switch mt-3">
+                    <input type="checkbox" class="form-check-input parameter-required" checked>
+                    <label class="form-check-label">Required</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Numeric specific fields -->
+        <div class="numeric-fields" style="display: none;">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="form-floating mb-3">
+                        <input type="text" class="form-control parameter-unit" placeholder="Unit">
+                        <label>Unit (e.g., g/dL, mg/L)</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-floating mb-3">
+                        <input type="number" class="form-control parameter-min" step="0.01" placeholder="Min">
+                        <label>Normal Range - Min</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-floating mb-3">
+                        <input type="number" class="form-control parameter-max" step="0.01" placeholder="Max">
+                        <label>Normal Range - Max</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check form-switch mt-3">
+                        <input type="checkbox" class="form-check-input parameter-gender-specific">
+                        <label class="form-check-label">Gender Specific</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Select options fields -->
+        <div class="select-fields" style="display: none;">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="mb-3">
+                        <label class="form-label">Options (Enter each option on a new line):</label>
+                        <textarea class="form-control parameter-options" rows="3" placeholder="A+&#10;A-&#10;B+&#10;B-&#10;AB+&#10;AB-&#10;O+&#10;O-"></textarea>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch mt-4">
+                        <input type="checkbox" class="form-check-input parameter-multiple">
+                        <label class="form-check-label">Allow Multiple Selection</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parameter Notes -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="form-floating">
+                    <textarea class="form-control parameter-notes" placeholder="Additional notes..." rows="2"></textarea>
+                    <label>Notes (Optional)</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Change Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Preview Changes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="previewContent">
+                    <!-- Preview content will be generated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('templateForm').submit();">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.parameter-item {
+    position: relative;
+    transition: all 0.3s ease;
+    border-left: 4px solid #007bff !important;
+}
+
+.parameter-item:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.parameter-item.selected {
+    border-left-color: #28a745 !important;
+    background-color: #f0fff4 !important;
+}
+
+#parametersContainer:empty::before {
+    content: "No parameters added yet. Click 'Add Parameter' to start.";
+    color: #6c757d;
+    font-style: italic;
+    display: block;
+    padding: 40px 20px;
+    text-align: center;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.form-switch .form-check-input {
+    width: 2rem;
+}
+
+.btn-group-sm .btn {
+    padding: 0.25rem 0.5rem;
+}
+
+.duplicate-parameter {
+    border-color: #6f42c1;
+    color: #6f42c1;
+}
+
+.duplicate-parameter:hover {
+    background-color: #6f42c1;
+    color: white;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const parametersContainer = document.getElementById('parametersContainer');
+    const addParameterBtn = document.getElementById('addParameterBtn');
+    const parameterTemplate = document.getElementById('parameterTemplate');
+    const hiddenInput = document.getElementById('id_test_parameters');
+    const parameterCountBadge = document.getElementById('parameterCount');
+    let parameterCounter = 0;
+
+    // Add parameter function
+    function addParameter(paramData = null) {
+        parameterCounter++;
+        const clone = parameterTemplate.content.cloneNode(true);
+        
+        // Add unique identifiers
+        const parameterItem = clone.querySelector('.parameter-item');
+        parameterItem.dataset.parameterId = parameterCounter;
+        
+        parametersContainer.appendChild(clone);
+        
+        // Attach event listeners to the new parameter
+        attachParameterEvents(parameterItem);
+        
+        // Fill with existing data if provided
+        if (paramData) {
+            fillParameterData(parameterItem, paramData);
+        }
+        
+        // Update JSON and count
+        updateJSON();
+        updateParameterCount();
+    }
+
+    // Fill parameter with existing data
+    function fillParameterData(parameterItem, paramData) {
+        parameterItem.querySelector('.parameter-name').value = paramData.name || '';
+        parameterItem.querySelector('.parameter-code').value = paramData.code || '';
+        parameterItem.querySelector('.parameter-type').value = paramData.type || 'numeric';
+        
+        // Handle required field
+        if (paramData.required !== undefined) {
+            parameterItem.querySelector('.parameter-required').checked = paramData.required;
+        }
+        
+        // Handle notes
+        if (paramData.notes) {
+            parameterItem.querySelector('.parameter-notes').value = paramData.notes;
+        }
+        
+        if (paramData.type === 'numeric') {
+            if (paramData.unit) parameterItem.querySelector('.parameter-unit').value = paramData.unit;
+            if (paramData.normal_range) {
+                if (paramData.normal_range.min !== undefined) {
+                    parameterItem.querySelector('.parameter-min').value = paramData.normal_range.min;
+                }
+                if (paramData.normal_range.max !== undefined) {
+                    parameterItem.querySelector('.parameter-max').value = paramData.normal_range.max;
+                }
+                if (paramData.normal_range.gender_specific) {
+                    parameterItem.querySelector('.parameter-gender-specific').checked = true;
+                }
+            }
+        } else if (paramData.type === 'select') {
+            if (paramData.options) {
+                parameterItem.querySelector('.parameter-options').value = paramData.options.join('\n');
+            }
+            if (paramData.multiple) {
+                parameterItem.querySelector('.parameter-multiple').checked = paramData.multiple;
+            }
+        }
+        
+        // Trigger type change to show correct fields
+        parameterItem.querySelector('.parameter-type').dispatchEvent(new Event('change'));
+    }
+
+    // Attach events to parameter item
+    function attachParameterEvents(parameterItem) {
+        const typeSelect = parameterItem.querySelector('.parameter-type');
+        const removeBtn = parameterItem.querySelector('.remove-parameter-btn');
+        const duplicateBtn = parameterItem.querySelector('.duplicate-parameter');
+        const selectCheckbox = parameterItem.querySelector('.parameter-select');
+        const numericFields = parameterItem.querySelector('.numeric-fields');
+        const selectFields = parameterItem.querySelector('.select-fields');
+
+        // Type change handler
+        typeSelect.addEventListener('change', function() {
+            const type = this.value;
+            
+            // Show/hide relevant fields
+            numericFields.style.display = type === 'numeric' ? 'block' : 'none';
+            selectFields.style.display = type === 'select' ? 'block' : 'none';
+            
+            updateJSON();
+        });
+
+        // Remove parameter handler
+        removeBtn.addEventListener('click', function() {
+            if (confirm('Are you sure you want to remove this parameter?')) {
+                parameterItem.remove();
+                updateJSON();
+                updateParameterCount();
+            }
+        });
+
+        // Duplicate parameter handler
+        duplicateBtn.addEventListener('click', function() {
+            const paramData = getParameterData(parameterItem);
+            paramData.name += ' (Copy)';
+            paramData.code += '_COPY';
+            addParameter(paramData);
+        });
+
+        // Selection handler
+        selectCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                parameterItem.classList.add('selected');
+            } else {
+                parameterItem.classList.remove('selected');
+            }
+        });
+
+        // Add change listeners to all inputs
+        const inputs = parameterItem.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('input', updateJSON);
+            input.addEventListener('change', updateJSON);
+        });
+
+        // Trigger initial type change
+        typeSelect.dispatchEvent(new Event('change'));
+    }
+
+    // Get parameter data from form
+    function getParameterData(parameterItem) {
+        const name = parameterItem.querySelector('.parameter-name').value.trim();
+        const code = parameterItem.querySelector('.parameter-code').value.trim();
+        const type = parameterItem.querySelector('.parameter-type').value;
+        const required = parameterItem.querySelector('.parameter-required').checked;
+        const notes = parameterItem.querySelector('.parameter-notes').value.trim();
+        
+        const parameter = {
+            name: name,
+            code: code || name.toUpperCase().replace(/\s+/g, '_'),
+            type: type,
+            required: required
+        };
+        
+        if (notes) parameter.notes = notes;
+        
+        // Add type-specific fields
+        if (type === 'numeric') {
+            const unit = parameterItem.querySelector('.parameter-unit').value.trim();
+            const min = parseFloat(parameterItem.querySelector('.parameter-min').value);
+            const max = parseFloat(parameterItem.querySelector('.parameter-max').value);
+            const genderSpecific = parameterItem.querySelector('.parameter-gender-specific').checked;
+            
+            if (unit) parameter.unit = unit;
+            
+            if (!isNaN(min) || !isNaN(max)) {
+                parameter.normal_range = {};
+                if (!isNaN(min)) parameter.normal_range.min = min;
+                if (!isNaN(max)) parameter.normal_range.max = max;
+                if (genderSpecific) parameter.normal_range.gender_specific = true;
+            }
+        } else if (type === 'select') {
+            const optionsText = parameterItem.querySelector('.parameter-options').value.trim();
+            const multiple = parameterItem.querySelector('.parameter-multiple').checked;
+            
+            if (optionsText) {
+                parameter.options = optionsText.split('\n')
+                    .map(opt => opt.trim())
+                    .filter(opt => opt.length > 0);
+            }
+            if (multiple) parameter.multiple = multiple;
+        }
+        
+        return parameter;
+    }
+
+    // Update JSON function
+    function updateJSON() {
+        const parameters = [];
+        const parameterItems = parametersContainer.querySelectorAll('.parameter-item');
+        
+        parameterItems.forEach(item => {
+            const paramData = getParameterData(item);
+            if (paramData.name) {
+                parameters.push(paramData);
+            }
+        });
+        
+        const jsonData = { parameters: parameters };
+        hiddenInput.value = JSON.stringify(jsonData, null, 2);
+    }
+
+    // Update parameter count
+    function updateParameterCount() {
+        const count = parametersContainer.querySelectorAll('.parameter-item').length;
+        parameterCountBadge.textContent = count;
+    }
+
+    // Load existing data
+    function loadExistingData() {
+        try {
+            const existingData = JSON.parse(hiddenInput.value || '{"parameters": []}');
+            if (existingData.parameters && existingData.parameters.length > 0) {
+                existingData.parameters.forEach(param => {
+                    addParameter(param);
+                });
+            }
+        } catch (e) {
+            console.log('Error loading existing parameters:', e);
+        }
+    }
+
+    // Reorder parameters
+    window.reorderParameters = function(direction) {
+        const selected = parametersContainer.querySelectorAll('.parameter-item.selected');
+        if (selected.length === 0) {
+            alert('Please select parameters to reorder');
+            return;
+        }
+        
+        selected.forEach(item => {
+            if (direction === 'up' && item.previousElementSibling) {
+                item.parentNode.insertBefore(item, item.previousElementSibling);
+            } else if (direction === 'down' && item.nextElementSibling) {
+                item.parentNode.insertBefore(item.nextElementSibling, item);
+            }
+        });
+        
+        updateJSON();
+    };
+
+    // Preview changes
+    window.previewChanges = function() {
+        updateJSON();
+        const parameters = JSON.parse(hiddenInput.value).parameters;
+        
+        let previewHTML = '<h6>Parameters (' + parameters.length + '):</h6><div class="table-responsive"><table class="table table-sm table-bordered">';
+        previewHTML += '<thead><tr><th>Name</th><th>Code</th><th>Type</th><th>Details</th></tr></thead><tbody>';
+        
+        parameters.forEach(param => {
+            let details = '';
+            if (param.type === 'numeric' && param.unit) details += 'Unit: ' + param.unit + ' ';
+            if (param.normal_range) {
+                details += 'Range: ' + (param.normal_range.min || '') + '-' + (param.normal_range.max || '') + ' ';
+            }
+            if (param.options) details += 'Options: ' + param.options.slice(0, 3).join(', ') + '... ';
+            
+            previewHTML += `<tr>
+                <td><strong>${param.name}</strong></td>
+                <td><span class="badge badge-secondary">${param.code}</span></td>
+                <td><span class="badge badge-primary">${param.type}</span></td>
+                <td><small>${details || '-'}</small></td>
+            </tr>`;
+        });
+        
+        previewHTML += '</tbody></table></div>';
+        document.getElementById('previewContent').innerHTML = previewHTML;
+        
+        // Show modal (assuming Bootstrap is available)
+        new bootstrap.Modal(document.getElementById('previewModal')).show();
+    };
+
+    // Show warning for active templates
+    window.showWarning = function() {
+        alert('This template has active orders. Changes may affect existing test results. Please proceed with caution.');
+    };
+
+    // Event listeners
+    addParameterBtn.addEventListener('click', () => addParameter());
+    
+    // Form submission handler
+    document.getElementById('templateForm').addEventListener('submit', function(e) {
+        updateJSON();
+        
+        const parameters = JSON.parse(hiddenInput.value).parameters;
+        if (parameters.length === 0) {
+            e.preventDefault();
+            alert('Please add at least one test parameter.');
+            return false;
+        }
+        
+        const emptyNames = parameters.filter(p => !p.name.trim());
+        if (emptyNames.length > 0) {
+            e.preventDefault();
+            alert('Please fill in names for all parameters.');
+            return false;
+        }
+    });
+    
+    // Load existing data on page load
+    loadExistingData();
+    updateParameterCount();
+});
+</script>
+
+{% endblock %}

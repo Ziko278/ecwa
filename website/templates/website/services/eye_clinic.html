@@ -1,0 +1,110 @@
+{% extends 'website/layout.html' %}
+{% load static %}
+
+{% block title %}
+Eye Clinic - {{ site_info.name }}
+{% endblock title %}
+
+{% block content %}
+<div class="breadcumb-wrapper" style="height:400px" data-bg-src="{% static 'website/img/images/bg.webp' %}">
+    <div class="container">
+        <div class="breadcumb-content">
+            <h1 class="breadcumb-title">Eye Clinic</h1>
+            <ul class="breadcumb-menu">
+                <li><a href="{% url 'home' %}">Home</a></li>
+                <li><a href="{% url 'services' %}">Services</a></li>
+                <li>Eye Clinic</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<section class="space-top space-extra-bottom">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="page-single">
+                    <div class="page-img">
+                        <img src="{% static 'website/img/images/service1.webp' %}" alt="Eye Clinic">
+                    </div>
+                    <div class="page-content">
+                        <h2 class="h3 page-title">Comprehensive Ophthalmology & Eye Care</h2>
+                        <p>Our Eye Clinic offers a full range of ophthalmic services, from routine eye exams and vision correction to advanced surgical procedures. We combine experienced ophthalmologists with modern diagnostic equipment to provide precise, patient-centred care.</p>
+                        <p>Whether you need cataract surgery, glaucoma management, retinal care or routine optical services, our multidisciplinary team works to preserve and restore vision.</p>
+
+                        <h4 class="h5 mt-4">Services Offered</h4>
+                        <p>We provide diagnostic assessments, medical and surgical treatment, refractive services, paediatric ophthalmology and low-vision support. Our clinic also offers on-site optical dispensing for glasses and contact lens fitting.</p>
+
+                        <div class="row mt-30">
+                            <div class="col-md-6">
+                                <h4 class="h5">Clinic Highlights & Facilities</h4>
+                                <div class="checklist">
+                                    <ul>
+                                        <li><i class="far fa-check-circle"></i>Comprehensive Eye Examinations</li>
+                                        <li><i class="far fa-check-circle"></i>Cataract & Refractive Surgery</li>
+                                        <li><i class="far fa-check-circle"></i>Glaucoma & Retinal Services</li>
+                                        <li><i class="far fa-check-circle"></i>Pediatric Ophthalmology</li>
+                                        <li><i class="far fa-check-circle"></i>On-site Optical & Contact Lens Services</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="page-img"><img src="{% static 'website/img/images/service2.jpg' %}" alt="Eye Clinic Image"></div>
+                            </div>
+                        </div>
+
+                        <h4 class="h5 mt-4">When to See an Ophthalmologist</h4>
+                        <p>Book an appointment if you experience sudden vision changes, eye pain, flashes/floaters, or if you have a family history of eye disease. Regular eye checks are recommended for patients with diabetes, hypertension, or those over 40 years old.</p>
+
+                        <h4 class="h5 mt-4">Frequently Asked Questions</h4>
+                        <div class="accordion-area accordion" id="serviceFaqEye">
+                            <div class="accordion-card active">
+                                <div class="accordion-header"><button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faq-eye-1">Do you offer cataract surgery?</button></div>
+                                <div id="faq-eye-1" class="accordion-collapse collapse show" data-bs-parent="#serviceFaqEye">
+                                    <div class="accordion-body"><p>Yes — we offer modern cataract surgery with intraocular lens options and personalized pre-op assessment to determine the best lens for your visual goals.</p></div>
+                                </div>
+                            </div>
+                            <div class="accordion-card">
+                                <div class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq-eye-2">Can I get same-day glasses after an eye exam?</button></div>
+                                <div id="faq-eye-2" class="accordion-collapse collapse" data-bs-parent="#serviceFaqEye">
+                                    <div class="accordion-body"><p>In many cases, yes — our on-site optical lab can dispense standard prescription glasses quickly. Complex lenses or special coatings may take longer.</p></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <a href="{% url 'contact' %}" class="th-btn style1">Book an Appointment</a>
+                            <a href="{% url 'doctors' %}" class="th-btn style2">Meet Our Ophthalmologists</a>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <aside class="sidebar-area">
+                    <div class="widget widget_nav_menu">
+                        <h3 class="widget_title">All Services</h3>
+                        <div class="menu-all-pages-container">
+                             <ul class="menu">
+                                <li><a href="{% url 'in_patient' %}">In-Patient Care</a></li>
+                                <li><a href="{% url 'out_patient' %}">Out-Patient Clinic</a></li>
+                                <li><a href="{% url 'physiotherapy' %}">Physiotherapy</a></li>
+                                <li><a href="{% url 'surgery' %}">Surgical Services</a></li>
+                                <li><a href="{% url 'eye_clinic' %}">Eye Clinic</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                     <div class="widget">
+                         <div class="widget-ads">
+                             <h4 class="widget_title">Need Emergency Help?</h4>
+                             <p class="ads-text">Our Emergency Department is open 24/7. Call us immediately for urgent medical care.</p>
+                             <a href="tel:{{ site_info.mobile_1 }}" class="ads-btn"><i class="fas fa-phone"></i> {{ site_info.mobile_1 }}</a>
+                         </div>
+                     </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock content %}

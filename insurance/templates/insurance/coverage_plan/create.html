@@ -1,0 +1,396 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">
+                            <i class="fas fa-plus-circle me-2"></i>Create Coverage Plan
+                        </h4>
+                        <div>
+                            <a href="{% url 'coverage_plan_index' %}" class="btn btn-danger me-2">
+                                <i class="fas fa-arrow-left me-1"></i>Back to Plans
+                            </a>
+                            <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#helperModal">
+                                <i class="fas fa-question-circle me-1"></i>Help
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <!-- Centered wider form column -->
+                            <div class="col-md-10 offset-md-1">
+                                <form method="post" novalidate>
+                                    {% csrf_token %}
+
+                                    <!-- Basic Information -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label required">HMO</label>
+                                            {{ form.hmo }}
+                                            {% if form.hmo.errors %}
+                                                <div class="invalid-feedback d-block">{{ form.hmo.errors.0 }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label required">Plan Name</label>
+                                            {{ form.name }}
+                                            {% if form.name.errors %}
+                                                <div class="invalid-feedback d-block">{{ form.name.errors.0 }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Description</label>
+                                        {{ form.description }}
+                                        {% if form.description.errors %}
+                                            <div class="invalid-feedback d-block">{{ form.description.errors.0 }}</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <!-- Consultation Coverage -->
+                                    <div class="card mb-4">
+                                        <div class="card-header bg-light">
+                                            <h6 class="mb-0"><i class="fas fa-stethoscope me-2"></i>Consultation Coverage</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        {{ form.consultation_covered }}
+                                                        <label class="form-check-label">Consultation Covered</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Coverage Percentage (%)</label>
+                                                    {{ form.consultation_coverage_percentage }}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Annual Limit</label>
+                                                    {{ form.consultation_annual_limit }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Drug Coverage -->
+                                    <div class="card mb-4">
+                                        <div class="card-header bg-light">
+                                            <h6 class="mb-0"><i class="fas fa-pills me-2"></i>Drug Coverage</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row mb-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Coverage Type</label>
+                                                    {{ form.drug_coverage }}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Coverage Percentage (%)</label>
+                                                    {{ form.drug_coverage_percentage }}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Annual Limit</label>
+                                                    {{ form.drug_annual_limit }}
+                                                </div>
+                                            </div>
+                                            <div class="alert alert-info">
+                                                <i class="fas fa-info-circle me-2"></i>
+                                                Specific drugs can be managed after creating the plan.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Lab Coverage -->
+                                    <div class="card mb-4">
+                                        <div class="card-header bg-light">
+                                            <h6 class="mb-0"><i class="fas fa-flask me-2"></i>Laboratory Coverage</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row mb-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Coverage Type</label>
+                                                    {{ form.lab_coverage }}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Coverage Percentage (%)</label>
+                                                    {{ form.lab_coverage_percentage }}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Annual Limit</label>
+                                                    {{ form.lab_annual_limit }}
+                                                </div>
+                                            </div>
+                                            <div class="alert alert-info">
+                                                <i class="fas fa-info-circle me-2"></i>
+                                                Specific lab tests can be managed after creating the plan.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Radiology Coverage -->
+                                    <div class="card mb-4">
+                                        <div class="card-header bg-light">
+                                            <h6 class="mb-0"><i class="fas fa-x-ray me-2"></i>Radiology Coverage</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row mb-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Coverage Type</label>
+                                                    {{ form.radiology_coverage }}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Coverage Percentage (%)</label>
+                                                    {{ form.radiology_coverage_percentage }}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Annual Limit</label>
+                                                    {{ form.radiology_annual_limit }}
+                                                </div>
+                                            </div>
+                                            <div class="alert alert-info">
+                                                <i class="fas fa-info-circle me-2"></i>
+                                                Specific radiology scans can be managed after creating the plan.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Administrative Settings -->
+                                    <div class="card mb-4">
+                                        <div class="card-header bg-light">
+                                            <h6 class="mb-0"><i class="fas fa-cogs me-2"></i>Administrative Settings</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col-md-3">
+                                                    <div class="form-check">
+                                                        {{ form.require_verification }}
+                                                        <label class="form-check-label">Require Verification</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-check">
+                                                        {{ form.require_referral }}
+                                                        <label class="form-check-label">Require Referral</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-check">
+                                                        {{ form.is_active }}
+                                                        <label class="form-check-label">Active</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label">Overall Annual Limit</label>
+                                                    {{ form.annual_limit }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Submit Buttons -->
+                                    <div class="d-flex justify-content-end gap-2">
+                                        <a href="{% url 'coverage_plan_index' %}" class="btn btn-secondary">
+                                            <i class="fas fa-times me-1"></i>Cancel
+                                        </a>
+                                        <button type="submit" class="btn btn-success">
+                                            <i class="fas fa-save me-1"></i>Create Plan
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            <!-- removed right sidebar; converted into modal helper -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Helper Modal (moved from right sidebar) -->
+    <div class="modal fade" id="helperModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-question-circle me-2"></i>Coverage Types Guide</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <strong>All:</strong> Covers all items in this category
+                    </div>
+                    <div class="mb-3">
+                        <strong>Include Selected:</strong> Only covers specifically selected items
+                    </div>
+                    <div class="mb-3">
+                        <strong>Exclude Selected:</strong> Covers all except specifically excluded items
+                    </div>
+                    <div class="mb-3">
+                        <strong>None:</strong> No coverage for this category
+                    </div>
+
+                    <hr>
+
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> You can manage specific drugs, lab tests, and radiology scans after creating the plan.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Toggle coverage percentage input based on coverage type selection
+        function toggleCoverageInputs() {
+            const coverageTypes = ['drug', 'lab', 'radiology'];
+
+            coverageTypes.forEach(type => {
+                const select = document.getElementById(`id_${type}_coverage`);
+                const percentageInput = document.getElementById(`id_${type}_coverage_percentage`);
+                const limitInput = document.getElementById(`id_${type}_annual_limit`);
+
+                if (select && percentageInput) {
+                    const updateInputs = () => {
+                        const isNone = select.value === 'none';
+                        percentageInput.disabled = isNone;
+                        if (limitInput) limitInput.disabled = isNone;
+
+                        if (isNone) {
+                            percentageInput.value = '0';
+                            if (limitInput) limitInput.value = '';
+                        }
+                    };
+
+                    select.addEventListener('change', updateInputs);
+                    updateInputs(); // Initial state
+                }
+            });
+        }
+
+        // Toggle consultation inputs
+        function toggleConsultationInputs() {
+            const consultationCovered = document.getElementById('id_consultation_covered');
+            const percentageInput = document.getElementById('id_consultation_coverage_percentage');
+            const limitInput = document.getElementById('id_consultation_annual_limit');
+
+            if (consultationCovered && percentageInput) {
+                const updateInputs = () => {
+                    const isDisabled = !consultationCovered.checked;
+                    percentageInput.disabled = isDisabled;
+                    if (limitInput) limitInput.disabled = isDisabled;
+
+                    if (isDisabled) {
+                        percentageInput.value = '0';
+                        if (limitInput) limitInput.value = '';
+                    }
+                };
+
+                consultationCovered.addEventListener('change', updateInputs);
+                updateInputs(); // Initial state
+            }
+        }
+
+        // Form validation
+        function validateForm() {
+            const form = document.querySelector('form');
+            form.addEventListener('submit', function(e) {
+                let isValid = true;
+
+                // Validate required fields
+                const requiredFields = [
+                    document.getElementById('id_hmo'),
+                    document.getElementById('id_name')
+                ];
+
+                requiredFields.forEach(field => {
+                    if (field && !field.value.trim()) {
+                        isValid = false;
+                        field.classList.add('is-invalid');
+                    } else if (field) {
+                        field.classList.remove('is-invalid');
+                    }
+                });
+
+                // Validate percentage ranges (0-100)
+                const percentageFields = [
+                    'consultation_coverage_percentage',
+                    'drug_coverage_percentage',
+                    'lab_coverage_percentage',
+                    'radiology_coverage_percentage'
+                ];
+
+                percentageFields.forEach(fieldName => {
+                    const field = document.getElementById(`id_${fieldName}`);
+                    if (field && field.value) {
+                        const value = parseFloat(field.value);
+                        if (isNaN(value) || value < 0 || value > 100) {
+                            isValid = false;
+                            field.classList.add('is-invalid');
+
+                            // Show error message
+                            let errorDiv = field.parentNode.querySelector('.invalid-feedback');
+                            if (!errorDiv) {
+                                errorDiv = document.createElement('div');
+                                errorDiv.className = 'invalid-feedback';
+                                field.parentNode.appendChild(errorDiv);
+                            }
+                            errorDiv.textContent = 'Percentage must be between 0 and 100';
+                        } else {
+                            field.classList.remove('is-invalid');
+                        }
+                    }
+                });
+
+                if (!isValid) {
+                    e.preventDefault();
+                    alert('Please correct the highlighted errors before submitting.');
+                }
+            });
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            toggleCoverageInputs();
+            toggleConsultationInputs();
+            validateForm();
+        });
+    </script>
+
+    <style>
+        .required::after {
+            content: " *";
+            color: red;
+        }
+
+        .card-header {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+        }
+
+        .form-control:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+
+        .btn-success {
+            background: linear-gradient(45deg, #28a745, #218838);
+            border: none;
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(45deg, #218838, #1e7e34);
+        }
+
+        input:disabled, select:disabled {
+            background-color: #f8f9fa;
+            opacity: 0.6;
+        }
+    </style>
+{% endblock %}

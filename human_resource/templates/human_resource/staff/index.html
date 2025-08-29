@@ -1,0 +1,57 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter">
+            <a class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+
+                <li class="dropdown-item"><a class="btn btn-sm btn-primary" style="width:100%" href="{% url 'staff_create' %}">Register Staff</a></li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">Staff List</h5>
+            <table class="table table-borderless datatable">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Full Name</th>
+                    <th scope="col">Staff ID</th>
+                    <th scope="col">Department</th>
+                    <th scope="col">Position</th>
+                    <th scope="col">Mobile</th>
+                    <th scope="col">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% if staff_list %}
+                {% for staff in staff_list %}
+                <tr>
+                    <th scope="row"><img class="rounded-circle" style="width:50px" {% if staff.image %} src="{{ staff.image.url }}" {% else %} src="{% static 'admin_site/images/default_image.jpg' %}" {% endif %} /> </th>
+                    <td>{{ staff|title }}</td>
+                    <td>{{ staff.staff_id|upper }} </td>
+                    <td>{{ staff.position.department.name|title }}</td>
+                    <td>{{ staff.position.name|title }} </td>
+                    <td>{% if staff.mobile %} {{ staff.mobile }} {% endif %}</td>
+                    <td>
+                        <a href="{% url 'staff_edit' staff.id %}" class="btn btn-warning"><i class="bi bi-pencil-square"></i></a>
+                        <a href="{% url 'staff_detail' staff.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+                </tbody>
+            </table>
+            {% if not staff_list %}
+             <h3 class="text-center">No Staff Registered Yet</h3>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{%endblock %}

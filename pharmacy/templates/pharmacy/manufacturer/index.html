@@ -1,0 +1,168 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Add Manufacturer" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#manufacturerHelperModal"><b>Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="#">
+                    <button title="Add Manufacturer" type="button" style="width:100%" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addManufacturerModal">Add Manufacturer</button>
+                </a></li>
+            </ul>
+        </div>
+
+
+        <div class="card-body">
+            <h5 class="card-title">List of Manufacturers</h5>
+            {% include 'admin_site/partials/error.html' %}
+            <table class="table table-borderless datatable">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Manufacturer Name</th>
+                    <th scope="col">Country</th>
+                    <th class="text-center" scope="col">Approved</th>
+                    <th scope="col" class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+
+                {% for manufacturer in manufacturer_list %}
+                <tr>
+                    <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
+                    <td title="created at {{ manufacturer.created_at|date }}">{{ manufacturer.name|title }}</td>
+                    <td>{% if manufacturer.country %}{{ manufacturer.country|title }}{% else %}---{% endif %}</td>
+                    <td class="text-center">
+                        {% if manufacturer.is_approved %}
+                            <i class="fs-4 bi bi-check-circle-fill text-success" title="Approved"></i>
+                        {% else %}
+                            <i class="fs-4 bi bi-x-circle-fill text-danger" title="Not Approved"></i>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <button title="Edit Manufacturer" type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#editManufacturerModal{{ forloop.counter }}"><i class="bi bi-pencil-square"></i></button>
+                        <a title="Delete Manufacturer" href="{% url 'manufacturer_delete' manufacturer.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+
+
+                </tbody>
+            </table>
+            {% if not manufacturer_list %}
+                 <h3 class="text-center">No Manufacturers Added Yet</h3>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<!-- Manufacturer Helper Modal -->
+<div class="modal fade" id="manufacturerHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Manufacturer Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    Drug **manufacturers** are essential for tracking the origin of pharmaceutical products. You can record their name, country, and approval status.
+                </p>
+
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> Keep the `Is Approved` status accurate to distinguish trusted suppliers.
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> The country field is optional but helps in international supply chain management.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Add Manufacturer Modal -->
+<form method="POST" action="{% url 'manufacturer_create' %}">
+    {% csrf_token %}
+    <div class="modal fade" id="addManufacturerModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Add Manufacturer</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating mb-3">
+                        {{ form.name }}
+                        <label for="id_name">Manufacturer Name<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {{ form.country }}
+                        <label for="id_country">Country </label>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        {{ form.is_approved }}
+                        <label class="form-check-label" for="id_is_approved">Is Approved</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Edit Manufacturer Modals -->
+{% for manufacturer in manufacturer_list %}
+<form method="POST" action="{% url 'manufacturer_edit' manufacturer.id %}">
+    {% csrf_token %}
+    <div class="modal fade" id="editManufacturerModal{{ forloop.counter }}" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit Manufacturer</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating mb-3">
+                        <input type="text" name="name" value="{{ manufacturer.name|lower }}" autocomplete="off" required class="form-control" id="edit_manufacturer_name_{{ forloop.counter }}">
+                        <label for="edit_manufacturer_name_{{ forloop.counter }}">Manufacturer Name <span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <input type="text" name="country" value="{{ manufacturer.country|lower }}" autocomplete="off" class="form-control" id="edit_manufacturer_country_{{ forloop.counter }}">
+                        <label for="edit_manufacturer_country_{{ forloop.counter }}">Country </label>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input type="checkbox" name="is_approved" id="edit_is_approved_{{ forloop.counter }}" class="form-check-input" {% if manufacturer.is_approved %}checked{% endif %}>
+                        <label class="form-check-label" for="edit_is_approved_{{ forloop.counter }}">Is Approved</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endfor %}
+
+
+{% endblock %}

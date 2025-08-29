@@ -1,0 +1,450 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">ACTIONS:
+                <span class="card-description">Hover an Icon to reveal its function</span>
+            </h4>
+
+            <!-- Edit -->
+            {% if 'patient.change_patientmodel' in perms %}
+            <a title="Edit Patient" href="{% url 'patient_edit' patient.id %}" class="btn btn-warning">
+                <i class="bi bi-pencil-square"></i>
+            </a>
+            {% endif %}
+
+            <!-- Upload Document -->
+            <button title="Upload Consultation Document" type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal">
+                <i class="bi bi-file-earmark-plus"></i>
+            </button>
+
+            <!-- Delete -->
+            {% if 'patient.delete_patientmodel' in perms %}
+            <button title="Delete Patient" type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
+                <i class="bi bi-trash"></i>
+            </button>
+            {% endif %}
+
+            <button style="float:right" title="Go Back" type="button" class="btn btn-danger" onclick="window.history.back()"><i class="bi bi-arrow-left"></i></button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body pt-3">
+                <ul class="nav nav-tabs nav-tabs-bordered">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" data-bs-target="#profile-overview">PATIENT DATA</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" data-bs-target="#consultation-documents">
+                            DOCUMENTS
+                            {% if consultation_documents %}
+                                <span class="badge bg-primary">{{ consultation_documents|length }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="tab-content pt-2">
+                    <div class="tab-pane fade show active profile-overview" id="profile-overview">
+                        <div class="col-12 grid-margin">
+                            <div class="card">
+                                <div class="card-body" style="padding:20px">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <image {% if patient.image %} src="{{ patient.image.url }}" {% else %} src="{% static 'admin_site/images/default_image.jpg' %}" {% endif %} style="width:100px;height:100px;border-radius:5px;" />
+                                                </div>
+                                                <div class="col-md-8">
+                                                    <p><b>Name: </b>{{ patient|title }}</p>
+                                                    <p><b>Card Number: </b>{{patient.card_number|upper}}</p>
+                                                    <p><b>Phone: </b>{% if patient.mobile %} {{patient.mobile}} {% else %} No Phone Number Provided {% endif %}</p>
+                                                    <p><b>Gender: </b>{{patient.gender|title}} </p>
+                                                    <p><b>Wallet Balance: </b>₦{{patient.wallet.amount|floatformat|intcomma}} </p>
+                                                    <p><b>Last Visit: </b>{{patient.last_visit}} </p>
+                                                 </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="accordion-item" style="margin-top:20px">
+                                        <h2 class="accordion-header" id="headingTwo">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                                                <b>PERSONAL INFORMATION</b>
+                                            </button>
+                                        </h2>
+                                        <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#accordionExample">
+                                            <div class="accordion-body">
+                                                <div class="card">
+                                                    <div class="card-body">
+                                                        <div class="row">
+                                                            <div class="col-md-6">
+                                                                <p class="card-title"> CONTACT INFORMATION </p>
+                                                                <div class="row">
+                                                                    <div class="col-md-12">
+                                                                        <p>Mobile : <i><b>{% if patient.mobile %} {{ patient.mobile }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>Email : <i><b>{% if patient.email %} {{ patient.email|lower }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>Address : <i><b>{% if patient.address %} {{ patient.address }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>State of Origin : <i><b>{% if patient.state %} {{ patient.state|title }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>L G A : <i><b>{% if patient.lga %} {{ patient.lga|title }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>DOB : <i><b>{% if patient.date_of_birth %} {{ patient.date_of_birth|date }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>Religion : <i><b>{% if patient.religion %} {{patient.religion|title }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>Marital Status : <i><b>{% if patient.marital_status %} {{patient.marital_status|title }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-6">
+                                                                <p class="card-title">NEXT OF KIN CONTACT </p>
+                                                                <div class="row">
+                                                                    <div class="col-md-12">
+                                                                        <p>Name : <i><b>{% if patient.next_of_kin_name %} {{ patient.next_of_kin_name|title }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>Phone : <i><b>{% if patient.next_of_kin_number %} {{ patient.next_of_kin_number }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                        <p>Address : <i><b>{% if patient.next_of_kin_address %} {{ patient.next_of_kin_address }} {% else %} Not Provided {% endif %}</b></i></p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Documents Tab -->
+                    <div class="tab-pane fade" id="consultation-documents">
+                        <div class="col-12 grid-margin">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h5 class="card-title">Consultation Documents</h5>
+                                        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal">
+                                            <i class="bi bi-plus-circle"></i> Upload Document
+                                        </button>
+                                    </div>
+
+                                    {% if consultation_documents %}
+                                        <div class="table-responsive">
+                                            <table class="table table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Document</th>
+                                                        <th>Title</th>
+                                                        <th>Uploaded By</th>
+                                                        <th>Date</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="documents-list">
+                                                    {% for doc in consultation_documents %}
+                                                    <tr data-doc-id="{{ doc.id }}">
+                                                        <td>
+                                                            <a href="{{ doc.document.url }}" target="_blank" class="text-decoration-none">
+                                                                <i class="bi bi-file-earmark-text"></i> {{ doc.filename }}
+                                                            </a>
+                                                        </td>
+                                                        <td>{{ doc.title|default:"—" }}</td>
+                                                        <td>{{ doc.uploaded_by.get_full_name|default:doc.uploaded_by.username }}</td>
+                                                        <td>{{ doc.uploaded_at|date:"M d, Y H:i" }}</td>
+                                                        <td>
+                                                            <a href="{{ doc.document.url }}" target="_blank" class="btn btn-sm btn-outline-primary" title="View">
+                                                                <i class="bi bi-eye"></i>
+                                                            </a>
+                                                            <button class="btn btn-sm btn-outline-danger" title="Delete" onclick="deleteDocument({{ doc.id }})">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <div class="text-center py-4">
+                                            <div class="mb-3">
+                                                <i class="bi bi-file-earmark-x" style="font-size: 3rem; color: #ccc;"></i>
+                                            </div>
+                                            <h6 class="text-muted">No consultation documents uploaded yet</h6>
+                                            <p class="text-muted small">Upload scanned copies of manual consultation records for easy access during consultations.</p>
+                                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal">
+                                                <i class="bi bi-plus-circle"></i> Upload First Document
+                                            </button>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    label {
+        width: 80px
+    }
+    .info {
+        margin-left:10px
+    }
+</style>
+
+<!-- Upload Document Modal -->
+<div class="modal fade" id="uploadDocumentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="uploadDocumentForm" method="post" enctype="multipart/form-data" action="{% url 'upload_consultation_document' patient.id %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Upload Consultation Document</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Document File *</label>
+                        {{ document_form.document }}
+                        <div class="form-text">Supported formats: PDF, JPG, PNG, DOC, DOCX</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Title (Optional)</label>
+                        {{ document_form.title }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description (Optional)</label>
+                        {{ document_form.description }}
+                    </div>
+                    <div id="upload-errors" class="alert alert-danger d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <span class="upload-btn-text">Upload Document</span>
+                        <span class="upload-spinner d-none">
+                            <span class="spinner-border spinner-border-sm me-2"></span>Uploading...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Delete Patient</h5></div>
+    <div class="modal-body">This action cannot be undone. Are you sure?</div>
+    <div class="modal-footer">
+      <form method="post" action="{% url 'patient_delete' patient.id %}">{% csrf_token %}
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-danger">Delete</button>
+      </form>
+    </div>
+  </div></div>
+</div>
+
+<!-- Delete Document Modal -->
+<div class="modal fade" id="deleteDocumentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Document</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to delete this document? This action cannot be undone.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteDocument">Delete Document</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Upload document with AJAX
+document.getElementById('uploadDocumentForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const form = this;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const btnText = submitBtn.querySelector('.upload-btn-text');
+    const spinner = submitBtn.querySelector('.upload-spinner');
+    const errorsDiv = document.getElementById('upload-errors');
+
+    // Show loading state
+    btnText.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    submitBtn.disabled = true;
+    errorsDiv.classList.add('d-none');
+
+    const formData = new FormData(form);
+
+    fetch(form.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Add new document to the table
+            addDocumentToTable(data.document);
+
+            // Reset form and close modal
+            form.reset();
+            bootstrap.Modal.getInstance(document.getElementById('uploadDocumentModal')).hide();
+
+            // Update tab badge
+            updateDocumentCount();
+        } else {
+            // Show errors
+            const errorHtml = Object.values(data.errors).flat().join('<br>');
+            errorsDiv.innerHTML = errorHtml;
+            errorsDiv.classList.remove('d-none');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        errorsDiv.innerHTML = 'An error occurred while uploading the document.';
+        errorsDiv.classList.remove('d-none');
+    })
+    .finally(() => {
+        // Reset button state
+        btnText.classList.remove('d-none');
+        spinner.classList.add('d-none');
+        submitBtn.disabled = false;
+    });
+});
+
+// Add document to table
+function addDocumentToTable(doc) {
+    const tbody = document.getElementById('documents-list');
+
+    // If no documents exist, replace the empty state
+    const emptyState = document.querySelector('.text-center.py-4');
+    if (emptyState) {
+        const tableHtml = `
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Document</th>
+                            <th>Title</th>
+                            <th>Uploaded By</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="documents-list"></tbody>
+                </table>
+            </div>
+        `;
+        emptyState.parentElement.innerHTML = tableHtml;
+    }
+
+    const newRow = `
+        <tr data-doc-id="${doc.id}">
+            <td>
+                <a href="${doc.url}" target="_blank" class="text-decoration-none">
+                    <i class="bi bi-file-earmark-text"></i> ${doc.filename}
+                </a>
+            </td>
+            <td>${doc.title || '—'}</td>
+            <td>${doc.uploaded_by}</td>
+            <td>${doc.uploaded_at}</td>
+            <td>
+                <a href="${doc.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="View">
+                    <i class="bi bi-eye"></i>
+                </a>
+                <button class="btn btn-sm btn-outline-danger" title="Delete" onclick="deleteDocument(${doc.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `;
+
+    document.getElementById('documents-list').insertAdjacentHTML('afterbegin', newRow);
+}
+
+// Update document count badge
+function updateDocumentCount() {
+    const rows = document.querySelectorAll('#documents-list tr').length;
+    const badge = document.querySelector('.nav-link[data-bs-target="#consultation-documents"] .badge');
+
+    if (rows > 0) {
+        if (badge) {
+            badge.textContent = rows;
+        } else {
+            const tabLink = document.querySelector('.nav-link[data-bs-target="#consultation-documents"]');
+            tabLink.innerHTML += ` <span class="badge bg-primary">${rows}</span>`;
+        }
+    }
+}
+
+// Delete document
+let documentToDelete = null;
+
+function deleteDocument(documentId) {
+    documentToDelete = documentId;
+    const deleteModal = new bootstrap.Modal(document.getElementById('deleteDocumentModal'));
+    deleteModal.show();
+}
+
+document.getElementById('confirmDeleteDocument').addEventListener('click', function() {
+    if (!documentToDelete) return;
+
+    fetch("{% url 'delete_consultation_document' 0 %}".replace('0', documentToDelete), {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove row from table
+            const row = document.querySelector(`tr[data-doc-id="${documentToDelete}"]`);
+            if (row) {
+                row.remove();
+                updateDocumentCount();
+
+                // Check if table is empty
+                const remainingRows = document.querySelectorAll('#documents-list tr').length;
+                if (remainingRows === 0) {
+                    location.reload(); // Reload to show empty state
+                }
+            }
+
+            // Hide modal
+            bootstrap.Modal.getInstance(document.getElementById('deleteDocumentModal')).hide();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error deleting document');
+    })
+    .finally(() => {
+        documentToDelete = null;
+    });
+});
+</script>
+
+{%endblock %}

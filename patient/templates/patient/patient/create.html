@@ -1,0 +1,231 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<form action="" class="row g-3 " enctype="multipart/form-data" method="POST">
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">PATIENT REGISTRATION
+               {% if first_name %} - {{ first_name|title }} {{ middle_name|title }} {{ last_name|title }} {% endif %}</h5>
+            <p class="card-description">
+                All fields with a red star <span style="color:red"><b>*</b></span> are required.
+            </p>
+            {% include 'admin_site/partials/error.html' %}
+
+            <!-- Tab Layout -->
+            <div class="d-flex align-items-start">
+                <div class="nav flex-column nav-pills me-3" id="v-pills-tab" role="tablist" style="width:150px">
+                    <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#v-personal" type="button">Personal</button>
+                    <br>
+                    <button class="nav-link" data-bs-toggle="pill" data-bs-target="#v-medical" type="button">Medical</button>
+                    <br>
+                    <button class="nav-link" data-bs-toggle="pill" data-bs-target="#v-emergency" type="button">Emergency</button>
+                </div>
+
+                <div class="tab-content" id="v-pills-tabContent" style="width:100%">
+
+                    <!-- Personal Info -->
+                    <div class="tab-pane fade show active" id="v-personal" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                    <input type="text" name="first_name" id="id_first_name" class="form-control" placeholder="First Name" value="{{ form.first_name.value|default:first_name|default:'' }}">
+                                    <label for="id_first_name">First Name <span style="color:red">*</span></label>
+                                    {% if form.first_name.errors %}
+                                        <div class="text-danger small mt-1">{{ form.first_name.errors|join:", " }}</div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="form-floating mb-3 col-md-4">
+                                    <input type="text" name="middle_name" id="id_middle_name" class="form-control" placeholder="Middle Name" value="{{ form.middle_name.value|default:middle_name|default:'' }}">
+                                    <label for="id_middle_name">Middle Name</label>
+                                    {% if form.middle_name.errors %}
+                                        <div class="text-danger small mt-1">{{ form.middle_name.errors|join:", " }}</div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="form-floating mb-3 col-md-4">
+                                    <input type="text" name="last_name" id="id_last_name" class="form-control" placeholder="Last Name" value="{{ form.last_name.value|default:last_name|default:'' }}">
+                                    <label for="id_last_name">Last Name <span style="color:red">*</span></label>
+                                    {% if form.last_name.errors %}
+                                        <div class="text-danger small mt-1">{{ form.last_name.errors|join:", " }}</div>
+                                    {% endif %}
+                                </div>
+
+
+                                </div>
+
+                                <div class="row mb-3">
+                                    {% if not patient_setting.auto_generate_patient_id %}
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <input type="text" name="card_number" value="{{ old_card_number }}" class="form-control" required>
+                                        <label>Card Number</label>
+                                    </div>
+                                    {% endif %}
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.mobile }}
+                                        <label>Mobile</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.email }}
+                                        <label>Email</label>
+                                    </div>
+
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.date_of_birth }}
+                                        <label>Date of Birth</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.date_of_birth }}
+                                        <label>Date of Birth</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.gender }}
+                                        <label>Gender <span style="color:red">*</span></label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.marital_status }}
+                                        <label>Marital Status</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.religion }}
+                                        <label>Religion</label>
+                                    </div>
+
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.occupation }}
+                                        <label>Occupation</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select class="form-control" id="state" name="state">
+                                      <option value="">-----------------</option>
+                                      {% for state, lga_list in state_list.items %}
+                                      <option value="{{state|lower}}"  lga="<option value=''>----------</option>
+                                      {% for lga in lga_list %}
+                                      <option value='{{lga|lower}}'>{{lga|upper}}</option>
+                                      {% endfor %}
+                                      ">
+
+                                      {{state|upper}}</option>
+                                      {% endfor %}
+                                    </select>
+                                        <label>State</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select name="lga" class="form-control" id="lga">
+                                            <option value="">----------</option>
+                                        </select>
+                                        <label>LGA</label>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-8">
+                                        {{ form.address }}
+                                        <label>Address</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.image }}
+                                        <label>Image</label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Medical Info -->
+                    <div class="tab-pane fade" id="v-medical" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.blood_group }}
+                                        <label>Blood Group</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.genotype }}
+                                        <label>Genotype</label>
+                                    </div>
+
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-12">
+                                        {{ form.medical_note }}
+                                        <label>Medical Note</label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Emergency Contact -->
+                    <div class="tab-pane fade" id="v-emergency" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-6">
+                                        {{ form.next_of_kin_name }}
+                                        <label>Next of Kin Name</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-6">
+                                        {{ form.next_of_kin_number }}
+                                        <label>Next of Kin Phone</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-12">
+                                        {{ form.next_of_kin_address }}
+                                        <label>Next of Kin Address</label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit -->
+                    <div class="row mb-3">
+                        <div class="form-floating mb-3 col-md-12">
+                            <br/>
+                            <button class="btn btn-sm btn-danger" type="button" onclick="window.history.back()">Go Back</button>
+                            <button class="btn btn-sm btn-primary" style="float:right" type="submit">Register Patient</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <!-- End Tabs -->
+
+        </div>
+    </div>
+</form>
+<script src="{% static 'admin_site/scripts/jquery.js' %}"></script>
+<script>
+$(document).ready(function(){
+
+  $('#state').change(function(){
+    lga = $('option:selected', this).attr('lga')
+    $('#lga').html(lga)
+  })
+
+  $('form').submit(function(){
+  		$(this).submit(function(){
+  			return false
+  		})
+  		return true
+  	})
+})
+
+</script>
+{% endblock %}

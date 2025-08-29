@@ -1,0 +1,296 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+<div class="col-12">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="card-title mb-0">New Registration Payment</h4>
+                <a href="{% url 'registration_payment_index' %}" class="btn btn-outline-secondary">
+                    <i class="mdi mdi-arrow-left"></i> Back to Payments
+                </a>
+            </div>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form method="post" id="paymentForm">
+                {% csrf_token %}
+
+                <div class="row">
+                    <!-- Step 1: Patient Type -->
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            <select id="patientType" class="form-control">
+                                <option value="">-- Select Patient Type --</option>
+                                <option value="new">New Patient</option>
+                                <option value="old">Existing Patient</option>
+                            </select>
+                            <label>Patient Type</label>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Registration Fee -->
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            <select name="registration_fee" id="registrationFee" class="form-control">
+                                <option value="">-- Select Registration Type --</option>
+                            </select>
+                            <label>Registration Type</label>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Patient Info -->
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3" id="fullNameField" style="display:none;">
+                            <input type="text" name="full_name" class="form-control" placeholder="Full Name" required>
+                            <label>Patient Full Name *</label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3" id="cardNumberField" style="display:none;">
+                            <input type="text" name="old_card_number" id="cardNumberInput" class="form-control" placeholder="Card Number">
+                            <label>Hospital Card Number *</label>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Consultation Option -->
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            <select id="includeConsultation" class="form-control">
+                                <option value="no" selected>No Consultation</option>
+                                <option value="yes">Include Consultation</option>
+                            </select>
+                            <label>Include Consultation?</label>
+                        </div>
+                    </div>
+
+                    <!-- Step 5: Consultation Type -->
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3" id="consultationField" style="display:none;">
+                            <select name="consultation_fee" id="consultationFee" class="form-control">
+                                <option value="">-- Select Consultation Type --</option>
+                                {% for consult in consultation_fees %}
+                                <option value="{{ consult.id }}" data-amount="{{ consult.amount }}">
+                                    {{ consult }} - ₦{{ consult.amount }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <label>Consultation Type</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Display -->
+                <div class="row">
+                    <div class="col-12">
+                        <div class="alert alert-info" id="totalDisplay" style="display:none;">
+                            <h5 class="mb-2">Payment Summary:</h5>
+                            <div id="feeBreakdown"></div>
+                            <hr>
+                            <h4 class="mb-0">Total Amount: ₦<span id="totalAmountDisplay">0</span></h4>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden Total -->
+                <input type="hidden" name="amount" id="totalAmount">
+
+                <!-- Step 6: Pay Button -->
+                <div class="text-center">
+                    <button type="button" class="btn btn-primary btn-lg px-5" id="payBtn" disabled>
+                        <i class="mdi mdi-cash-register"></i> Process Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Confirm Payment</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-3">
+                    <i class="mdi mdi-cash-register text-success" style="font-size: 3rem;"></i>
+                </div>
+                <p id="confirmText" class="text-center h5"></p>
+
+                <div class="form-floating mt-4">
+                    <select name="payment_method" class="form-control" form="paymentForm">
+                        <option value="cash" selected>Cash Payment</option>
+                        <option value="transfer">Bank Transfer</option>
+                        <option value="card">Card Payment</option>
+                    </select>
+                    <label>Payment Method</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="mdi mdi-close"></i> Cancel
+                </button>
+                <button type="submit" form="paymentForm" class="btn btn-success btn-lg">
+                    <i class="mdi mdi-check"></i> Confirm Payment
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const patientType = document.getElementById("patientType");
+const regFeeSelect = document.getElementById("registrationFee");
+const fullNameField = document.getElementById("fullNameField");
+const cardNumberField = document.getElementById("cardNumberField");
+const cardNumberInput = document.getElementById("cardNumberInput");
+const includeConsultation = document.getElementById("includeConsultation");
+const consultationField = document.getElementById("consultationField");
+const consultationFee = document.getElementById("consultationFee");
+const payBtn = document.getElementById("payBtn");
+const confirmText = document.getElementById("confirmText");
+const totalAmountInput = document.getElementById("totalAmount");
+const totalDisplay = document.getElementById("totalDisplay");
+const totalAmountDisplay = document.getElementById("totalAmountDisplay");
+const feeBreakdown = document.getElementById("feeBreakdown");
+
+let regFees = {{ registration_fees|safe }}; // passed from view as JSON
+
+// Step 1: Populate reg fees when patient type changes
+patientType.addEventListener("change", function() {
+    let type = this.value;
+    regFeeSelect.innerHTML = "<option value=''>-- Select Registration Type --</option>";
+
+    if (type) {
+        regFees.filter(f => f.patient_type === type).forEach(f => {
+            regFeeSelect.innerHTML += `<option value="${f.id}" data-amount="${f.amount}">${f.title} - ₦${f.amount}</option>`;
+        });
+
+        // Show name field always, card field only for old patients
+        fullNameField.style.display = "block";
+        cardNumberField.style.display = (type === "old") ? "block" : "none";
+
+        // Set card number as required for old patients
+        if (type === "old") {
+            cardNumberInput.setAttribute('required', 'required');
+        } else {
+            cardNumberInput.removeAttribute('required');
+        }
+    } else {
+        fullNameField.style.display = "none";
+        cardNumberField.style.display = "none";
+    }
+
+    updateTotal();
+});
+
+// Step 2: Update total when registration fee changes
+regFeeSelect.addEventListener("change", function() {
+    updateTotal();
+});
+
+// Step 3: Consultation field toggle
+includeConsultation.addEventListener("change", function() {
+    consultationField.style.display = (this.value === "yes") ? "block" : "none";
+    if (this.value === "no") {
+        consultationFee.value = "";
+    }
+    updateTotal();
+});
+
+// Step 4: Update total when consultation changes
+consultationFee.addEventListener("change", function() {
+    updateTotal();
+});
+
+// Update total display
+function updateTotal() {
+    let total = 0;
+    let breakdown = "";
+
+    // Registration fee
+    let regFee = regFeeSelect.options[regFeeSelect.selectedIndex];
+    if (regFee && regFee.value) {
+        total += parseFloat(regFee.dataset.amount);
+        breakdown += `<div class="d-flex justify-content-between">
+            <span>${regFee.text.split(' - ')[0]}:</span>
+            <span>₦${regFee.dataset.amount}</span>
+        </div>`;
+    }
+
+    // Consultation fee
+    if (includeConsultation.value === "yes" && consultationFee.value) {
+        let consultOption = consultationFee.options[consultationFee.selectedIndex];
+        total += parseFloat(consultOption.dataset.amount);
+        breakdown += `<div class="d-flex justify-content-between">
+            <span>${consultOption.text.split(' - ')[0]}:</span>
+            <span>₦${consultOption.dataset.amount}</span>
+        </div>`;
+    }
+
+    // Update display
+    if (total > 0) {
+        totalDisplay.style.display = "block";
+        feeBreakdown.innerHTML = breakdown;
+        totalAmountDisplay.textContent = total.toFixed(2);
+        totalAmountInput.value = total;
+        payBtn.disabled = false;
+    } else {
+        totalDisplay.style.display = "none";
+        payBtn.disabled = true;
+    }
+}
+
+// Step 5: Pay button click
+payBtn.addEventListener("click", function() {
+    // Validate required fields
+    let fullName = document.querySelector('input[name="full_name"]').value.trim();
+    if (!fullName) {
+        alert("Please enter patient full name");
+        return;
+    }
+
+    // Check card number for old patients
+    if (patientType.value === "old") {
+        let cardNumber = cardNumberInput.value.trim();
+        if (!cardNumber) {
+            alert("Card number is required for existing patients");
+            cardNumberInput.focus();
+            return;
+        }
+    }
+
+    let regFee = regFeeSelect.options[regFeeSelect.selectedIndex];
+    if (!regFee.value) {
+        alert("Please select registration type");
+        return;
+    }
+
+    let total = parseFloat(totalAmountInput.value);
+    let consultText = "";
+
+    if (includeConsultation.value === "yes" && consultationFee.value) {
+        let consultOption = consultationFee.options[consultationFee.selectedIndex];
+        consultText = ` and ${consultOption.text.split(' - ')[0]}`;
+    }
+
+    confirmText.innerHTML = `
+        <div class="mb-2"><strong>Patient:</strong> ${fullName}</div>
+        ${patientType.value === "old" ? `<div class="mb-2"><strong>Card Number:</strong> ${cardNumberInput.value}</div>` : ""}
+        <div class="mb-3"><strong>Services:</strong> ${regFee.text.split(' - ')[0]}${consultText}</div>
+        <div class="alert alert-warning">
+            <strong>Total Amount: ₦${total.toFixed(2)}</strong>
+        </div>
+        <p>Please confirm to process this payment.</p>
+    `;
+
+    new bootstrap.Modal(document.getElementById("confirmModal")).show();
+});
+
+// Initialize
+updateTotal();
+</script>
+{% endblock %}

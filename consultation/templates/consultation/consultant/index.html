@@ -1,0 +1,58 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Actions" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="{% url 'consultant_create' %}">
+                    <button title="Add Consultant" type="button" style="width:100%" class="btn btn-sm btn-primary">Add Consultant</button>
+                </a></li>
+            </ul>
+        </div>
+
+
+        <div class="card-body">
+            <h5 class="card-title">List of Consultants</h5>
+            {% include 'admin_site/partials/error.html' %}
+            <table class="table table-borderless datatable">
+                <thead>
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Consultant</th>
+                        <th scope="col">Specialization</th>
+                        <th scope="col">Room</th>
+                        <th class="text-center" scope="col">Availability</th>
+                        <th scope="col" class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for consultant in consultant_list %}
+                    <tr>
+                        <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
+                        <td><a href="{% url 'consultant_detail' consultant.id %}">Dr. {{ consultant.staff|title }}</a></td>
+                        <td>{{ consultant.specialization.name|title }}</td>
+                        <td>{% if consultant.assigned_room %}{{ consultant.assigned_room }}{% else %}Not Assigned{% endif %}</td>
+                        <td class="text-center">{% if consultant.is_available_for_consultation %} <i class="fs-2 bi bi-check text-success"></i> {% else %} <i class="fs-2 bi bi-x text-danger"></i> {% endif %}</td>
+                        <td class="text-center">
+                            <a title="Consultant Detail" href="{% url 'consultant_detail' consultant.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
+                            <a title="Edit Consultant" href="{% url 'consultant_edit' consultant.id %}" class="btn btn-warning"><i class="bi bi-pencil-square"></i></a>
+                            <a title="Delete Consultant" href="{% url 'consultant_delete' consultant.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if not consultant_list %}
+                <h3 class="text-center">No Consultant Added Yet</h3>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}

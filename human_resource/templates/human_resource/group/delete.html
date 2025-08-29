@@ -1,0 +1,20 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Group</h4>
+            <p>Group: <i>{{group.name|upper }}</i></p>
+
+            <p>Any User in this group will be permanently deleted.</p>
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="name" value="{{group.name|lower}}">
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'group_index' %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

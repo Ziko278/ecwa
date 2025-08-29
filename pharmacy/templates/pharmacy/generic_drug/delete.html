@@ -1,0 +1,45 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Generic Drug</h4>
+            <p>Generic Drug: <i>{{ generic_drug.generic_name|title }}</i></p>
+
+            <p>This generic drug record will be permanently deleted.</p>
+            {% if generic_drug.formulations.all|length > 0 %}
+                <p class="text-danger">
+                    **Warning:** {{ generic_drug.formulations.all|length }} drug formulation{{ generic_drug.formulations.all|length|pluralize }}
+                    are linked to this generic drug. Deleting this will also delete these formulations.
+                </p>
+            {% else %}
+                <p>There are no drug formulations currently linked to this generic drug.</p>
+            {% endif %}
+
+            {% if generic_drug.formulations.all|length > 0 %}
+                {% with total_products=0 %}
+                    {% for formulation in generic_drug.formulations.all %}
+                        {% with total_products=total_products|add:formulation.products.all|length %}
+                        {% endwith %}
+                    {% endfor %}
+                    {% if total_products > 0 %}
+                        <p class="text-danger">
+                            **Further Warning:** Deleting this generic drug will ultimately affect
+                            {{ total_products }} drug product{{ total_products|pluralize }}
+                            associated with its formulations.
+                        </p>
+                    {% endif %}
+                {% endwith %}
+            {% endif %}
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'generic_drug_index' %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

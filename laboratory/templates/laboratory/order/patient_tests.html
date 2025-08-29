@@ -1,0 +1,390 @@
+<!-- laboratory/patient_tests.html -->
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="card-title mb-0">Lab Tests - {{ patient|title }}</h4>
+                <p class="card-description mb-0">Card Number: {{ patient.patient_id }}</p>
+            </div>
+            <div>
+                <a href="{% url 'lab_order_create' patient_id=patient.id %}" class="btn btn-success">
+                    <i class="mdi mdi-plus-circle me-2"></i>Order New Test
+                </a>
+                <a href="{% url 'lab_entry' %}" class="btn btn-secondary ms-2">
+                    <i class="mdi mdi-arrow-left me-2"></i>Back to Entry
+                </a>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <!-- Test Summary Cards -->
+            <div class="row mb-4">
+                <div class="col-md-2">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body text-center p-3">
+                            <h5 class="mb-1">{{ test_counts.paid }}</h5>
+                            <small>Paid</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card bg-secondary text-white">
+                        <div class="card-body text-center p-3">
+                            <h5 class="mb-1">{{ test_counts.collected }}</h5>
+                            <small>Sample Collected</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card bg-dark text-white">
+                        <div class="card-body text-center p-3">
+                            <h5 class="mb-1">{{ test_counts.processing }}</h5>
+                            <small>Processing</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card bg-success text-white">
+                        <div class="card-body text-center p-3">
+                            <h5 class="mb-1">{{ test_counts.completed }}</h5>
+                            <small>Completed</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Options -->
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <select id="status-filter" class="form-control">
+                        <option value="">All Statuses</option>
+                        {% for status_code, status_name in status_choices %}
+                            <option value="{{ status_code }}" {% if request.GET.status == status_code %}selected{% endif %}>
+                                {{ status_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    {% if test_counts.pending > 0 %}
+                        <button type="button" id="pay-selected-btn" class="btn btn-warning" disabled>
+                            <i class="mdi mdi-credit-card me-2"></i>Pay Selected Tests
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Tests List -->
+            {% if not orders_by_date %}
+                <div class="text-center py-5">
+                    <i class="mdi mdi-flask-outline" style="font-size: 4rem; color: #ccc;"></i>
+                    <h5 class="mt-3 text-muted">No Lab Tests Found</h5>
+                    <p class="text-muted">This patient has no lab test orders yet.</p>
+                    <a href="{% url 'lab_order_create' patient_id=patient.id %}" class="btn btn-success">
+                        <i class="mdi mdi-plus-circle me-2"></i>Order First Test
+                    </a>
+                </div>
+            {% else %}
+                <form id="payment-form" method="post">
+                    {% csrf_token %}
+                    {% for date, date_orders in orders_by_date.items %}
+                        <!-- Date Header -->
+                        <div class="row mb-2">
+                            <div class="col-12">
+                                <div class="bg-light p-2 rounded">
+                                    <h6 class="mb-0 text-primary">
+                                        <i class="mdi mdi-calendar me-2"></i>{{ date|date:"F d, Y" }}
+                                        <small class="text-muted">({{ date_orders|length }} test{{ date_orders|length|pluralize }})</small>
+                                    </h6>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tests for this date -->
+                        {% for order in date_orders %}
+                            <div class="row mb-2">
+                                <div class="col-12">
+                                    <div class="card border-left-{% if order.status == 'pending' %}warning{% elif order.status == 'paid' %}info{% elif order.status == 'collected' %}secondary{% elif order.status == 'processing' %}dark{% elif order.status == 'completed' %}success{% else %}light{% endif %}">
+                                        <div class="card-body p-3">
+                                            <div class="row align-items-center">
+                                                <div class="col-md-1">
+                                                    {% if order.status == 'pending' %}
+                                                        <div class="form-check">
+                                                            <input class="form-check-input payment-checkbox" type="checkbox"
+                                                                   value="{{ order.id }}" id="order_{{ order.id }}">
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
+
+                                                <div class="col-md-4">
+                                                    <h6 class="mb-1">{{ order.template.name }}</h6>
+                                                    <small class="text-muted">
+                                                        {{ order.template.category.name }} |
+                                                        Order #{{ order.order_number }}
+                                                    </small>
+                                                </div>
+
+                                                <div class="col-md-2">
+                                                    <span class="badge badge-{% if order.status == 'pending' %}warning{% elif order.status == 'paid' %}info{% elif order.status == 'collected' %}secondary{% elif order.status == 'processing' %}dark{% elif order.status == 'completed' %}success{% else %}light{% endif %}">
+                                                        {{ order.get_status_display }}
+                                                    </span>
+                                                </div>
+
+                                                <div class="col-md-2">
+                                                    <strong>₦{{ order.amount_charged|default:order.template.price|floatformat:2 }}</strong>
+                                                </div>
+
+                                                <div class="col-md-3">
+                                                    {% if order.status == 'pending' %}
+                                                        <small class="text-muted">Awaiting payment</small>
+                                                    {% elif order.status == 'paid' %}
+                                                        <button type="button" class="btn btn-sm btn-info collect-sample-btn"
+                                                                data-order-id="{{ order.id }}" data-test-name="{{ order.template.name }}">
+                                                            <i class="mdi mdi-test-tube me-1"></i>Collect Sample
+                                                        </button>
+                                                    {% elif order.status == 'collected' %}
+                                                        {% if order.sample_label %}
+                                                            <small class="text-muted">Sample: {{ order.sample_label }}</small><br>
+                                                        {% endif %}
+                                                        <a href="{% url 'lab_result_create' %}" class="btn btn-sm btn-secondary">
+                                                            <i class="mdi mdi-clipboard-text me-1"></i>Input Results
+                                                        </a>
+                                                    {% elif order.status == 'processing' %}
+                                                        <small class="text-success">In progress...</small>
+                                                    {% elif order.status == 'completed' %}
+                                                        <button type="button" class="btn btn-sm btn-success">
+                                                            <i class="mdi mdi-eye me-1"></i>View Results
+                                                        </button>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+
+                                            {% if order.special_instructions %}
+                                                <div class="row mt-2">
+                                                    <div class="col-12">
+                                                        <small class="text-muted">
+                                                            <i class="mdi mdi-note-text me-1"></i>{{ order.special_instructions }}
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% endfor %}
+                </form>
+
+                <!-- Pagination -->
+                {% if is_paginated %}
+                    <nav aria-label="Test pagination">
+                        <ul class="pagination justify-content-center mt-4">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">First</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Previous</a>
+                                </li>
+                            {% endif %}
+
+                            <li class="page-item active">
+                                <span class="page-link">
+                                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                                </span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Next</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Last</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Sample Collection Modal -->
+<div class="modal fade" id="sampleCollectionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Collect Sample</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="sample-collection-form">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Test Name</label>
+                        <input type="text" id="sample-test-name" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sample-label">Sample Label <span class="text-danger">*</span></label>
+                        <input type="text" id="sample-label" class="form-control" placeholder="Enter sample label" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="expected-completion">Expected Completion (Optional)</label>
+                        <input type="datetime-local" id="expected-completion" class="form-control">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-info">
+                        <i class="mdi mdi-test-tube me-2"></i>Collect Sample
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // DOM elements
+    const statusFilter = document.getElementById('status-filter');
+    const paySelectedBtn = document.getElementById('pay-selected-btn');
+    const paymentCheckboxes = document.querySelectorAll('.payment-checkbox');
+    const collectSampleBtns = document.querySelectorAll('.collect-sample-btn');
+    const sampleCollectionModal = new bootstrap.Modal(document.getElementById('sampleCollectionModal'));
+    const sampleCollectionForm = document.getElementById('sample-collection-form');
+
+    let currentOrderId = null;
+
+    // Status filter
+    if (statusFilter) {
+        statusFilter.addEventListener('change', function() {
+            const status = this.value;
+            const url = new URL(window.location);
+            if (status) {
+                url.searchParams.set('status', status);
+            } else {
+                url.searchParams.delete('status');
+            }
+            window.location.href = url.toString();
+        });
+    }
+
+    // Payment checkbox handling
+    function updatePayButton() {
+        const checkedBoxes = document.querySelectorAll('.payment-checkbox:checked');
+        if (paySelectedBtn) {
+            paySelectedBtn.disabled = checkedBoxes.length === 0;
+            if (checkedBoxes.length > 0) {
+                paySelectedBtn.textContent = `Pay Selected Tests (${checkedBoxes.length})`;
+            } else {
+                paySelectedBtn.textContent = 'Pay Selected Tests';
+            }
+        }
+    }
+
+    paymentCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updatePayButton);
+    });
+
+    // Process payments
+    if (paySelectedBtn) {
+        paySelectedBtn.addEventListener('click', function() {
+            const selectedOrders = Array.from(document.querySelectorAll('.payment-checkbox:checked'))
+                .map(cb => cb.value);
+
+            if (selectedOrders.length === 0) {
+                alert('Please select tests to pay for');
+                return;
+            }
+
+            if (!confirm(`Process payment for ${selectedOrders.length} test(s)?`)) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            selectedOrders.forEach(orderId => {
+                formData.append('selected_orders', orderId);
+            });
+
+            fetch('{% url "process_lab_payments" %}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while processing payment');
+            });
+        });
+    }
+
+    // Sample collection
+    collectSampleBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentOrderId = this.dataset.orderId;
+            const testName = this.dataset.testName;
+
+            document.getElementById('sample-test-name').value = testName;
+            document.getElementById('sample-label').value = '';
+            document.getElementById('expected-completion').value = '';
+
+            sampleCollectionModal.show();
+        });
+    });
+
+    // Sample collection form submission
+    if (sampleCollectionForm) {
+        sampleCollectionForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const sampleLabel = document.getElementById('sample-label').value.trim();
+            const expectedCompletion = document.getElementById('expected-completion').value;
+
+            if (!sampleLabel) {
+                alert('Please enter a sample label');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            formData.append('sample_label', sampleLabel);
+            formData.append('expected_completion', expectedCompletion);
+
+            fetch(`{% url "collect_sample" order_id=0 %}`.replace('0', currentOrderId), {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    sampleCollectionModal.hide();
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while collecting sample');
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,196 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<div class="row">
+	<div class="d-flex justify-content-between align-items-center mb-4">
+		<h4 class="heading card-title mb-0"><b>Registered Patients in the Hospital</b></h4>
+		<div class="d-flex align-items-center">
+			<a href="{% url 'pending_patient_index' %}" class="btn btn-primary btn-sm ms-2">+ Add Patient</a>
+
+		</div>
+	</div>
+	<div class="col-xl-12 active-p">
+		<div class="tab-content" id="pills-tabContent">
+
+			<!-- List/Table View -->
+			<div class="tab-pane fade show active" id="pills-colm" role="tabpanel" aria-labelledby="pills-colm-tab">
+				<div class="card">
+					<div class="card-body px-0 py-4">
+						<!-- Search and Results Info -->
+						<div class="d-flex justify-content-between align-items-center mb-3 px-3">
+							<div class="d-flex align-items-center">
+								<form method="GET" class="d-flex align-items-center">
+									<input type="search" name="search_query" class="form-control form-control-sm me-2" placeholder="Search patients..." value="{{ request.GET.search_query }}" style="width: 200px;">
+
+									<select name="gender" class="form-select form-select-sm me-2" style="width: 120px;">
+										<option value="">All Genders</option>
+										<option value="male" {% if request.GET.gender == 'male' %}selected{% endif %}>Male</option>
+										<option value="female" {% if request.GET.gender == 'female' %}selected{% endif %}>Female</option>
+										<option value="other" {% if request.GET.gender == 'other' %}selected{% endif %}>Other</option>
+									</select>
+
+									<input type="hidden" name="view" value="table">
+									<button type="submit" class="btn btn-sm btn-outline-primary me-1">
+										<i class="bi bi-search"></i>
+									</button>
+									{% if request.GET.search_query or request.GET.gender or request.GET.blood_group %}
+									<a href="?view=table" class="btn btn-sm btn-outline-secondary">
+										<i class="bi bi-x"></i>
+									</a>
+									{% endif %}
+								</form>
+							</div>
+							<div class="text-muted">
+								{% if page_obj.paginator.count > 0 %}
+									Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} patients
+									{% if request.GET.search_query or request.GET.gender or request.GET.blood_group or request.GET.date_from or request.GET.date_to %}
+										(filtered from {{ total_patients }} total)
+									{% endif %}
+								{% else %}
+									No patients found
+								{% endif %}
+							</div>
+						</div>
+
+						<div class="table-responsive active-projects user-tbl dt-filter">
+							<table id="user-tbl" class="table shorting">
+								<thead>
+									<tr>
+										<th>Image</th>
+										<th>Patient</th>
+										<th>Card Number</th>
+										<th>Mobile</th>
+										<th class="text-center">Last Visit</th>
+										<th>Action</th>
+									</tr>
+								</thead>
+								<tbody>
+									{% for patient in patients %}
+									<tr>
+										<td>
+											<div class="d-flex align-items-center">
+												<img {% if patient.image %} src="{{ patient.image.url }}" {% else %} src="{% static 'admin_site/images/default_image.jpg' %}" {% endif %} style="width:50px;height:50px" class="avatar rounded-circle" alt="">
+												<p class="mb-0 ms-2">{{ patient.profile|default:"" }}</p>
+											</div>
+										</td>
+										<td>{{ patient|title }}</td>
+										<td>{{ patient.card_number }}</td>
+										<td>{% if patient.mobile %} {{ patient.mobile }} {% else %} --------- {% endif %}</td>
+										<td class="text-center">{{ patient.last_visit|date }}</td>
+										<td>
+											<div class="dropdown">
+												<div class="btn-link" data-bs-toggle="dropdown" aria-expanded="false">
+													<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+														<path d="M11 12C11 12.5523 11.4477 13 12 13C12.5523 13 13 12.5523 13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12Z" stroke="#737B8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														<path d="M18 12C18 12.5523 18.4477 13 19 13C19.5523 13 20 12.5523 20 12C20 11.4477 19.5523 11 19 11C18.4477 11 18 11.4477 18 12Z" stroke="#737B8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+														<path d="M4 12C4 12.5523 4.44772 13 5 13C5.55228 13 6 12.5523 6 12C6 11.4477 5.55228 11 5 11C4.44772 11 4 11.4477 4 12Z" stroke="#737B8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+													</svg>
+												</div>
+												<div class="dropdown-menu dropdown-menu-right">
+													{% if 'patient.view_patientmodel' in perms %}<a class="dropdown-item text-primary" href="{% url 'patient_detail' patient.id %}">Detail</a>{% endif %}
+													{% if 'patient.change_patientmodel' in perms %}<a class="dropdown-item text-warning" href="{% url 'patient_edit' patient.id %}">Update</a>{% endif %}
+													{% if 'patient.delete_patientmodel' in perms %}<a class="dropdown-item text-danger" href="{% url 'patient_delete' patient.id %}">Delete</a>{% endif %}
+												</div>
+											</div>
+										</td>
+									</tr>
+									{% empty %}
+									<tr>
+										<td colspan="6" class="text-center py-4">
+											<div class="alert alert-info mb-0">
+												<i class="bi bi-info-circle"></i>
+									{% if request.GET.search_query %}
+										No patients found matching "{{ request.GET.search_query }}".
+									{% else %}
+										No patients found.
+									{% endif %}
+											</div>
+										</td>
+									</tr>
+									{% endfor %}
+								</tbody>
+							</table>
+						</div>
+
+						<!-- Pagination for Table View -->
+						{% if page_obj.has_other_pages %}
+						<div class="d-flex justify-content-between align-items-center mt-3 px-3">
+							<div class="text-muted">
+								Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+							</div>
+							<nav aria-label="Patient pagination">
+								<ul class="pagination mb-0">
+									{% if page_obj.has_previous %}
+										<li class="page-item">
+											<a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page=1" aria-label="First">
+												<span aria-hidden="true">&laquo;&laquo;</span>
+											</a>
+										</li>
+										<li class="page-item">
+											<a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}" aria-label="Previous">
+												<span aria-hidden="true">&laquo;</span>
+											</a>
+										</li>
+									{% endif %}
+
+									{% for num in page_obj.paginator.page_range %}
+										{% if page_obj.number == num %}
+											<li class="page-item active">
+												<span class="page-link">{{ num }}</span>
+											</li>
+										{% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+											<li class="page-item">
+												<a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ num }}">{{ num }}</a>
+											</li>
+										{% endif %}
+									{% endfor %}
+
+									{% if page_obj.has_next %}
+										<li class="page-item">
+											<a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}" aria-label="Next">
+												<span aria-hidden="true">&raquo;</span>
+											</a>
+										</li>
+										<li class="page-item">
+											<a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.paginator.num_pages }}" aria-label="Last">
+												<span aria-hidden="true">&raquo;&raquo;</span>
+											</a>
+										</li>
+									{% endif %}
+								</ul>
+							</nav>
+						</div>
+						{% endif %}
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<style>
+.pagination .page-link {
+	color: #6c757d;
+	border-color: #dee2e6;
+}
+
+.pagination .page-item.active .page-link {
+	background-color: #0d6efd;
+	border-color: #0d6efd;
+}
+
+.pagination .page-link:hover {
+	color: #0d6efd;
+	background-color: #f8f9fa;
+	border-color: #dee2e6;
+}
+
+.alert-info {
+	background-color: #d1ecf1;
+	border-color: #bee5eb;
+	color: #0c5460;
+}
+</style>
+
+{% endblock %}

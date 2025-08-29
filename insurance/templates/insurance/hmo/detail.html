@@ -1,0 +1,223 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+
+        <div class="filter px-2">
+            <a title="HMO Actions" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li>
+                    <button type="button" class="dropdown-item btn btn-sm" data-bs-toggle="modal" data-bs-target="#editHmoModal">
+                        <i class="bi bi-pencil-square"></i> Edit HMO
+                    </button>
+                </li>
+                <li>
+                    <a class="dropdown-item text-danger" href="{% url 'hmo_delete' hmo.id %}">
+                        <i class="bi bi-trash"></i> Delete HMO
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">{{ hmo.name|upper }} <small class="text-muted">Details</small></h5>
+
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <p><strong>Provider:</strong>
+                        {% if hmo.insurance_provider %}
+                            <a href="{% url 'insurance_provider_detail' hmo.insurance_provider.id %}">
+                                {{ hmo.insurance_provider.name }}
+                            </a>
+                        {% else %}
+                            <span class="text-muted">None</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="col-md-4">
+                    <p><strong>Total Patients:</strong> <span class="badge bg-primary">{{ total_patients }}</span></p>
+                </div>
+                <div class="col-md-4">
+                    <p><strong>Total Claims:</strong> <span class="badge bg-warning text-dark">{{ total_claims }}</span></p>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Contact Person:</strong> {{ hmo.contact_person|default:"-" }}</p>
+                    <p><strong>Email:</strong>
+                        {% if hmo.contact_email %}
+                            <a href="mailto:{{ hmo.contact_email }}">{{ hmo.contact_email }}</a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </p>
+                    <p><strong>Phone:</strong> {{ hmo.contact_phone_number|default:"-" }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Website:</strong>
+                        {% if hmo.website %}
+                            <a href="{{ hmo.website }}" target="_blank">{{ hmo.website }}</a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </p>
+                    <p><strong>Created:</strong> {{ hmo.created_at|date:"Y-m-d H:i" }}</p>
+                    <p><strong>Updated:</strong> {{ hmo.updated_at|date:"Y-m-d H:i" }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Coverage Plans -->
+<div class="col-12 mt-4">
+    <div class="card recent-sales overflow-auto">
+        <div class="card-body">
+            <h5 class="card-title">Coverage Plans <small class="text-muted">({{ coverage_plans.count }})</small></h5>
+            {% if coverage_plans %}
+                <div class="accordion" id="coveragePlansAccordion">
+                    {% for plan in coverage_plans %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="heading{{ forloop.counter }}">
+                                <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ forloop.counter }}" aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}" aria-controls="collapse{{ forloop.counter }}">
+                                    {{ plan.name }} {% if not plan.is_active %}<span class="badge bg-danger ms-2">Inactive</span>{% endif %}
+                                    <small class="text-muted ms-3"> — created {{ plan.created_at|date:"Y-m-d" }}</small>
+                                </button>
+                            </h2>
+                            <div id="collapse{{ forloop.counter }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" aria-labelledby="heading{{ forloop.counter }}" data-bs-parent="#coveragePlansAccordion">
+                                <div class="accordion-body">
+                                    <p><strong>Description:</strong> {{ plan.description|default:"-" }}</p>
+
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h6>Consultation</h6>
+                                            <p><strong>Covered:</strong> {% if plan.consultation_covered %}Yes{% else %}No{% endif %}</p>
+                                            <p><strong>Coverage %:</strong> {{ plan.consultation_coverage_percentage|default:"-" }}%</p>
+                                            <p><strong>Annual Limit:</strong> {{ plan.consultation_annual_limit|default:"-" }}</p>
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <h6>Administrative</h6>
+                                            <p><strong>Require Verification:</strong> {% if plan.require_verification %}Yes{% else %}No{% endif %}</p>
+                                            <p><strong>Require Referral:</strong> {% if plan.require_referral %}Yes{% else %}No{% endif %}</p>
+                                            <p><strong>Plan Annual Limit:</strong> {{ plan.annual_limit|default:"-" }}</p>
+                                        </div>
+                                    </div>
+
+                                    <hr />
+
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <h6>Drug Coverage</h6>
+                                            <p><strong>Mode:</strong> {{ plan.get_drug_coverage_display }}</p>
+                                            <p><strong>%:</strong> {{ plan.drug_coverage_percentage|default:"-" }}%</p>
+                                            <p><strong>Annual Limit:</strong> {{ plan.drug_annual_limit|default:"-" }}</p>
+                                            {% if plan.drug_coverage != 'all' and plan.selected_drugs.exists %}
+                                                <p><strong>Selected Drugs:</strong> {{ plan.selected_drugs.all|join:", " }}</p>
+                                            {% endif %}
+                                        </div>
+
+                                        <div class="col-md-4">
+                                            <h6>Lab Coverage</h6>
+                                            <p><strong>Mode:</strong> {{ plan.get_lab_coverage_display }}</p>
+                                            <p><strong>%:</strong> {{ plan.lab_coverage_percentage|default:"-" }}%</p>
+                                            <p><strong>Annual Limit:</strong> {{ plan.lab_annual_limit|default:"-" }}</p>
+                                            {% if plan.lab_coverage != 'all' and plan.selected_lab_tests.exists %}
+                                                <p><strong>Selected Tests:</strong> {{ plan.selected_lab_tests.all|join:", " }}</p>
+                                            {% endif %}
+                                        </div>
+
+                                        <div class="col-md-4">
+                                            <h6>Radiology Coverage</h6>
+                                            <p><strong>Mode:</strong> {{ plan.get_radiology_coverage_display }}</p>
+                                            <p><strong>%:</strong> {{ plan.radiology_coverage_percentage|default:"-" }}%</p>
+                                            <p><strong>Annual Limit:</strong> {{ plan.radiology_annual_limit|default:"-" }}</p>
+                                            {% if plan.radiology_coverage != 'all' and plan.selected_radiology.exists %}
+                                                <p><strong>Selected Scans:</strong> {{ plan.selected_radiology.all|join:", " }}</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-3">
+                                        <a href="{% url 'coverage_plan_detail' plan.id %}" class="btn btn-sm btn-outline-primary">View Plan</a>
+                                        <a href="{% url 'coverage_plan_update' plan.id %}" class="btn btn-sm btn-primary">Edit Plan</a>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <h6 class="text-center">No active coverage plans for this HMO.</h6>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Edit HMO Modal -->
+<form method="POST" action="{% url 'hmo_update' hmo.id %}">
+    {% csrf_token %}
+    <div class="modal fade" id="editHmoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit HMO</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+
+                    <div class="form-floating">
+                        <input type="text" name="name" value="{{ hmo.name }}" class="form-control" required>
+                        <label>HMO Name <span style="color:red">*</span></label>
+                    </div><br/>
+
+                    <div class="form-floating">
+                        <select name="insurance_provider" class="form-select">
+                            <option value="">Select Provider</option>
+                            {% for provider in providers %}
+                                <option value="{{ provider.id }}" {% if hmo.insurance_provider and hmo.insurance_provider.id == provider.id %}selected{% endif %}>
+                                    {{ provider.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <label>Insurance Provider</label>
+                    </div><br/>
+
+                    <div class="form-floating">
+                        <input type="text" name="contact_person" value="{{ hmo.contact_person }}" class="form-control">
+                        <label>Contact Person</label>
+                    </div><br/>
+
+                    <div class="form-floating">
+                        <input type="email" name="contact_email" value="{{ hmo.contact_email }}" class="form-control">
+                        <label>Email</label>
+                    </div><br/>
+
+                    <div class="form-floating">
+                        <input type="text" name="contact_phone_number" value="{{ hmo.contact_phone_number }}" class="form-control">
+                        <label>Phone</label>
+                    </div><br/>
+
+                    <div class="form-floating">
+                        <input type="url" name="website" value="{{ hmo.website }}" class="form-control">
+                        <label>Website</label>
+                    </div><br/>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% endblock %}

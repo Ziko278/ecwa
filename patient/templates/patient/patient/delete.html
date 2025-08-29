@@ -1,0 +1,19 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Are you sure you want to delete <i>"{{ patient.surname|title }} {% if patient.middle_name %} {{ patient.middle_name|title }} {% endif %} {{ patient.last_name|title }} "</i> as a patient?
+                <img class="rounded-circle" style="display:inline;float:right;width:100px;height:100px;border-radius:5px;" {% if patient.image %} src="/media/{{ patient.image }}" {% else %} src="{% static 'admin_site/images/default_image.jpg' %}" {% endif %} /></h4>
+            <p>If you delete a patient, data regarding that patient may be lost</p>
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'patient_detail' patient.id %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

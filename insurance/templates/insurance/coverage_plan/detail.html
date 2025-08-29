@@ -1,0 +1,369 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="container-fluid">
+
+    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 1055;"></div>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">
+                <i class="fas fa-shield-alt me-2"></i>Coverage Plan Details
+            </h4>
+            <div>
+                <a href="{% url 'coverage_plan_index' %}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Plans
+                </a>
+                <a href="{% url 'coverage_plan_update' plan.pk %}" class="btn btn-primary">
+                    <i class="fas fa-edit me-1"></i>Edit Plan
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <strong>Plan Name:</strong><p>{{ plan.name }}</p>
+                </div>
+                <div class="col-md-4">
+                    <strong>HMO:</strong><p>{{ plan.hmo.name }}</p>
+                </div>
+                <div class="col-md-4">
+                    <strong>Status:</strong>
+                    <p>
+                        {% if plan.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+            <p><strong>Description:</strong> {{ plan.description|default:"N/A" }}</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs" id="coverageTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="drugs-tab" data-bs-toggle="tab" data-bs-target="#drugs" type="button" role="tab">
+                        <i class="fas fa-pills me-1"></i>Drug Coverage
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="labs-tab" data-bs-toggle="tab" data-bs-target="#labs" type="button" role="tab">
+                        <i class="fas fa-flask me-1"></i>Lab Test Coverage
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="radiology-tab" data-bs-toggle="tab" data-bs-target="#radiology" type="button" role="tab">
+                        <i class="fas fa-x-ray me-1"></i>Radiology Coverage
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <div class="card-body">
+            <div class="tab-content" id="coverageTabsContent">
+
+                <div class="tab-pane fade show active" id="drugs" role="tabpanel">
+                    <div class="management-panel" data-plan-pk="{{ plan.pk }}">
+                        <h5>Current Coverage Type: <span class="badge bg-info">{{ plan.get_drug_coverage_display }}</span></h5>
+                        {% if plan.drug_coverage == 'include_selected' or plan.drug_coverage == 'exclude_selected' %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Currently Selected Items</h6>
+                                <ul class="list-group" id="drug-list" data-add-url="{% url 'coverage_plan_add_drug' pk=plan.pk %}">
+                                    {% for item in plan.selected_drugs.all %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center" id="drug-item-{{ item.id }}">
+                                        {{ item }}
+                                        <button class="btn btn-sm btn-danger remove-item-btn"
+                                                data-remove-url="{% url 'coverage_plan_remove_drug' pk=plan.pk drug_id=item.id %}"
+                                                data-target-id="drug-item-{{ item.id }}">
+                                            <i class="fas fa-trash"></i> Remove
+                                        </button>
+                                    </li>
+                                    {% empty %}
+                                    <li class="list-group-item text-muted">No items have been selected yet.</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Add New Item</h6>
+                                <div class="mb-3">
+                                    <input type="text" class="form-control item-search-input" id="drug-search" placeholder="Search for Drug to add..."
+                                           data-search-url="{% url 'search_drugs' %}"
+                                           data-results-target="drug-search-results"
+                                           data-item-type="drug">
+                                </div>
+                                <div id="drug-search-results"></div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-light"><i class="fas fa-info-circle me-2"></i>Since the coverage type is set to <strong>"{{ plan.get_drug_coverage_display }}"</strong>, no specific items need to be managed here.</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="labs" role="tabpanel">
+                    <div class="management-panel" data-plan-pk="{{ plan.pk }}">
+                        <h5>Current Coverage Type: <span class="badge bg-info">{{ plan.get_lab_coverage_display }}</span></h5>
+                        {% if plan.lab_coverage == 'include_selected' or plan.lab_coverage == 'exclude_selected' %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Currently Selected Items</h6>
+                                <ul class="list-group" id="lab-list" data-add-url="{% url 'coverage_plan_add_lab' pk=plan.pk %}">
+                                    {% for item in plan.selected_lab_tests.all %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center" id="lab-item-{{ item.id }}">
+                                        {{ item.name }}
+                                        <button class="btn btn-sm btn-danger remove-item-btn"
+                                                data-remove-url="{% url 'coverage_plan_remove_lab' pk=item.id lab_id=plan.pk %}"
+                                                data-target-id="lab-item-{{ item.id }}">
+                                            <i class="fas fa-trash"></i> Remove
+                                        </button>
+                                    </li>
+                                    {% empty %}
+                                    <li class="list-group-item text-muted">No items have been selected yet.</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Add New Item</h6>
+                                <div class="mb-3">
+                                    <input type="text" class="form-control item-search-input" id="lab-search" placeholder="Search for Lab Test to add..."
+                                           data-search-url="{% url 'search_lab_tests' %}"
+                                           data-results-target="lab-search-results"
+                                           data-item-type="lab">
+                                </div>
+                                <div id="lab-search-results"></div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-light"><i class="fas fa-info-circle me-2"></i>Since the coverage type is set to <strong>"{{ plan.get_lab_coverage_display }}"</strong>, no specific items need to be managed here.</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="radiology" role="tabpanel">
+                     <div class="management-panel" data-plan-pk="{{ plan.pk }}">
+                        <h5>Current Coverage Type: <span class="badge bg-info">{{ plan.get_radiology_coverage_display }}</span></h5>
+                        {% if plan.radiology_coverage == 'include_selected' or plan.radiology_coverage == 'exclude_selected' %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Currently Selected Items</h6>
+                                <ul class="list-group" id="radiology-list" data-add-url="{% url 'coverage_plan_add_radiology' pk=plan.pk %}">
+                                    {% for item in plan.selected_radiology.all %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center" id="radiology-item-{{ item.id }}">
+                                        {{ item.name }}
+                                        <button class="btn btn-sm btn-danger remove-item-btn"
+                                                data-remove-url="{% url 'coverage_plan_remove_radiology' pk=plan.pk scan_id=item.id %}"
+                                                data-target-id="radiology-item-{{ item.id }}">
+                                            <i class="fas fa-trash"></i> Remove
+                                        </button>
+                                    </li>
+                                    {% empty %}
+                                    <li class="list-group-item text-muted">No items have been selected yet.</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Add New Item</h6>
+                                <div class="mb-3">
+                                    <input type="text" class="form-control item-search-input" id="radiology-search" placeholder="Search for Scan to add..."
+                                           data-search-url="{% url 'search_scans' %}"
+                                           data-results-target="radiology-search-results"
+                                           data-item-type="radiology">
+                                </div>
+                                <div id="radiology-search-results"></div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-light"><i class="fas fa-info-circle me-2"></i>Since the coverage type is set to <strong>"{{ plan.get_radiology_coverage_display }}"</strong>, no specific items need to be managed here.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrftoken = getCookie('csrftoken');
+
+    // --- Toast Notification Handler ---
+    function showToast(message, type = 'success') {
+        const toastContainer = document.getElementById('toast-container');
+        const toastId = 'toast-' + Math.random().toString(36).substr(2, 9);
+        const toastHTML = `
+            <div id="${toastId}" class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        `;
+        toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+        toast.show();
+        toastElement.addEventListener('hidden.bs.toast', () => toastElement.remove());
+    }
+
+    // --- Generic Fetch Handlers ---
+    async function postRequest(url, body) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrftoken, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams(body)
+            });
+            if (!response.ok) {
+                 const errorText = await response.text();
+                 console.error('Server error:', errorText);
+                 showToast(`Server Error: ${response.statusText}`, 'danger');
+                 return { error: `Server Error: ${response.statusText}` };
+            }
+            return await response.json();
+        } catch (error)
+        {
+            console.error('POST request failed:', error);
+            showToast('An unexpected network error occurred.', 'danger');
+            return { error: 'Network error' };
+        }
+    }
+
+    // --- Search Functionality ---
+    document.querySelectorAll('.item-search-input').forEach(input => {
+        let debounceTimer;
+        input.addEventListener('keyup', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const query = input.value;
+                const resultsContainer = document.getElementById(input.dataset.resultsTarget);
+                const searchUrl = input.dataset.searchUrl;
+                const itemType = input.dataset.itemType;
+
+                if (query.length < 2) {
+                    resultsContainer.innerHTML = '';
+                    return;
+                }
+
+                fetch(`${searchUrl}?q=${query}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        resultsContainer.innerHTML = '';
+                        if (data.results && data.results.length > 0) {
+                            const list = document.createElement('ul');
+                            list.className = 'list-group mt-2';
+                            data.results.forEach(item => {
+                                // --- SIMPLIFIED SECTION ---
+                                // The server now sends the full, formatted name.
+                                const displayName = item.name;
+                                const sanitizedDataItemName = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+                                list.innerHTML += `
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        ${displayName}
+                                        <button class="btn btn-sm btn-success add-item-btn" data-item-id="${item.id}" data-item-name="${sanitizedDataItemName}" data-item-type="${itemType}">
+                                            <i class="fas fa-plus"></i> Add
+                                        </button>
+                                    </li>`;
+                            });
+                            resultsContainer.appendChild(list);
+                        } else {
+                            resultsContainer.innerHTML = '<p class="text-muted mt-2">No results found.</p>';
+                        }
+                    });
+            }, 300);
+        });
+    });
+
+    // --- Add Item Functionality ---
+    document.getElementById('coverageTabsContent').addEventListener('click', function(e) {
+        const button = e.target.closest('.add-item-btn');
+        if (button) {
+            const planId = button.closest('.management-panel').dataset.planPk;
+            const itemType = button.dataset.itemType;
+            const addUrl = document.getElementById(`${itemType}-list`).dataset.addUrl;
+            const itemName = button.dataset.itemName; // Get name from the button to display
+
+            const body = {};
+            body[`${itemType}_id`] = button.dataset.itemId;
+
+            postRequest(addUrl, body).then(data => {
+                if (data.success) {
+                    showToast(data.message);
+                    const list = document.getElementById(`${itemType}-list`);
+                    const emptyItem = list.querySelector('.text-muted');
+                    if(emptyItem) emptyItem.remove();
+
+                    const itemKey = itemType === 'lab' ? 'lab_test' : itemType;
+                    const newItem = data[itemKey];
+                    let removeUrl;
+
+                    // --- SIMPLIFIED SECTION ---
+                    // Determine the correct remove URL for the new item.
+                    if (itemType === 'drug') {
+                        removeUrl = "{% url 'coverage_plan_remove_drug' pk=0 drug_id=1 %}".replace('0', planId).replace('1', newItem.id);
+                    } else if (itemType === 'lab') {
+                        removeUrl = "{% url 'coverage_plan_remove_lab' pk=0 lab_id=1 %}".replace('0', planId).replace('1', newItem.id);
+                    } else if (itemType === 'radiology') {
+                        removeUrl = "{% url 'coverage_plan_remove_radiology' pk=0 scan_id=1 %}".replace('0', planId).replace('1', newItem.id);
+                    }
+
+                    const newRow = `
+                        <li class="list-group-item d-flex justify-content-between align-items-center" id="${itemType}-item-${newItem.id}">
+                            ${itemName}
+                            <button class="btn btn-sm btn-danger remove-item-btn" data-remove-url="${removeUrl}" data-target-id="${itemType}-item-${newItem.id}">
+                                <i class="fas fa-trash"></i> Remove
+                            </button>
+                        </li>`;
+
+                    list.insertAdjacentHTML('beforeend', newRow);
+                    document.getElementById(`${itemType}-search`).value = '';
+                    document.getElementById(`${itemType}-search-results`).innerHTML = '';
+                } else {
+                    showToast(data.error || 'Failed to add item.', 'danger');
+                }
+            });
+        }
+    });
+
+    // --- Remove Item Functionality ---
+    document.getElementById('coverageTabsContent').addEventListener('click', function(e) {
+        const button = e.target.closest('.remove-item-btn');
+        if (button) {
+            if (!confirm('Are you sure you want to remove this item from the plan?')) return;
+            const removeUrl = button.dataset.removeUrl;
+            const targetId = button.dataset.targetId;
+
+            postRequest(removeUrl, {}).then(data => {
+                if (data.success) {
+                    showToast(data.message);
+                    document.getElementById(targetId).remove();
+                } else {
+                    showToast(data.error || 'Failed to remove item.', 'danger');
+                }
+            });
+        }
+    });
+
+    // --- CSRF Token Helper ---
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+});
+</script>
+{% endblock %}

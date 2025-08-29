@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Payment Receipt - {{ payment.transaction_id }}</title>
+    <style>
+        @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            width: 80mm;
+            margin: 0 auto;
+            padding: 5mm;
+            color: #000;
+        }
+
+        .receipt {
+            border: 1px solid #ddd;
+            padding: 10px;
+        }
+
+        .header {
+            text-align: center;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+
+        .hospital-name {
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .hospital-info {
+            font-size: 10px;
+            margin: 2px 0;
+        }
+
+        .transaction-id {
+            font-size: 14px;
+            font-weight: bold;
+            background: #000;
+            color: #fff;
+            padding: 5px;
+            margin: 10px 0;
+        }
+
+        .section {
+            margin: 10px 0;
+            padding: 5px 0;
+            border-bottom: 1px dotted #ccc;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+        }
+
+        .label {
+            font-weight: bold;
+        }
+
+        .amount {
+            text-align: right;
+            font-weight: bold;
+        }
+
+        .total {
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+            padding: 5px 0;
+            margin: 10px 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 10px;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+        }
+
+        .print-info {
+            margin-top: 10px;
+            font-size: 9px;
+            color: #666;
+        }
+
+        @media screen {
+            .no-print {
+                text-align: center;
+                margin: 20px 0;
+            }
+            .no-print button {
+                background: #007bff;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                cursor: pointer;
+                margin: 0 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()">🖨️ Print Receipt</button>
+        <button onclick="window.close()">✖️ Close</button>
+    </div>
+
+    <div class="receipt">
+        <!-- Header -->
+        <div class="header">
+            <div class="hospital-name">{{ site_info.name|title }}</div>
+            <div class="hospital-info">Phone: {{ site_info.mobile_1 }}</div>
+            <div class="hospital-info">Email: {{ site_info.email }}</div>
+        </div>
+
+        <!-- Transaction ID -->
+        <div class="transaction-id">
+            TRANSACTION ID: {{ payment.transaction_id }}
+        </div>
+
+        <!-- Patient Information -->
+        <div class="section">
+            <div style="text-align: center; font-weight: bold; margin-bottom: 5px;">
+                REGISTRATION PAYMENT RECEIPT
+            </div>
+            <div class="row">
+                <span class="label">Patient Name:</span>
+                <span>{{ payment.full_name|upper }}</span>
+            </div>
+            {% if payment.old_card_number %}
+            <div class="row">
+                <span class="label">Hospital Card:</span>
+                <span>{{ payment.old_card_number }}</span>
+            </div>
+            {% endif %}
+            <div class="row">
+                <span class="label">Patient Type:</span>
+                <span>{{ payment.registration_fee.patient_type|upper }}</span>
+            </div>
+        </div>
+
+        <!-- Services -->
+        <div class="section">
+            <div style="font-weight: bold; text-align: center; margin-bottom: 5px;">SERVICES</div>
+            <div class="row">
+                <span>{{ payment.registration_fee.title }}</span>
+                <span class="amount">₦{{ payment.registration_fee.amount }}</span>
+            </div>
+            {% if payment.consultation_fee %}
+            <div class="row">
+                <span>{{ payment.consultation_fee }}</span>
+                <span class="amount">₦{{ payment.consultation_amount }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Total -->
+        <div class="total">
+            <div class="row">
+                <span>TOTAL AMOUNT:</span>
+                <span class="amount">₦{{ payment.amount }}</span>
+            </div>
+        </div>
+
+        <!-- Payment Details -->
+        <div class="section">
+            <div class="row">
+                <span class="label">Payment Method:</span>
+                <span>{{ payment.payment_method|upper }}</span>
+            </div>
+            <div class="row">
+                <span class="label">Date:</span>
+                <span>{{ payment.date|date:"d/m/Y" }}</span>
+            </div>
+            <div class="row">
+                <span class="label">Time:</span>
+                <span>{{ payment.created_at|date:"H:i A" }}</span>
+            </div>
+            <div class="row">
+                <span class="label">Cashier:</span>
+                {% if payment.created_by.user_staff_profile.staff %}
+                <span>{{ payment.created_by.user_staff_profile.staff|title|default:"SYSTEM" }}</span>
+                {% else %}
+                <span>{{ payment.created_by|upper|default:"SYSTEM" }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div style="font-weight: bold; margin-bottom: 5px;">
+                ** IMPORTANT NOTICE **
+            </div>
+            <div style="margin-bottom: 5px;">
+                Please present this receipt and<br>
+                transaction ID at the registration<br>
+                department for processing.
+            </div>
+
+            <div style="border-top: 1px solid #000; padding-top: 5px;">
+                Thank you!
+            </div>
+        </div>
+
+        <!-- Print Information -->
+        <div class="print-info">
+            <div class="row">
+                <span>Printed:</span>
+                <span>{{ print_time|date:"d/m/Y H:i A" }}</span>
+            </div>
+            <div style="text-align: center; margin-top: 5px;">
+                This is a computer generated receipt
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-focus for printing
+        window.addEventListener('load', function() {
+            // Auto print when opened in new tab
+            if (window.location.search.includes('autoprint=1')) {
+                setTimeout(function() {
+                    window.print();
+                }, 500);
+            }
+        });
+
+        // Print function
+        function printReceipt() {
+            window.print();
+        }
+
+        // Close function
+        function closeWindow() {
+            window.close();
+        }
+    </script>
+</body>
+</html>

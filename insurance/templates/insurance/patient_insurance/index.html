@@ -1,0 +1,216 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="container-fluid">
+
+    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 1055;"></div>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">
+                <i class="fas fa-hand-holding-usd me-2"></i>Patient Insurance Policies
+            </h4>
+            <a href="{% url 'patient_insurance_create' %}" class="btn btn-primary">
+                <i class="fas fa-plus me-1"></i>Add New Policy
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Patient</th>
+                            <th>HMO</th>
+                            <th>Coverage Plan</th>
+                            <th>Policy Number</th>
+                            <th>Validity</th>
+                            <th>Status</th>
+                            <th>Verification</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for policy in page_obj %}
+                        <tr id="policy-row-{{ policy.pk }}">
+                            <td>{{ forloop.counter|add:page_obj.start_index|add:"-1" }}</td> {# Corrected line here #}
+                            <td>
+                                {{ policy.patient.first_name }} {{ policy.patient.last_name }}<br>
+                                <small class="text-muted">{{ policy.patient.patient_id }}</small>
+                            </td>
+                            <td>{{ policy.hmo.name }}</td>
+                            <td>{{ policy.coverage_plan.name }}</td>
+                            <td>{{ policy.policy_number }}</td>
+                            <td>
+                                {{ policy.valid_from|date:"M d, Y" }} - {{ policy.valid_to|date:"M d, Y" }}<br>
+                                {% if not policy.is_valid %}
+                                    <span class="badge bg-danger">Expired/Invalid</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if policy.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if policy.is_verified %}
+                                    <span class="badge bg-success">Verified</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="fas fa-cog"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item" href="{% url 'patient_insurance_detail' pk=policy.pk %}">
+                                            <i class="fas fa-eye me-2"></i>View Details
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="{% url 'patient_insurance_update' pk=policy.pk %}">
+                                            <i class="fas fa-edit me-2"></i>Edit
+                                        </a></li>
+                                        {% if not policy.is_verified and policy.coverage_plan.require_verification %}
+                                        <li><button type="button" class="dropdown-item text-success verify-btn"
+                                                data-bs-toggle="modal" data-bs-target="#verifyPolicyModal"
+                                                data-policy-pk="{{ policy.pk }}">
+                                            <i class="fas fa-check-circle me-2"></i>Verify
+                                        </button></li>
+                                        {% endif %}
+                                        {% if policy.is_active %}
+                                        <li><button type="button" class="dropdown-item text-warning deactivate-btn"
+                                                data-bs-toggle="modal" data-bs-target="#deactivatePolicyModal"
+                                                data-policy-pk="{{ policy.pk }}">
+                                            <i class="fas fa-ban me-2"></i>Deactivate
+                                        </button></li>
+                                        {% else %}
+                                        <li><button type="button" class="dropdown-item text-success activate-btn"
+                                                data-bs-toggle="modal" data-bs-target="#activatePolicyModal"
+                                                data-policy-pk="{{ policy.pk }}">
+                                            <i class="fas fa-play-circle me-2"></i>Activate
+                                        </button></li>
+                                        {% endif %}
+                                        {# Add delete button if needed, with a confirmation modal #}
+                                        {# <li><button type="button" class="dropdown-item text-danger delete-btn" #}
+                                        {#         data-bs-toggle="modal" data-bs-target="#deletePolicyModal" #}
+                                        {#         data-policy-pk="{{ policy.pk }}"> #}
+                                        {#     <i class="fas fa-trash me-2"></i>Delete #}
+                                        {# </button></li> #}
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted">No patient insurance policies found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {# Pagination controls #}
+            {% if page_obj.has_other_pages %}
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Previous</span></li>
+                    {% endif %}
+
+                    {% for i in page_obj.paginator.page_range %}
+                        {% if page_obj.number == i %}
+                            <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                        {% else %}
+                            <li class="page-item"><a class="page-link" href="?page={{ i }}">{{ i }}</a></li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Next</span></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<!-- Modals for actions -->
+<!-- Verify Policy Modal -->
+<div class="modal fade" id="verifyPolicyModal" tabindex="-1" aria-labelledby="verifyPolicyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="verifyPolicyModalLabel">Verify Policy</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to verify this patient insurance policy? This action cannot be undone.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="verifyPolicyForm" method="post" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success">Confirm Verify</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Deactivate Policy Modal -->
+<div class="modal fade" id="deactivatePolicyModal" tabindex="-1" aria-labelledby="deactivatePolicyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deactivatePolicyModalLabel">Deactivate Policy</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to deactivate this patient insurance policy? It can be reactivated later.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="deactivatePolicyForm" method="post" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning">Confirm Deactivate</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Activate Policy Modal -->
+<div class="modal fade" id="activatePolicyModal" tabindex="-1" aria-labelledby="activatePolicyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="activatePolicyModalLabel">Activate Policy</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to activate this patient insurance policy?
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="activatePolicyForm" method="post" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success">Confirm Activate</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+{% endblock %}

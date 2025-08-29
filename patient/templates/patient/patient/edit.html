@@ -1,0 +1,230 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<form action="" class="row g-3 needs-validation" enctype="multipart/form-data" method="POST" novalidate>
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">PATIENT UPDATE: {{patient|upper}}</h5>
+            <p class="card-description">
+                All fields with a red star <span style="color:red"><b>*</b></span> are required.
+            </p>
+            {% include 'admin_site/partials/error.html' %}
+
+            <!-- Tab Layout -->
+            <div class="d-flex align-items-start">
+                <div class="nav flex-column nav-pills me-3" id="v-pills-tab" role="tablist" style="width:150px">
+                    <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#v-personal" type="button">Personal Info</button>
+                    <br>
+                    <button class="nav-link" data-bs-toggle="pill" data-bs-target="#v-medical" type="button">Medical Info</button>
+                    <br>
+                    <button class="nav-link" data-bs-toggle="pill" data-bs-target="#v-emergency" type="button">Emergency</button>
+                </div>
+
+                <div class="tab-content" id="v-pills-tabContent" style="width:100%">
+
+                    <!-- Personal Info -->
+                    <div class="tab-pane fade show active" id="v-personal" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+
+                                <div class="row mb-3">
+                                    <input type="hidden" name="created_by" value="{{ request.user.id }}" />
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.first_name }}
+                                        <label>First Name <span style="color:red">*</span></label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.middle_name }}
+                                        <label>Middle Name</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.last_name }}
+                                        <label>Last Name <span style="color:red">*</span></label>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    {% if not patient_setting.auto_generate_patient_id %}
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <input type="text" name="card_number" value="{{patient.card_number}}" required class="form-control">
+                                        <label>Card Number</label>
+                                    </div>
+                                    {% endif %}
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.mobile }}
+                                        <label>Mobile</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.email }}
+                                        <label>Email</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.date_of_birth }}
+                                        <label>Date of Birth</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.gender }}
+                                        <label>Gender <span style="color:red">*</span></label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.marital_status }}
+                                        <label>Marital Status</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.religion }}
+                                        <label>Religion</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.occupation }}
+                                        <label>Occupation</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select class="form-control" id="state" name="state">
+										  <option value="">-----------------</option>
+										  {% for state, lga_list in state_list.items %}
+										  <option value="{{state|lower}}" {% if state|lower == patient.state|lower %} selected {% endif %} lga="<option value=''>----------</option>
+										  {% for lga in lga_list %}
+										  <option value='{{lga|lower}}'>{{lga|upper}}</option>
+										  {% endfor %}
+										  ">
+
+										  {{state|upper}}</option>
+										  {% endfor %}
+										</select>
+                                        <label>State</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        <select name="lga" class="form-control" id="lga">
+										{% if patient.state %}
+											<option value="">----- select lga -----</option>
+											{% for state, lga_list in state_list.items %}
+												{% if state|lower == patient.state|lower %}
+													{% for lga in lga_list %}
+													<option value="{{lga|lower}}" {% if lga|lower == patient.lga|lower %} selected {% endif %}>{{ lga|upper }}</option>
+													{% endfor %}
+												{% endif %}
+											{% endfor %}
+										{% else %}
+										<option value="">----------</option>
+										{% endif %}
+									</select>
+                                        <label>LGA</label>
+                                    </div>
+
+                                    <div class="form-floating mb-3 col-md-8">
+                                        {{ form.address }}
+                                        <label>Address</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.image }}
+                                        <label>Image</label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Medical Info -->
+                    <div class="tab-pane fade" id="v-medical" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.blood_group }}
+                                        <label>Blood Group</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-4">
+                                        {{ form.genotype }}
+                                        <label>Genotype</label>
+                                    </div>
+
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-12">
+                                        {{ form.medical_note }}
+                                        <label>Medical Note</label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Emergency Contact -->
+                    <div class="tab-pane fade" id="v-emergency" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body p-3">
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-6">
+                                        {{ form.next_of_kin_name }}
+                                        <label>Next of Kin Name</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-3">
+                                        {{ form.next_of_kin_number }}
+                                        <label>Next of Kin Phone</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-3">
+                                        {{ form.next_of_kin_address }}
+                                        <label>Next of Kin Address</label>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="form-floating mb-3 col-md-6">
+                                        {{ form.emergency_contact_name }}
+                                        <label>Emergency Contact Name</label>
+                                    </div>
+                                    <div class="form-floating mb-3 col-md-6">
+                                        {{ form.emergency_contact_number }}
+                                        <label>Emergency Contact Number</label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit -->
+                    <div class="row mb-3">
+                        <div class="form-floating mb-3 col-md-12">
+                            <br/>
+                            <button class="btn btn-sm btn-danger" type="button" onclick="window.history.back()">Go Back</button>
+                            <button class="btn btn-sm btn-primary" style="float:right" type="submit">Update Patient</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <!-- End Tabs -->
+
+        </div>
+    </div>
+</form>
+<script src="{% static 'admin_site/scripts/jquery.js' %}"></script>
+<script>
+$(document).ready(function(){
+
+  $('#state').change(function(){
+    lga = $('option:selected', this).attr('lga')
+    $('#lga').html(lga)
+  })
+
+  $('form').submit(function(){
+  		$(this).submit(function(){
+  			return false
+  		})
+  		return true
+  	})
+})
+
+</script>
+{% endblock %}

@@ -1,0 +1,319 @@
+<!-- laboratory/order/create.html -->
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="card-title mb-0">Order New Lab Test {{ form.errors }}</h4>
+                <p class="card-description mb-0">Create new lab test order for {{ patient|title }}</p>
+            </div>
+            <div>
+                <a href="{% url 'patient_lab_tests' patient_id=patient.id %}" class="btn btn-secondary">
+                    <i class="mdi mdi-arrow-left me-2"></i>Back to Tests
+                </a>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <!-- Patient Information Card -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="mdi mdi-account me-2"></i>Patient Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Name:</strong> {{ patient|title }}</p>
+                            <p class="mb-1"><strong>Card Number:</strong> {{ patient.card_number|upper }}</p>
+                            <p class="mb-1"><strong>Phone:</strong> {{ patient.mobile|default:"Not provided" }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Age:</strong> {{ patient.age|default:"Not specified" }}</p>
+                            <p class="mb-1"><strong>Gender:</strong> {{ patient.get_gender_display|default:"Not specified" }}</p>
+                            <p class="mb-1"><strong>Address:</strong> {{ patient.address|default:"Not provided" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order Form -->
+            <form method="post" id="order-form">
+                {% csrf_token %}
+                <input type="hidden" name="patient" value="{{ patient.id }}">
+                <input type="hidden" name="ordered_by" value="{{ request.user.id }}">
+
+                <!-- Test Selection -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Test Selection</h5>
+                    </div>
+                    <div class="card-body">
+                         <input type="hidden" name="source" id="source_lab" value="lab" checked>
+
+
+                        <!-- Test Template Search -->
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Search Test <span class="text-danger">*</span></label>
+                                <input type="text" id="test-search" class="form-control" placeholder="Start typing test name...">
+                                <div id="search-results" class="list-group position-absolute w-100" style="z-index: 1000; display: none;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Selected Tests -->
+                        <div id="selected-tests-container" style="display: none;">
+                            <h6 class="mb-3">Selected Tests</h6>
+                            <div id="selected-tests-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Details -->
+                <div class="card mb-4" id="order-details-card" style="display: none;">
+                    <div class="card-header">
+                        <h5 class="mb-0">Order Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="expected_completion" class="form-label">Expected Completion (Optional)</label>
+                                    <input type="datetime-local" id="expected_completion" name="expected_completion" class="form-control">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="mb-3">
+                                    <label for="special_instructions" class="form-label">Special Instructions (Optional)</label>
+                                    <textarea id="special_instructions" name="special_instructions" class="form-control" rows="3" placeholder="Any special instructions for the test..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Summary -->
+                <div class="card mb-4" id="order-summary-card" style="display: none;">
+                    <div class="card-header">
+                        <h5 class="mb-0">Order Summary</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="order-summary-content"></div>
+                        <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+                            <strong>Total Amount:</strong>
+                            <strong id="total-amount" class="text-success">₦0.00</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{% url 'patient_lab_tests' patient_id=patient.id %}" class="btn btn-light">Cancel</a>
+                    <button type="submit" id="create-order-btn" class="btn btn-success" disabled>
+                        <i class="mdi mdi-check me-2"></i>Create Order
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // DOM elements
+    const testSearch = document.getElementById('test-search');
+    const searchResults = document.getElementById('search-results');
+    const selectedTestsContainer = document.getElementById('selected-tests-container');
+    const selectedTestsList = document.getElementById('selected-tests-list');
+    const orderDetailsCard = document.getElementById('order-details-card');
+    const orderSummaryCard = document.getElementById('order-summary-card');
+    const orderSummaryContent = document.getElementById('order-summary-content');
+    const totalAmountElement = document.getElementById('total-amount');
+    const createOrderBtn = document.getElementById('create-order-btn');
+    const orderForm = document.getElementById('order-form');
+
+    // Available tests data
+    const availableTests = [
+        {% for template in template_list %}
+        {
+            id: {{ template.id }},
+            name: "{{ template.name|escapejs }}",
+            code: "{{ template.code|escapejs }}",
+            category: "{{ template.category.name|escapejs }}",
+            price: {{ template.price }},
+            sample_type: "{{ template.get_sample_type_display|escapejs }}",
+            sample_volume: "{{ template.sample_volume|escapejs }}"
+        },
+        {% endfor %}
+    ];
+
+    let selectedTests = [];
+    let searchTimeout;
+
+    // Test search functionality
+    testSearch.addEventListener('input', function() {
+        const query = this.value.toLowerCase().trim();
+
+        clearTimeout(searchTimeout);
+
+        if (query.length < 2) {
+            searchResults.style.display = 'none';
+            return;
+        }
+
+        searchTimeout = setTimeout(() => {
+            const filteredTests = availableTests.filter(test =>
+                test.name.toLowerCase().includes(query) ||
+                test.code.toLowerCase().includes(query) ||
+                test.category.toLowerCase().includes(query)
+            ).filter(test =>
+                !selectedTests.some(selected => selected.id === test.id)
+            );
+
+            displaySearchResults(filteredTests);
+        }, 300);
+    });
+
+    function displaySearchResults(tests) {
+        if (tests.length === 0) {
+            searchResults.innerHTML = '<div class="list-group-item text-muted">No tests found</div>';
+        } else {
+            searchResults.innerHTML = tests.map(test =>
+                `<div class="list-group-item list-group-item-action test-result-item" data-test-id="${test.id}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="mb-1">${test.name}</h6>
+                            <small class="text-muted">${test.category} | Code: ${test.code}</small>
+                        </div>
+                        <div class="text-end">
+                            <strong class="text-success">₦${parseFloat(test.price).toFixed(2)}</strong><br>
+                            <small class="text-muted">${test.sample_type}</small>
+                        </div>
+                    </div>
+                </div>`
+            ).join('');
+        }
+
+        searchResults.style.display = 'block';
+
+        // Add click handlers to search results
+        document.querySelectorAll('.test-result-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const testId = parseInt(this.dataset.testId);
+                const test = availableTests.find(t => t.id === testId);
+                if (test) {
+                    addTestToOrder(test);
+                }
+            });
+        });
+    }
+
+    function addTestToOrder(test) {
+        selectedTests.push(test);
+        testSearch.value = '';
+        searchResults.style.display = 'none';
+        updateSelectedTestsDisplay();
+        updateOrderSummary();
+    }
+
+    function removeTestFromOrder(testId) {
+        selectedTests = selectedTests.filter(test => test.id !== testId);
+        updateSelectedTestsDisplay();
+        updateOrderSummary();
+    }
+
+    function updateSelectedTestsDisplay() {
+        if (selectedTests.length === 0) {
+            selectedTestsContainer.style.display = 'none';
+            orderDetailsCard.style.display = 'none';
+            orderSummaryCard.style.display = 'none';
+            createOrderBtn.disabled = true;
+            return;
+        }
+
+        selectedTestsContainer.style.display = 'block';
+        orderDetailsCard.style.display = 'block';
+        orderSummaryCard.style.display = 'block';
+        createOrderBtn.disabled = false;
+
+        selectedTestsList.innerHTML = selectedTests.map(test =>
+            `<div class="card mb-2">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">${test.name}</h6>
+                            <small class="text-muted">${test.category} | ${test.sample_type}</small>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <strong class="text-success me-3">₦${parseFloat(test.price).toFixed(2)}</strong>
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-test-btn" data-test-id="${test.id}">
+                                <i class="mdi mdi-close"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`
+        ).join('');
+
+        // Add remove handlers
+        document.querySelectorAll('.remove-test-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const testId = parseInt(this.dataset.testId);
+                removeTestFromOrder(testId);
+            });
+        });
+    }
+
+    function updateOrderSummary() {
+        if (selectedTests.length === 0) return;
+
+        const totalAmount = selectedTests.reduce((sum, test) => sum + parseFloat(test.price), 0);
+
+        orderSummaryContent.innerHTML = selectedTests.map(test =>
+            `<div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                <span>${test.name}</span>
+                <span>₦${parseFloat(test.price).toFixed(2)}</span>
+            </div>`
+        ).join('');
+
+        totalAmountElement.textContent = `₦${totalAmount.toFixed(2)}`;
+    }
+
+    // Hide search results when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!testSearch.contains(e.target) && !searchResults.contains(e.target)) {
+            searchResults.style.display = 'none';
+        }
+    });
+
+    // Form submission
+    orderForm.addEventListener('submit', function(e) {
+        if (selectedTests.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one test');
+            return;
+        }
+
+        // Add selected tests to form data
+        selectedTests.forEach((test) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'tests';   // use array-style name
+            input.value = test.id;
+            this.appendChild(input);
+        });
+
+
+        createOrderBtn.disabled = true;
+        createOrderBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-2"></i>Creating Order...';
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<div class="row">
+    <!-- Left column: Logo only -->
+    <div class="col-xl-3 col-lg-4">
+        <div class="card card-bx profile-card author-profile m-b30">
+            <div class="card-body text-center">
+                <div class="author-media pt-3">
+                    <h6 class="title">Hospital Logo</h6>
+                    <img class="img-fluid mb-2" style="max-height:120px"
+                         {% if site_info.logo %} src="{{ site_info.logo.url }}"
+                         {% else %} src="{% static 'admin_site/images/user.jpg' %}"
+                         {% endif %} alt="Hospital Logo">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right column: Hospital data -->
+    <div class="col-xl-9 col-lg-8">
+        <div class="card profile-card card-bx m-b30">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="title mb-0">Hospital Information</h6>
+                <a href="{% url 'site_info_edit' site_info.id %}" class="btn btn-primary">Update Info</a>
+            </div>
+
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">Hospital Name</label>
+                        <p class="fw-bold mb-0">{{ site_info.name|title }}</p>
+                    </div>
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">Short Name</label>
+                        <p class="fw-bold mb-0">{{ site_info.short_name|title }}</p>
+                    </div>
+
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">Mobile 1</label>
+                        <p class="fw-bold mb-0">{{ site_info.mobile_1 }}</p>
+                    </div>
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">Mobile 2</label>
+                        <p class="fw-bold mb-0">{{ site_info.mobile_2 }}</p>
+                    </div>
+
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">Email</label>
+                        <p class="fw-bold mb-0">{{ site_info.email|lower }}</p>
+                    </div>
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">Address</label>
+                        <p class="fw-bold mb-0">{{ site_info.address }}</p>
+                    </div>
+
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">Facebook Handle</label>
+                        <p class="fw-bold mb-0">{% if site_info.facebook_handle %}{{ site_info.facebook_handle }}{% endif %}</p>
+                    </div>
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">Twitter Handle</label>
+                        <p class="fw-bold mb-0">{% if site_info.twitter_handle %}{{ site_info.twitter_handle }}{% endif %}</p>
+                    </div>
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">LinkedIn Handle</label>
+                        <p class="fw-bold mb-0">{% if site_info.linkedin_handle %}{{ site_info.linkedin_handle }}{% endif %}</p>
+                    </div>
+                    <div class="col-sm-6 mb-4">
+                        <label class="form-label text-muted small">YouTube Handle</label>
+                        <p class="fw-bold mb-0">{% if site_info.youtube_handle %}{{ site_info.youtube_handle }}{% endif %}</p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

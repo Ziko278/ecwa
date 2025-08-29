@@ -1,0 +1,142 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card">
+  <div class="card">
+    <div class="card-body">
+      <h4 class="card-title">ACTIONS:
+        <span class="card-description">Hover an Icon to reveal its function</span>
+      </h4>
+
+      <!-- Edit Consultant -->
+      <a title="Edit Consultant" href="{% url 'consultant_edit' consultant.pk %}" class="btn btn-warning">
+        <i class="bi bi-pencil-square"></i>
+      </a>
+
+      <!-- Delete Consultant -->
+      <a title="Delete Consultant" href="{% url 'consultant_delete' consultant.pk %}" class="btn btn-danger">
+        <i class="bi bi-trash"></i>
+      </a>
+
+      <a onclick="window.history.back()" title="Go Back" style="float:right" class="btn btn-info text-white"><i class="bi bi-arrow-left"></i></a>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-12">
+    <div class="card">
+      <div class="card-body pt-3">
+        <ul class="nav nav-tabs nav-tabs-bordered">
+          <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" data-bs-target="#consultant-profile">Consultant Profile</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" data-bs-target="#consultation-stats">Consultation Statistics</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" data-bs-target="#schedules">Schedules</a></li>
+        </ul>
+
+        <div class="tab-content pt-2">
+          <!-- Consultant Profile Tab -->
+          <div class="tab-pane fade show active profile-overview" id="consultant-profile">
+            <h5 class="card-title">Personal & Specialization Details</h5>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Consultant Name</div>
+              <div class="col-lg-8 col-md-8">Dr. {{ consultant.staff|title }}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Staff ID</div>
+              <div class="col-lg-8 col-md-8">{{ consultant.staff.staff_id|upper }}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Specialization</div>
+              <div class="col-lg-8 col-md-8">{{ consultant.specialization.name|title }}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Assigned Room</div>
+              <div class="col-lg-8 col-md-8">{% if consultant.assigned_room %}{{ consultant.assigned_room.name|title }} ({{ consultant.assigned_room.block.name|title }}){% else %}Not Assigned{% endif %}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Mobile</div>
+              <div class="col-lg-8 col-md-8">{{ consultant.staff.mobile|default:"N/A" }}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Email</div>
+              <div class="col-lg-8 col-md-8">{{ consultant.staff.email|default:"N/A" }}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Default Consultation Duration</div>
+              <div class="col-lg-8 col-md-8">{{ consultant.default_consultation_duration }} minutes</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Max Daily Patients</div>
+              <div class="col-lg-8 col-md-8">{{ consultant.max_daily_patients }}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Consultation Days</div>
+              <div class="col-lg-8 col-md-8">{{ consultant.consultation_days|title }}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Consultation Time</div>
+              <div class="col-lg-8 col-md-8">{{ consultant.consultation_start_time|time:"H:i" }} - {{ consultant.consultation_end_time|time:"H:i" }}</div>
+            </div>
+            <div class="row">
+              <div class="col-lg-4 col-md-4 label">Available for Consultation</div>
+              <div class="col-lg-8 col-md-8">{% if consultant.is_available_for_consultation %}Yes <i class="bi bi-check-circle-fill text-success"></i>{% else %}No <i class="bi bi-x-circle-fill text-danger"></i>{% endif %}</div>
+            </div>
+          </div>
+
+          <!-- Consultation Statistics Tab -->
+          <div class="tab-pane fade profile-overview" id="consultation-stats">
+            <h5 class="card-title">Consultation Overview</h5>
+            <div class="row">
+                <div class="col-lg-4 col-md-4 label">Consultations Today</div>
+                <div class="col-lg-8 col-md-8">{{ consultation_stats.today|default:0 }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-4 col-md-4 label">Consultations This Week</div>
+                <div class="col-lg-8 col-md-8">{{ consultation_stats.this_week|default:0 }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-4 col-md-4 label">Consultations This Month</div>
+                <div class="col-lg-8 col-md-8">{{ consultation_stats.this_month|default:0 }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-4 col-md-4 label">Patients in Queue Today</div>
+                <div class="col-lg-8 col-md-8">{{ today_queue|default:0 }}</div>
+            </div>
+          </div>
+
+          <!-- Schedules Tab -->
+          <div class="tab-pane fade profile-overview" id="schedules">
+            <h5 class="card-title">Upcoming Schedules</h5>
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Shift</th>
+                  <th>Room</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for schedule in upcoming_schedules %}
+                <tr>
+                  <td>{{ schedule.date|date:"F d, Y" }}</td>
+                  <td>{{ schedule.shift_start_time|time:"H:i" }} - {{ schedule.shift_end_time|time:"H:i" }}</td>
+                  <td>{% if schedule.assigned_room %}{{ schedule.assigned_room }}{% else %}N/A{% endif %}</td>
+                  <td>{{ schedule.status|title }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-center">No upcoming schedules found.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+        </div><!-- End Tab Content -->
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

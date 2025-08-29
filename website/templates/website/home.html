@@ -1,0 +1,256 @@
+{% extends 'website/layout.html' %}
+{% load static %}
+
+{% block title %}
+Home - {{ site_info.name }}
+{% endblock title %}
+
+{% block content %}
+<div class="th-hero-wrapper hero-4" id="hero">
+    <div class="swiper th-slider hero-slider4" id="heroSlider4" data-slider-options='{"effect":"fade","autoHeight": "true"}'>
+        <div class="swiper-wrapper">
+            <div class="swiper-slide">
+                <div class="hero-inner" data-bg-src="{% static 'website/img/images/banner1.avif' %}">
+                    <div class="container">
+                        <div class="row">
+                            <div class="col-xl-9">
+                                <div class="hero-style4">
+                                    <span class="sub-title after-none" data-ani="slideinup" data-ani-delay="0.2s">Compassionate Care For Life</span>
+                                    <h1 class="hero-title text-white">
+                                        <span class="title1" data-ani="slideinup" data-ani-delay="0.4s">Your Health is Our</span>
+                                        <span class="title1" data-ani="slideinup" data-ani-delay="0.4s">Highest Priority</span>
+                                    </h1>
+                                    <p class="hero-text text-white" data-ani="slideinup" data-ani-delay="0.6s">We are committed to providing exceptional medical care and support to our community, ensuring your well-being at every stage of life.</p>
+                                    <div class="btn-wrap" data-ani="slideinup" data-ani-delay="0.7s">
+                                        <a href="{% url 'about' %}" class="th-btn">Discover More <i class="fa-solid fa-arrow-up-right ms-2"></i></a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="swiper-slide">
+                <div class="hero-inner" data-bg-src="{% static 'website/img/images/banner2.jpg' %}">
+                    <div class="container">
+                        <div class="row">
+                            <div class="col-xl-9">
+                                <div class="hero-style4">
+                                    <span class="sub-title after-none" data-ani="slideinup" data-ani-delay="0.2s">Advanced Medical Technology</span>
+                                    <h1 class="hero-title text-white">
+                                        <span class="title1" data-ani="slideinup" data-ani-delay="0.4s">Expert Care,</span>
+                                        <span class="title1" data-ani="slideinup" data-ani-delay="0.4s">Exceptional Outcomes</span>
+                                    </h1>
+                                    <p class="hero-text text-white" data-ani="slideinup" data-ani-delay="0.6s">Our facility is equipped with the latest technology to provide accurate diagnoses and effective treatments, delivered by a team of specialists.</p>
+                                    <div class="btn-wrap" data-ani="slideinup" data-ani-delay="0.7s">
+                                        <a href="{% url 'services' %}" class="th-btn">Our Services<i class="fa-solid fa-arrow-up-right ms-2"></i></a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="bg-smoke2 pt-80 pb-80">
+    <div class="container">
+        <div class="counter-wrap">
+            <div class="counter-card">
+                <div class="media-body">
+                    <h2 class="box-number text-theme"><span class="counter-number">25</span>k<span class="fw-light">+</span></h2>
+                    <p class="box-text">Happy Patients</p>
+                </div>
+            </div>
+            <div class="divider"></div>
+            <div class="counter-card">
+                <div class="media-body">
+                    <h2 class="box-number text-theme2"><span class="counter-number">50</span><span class="fw-light">+</span></h2>
+                    <p class="box-text">Specialist Doctors</p>
+                </div>
+            </div>
+            <div class="divider"></div>
+            <div class="counter-card">
+                <div class="media-body">
+                    <h2 class="box-number text-theme"><span class="counter-number">200</span><span class="fw-light">+</span></h2>
+                    <p class="box-text">Hospital Beds</p>
+                </div>
+            </div>
+            <div class="divider"></div>
+            <div class="counter-card">
+                <div class="media-body">
+                    <h2 class="box-number text-theme2"><span class="counter-number">15</span><span class="fw-light">+</span></h2>
+                    <p class="box-text">Years Of Experience</p>
+                </div>
+            </div>
+            <div class="divider"></div>
+        </div>
+    </div>
+</div>
+
+<div class="overflow-hidden space" id="about-sec">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-xl-6 mb-50 mb-xl-0">
+                <div class="img-box4">
+                    <div class="img1" data-mask-src="{% static 'website/img/images/doctor2.jpg' %}">
+                        <img src="{% static 'website/img/images/doctor1.jpg' %}" alt="About">
+                    </div>
+                    <div class="img2 jump" data-mask-src="{% static 'website/img/images/doctor2.jpg' %}">
+                        <img src="{% static 'website/img/images/doctor2.jpg' %}" alt="img">
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-6">
+                <div class="about-wrap4">
+                    <div class="title-area mb-30">
+                        <span class="sub-title before-none">Welcome to {{ site_info.name }}</span>
+                        <h2 class="sec-title">Providing Excellent Care for Our Community</h2>
+                        <p class="sec-text">At {{ site_info.name }}, we are dedicated to delivering patient-centered healthcare with compassion and respect. Our experienced medical professionals work tirelessly to ensure the best possible health outcomes for you and your family.</p>
+                    </div>
+                    <div class="checklist mt-30">
+                        <ul>
+                            <li><img src="{% static 'website/img/icon/checklist-icon.svg' %}" alt="icon">Comprehensive medical and surgical services.</li>
+                            <li><img src="{% static 'website/img/icon/checklist-icon.svg' %}" alt="icon">24/7 emergency and critical care support.</li>
+                            <li><img src="{% static 'website/img/icon/checklist-icon.svg' %}" alt="icon">A dedicated team of highly qualified doctors and nurses.</li>
+                        </ul>
+                    </div>
+                    <div class="btn-wrap style2 mt-40">
+                        <a href="{% url 'about' %}" class="th-btn">Learn More<div class="icon"><i class="fa-solid fa-arrow-up-right ms-2"></i></div></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="service-area-3 space bg-smoke" id="service-sec">
+    <div class="container">
+        <div class="row justify-content-center align-items-center">
+            <div class="col-lg-7">
+                <div class="title-area text-center">
+                    <span class="sub-title">Our Medical Services</span>
+                    <h2 class="sec-title">Comprehensive Care For Every Patient</h2>
+                </div>
+            </div>
+        </div>
+        <div class="row gy-30 gx-30 justify-content-center">
+            <div class="col-lg-4 col-md-6">
+                <div class="service-card style3">
+                    <div class="box-icon"><img src="{% static 'website/img/icon/service-icon/service-card-icon1-1.svg' %}" alt="Icon"></div>
+                    <div class="box-content">
+                        <h3 class="box-title"><a href="{% url 'in_patient' %}">In-Patient Services</a></h3>
+                        <p class="box-text">Comfortable and medically supervised care for patients requiring overnight stays.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <div class="service-card style3">
+                    <div class="box-icon"><img src="{% static 'website/img/icon/service-icon/service-card-icon1-3.svg' %}" alt="Icon"></div>
+                    <div class="box-content">
+                        <h3 class="box-title"><a href="{% url 'surgery' %}">Surgical Procedures</a></h3>
+                        <p class="box-text">Advanced surgical solutions performed by our team of expert surgeons.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <div class="service-card style3">
+                    <div class="box-icon"><img src="{% static 'website/img/icon/service-icon/service-card-icon1-2.svg' %}" alt="Icon"></div>
+                    <div class="box-content">
+                        <h3 class="box-title"><a href="{% url 'out_patient' %}">Out-Patient Clinic</a></h3>
+                        <p class="box-text">Convenient consultations, diagnostics, and treatments that don't require admission.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="text-center mt-5">
+            <a href="{% url 'services' %}" class="th-btn">View All Services</a>
+        </div>
+    </div>
+</section>
+
+<section class="testi-area-4 space bg-theme-dark overflow-hidden">
+    <div class="container">
+        <div class="row gy-40 gx-80 align-items-center">
+             <div class="col-lg-5">
+                <div class="testi-wrap4">
+                    <div class="title-area">
+                        <span class="sub-title after-none">Testimonials</span>
+                        <h2 class="sec-title text-white">What Our Patients Say</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-7">
+                 <div class="swiper th-slider testimonial-slider4" id="testiSlide4" data-slider-options='{"autoHeight": "true"}'>
+                    <div class="swiper-wrapper">
+                        <div class="swiper-slide">
+                            <div class="testi-card4">
+                                <p class="box-text">“The care I received at this hospital was exceptional. From the nurses to the doctors, everyone was so attentive and compassionate. I felt safe and well-cared for throughout my entire stay. Thank you to the entire team!”</p>
+                                <h3 class="box-title">Emily Johnson</h3>
+                                <p class="box-desig">Recovered Patient</p>
+                            </div>
+                        </div>
+                        <div class="swiper-slide">
+                            <div class="testi-card4">
+                                <p class="box-text">“My son was treated in the pediatric ward, and I couldn't have asked for a better experience. The doctors were brilliant, and the staff made a scary situation much more comfortable for our family.”</p>
+                                <h3 class="box-title">Brandon Dixon</h3>
+                                <p class="box-desig">Grateful Parent</p>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="slider-pagination"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="space team-area-2">
+    <div class="container">
+        <div class="title-area text-center">
+            <span class="sub-title after-none before-none">Our Specialists</span>
+            <h2 class="sec-title">Meet Our Experienced Medical Team</h2>
+        </div>
+        <div class="slider-area">
+            <div class="swiper th-slider has-shadow team-slider2" id="teamSlider2" data-slider-options='{"spaceBetween": 30,"breakpoints":{"0":{"slidesPerView":1},"768":{"slidesPerView":"2"},"1200":{"slidesPerView":"3"}}}'>
+                <div class="swiper-wrapper">
+                    <div class="swiper-slide">
+                        <div class="th-team team-card2">
+                            <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor1.jpg' %}" alt="Team"></div></div>
+                            <div class="team-card-content">
+                                <h3 class="box-title"><a href="{% url 'doctors' %}">Dr. Michel Connor</a></h3>
+                                <span class="team-desig">Cardiologist</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="swiper-slide">
+                        <div class="th-team team-card2">
+                            <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor2.jpg' %}" alt="Team"></div></div>
+                            <div class="team-card-content">
+                                <h3 class="box-title"><a href="{% url 'doctors' %}">Dr. Jessica Lauren</a></h3>
+                                <span class="team-desig">Pediatrician</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="swiper-slide">
+                        <div class="th-team team-card2">
+                            <div class="img-wrap"><div class="team-img"><img src="{% static 'website/img/images/doctor1.jpg' %}" alt="Team"></div></div>
+                            <div class="team-card-content">
+                                <h3 class="box-title"><a href="{% url 'doctors' %}">Dr. Daniel Thomas</a></h3>
+                                <span class="team-desig">General Surgeon</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button data-slider-prev="#teamSlider2" class="slider-arrow slider-prev"><i class="far fa-arrow-left"></i></button>
+            <button data-slider-next="#teamSlider2" class="slider-arrow slider-next"><i class="far fa-arrow-right"></i></button>
+        </div>
+        <div class="text-center mt-5">
+            <a href="{% url 'doctors' %}" class="th-btn">Meet The Full Team</a>
+        </div>
+    </div>
+</section>
+{% endblock content %}

@@ -1,0 +1,201 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Add Consultation Fee" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#feeHelperModal"><b>Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="#">
+                    <button title="Add Consultation Fee" type="button" style="width:100%" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addFeeModal">Add Consultation Fee</button>
+                </a></li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">List of Consultation Fees</h5>
+            {% include 'admin_site/partials/error.html' %}
+            <table class="table table-borderless datatable">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Specialization</th>
+                    <th scope="col">Patient Category</th>
+                    <th scope="col">Insurance</th>
+                    <th scope="col">Amount (₦)</th>
+                    <th class="text-center" scope="col">Status</th>
+                    <th scope="col" class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+
+                {% for fee in fee_list %}
+                <tr>
+                    <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
+                    <td>{{ fee.specialization.name|title }}</td>
+                    <td>{{ fee.get_patient_category_display }}</td>
+                    <td>{% if fee.insurance %}{{ fee.insurance.name|title }}{% else %}N/A{% endif %}</td>
+                    <td>₦{{ fee.amount|floatformat:2|intcomma }}</td>
+                    <td class="text-center">
+                        {% if fee.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <button title="Edit Consultation Fee" type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#editFeeModal{{ forloop.counter }}"><i class="bi bi-pencil-square"></i></button>
+                        <a title="Delete Consultation Fee" href="{% url 'consultation_fee_delete' fee.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+
+                </tbody>
+            </table>
+            {% if not fee_list %}
+                 <h3 class="text-center">No Consultation Fees Added Yet</h3>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Consultation Fee Helper Modal -->
+<div class="modal fade" id="feeHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Consultation Fee Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    Consultation fees are set based on the **specialization**, **patient category** (regular or insurance), and a specific **insurance plan** (if applicable).
+                </p>
+
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> You can define different fees for the same specialization if the patient is under a different insurance plan or is a regular patient.
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> A unique fee entry requires a combination of Specialization, Patient Category, and Insurance (Insurance can be left blank for 'Regular Patients').
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Consultation Fee Modal -->
+<form method="POST" action="{% url 'consultation_fee_create' %}">
+    {% csrf_token %}
+    <div class="modal fade" id="addFeeModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Add Consultation Fee</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating mb-3">
+                        {{ form.specialization }}
+                        <label for="id_specialization">Specialization<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {{ form.patient_category }}
+                        <label for="id_patient_category">Patient Category<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {{ form.insurance }}
+                        <label for="id_insurance">Insurance (Optional, for Insurance Patients)</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {{ form.amount }}
+                        <label for="id_amount">Amount (₦)<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        {{ form.is_active }}
+                        <label class="form-check-label" for="id_is_active">Active</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Edit Consultation Fee Modals (one for each fee in the list) -->
+{% for fee in fee_list %}
+<form method="POST" action="{% url 'consultation_fee_edit' fee.id %}">
+    {% csrf_token %}
+    <div class="modal fade" id="editFeeModal{{ forloop.counter }}" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit Consultation Fee</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating mb-3">
+                        <select name="specialization" id="edit_specialization_{{ forloop.counter }}" class="form-control" required>
+                            {% for spec in form.specialization.field.queryset %}
+                                <option value="{{ spec.id }}" {% if fee.specialization.id == spec.id %}selected{% endif %}>{{ spec.name|title }}</option>
+                            {% endfor %}
+                        </select>
+                        <label for="edit_specialization_{{ forloop.counter }}">Specialization<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <select name="patient_category" id="edit_patient_category_{{ forloop.counter }}" class="form-control" required>
+                            {% for value, label in fee.PATIENT_CATEGORIES %}
+                                <option value="{{ value }}" {% if fee.patient_category == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <label for="edit_patient_category_{{ forloop.counter }}">Patient Category<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <select name="insurance" id="edit_insurance_{{ forloop.counter }}" class="form-control">
+                            <option value="">---------</option> {# For optional clear selection #}
+                            {% for ins in form.insurance.field.queryset %}
+                                <option value="{{ ins.id }}" {% if fee.insurance and fee.insurance.id == ins.id %}selected{% endif %}>{{ ins.name|title }}</option>
+                            {% endfor %}
+                        </select>
+                        <label for="edit_insurance_{{ forloop.counter }}">Insurance (Optional, for Insurance Patients)</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <input type="number" name="amount" value="{{ fee.amount|floatformat:2 }}" step="0.01" min="0" placeholder="0.00" class="form-control" required>
+                        <label for="edit_amount_{{ forloop.counter }}">Amount (₦)<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input type="checkbox" name="is_active" id="edit_is_active_{{ forloop.counter }}" class="form-check-input" {% if fee.is_active %}checked{% endif %}>
+                        <label class="form-check-label" for="edit_is_active_{{ forloop.counter }}">Active</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endfor %}
+
+{% endblock %}

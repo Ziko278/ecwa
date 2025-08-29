@@ -1,0 +1,135 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Transfer Actions" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#transferHelperModal"><b>Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="{% url 'drug_transfer_create' %}">
+                    <button title="Record New Transfer" type="button" style="width:100%" class="btn btn-sm btn-primary">Record New Transfer</button>
+                </a></li>
+            </ul>
+        </div>
+
+
+        <div class="card-body">
+            <h5 class="card-title">{{ title }}</h5> {# Displays "Drug Transfers" #}
+            {% include 'admin_site/partials/error.html' %} {# For displaying Django messages #}
+
+            {# --- Filter Form --- #}
+            <div class="mb-4 p-4 bg-light rounded shadow-sm">
+                <h6 class="mb-3">Filter Transfers</h6>
+                <form method="get" class="row g-3">
+                    <div class="col-md-3">
+                        <div class="form-floating">
+                            {{ filter_form.start_date }}
+                            <label for="{{ filter_form.start_date.id_for_label }}">{{ filter_form.start_date.label }}</label>
+                            {% if filter_form.start_date.errors %}<div class="text-danger">{{ filter_form.start_date.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-floating">
+                            {{ filter_form.end_date }}
+                            <label for="{{ filter_form.end_date.id_for_label }}">{{ filter_form.end_date.label }}</label>
+                            {% if filter_form.end_date.errors %}<div class="text-danger">{{ filter_form.end_date.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-floating">
+                            {{ filter_form.drug }}
+                            <label for="{{ filter_form.drug.id_for_label }}">{{ filter_form.drug.label }}</label>
+                            {% if filter_form.drug.errors %}<div class="text-danger">{{ filter_form.drug.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-floating">
+                            {{ filter_form.transferred_by }}
+                            <label for="{{ filter_form.transferred_by.id_for_label }}">{{ filter_form.transferred_by.label }}</label>
+                            {% if filter_form.transferred_by.errors %}<div class="text-danger">{{ filter_form.transferred_by.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="col-12 mt-3">
+                        <button type="submit" class="btn btn-primary me-2"><i class="bi bi-funnel me-1"></i> Apply Filters</button>
+                        <a href="{% url 'drug_transfer_index' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-clockwise me-1"></i> Clear Filters</a>
+                    </div>
+                </form>
+            </div>
+            {# --- End Filter Form --- #}
+
+
+            {% if transfer_list %}
+                <div class="table-responsive">
+                    <table class="table table-borderless datatable">
+                        <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Drug Name</th>
+                            <th scope="col">Quantity</th>
+                            <th scope="col">Transferred By</th>
+                            <th scope="col">Transferred At</th>
+                            <th scope="col">Notes</th>
+                            {# Add more columns if needed, e.g., Actions for edit/delete if you create those views #}
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for transfer in transfer_list %}
+                        <tr>
+                            <th scope="row">{{ forloop.counter }}</th>
+                            <td>{{ transfer.drug|title }}</td>
+                            <td>{{ transfer.quantity|floatformat:2 }}</td>
+                            <td>{% if transfer.transferred_by %}{{ transfer.transferred_by.username }}{% else %}N/A{% endif %}</td>
+                            <td>{{ transfer.transferred_at|date:"F d, Y H:i" }}</td>
+                            <td>{% if transfer.notes %}{{ transfer.notes|truncatechars:50 }}{% else %}---{% endif %}</td>
+                            {# Example action buttons (uncomment if you have corresponding views) #}
+                            {# <td class="text-center"> #}
+                            {#     <a href="{% url 'drug_transfer_update' transfer.pk %}" class="btn btn-warning btn-sm" title="Edit Transfer"><i class="bi bi-pencil-square"></i></a> #}
+                            {#     <a href="{% url 'drug_transfer_delete' transfer.pk %}" class="btn btn-danger btn-sm" title="Delete Transfer"><i class="bi bi-trash"></i></a> #}
+                            {# </td> #}
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <h3 class="text-center">No Drug Transfers Found</h3>
+                <p class="text-center text-muted">Adjust your filters or <a href="{% url 'drug_transfer_create' %}" class="text-primary">record a new transfer</a>.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Transfer Helper Modal -->
+<div class="modal fade" id="transferHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Drug Transfer Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    Drug Transfers record the movement of drugs **from the Store/Warehouse to the Pharmacy Counter**.
+                </p>
+
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> Use the filters above to quickly find transfers by date, specific drug, or the staff member who performed the transfer.
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> Recording a transfer automatically deducts the quantity from the Store and adds it to the Pharmacy Counter. Ensure sufficient stock is available in the Store before transferring.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

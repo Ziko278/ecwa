@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Dashboard Report</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { font-size: 12px; }
+            .card { border: 1px solid #dee2e6 !important; }
+            .page-break { page-break-before: always; }
+        }
+
+        .header-section {
+            border-bottom: 2px solid #4154f1;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+        }
+
+        .stat-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+        }
+
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4154f1;
+        }
+
+        .growth-positive {
+            color: #2eca6a;
+            font-weight: bold;
+        }
+
+        .growth-negative {
+            color: #ff4757;
+            font-weight: bold;
+        }
+
+        .table-custom {
+            font-size: 13px;
+        }
+
+        .footer-section {
+            border-top: 1px solid #dee2e6;
+            margin-top: 40px;
+            padding-top: 15px;
+            font-size: 11px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Print Button -->
+        <div class="no-print mb-3">
+            <button class="btn btn-primary" onclick="window.print()">
+                <i class="bi bi-printer"></i> Print Report
+            </button>
+            <button class="btn btn-secondary" onclick="window.close()">
+                Close
+            </button>
+        </div>
+
+        <!-- Header Section -->
+        <div class="header-section">
+            <div class="row">
+                <div class="col-8">
+                    <h2 class="mb-0">Patient Dashboard Report</h2>
+                    <p class="mb-0 text-muted">Comprehensive patient statistics and analytics</p>
+                </div>
+                <div class="col-4 text-end">
+                    <p class="mb-1"><strong>Generated:</strong> {{ print_date|date:"M d, Y H:i" }}</p>
+                    <p class="mb-0"><strong>By:</strong> {{ generated_by.get_full_name|default:generated_by.username }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Statistics -->
+        <div class="row mb-4">
+            <div class="col-lg-12">
+                <h4 class="mb-3">Patient Summary Statistics</h4>
+            </div>
+
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stat-card text-center">
+                    <div class="stat-number">{{ total_patients }}</div>
+                    <div class="text-muted">Total Patients</div>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-primary">{{ male_patients }}</div>
+                    <div class="text-muted">Male Patients</div>
+                    <small>{% if total_patients > 0 %}({% widthratio male_patients total_patients 100 %}%){% else %}(0%){% endif %}</small>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-info">{{ female_patients }}</div>
+                    <div class="text-muted">Female Patients</div>
+                    <small>{% if total_patients > 0 %}({% widthratio female_patients total_patients 100 %}%){% else %}(0%){% endif %}</small>
+                </div>
+            </div>
+
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-warning">{{ pending_registrations }}</div>
+                    <div class="text-muted">Pending Registrations</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Patient Type Breakdown -->
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <h5>Old Patients Statistics</h5>
+                <table class="table table-custom table-striped">
+                    <tbody>
+                        <tr>
+                            <td><strong>Total Old Patients:</strong></td>
+                            <td>{{ old_patients_total }}</td>
+                        </tr>
+                        <tr>
+                            <td>Today:</td>
+                            <td>{{ old_patients_today }}</td>
+                        </tr>
+                        <tr>
+                            <td>This Week:</td>
+                            <td>{{ old_patients_week }}</td>
+                        </tr>
+                        <tr>
+                            <td>This Month:</td>
+                            <td>{{ old_patients_month }}
+                                {% if old_patients_growth > 0 %}
+                                    <span class="growth-positive">(+{{ old_patients_growth }}%)</span>
+                                {% elif old_patients_growth < 0 %}
+                                    <span class="growth-negative">({{ old_patients_growth }}%)</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="col-lg-6">
+                <h5>New Patients Statistics</h5>
+                <table class="table table-custom table-striped">
+                    <tbody>
+                        <tr>
+                            <td><strong>Total New Patients:</strong></td>
+                            <td>{{ new_patients_total }}</td>
+                        </tr>
+                        <tr>
+                            <td>Today:</td>
+                            <td>{{ new_patients_today }}</td>
+                        </tr>
+                        <tr>
+                            <td>This Week:</td>
+                            <td>{{ new_patients_week }}</td>
+                        </tr>
+                        <tr>
+                            <td>This Month:</td>
+                            <td>{{ new_patients_month }}
+                                {% if new_patients_growth > 0 %}
+                                    <span class="growth-positive">(+{{ new_patients_growth }}%)</span>
+                                {% elif new_patients_growth < 0 %}
+                                    <span class="growth-negative">({{ new_patients_growth }}%)</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Age Group Distribution -->
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <h5>Age Group Distribution</h5>
+                <table class="table table-custom table-striped">
+                    <thead>
+                        <tr>
+                            <th>Age Range</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for age_group in age_groups %}
+                        <tr>
+                            <td>{{ age_group.name }} years</td>
+                            <td>{{ age_group.value }}</td>
+                            <td>
+                                {% if total_patients > 0 %}
+                                    {% widthratio age_group.value total_patients 100 %}%
+                                {% else %}
+                                    0%
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Revenue Summary -->
+            <div class="col-lg-6">
+                <h5>Revenue Summary</h5>
+                <table class="table table-custom table-striped">
+                    <tbody>
+                        <tr>
+                            <td><strong>Total Revenue:</strong></td>
+                            <td>₦{{ total_revenue|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td>Today's Revenue:</td>
+                            <td>₦{{ revenue_today|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td>Monthly Revenue:</td>
+                            <td>₦{{ revenue_month|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td>Average per Patient:</td>
+                            <td>
+                                {% if total_patients > 0 %}
+                                    ₦{% widthratio total_revenue total_patients 1 %}
+                                {% else %}
+                                    ₦0.00
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Monthly Trends Table -->
+
+        <!-- Key Insights -->
+        <div class="row mb-4">
+            <div class="col-lg-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Key Insights</h5>
+                        <ul class="list-unstyled">
+                            <li class="mb-2">
+                                <strong>Patient Distribution:</strong>
+                                {{ male_patients }} male patients
+                                ({% if total_patients > 0 %}{% widthratio male_patients total_patients 100 %}%{% else %}0%{% endif %})
+                                and {{ female_patients }} female patients
+                                ({% if total_patients > 0 %}{% widthratio female_patients total_patients 100 %}%{% else %}0%{% endif %})
+                            </li>
+                            <li class="mb-2">
+                                <strong>Patient Type Ratio:</strong>
+                                New patients: {{ new_patients_total }}
+                                ({% if total_patients > 0 %}{% widthratio new_patients_total total_patients 100 %}%{% else %}0%{% endif %}),
+                                Old patients: {{ old_patients_total }}
+                                ({% if total_patients > 0 %}{% widthratio old_patients_total total_patients 100 %}%{% else %}0%{% endif %})
+                            </li>
+                            {% if pending_registrations > 0 %}
+                            <li class="mb-2 text-warning">
+                                <strong>Attention Required:</strong> {{ pending_registrations }} pending registration{{ pending_registrations|pluralize }} need{{ pending_registrations|pluralize:"s," }} processing
+                            </li>
+                            {% endif %}
+                            <li class="mb-2">
+                                <strong>Monthly Growth:</strong>
+                                {% if old_patients_growth > 0 %}
+                                    Old patients increased by {{ old_patients_growth }}%
+                                {% elif old_patients_growth < 0 %}
+                                    Old patients decreased by {{ old_patients_growth|floatformat:1 }}%
+                                {% else %}
+                                    Old patients remained stable
+                                {% endif %}
+                                |
+                                {% if new_patients_growth > 0 %}
+                                    New patients increased by {{ new_patients_growth }}%
+                                {% elif new_patients_growth < 0 %}
+                                    New patients decreased by {{ new_patients_growth|floatformat:1 }}%
+                                {% else %}
+                                    New patients remained stable
+                                {% endif %}
+                            </li>
+                            <li class="mb-2">
+                                <strong>Revenue Performance:</strong>
+                                Monthly revenue of ₦{{ revenue_month|floatformat:2 }},
+                                Daily average: ₦{% if revenue_month > 0 %}{% widthratio revenue_month 30 1 %}{% else %}0.00{% endif %}
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Registration Status Summary -->
+        <div class="row mb-4">
+            <div class="col-lg-12">
+                <h5>Registration Status Overview</h5>
+                <div class="row">
+                    <div class="col-lg-4">
+                        <div class="stat-card text-center">
+                            <div class="stat-number text-success">{{ total_patients|add:pending_registrations }}</div>
+                            <div class="text-muted">Total Registrations</div>
+                            <small>(Completed + Pending)</small>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="stat-card text-center">
+                            <div class="stat-number text-primary">{{ total_patients }}</div>
+                            <div class="text-muted">Completed</div>
+                            <small>
+                                {% if total_patients|add:pending_registrations > 0 %}
+                                    ({% widthratio total_patients total_patients|add:pending_registrations 100 %}%)
+                                {% else %}
+                                    (0%)
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="stat-card text-center">
+                            <div class="stat-number text-warning">{{ pending_registrations }}</div>
+                            <div class="text-muted">Pending</div>
+                            <small>
+                                {% if total_patients|add:pending_registrations > 0 %}
+                                    ({% widthratio pending_registrations total_patients|add:pending_registrations 100 %}%)
+                                {% else %}
+                                    (0%)
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Section -->
+        <div class="footer-section">
+            <div class="row">
+                <div class="col-6">
+                    <p class="mb-1"><strong>Hospital Management System</strong></p>
+                    <p class="mb-0">Report generated on {{ print_date|date:"F d, Y \a\t H:i" }}</p>
+                </div>
+                <div class="col-6 text-end">
+                    <p class="mb-1">Generated by: {{ generated_by.get_full_name|default:generated_by.username }}</p>
+                    <p class="mb-0">Patient Dashboard Report - Page 1 of 1</p>
+                </div>
+            </div>
+            <hr class="mt-2">
+            <div class="row">
+                <div class="col-12 text-center">
+                    <small class="text-muted">
+                        This report contains {{ total_patients }} patient records as of {{ print_date|date:"M d, Y" }}.
+                        For questions about this report, contact the system administrator.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto print when page loads (optional - uncomment if needed)
+        // window.onload = function() { window.print(); }
+
+        // Close window after printing
+        window.addEventListener('afterprint', function() {
+            // Optional: close window after printing
+            // window.close();
+        });
+    </script>
+</body>
+</html>

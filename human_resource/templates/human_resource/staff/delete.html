@@ -1,0 +1,20 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Are you sure you want to delete <i>"{{ staff.surname|title }} {% if staff.middle_name %} {{ staff.middle_name|title }} {% endif %} {{ staff.last_name|title }} "</i> as a staff?
+                <img class="rounded-circle" style="display:inline;float:right;width:100px;height:100px;border-radius:5px;" {% if staff.image %} src="{{ staff.image.url }}" {% else %} src="{% static 'admin_dashboard/images/default_image.jpg' %}" {% endif %} /></h4>
+            <p>If you delete a staff, data regarding that staff may be lost</p>
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'staff_detail' staff.id %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+{%endblock %}

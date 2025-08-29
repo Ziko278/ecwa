@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>Bova Global Logistic - SignIn </title>
+  <meta content="" name="description">
+  <meta content="" name="keywords">
+
+  <!-- Favicons -->
+  <link href="assets/img/favicon.png" rel="icon">
+  <link href="assets/img/apple-touch-icon.png" rel="apple-touch-icon">
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,600,600i,700,700i|Nunito:300,300i,400,400i,600,600i,700,700i|Poppins:300,300i,400,400i,500,500i,600,600i,700,700i" rel="stylesheet">
+
+  <!-- Vendor CSS Files -->
+  <link href="{% static 'admin_dashboard/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
+  <link href="{% static 'admin_dashboard/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
+  <link href="{% static 'admin_dashboard/vendor/boxicons/css/boxicons.min.css' %}" rel="stylesheet">
+  <link href="{% static 'admin_dashboard/vendor/quill/quill.snow.css' %}" rel="stylesheet">
+  <link href="{% static 'admin_dashboard/vendor/quill/quill.bubble.css' %}" rel="stylesheet">
+  <link href="{% static 'admin_dashboard/vendor/remixicon/remixicon.css' %}" rel="stylesheet">
+  <link href="{% static 'admin_dashboard/vendor/simple-datatables/style.css' %}" rel="stylesheet">
+
+  <link href="{% static 'admin_dashboard/styles/style.css' %}" rel="stylesheet">
+
+  <!-- =======================================================
+  * Template Name: NiceAdmin - v2.2.2
+  * Template URL: https://bootstrapmade.com/nice-admin-bootstrap-admin-html-template/
+  * Author: BootstrapMade.com
+  * License: https://bootstrapmade.com/license/
+  ======================================================== -->
+</head>
+
+<body>
+    <main style="width:100%;padding:0px;background-size: cover;background-image: url('{% static "admin_dashboard/images/background.jpg" %}');">
+    <div class="contaier" style="padding:0px;width:100%;padding:0px;background-color: rgba(0, 0, 0, 0.8);">
+
+      <section class="section error-404 min-vh-100 d-flex flex-column align-items-center justify-content-center">
+        <h1 style="color:whit">503</h1>
+        <h2 style="color:white">The Site is under Maintenance.</h2>
+        <a class="btn" href="{% url 'login' %}">Back to home</a>
+        <img src="{% static 'admin_dashboard/images/not-found.svg' %}" style="height:300px" class="img-fluid py-5" alt="Page Not Found">
+
+      </section>
+
+    </div>
+  </main><!-- End #main -->
+  <script src="{% static 'scripts/jquery.js' %}"></script>
+  <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+
+  <script src="{% static 'vendor/php-email-form/validate.js' %}"></script>
+
+
+  <!-- Template Main JS File -->
+  <script src="{% static 'admin_dashboard/scripts/main.js' %}"></script>
+
+</body>
+
+</html>

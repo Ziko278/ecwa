@@ -1,0 +1,25 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Consultation Block</h4>
+            <p>Consultation Block: <i>{{ consultation_block.name|title }}</i></p>
+
+            <p>The consultation block will be permanently deleted.</p>
+            {% if block.rooms.all|length > 0 %}
+                <p>{{ block.rooms.all|length }} consultation room{{ block.rooms.all|length|pluralize }} in this block will also be deleted.</p>
+            {% else %}
+                <p>There are currently no consultation rooms in this block.</p>
+            {% endif %}
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'block_index' %}">Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,276 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="container-fluid">
+
+    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 1055;"></div>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">
+                <i class="fas fa-file-invoice-dollar me-2"></i>Create Patient Insurance Policy
+            </h4>
+            <a href="{% url 'patient_insurance_list' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Policies
+            </a>
+        </div>
+        <div class="card-body">
+            <form method="post" id="patientInsuranceForm">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="patient" class="form-label">Patient <span class="text-danger">*</span></label>
+                        <select class="form-select" id="patient" name="patient" required>
+                            <option value="">Select Patient</option>
+                            {% for patient in patients %} {# 'patients' should be passed from the view context #}
+                                <option value="{{ patient.pk }}" {% if form.patient.value == patient.pk|stringformat:"s" %}selected{% endif %}>
+                                    {{ patient.first_name }} {{ patient.last_name }} ({{ patient.patient_id }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                        {% if form.patient.errors %}<div class="text-danger">{{ form.patient.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="hmo" class="form-label">HMO Provider <span class="text-danger">*</span></label>
+                        <select class="form-select" id="hmo" name="hmo" required
+                                data-plans-url="{% url 'get_hmo_coverage_plans' hmo_id=0 %}"> {# Changed _HMO_ID_ to 0 #}
+                            <option value="">Select HMO</option>
+                            {% for hmo in hmos %} {# 'hmos' should be passed from the view context #}
+                                <option value="{{ hmo.pk }}" {% if form.hmo.value == hmo.pk|stringformat:"s" %}selected{% endif %}>
+                                    {{ hmo.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        {% if form.hmo.errors %}<div class="text-danger">{{ form.hmo.errors }}</div>{% endif %}
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="coverage_plan" class="form-label">Coverage Plan <span class="text-danger">*</span></label>
+                        <select class="form-select" id="coverage_plan" name="coverage_plan" required disabled
+                                data-details-url="{% url 'get_coverage_plan_details' plan_id=0 %}"> {# Changed _PLAN_ID_ to 0 #}
+                            <option value="">Select Coverage Plan</option>
+                            {# Options will be loaded dynamically via JavaScript #}
+                            {% if form.coverage_plan.value %}
+                                {# If form has a pre-selected coverage plan (e.g., on validation error), keep it #}
+                                <option value="{{ form.coverage_plan.value }}" selected>
+                                    Loading... ({{ form.coverage_plan.label }})
+                                </option>
+                            {% endif %}
+                        </select>
+                        {% if form.coverage_plan.errors %}<div class="text-danger">{{ form.coverage_plan.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="policy_number" class="form-label">Policy Number <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="policy_number" name="policy_number" value="{{ form.policy_number.value|default:'' }}" required>
+                        {% if form.policy_number.errors %}<div class="text-danger">{{ form.policy_number.errors }}</div>{% endif %}
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="enrollee_id" class="form-label">Enrollee ID</label>
+                        <input type="text" class="form-control" id="enrollee_id" name="enrollee_id" value="{{ form.enrollee_id.value|default:'' }}">
+                        {% if form.enrollee_id.errors %}<div class="text-danger">{{ form.enrollee_id.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="valid_from" class="form-label">Valid From <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="valid_from" name="valid_from" value="{{ form.valid_from.value|date:'Y-m-d'|default:'' }}" required>
+                        {% if form.valid_from.errors %}<div class="text-danger">{{ form.valid_from.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="valid_to" class="form-label">Valid To <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="valid_to" name="valid_to" value="{{ form.valid_to.value|date:'Y-m-d'|default:'' }}" required>
+                        {% if form.valid_to.errors %}<div class="text-danger">{{ form.valid_to.errors }}</div>{% endif %}
+                    </div>
+                </div>
+
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="is_active" name="is_active" {% if form.is_active.value %}checked{% endif %}>
+                    <label class="form-check-label" for="is_active">Is Active</label>
+                    {% if form.is_active.errors %}<div class="text-danger">{{ form.is_active.errors }}</div>{% endif %}
+                </div>
+
+                <hr>
+
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="is_verified" name="is_verified" {% if form.is_verified.value %}checked{% endif %} disabled>
+                    <label class="form-check-label" for="is_verified">Verified (Only if required by plan)</label>
+                    <small id="verificationHelp" class="form-text text-muted d-block mt-1">
+                        This will be enabled if the selected coverage plan requires verification.
+                    </small>
+                    {% if form.is_verified.errors %}<div class="text-danger">{{ form.is_verified.errors }}</div>{% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="3">{{ form.notes.value|default:'' }}</textarea>
+                    {% if form.notes.errors %}<div class="text-danger">{{ form.notes.errors }}</div>{% endif %}
+                </div>
+
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save me-1"></i>Save Policy
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrftoken = getCookie('csrftoken');
+
+    const hmoSelect = document.getElementById('hmo');
+    const coveragePlanSelect = document.getElementById('coverage_plan');
+    const isVerifiedCheckbox = document.getElementById('is_verified');
+    const verificationHelpText = document.getElementById('verificationHelp');
+
+    // --- Toast Notification Handler ---
+    function showToast(message, type = 'success') {
+        const toastContainer = document.getElementById('toast-container');
+        const toastId = 'toast-' + Math.random().toString(36).substr(2, 9);
+        const toastHTML = `
+            <div id="${toastId}" class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        `;
+        toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+        toast.show();
+        toastElement.addEventListener('hidden.bs.toast', () => toastElement.remove());
+    }
+
+    // --- Utility function to get CSRF token ---
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // --- Function to reset verification fields ---
+    function resetVerificationFields() {
+        isVerifiedCheckbox.checked = false;
+        isVerifiedCheckbox.disabled = true;
+        verificationHelpText.textContent = 'This will be enabled if the selected coverage plan requires verification.';
+        verificationHelpText.classList.remove('text-success', 'text-warning');
+        verificationHelpText.classList.add('text-muted');
+    }
+
+    // --- Handle HMO selection change to load coverage plans ---
+    hmoSelect.addEventListener('change', async function() {
+        const hmoId = this.value;
+        const initialPlanValue = coveragePlanSelect.value; // Store currently selected plan if any
+        coveragePlanSelect.innerHTML = '<option value="">Loading plans...</option>';
+        coveragePlanSelect.disabled = true;
+        resetVerificationFields(); // Reset verification fields when HMO changes
+
+        if (hmoId) {
+            try {
+                // Get the base URL template from the data attribute and replace the placeholder
+                const baseUrlTemplate = hmoSelect.dataset.plansUrl;
+                // Replace the dummy '0' with the actual hmoId
+                const url = baseUrlTemplate.replace('0', hmoId);
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                coveragePlanSelect.innerHTML = '<option value="">Select Coverage Plan</option>';
+                if (data.plans && data.plans.length > 0) {
+                    data.plans.forEach(plan => {
+                        const option = document.createElement('option');
+                        option.value = plan.id;
+                        option.textContent = plan.name;
+                        // Pre-select if it was the previously selected plan (e.g., on form error)
+                        if (plan.id == initialPlanValue) {
+                            option.selected = true;
+                        }
+                        coveragePlanSelect.appendChild(option);
+                    });
+                    coveragePlanSelect.disabled = false;
+                    // If an initial plan was pre-selected, trigger change event to load its verification status
+                    if (initialPlanValue && coveragePlanSelect.value == initialPlanValue) {
+                         coveragePlanSelect.dispatchEvent(new Event('change'));
+                    }
+                } else {
+                    coveragePlanSelect.innerHTML = '<option value="">No plans found for this HMO</option>';
+                }
+            } catch (error) {
+                console.error('Error fetching coverage plans:', error);
+                showToast('Failed to load coverage plans. Please try again.', 'danger');
+                coveragePlanSelect.innerHTML = '<option value="">Error loading plans</option>';
+            }
+        } else {
+            coveragePlanSelect.innerHTML = '<option value="">Select Coverage Plan</option>';
+        }
+    });
+
+    // --- Handle Coverage Plan selection change for verification logic ---
+    coveragePlanSelect.addEventListener('change', async function() {
+        const planId = this.value;
+        resetVerificationFields(); // Reset first
+
+        if (planId) {
+            try {
+                // Get the base URL template from the data attribute and replace the placeholder
+                const baseUrlTemplate = coveragePlanSelect.dataset.detailsUrl;
+                // Replace the dummy '0' with the actual planId
+                const url = baseUrlTemplate.replace('0', planId);
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                if (data.require_verification) {
+                    isVerifiedCheckbox.disabled = false;
+                    verificationHelpText.textContent = 'This plan requires verification. Check the box if verified.';
+                    verificationHelpText.classList.remove('text-muted');
+                    verificationHelpText.classList.add('text-warning'); // Use warning for pending action
+                } else {
+                    isVerifiedCheckbox.checked = false; // Ensure it's unchecked if not required
+                    isVerifiedCheckbox.disabled = true;
+                    verificationHelpText.textContent = 'This plan does NOT require upfront verification. It will be created unverified.';
+                    verificationHelpText.classList.remove('text-warning');
+                    verificationHelpText.classList.add('text-muted');
+                }
+            } catch (error) {
+                console.error('Error fetching plan details:', error);
+                showToast('Failed to load plan verification status. Please try again.', 'danger');
+            }
+        }
+    });
+
+    // Initialize state if an HMO is pre-selected (e.g., on form error reload)
+    // This will trigger the loading of coverage plans and subsequently the verification logic
+    const initialHMOValue = hmoSelect.value;
+    const initialCoveragePlanValue = coveragePlanSelect.value;
+
+    if (initialHMOValue) {
+        // Fetch plans
+        hmoSelect.dispatchEvent(new Event('change'));
+        // If a coverage plan was also initially selected, and the HMO change reloads it,
+        // the subsequent plan.id == initialPlanValue in the loop will trigger the change event
+        // for the coverage plan after it's loaded.
+    }
+});
+</script>
+{% endblock %}

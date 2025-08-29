@@ -1,0 +1,157 @@
+{% extends 'website/layout.html' %}
+{% load static %}
+
+{% block title %}
+Our Services - {{ site_info.name }}
+{% endblock title %}
+
+{% block content %}
+<div class="breadcumb-wrapper" style="height:400px" data-bg-src="{% static 'website/img/images/bg.webp' %}">
+    <div class="container">
+        <div class="breadcumb-content">
+            <h1 class="breadcumb-title">Our Services</h1>
+            <ul class="breadcumb-menu">
+                <li><a href="{% url 'home' %}">Home</a></li>
+                <li>Services</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<section class="service-area-3 space" id="service-sec">
+    <div class="container">
+        <div class="row justify-content-center align-items-center">
+            <div class="col-lg-8">
+                <div class="title-area text-center">
+                    <span class="sub-title">Specialized Medical Care</span>
+                    <h2 class="sec-title">We provide a wide range of specialized medical services.</h2>
+                    <p>From routine check-ups to advanced surgical procedures, our hospital is equipped to handle all your health needs. Our departments work collaboratively to ensure you receive integrated and comprehensive care.</p>
+                </div>
+            </div>
+        </div>
+        <div class="row gy-30 gx-30 justify-content-center">
+            <div class="col-lg-4 col-md-6">
+                <div class="service-card style3">
+                    <div class="box-thumb"><img src="{% static 'website/img/images/service2.jpg' %}" alt="icon"></div>
+                    <div class="box-content">
+                        <h3 class="box-title"><a href="{% url 'in_patient' %}">In-Patient Care</a></h3>
+                        <p class="box-text">24/7 medical supervision and care in our modern and comfortable patient wards.</p>
+                        <a href="{% url 'in_patient' %}" class="link-btn">Read More <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <div class="service-card style3">
+                    <div class="box-thumb"><img src="{% static 'website/img/images/service2.jpg' %}" alt="icon"></div>
+                    <div class="box-content">
+                        <h3 class="box-title"><a href="{% url 'out_patient' %}">Out-Patient Clinic</a></h3>
+                        <p class="box-text">Access specialists for consultations, follow-ups, and minor procedures without admission.</p>
+                        <a href="{% url 'out_patient' %}" class="link-btn">Read More <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <div class="service-card style3">
+                    <div class="box-thumb"><img src="{% static 'website/img/images/service2.jpg' %}" alt="icon"></div>
+                    <div class="box-content">
+                        <h3 class="box-title"><a href="{% url 'physiotherapy' %}">Physiotherapy</a></h3>
+                        <p class="box-text">Personalized rehabilitation programs to restore movement and function.</p>
+                        <a href="{% url 'physiotherapy' %}" class="link-btn">Read More <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                </div>
+            </div>
+             <div class="col-lg-4 col-md-6">
+                <div class="service-card style3">
+                    <div class="box-thumb"><img src="{% static 'website/img/images/service2.jpg' %}" alt="icon"></div>
+                    <div class="box-content">
+                        <h3 class="box-title"><a href="{% url 'surgery' %}">Surgical Services</a></h3>
+                        <p class="box-text">From minor procedures to complex operations, our surgical team is here for you.</p>
+                        <a href="{% url 'surgery' %}" class="link-btn">Read More <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                </div>
+            </div>
+             <div class="col-lg-4 col-md-6">
+                <div class="service-card style3">
+                    <div class="box-thumb"><img src="{% static 'website/img/images/service2.jpg' %}" alt="icon"></div>
+                    <div class="box-content">
+                        <h3 class="box-title"><a href="{% url 'eye_clinic' %}">Eye Clinic</a></h3>
+                        <p class="box-text">Comprehensive eye care, from routine check-ups to advanced ophthalmic surgery.</p>
+                        <a href="{% url 'eye_clinic' %}" class="link-btn">Read More <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="space bg-smoke2">
+    <div class="container">
+        <div class="title-area text-center">
+            <span class="sub-title">Our Process</span>
+            <h2 class="sec-title">Your Journey to Better Health</h2>
+        </div>
+        <div class="row gy-4 justify-content-center">
+            <div class="col-md-6 col-lg-4">
+                <div class="process-card">
+                    <div class="box-icon"><img src="{% static 'website/img/icon/process_1_1.svg' %}" alt="icon"></div>
+                    <h3 class="box-title">1. Book an Appointment</h3>
+                    <p class="box-text">Easily schedule your visit with one of our specialists through our online portal or by calling us directly.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="process-card">
+                    <div class="box-icon"><img src="{% static 'website/img/icon/process_1_2.svg' %}" alt="icon"></div>
+                    <h3 class="box-title">2. Consultation & Diagnosis</h3>
+                    <p class="box-text">Meet with our expert doctors for a thorough evaluation and accurate diagnosis using advanced medical technology.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="process-card">
+                    <div class="box-icon"><img src="{% static 'website/img/icon/process_1_3.svg' %}" alt="icon"></div>
+                    <h3 class="box-title">3. Treatment & Follow-up</h3>
+                    <p class="box-text">Receive a personalized treatment plan and compassionate follow-up care to ensure a smooth and effective recovery.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="space">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="title-area text-center">
+                    <span class="sub-title">Frequently Asked Questions</span>
+                    <h2 class="sec-title">Have Questions? We Have Answers.</h2>
+                </div>
+                <div class="accordion-area accordion" id="faqAccordion">
+                    <div class="accordion-card">
+                        <div class="accordion-header" id="collapse-item-1"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-1">Do I need a referral to see a specialist?</button></div>
+                        <div id="collapse-1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                <p class="faq-text">While some specialists may require a referral from a primary care physician, many of our clinics accept direct appointments. Please contact us or the specific department for their policy.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-card active">
+                        <div class="accordion-header" id="collapse-item-2"><button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-2">What are the hospital's visiting hours?</button></div>
+                        <div id="collapse-2" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                <p class="faq-text">General visiting hours are from 10:00 AM to 8:00 PM. However, hours may vary for specific wards like the ICU. We recommend checking our contact page or calling ahead for detailed information.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-card">
+                        <div class="accordion-header" id="collapse-item-3"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-3">How can I pay for my medical services?</button></div>
+                        <div id="collapse-3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">
+                                <p class="faq-text">We accept a variety of payment methods, including cash, credit/debit cards, and mobile money. We also work with a wide range of insurance providers. Please visit our billing department for more details.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}

@@ -1,0 +1,204 @@
+{% load static %}
+<!doctype html>
+<html class="no-js" lang="zxx" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <title>{% block title %}{{ site_info.name }}{% endblock title %}</title>
+    <meta name="author" content="{{ site_info.name }}">
+    <meta name="description" content="Comprehensive healthcare services at {{ site_info.name }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'website/img/favicons/favicon-32x32.png' %}">
+    <meta name="theme-color" content="#ffffff">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,400;6..12,700&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'website/css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'website/css/fontawesome.min.css' %}">
+    <link rel="stylesheet" href="{% static 'website/css/magnific-popup.min.css' %}">
+    <link rel="stylesheet" href="{% static 'website/css/swiper-bundle.min.css' %}">
+    <link rel="stylesheet" href="{% static 'website/css/style.css' %}">
+
+</head>
+
+<body>
+    <header class="th-header header-layout3">
+        <div class="sticky-wrapper">
+            <div class="container">
+                <div class="menu-area">
+                    <div class="header-logo">
+                        {% if site_info.logo %}
+                        <a href="{% url 'home' %}"><img src="{{ site_info.logo.url }}" style="width:80px;height:50px" alt="{{ site_info.short_name }}"></a>
+                        {% endif %}
+                    </div>
+                    <div class="menu-area-wrap">
+                        <nav class="main-menu d-none d-lg-block">
+                            <ul>
+                                <li><a href="{% url 'home' %}">Home</a></li>
+                                <li><a href="{% url 'about' %}">About Us</a></li>
+                                <li class="menu-item-has-children">
+                                    <a href="{% url 'services' %}">Services</a>
+                                    <ul class="sub-menu">
+                                        <li><a href="{% url 'in_patient' %}">In-Patient Care</a></li>
+                                        <li><a href="{% url 'out_patient' %}">Out-Patient Clinic</a></li>
+                                        <li><a href="{% url 'physiotherapy' %}">Physiotherapy</a></li>
+                                        <li><a href="{% url 'surgery' %}">Surgical Services</a></li>
+                                        <li><a href="{% url 'eye_clinic' %}">Eye Clinic</a></li>
+                                    </ul>
+                                </li>
+                                <li><a href="{% url 'doctors' %}">Doctors</a></li>
+                                <li><a href="{% url 'contact' %}">Contact Us</a></li>
+                            </ul>
+                        </nav>
+                    </div>
+                    <div class="header-button">
+                        <a href="{% url 'contact' %}" class="th-btn style3 d-xl-block d-none"><i class="fas fa-calendar-alt me-2"></i> Book Appointment</a>
+                        <button type="button" class="icon-btn th-menu-toggle d-lg-none"><i class="far fa-bars"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="th-menu-wrapper">
+        <div class="th-menu-area text-center">
+            <button class="th-menu-toggle"><i class="fal fa-times"></i></button>
+            <div class="mobile-logo">
+                 {% if site_info.logo %}
+                <a href="{% url 'home' %}"><img style="width:100px;height100px" src="{{ site_info.logo.url }}" alt="{{ site_info.short_name }}"></a>
+                {% endif %}
+            </div>
+            <div class="th-mobile-menu">
+                <ul>
+                    <li><a href="{% url 'home' %}">Home</a></li>
+                    <li><a href="{% url 'about' %}">About Us</a></li>
+                    <li class="menu-item-has-children">
+                        <a href="{% url 'services' %}">Services</a>
+                        <ul class="sub-menu">
+                            <li><a href="{% url 'in_patient' %}">In-Patient Care</a></li>
+                            <li><a href="{% url 'out_patient' %}">Out-Patient Clinic</a></li>
+                            <li><a href="{% url 'physiotherapy' %}">Physiotherapy</a></li>
+                            <li><a href="{% url 'surgery' %}">Surgical Services</a></li>
+                            <li><a href="{% url 'eye_clinic' %}">Eye Clinic</a></li>
+                        </ul>
+                    </li>
+                    <li><a href="{% url 'doctors' %}">Doctors</a></li>
+                    <li><a href="{% url 'contact' %}">Contact Us</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+
+    {% block content %}
+    {% endblock content %}
+
+
+    <footer class="footer-wrapper footer-default" data-bg-src="{% static 'website/img/bg/footer-default-bg-mask.png' %}">
+        <div class="widget-area">
+            <div class="container">
+                <div class="row justify-content-between">
+                    <div class="col-md-6 col-xl-auto">
+                        <div class="widget footer-widget">
+                            <div class="th-widget-about">
+                                <div class="about-logo">
+                                    {% if site_info.logo %}
+                                    <a href="{% url 'home' %}"><img src="{{ site_info.logo.url }}" alt="{{ site_info.short_name }}"></a>
+                                    {% endif %}
+                                </div>
+                                <p class="about-text">Your trusted partner in health, providing compassionate care with state-of-the-art technology and a dedicated team of professionals.</p>
+                                <a href="{% url 'contact' %}" class="th-btn"><i class="fas fa-phone me-2"></i> Contact Us Now</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-xl-auto">
+                        <div class="widget widget_nav_menu footer-widget">
+                            <h3 class="widget_title">Quick Links</h3>
+                            <div class="menu-all-pages-container">
+                                <ul class="menu">
+                                    <li><a href="{% url 'about' %}">About Us</a></li>
+                                    <li><a href="{% url 'services' %}">Our Services</a></li>
+                                    <li><a href="{% url 'doctors' %}">Find a Doctor</a></li>
+                                    <li><a href="{% url 'contact' %}">Contact Us</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-xl-auto">
+                        <div class="widget widget_nav_menu footer-widget">
+                            <h3 class="widget_title">Our Services</h3>
+                            <div class="menu-all-pages-container">
+                                <ul class="menu">
+                                    <li><a href="{% url 'in_patient' %}">In-Patient Care</a></li>
+                                    <li><a href="{% url 'out_patient' %}">Out-Patient Clinic</a></li>
+                                    <li><a href="{% url 'physiotherapy' %}">Physiotherapy</a></li>
+                                    <li><a href="{% url 'surgery' %}">Surgery</a></li>
+                                    <li><a href="{% url 'eye_clinic' %}">Eye Clinic</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-xl-auto">
+                        <div class="widget footer-widget">
+                            <div class="th-widget-contact">
+                                <h3 class="widget_title">Contact Us</h3>
+                                <div class="info-card">
+                                    <div class="box-icon"><i class="fal fa-phone"></i></div>
+                                    <div class="box-content">
+                                        <p class="box-text">Call us any time:</p>
+                                        <h4 class="box-title"><a href="tel:{{ site_info.mobile_1 }}">{{ site_info.mobile_1 }}</a></h4>
+                                    </div>
+                                </div>
+                                <div class="info-card">
+                                    <div class="box-icon"><i class="fal fa-envelope-open"></i></div>
+                                    <div class="box-content">
+                                        <p class="box-text">Email us any time:</p>
+                                        <h4 class="box-title"><a href="mailto:{{ site_info.email }}">{{ site_info.email }}</a></h4>
+                                    </div>
+                                </div>
+                                <div class="th-social style2">
+                                    {% if site_info.facebook_handle %}<a href="{{ site_info.facebook_handle }}"><i class="fab fa-facebook-f"></i></a>{% endif %}
+                                    {% if site_info.twitter_handle %}<a href="{{ site_info.twitter_handle }}"><i class="fab fa-twitter"></i></a>{% endif %}
+                                    {% if site_info.youtube_handle %}<a href="{{ site_info.youtube_handle }}"><i class="fab fa-youtube"></i></a>{% endif %}
+                                    {% if site_info.linkedin_handle %}<a href="{{ site_info.linkedin_handle }}"><i class="fab fa-linkedin-in"></i></a>{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="copyright-wrap">
+            <div class="container">
+                <div class="row justify-content-center gy-3 align-items-center">
+                    <div class="col-lg-12">
+                        <p class="copyright-text text-center">
+                            <i class="fal fa-copyright"></i> Copyright {% now "Y" %} <a href="{% url 'home' %}">{{ site_info.name }}</a>. All Rights Reserved.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <div class="scroll-top">
+        <svg class="progress-circle svg-content" width="100%" height="100%" viewbox="-1 -1 102 102">
+            <path d="M50,1 a49,49 0 0,1 0,98 a49,49 0 0,1 0,-98"></path>
+        </svg>
+    </div>
+
+    <script src="{% static 'website/js/vendor/jquery-3.7.1.min.js' %}"></script>
+    <script src="{% static 'website/js/swiper-bundle.min.js' %}"></script>
+    <script src="{% static 'website/js/bootstrap.min.js' %}"></script>
+    <script src="{% static 'website/js/jquery.magnific-popup.min.js' %}"></script>
+    <script src="{% static 'website/js/jquery.counterup.min.js' %}"></script>
+    <script src="{% static 'website/js/imagesloaded.pkgd.min.js' %}"></script>
+    <script src="{% static 'website/js/isotope.pkgd.min.js' %}"></script>
+    <script src="{% static 'website/js/main.js' %}"></script>
+</body>
+
+</html>

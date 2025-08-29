@@ -1,0 +1,221 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Add New Drug Stock</h4>
+            {% include 'admin_site/partials/error.html' %}
+
+            <div class="alert alert-info" role="alert">
+                Adding stock to the **last created batch**: <strong>{{ last_batch.name|upper }}</strong> (Date: {{ last_batch.date|date:"F d, Y" }})
+            </div>
+
+            <form method="post">
+                {% csrf_token %}
+                {{ formset.management_form }} {# REQUIRED for formsets #}
+
+                <div id="form-container">
+                    {# Loop through existing forms in the formset (if any) #}
+                    {% for form in formset %}
+                        <div class="stock-item-form card p-4 mb-4 border border-secondary">
+                            <h6 class="mb-3">Drug Stock Entry #{{ forloop.counter }}</h6>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.drug }}
+                                        <label for="{{ form.drug.id_for_label }}">{{ form.drug.label }} </label>
+                                        {% if form.drug.errors %}<div class="text-danger">{{ form.drug.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.quantity_bought }}
+                                        <label for="{{ form.quantity_bought.id_for_label }}">{{ form.quantity_bought.label }}</label>
+                                        {% if form.quantity_bought.errors %}<div class="text-danger">{{ form.quantity_bought.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.unit_cost_price }}
+                                        <label for="{{ form.unit_cost_price.id_for_label }}">{{ form.unit_cost_price.label }}</label>
+                                        {% if form.unit_cost_price.errors %}<div class="text-danger">{{ form.unit_cost_price.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.selling_price }}
+                                        <label for="{{ form.selling_price.id_for_label }}">{{ form.selling_price.label }}</label>
+                                        {% if form.selling_price.errors %}<div class="text-danger">{{ form.selling_price.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.location }}
+                                        <label for="{{ form.location.id_for_label }}">{{ form.location.label }}</label>
+                                        {% if form.location.errors %}<div class="text-danger">{{ form.location.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.expiry_date }}
+                                        <label for="{{ form.expiry_date.id_for_label }}">{{ form.expiry_date.label }}</label>
+                                        {% if form.expiry_date.errors %}<div class="text-danger">{{ form.expiry_date.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                {% if forloop.counter > 1 %}
+                                <div class="col-12 mb-3">
+                                    <button type="button" class="btn btn-danger btn-sm remove-form">
+                                        <i class="bi bi-trash me-1"></i> Remove This Entry
+                                    </button>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {# Render the hidden batch field (it will be pre-filled by the view) #}
+                            {{ form.batch }}
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <button type="button" id="add-another-stock" class="btn btn-info btn-sm mb-4">
+                    <i class="bi bi-plus-circle me-1"></i> Add Another Drug
+                </button>
+
+                <div class="d-flex justify-content-end">
+                    <a class="btn btn-danger me-2" href="{% url 'drug_stock_index' %}"> Cancel</a>
+                    <button type="submit" class="btn btn-primary">Save All Stock</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# Hidden template for new forms - Django's empty_form #}
+<div id="empty-form-template" style="display: none;">
+    <div class="stock-item-form card p-4 mb-4 border border-secondary">
+        <h6 class="mb-3">Drug Stock Entry #<span class="form-counter"></span></h6>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.drug }}
+                    <label for="{{ formset.empty_form.drug.id_for_label }}">{{ formset.empty_form.drug.label }}</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.quantity_bought }}
+                    <label for="{{ formset.empty_form.quantity_bought.id_for_label }}">{{ formset.empty_form.quantity_bought.label }}</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.unit_cost_price }}
+                    <label for="{{ formset.empty_form.unit_cost_price.id_for_label }}">{{ formset.empty_form.unit_cost_price.label }}</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.selling_price }}
+                    <label for="{{ formset.empty_form.selling_price.id_for_label }}">{{ formset.empty_form.selling_price.label }}</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.location }}
+                    <label for="{{ formset.empty_form.location.id_for_label }}">{{ formset.empty_form.location.label }}</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.expiry_date }}
+                    <label for="{{ formset.empty_form.expiry_date.id_for_label }}">{{ formset.empty_form.expiry_date.label }}</label>
+                </div>
+            </div>
+            <div class="col-12 mb-3">
+                <button type="button" class="btn btn-danger btn-sm remove-form">
+                    <i class="bi bi-trash me-1"></i> Remove This Entry
+                </button>
+            </div>
+        </div>
+        {{ formset.empty_form.batch }}
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const formContainer = document.getElementById('form-container');
+        const addAnotherBtn = document.getElementById('add-another-stock');
+        const totalForms = document.querySelector('#id_{{ formset.prefix }}-TOTAL_FORMS');
+        const emptyFormTemplate = document.getElementById('empty-form-template');
+
+        function updateFormNumbers() {
+            const forms = formContainer.querySelectorAll('.stock-item-form');
+            forms.forEach((form, index) => {
+                const counter = form.querySelector('.form-counter');
+                if (counter) {
+                    counter.textContent = index + 1;
+                }
+                // Update h6 text for forms that don't use the counter span
+                const h6 = form.querySelector('h6');
+                if (h6 && !counter) {
+                    h6.textContent = `Drug Stock Entry #${index + 1}`;
+                }
+            });
+        }
+
+        function addRemoveHandlers() {
+            document.querySelectorAll('.remove-form').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const form = this.closest('.stock-item-form');
+                    form.remove();
+
+                    // Update total forms count
+                    const currentCount = parseInt(totalForms.value);
+                    totalForms.value = currentCount - 1;
+
+                    updateFormNumbers();
+                });
+            });
+        }
+
+        addAnotherBtn.addEventListener('click', function() {
+            const currentFormCount = parseInt(totalForms.value);
+
+            // Clone the empty form template
+            const newFormHtml = emptyFormTemplate.innerHTML;
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = newFormHtml;
+
+            // Replace __prefix__ with the current form count
+            tempDiv.innerHTML = tempDiv.innerHTML.replace(/__prefix__/g, currentFormCount);
+
+            // Update the counter
+            const counter = tempDiv.querySelector('.form-counter');
+            if (counter) {
+                counter.textContent = currentFormCount + 1;
+            }
+
+            // Append the new form
+            while (tempDiv.firstChild) {
+                formContainer.appendChild(tempDiv.firstChild);
+            }
+
+            // Update total forms count
+            totalForms.value = currentFormCount + 1;
+
+            // Add remove handlers to new form
+            addRemoveHandlers();
+        });
+
+        // Initialize remove handlers for existing forms
+        addRemoveHandlers();
+
+        // Initialize at least one form if none are present
+        if (parseInt(totalForms.value) === 0) {
+            addAnotherBtn.click();
+        }
+    });
+</script>
+
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Consultant</h4>
+            <p>Consultant: <i>Dr. {{ consultant.staff|title }} ({{ consultant.specialization.name|title }})</i></p>
+
+            <p>The consultant's profile will be permanently deleted.</p>
+            {% if consultant.doctorschedulemodel_set.all|length > 0 %}
+                <p>{{ consultant.doctorschedulemodel_set.all|length }} schedule{{ consultant.doctorschedulemodel_set.all|length|pluralize }} associated with this consultant will also be deleted.</p>
+            {% else %}
+                <p>There are no schedules associated with this consultant.</p>
+            {% endif %}
+
+            {% if consultant.patientqueuemodel_set.all|length > 0 %}
+                <p>{{ consultant.patientqueuemodel_set.all|length }} patient queue record{{ consultant.patientqueuemodel_set.all|length|pluralize }} associated with this consultant will also be deleted.</p>
+            {% else %}
+                <p>There are no patient queue records associated with this consultant.</p>
+            {% endif %}
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'consultant_list' %}">Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

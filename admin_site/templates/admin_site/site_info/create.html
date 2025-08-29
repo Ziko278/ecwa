@@ -1,0 +1,77 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<form action="" method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% include 'admin_site/partials/error.html' %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card profile-card card-bx m-b30">
+                <div class="card-header">
+                    <h6 class="title">Hospital Information</h6>
+                </div>
+
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Hospital Name</label>
+                            {{ form.name }}
+                        </div>
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Hospital Short Name</label>
+                            {{ form.short_name }}
+                        </div>
+
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Mobile 1</label>
+                            {{ form.mobile_1 }}
+                        </div>
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Mobile 2</label>
+                            {{ form.mobile_2 }}
+                        </div>
+
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Email</label>
+                            {{ form.email }}
+                        </div>
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Address</label>
+                            {{ form.address }}
+                        </div>
+
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Hospital Logo</label>
+                            {{ form.logo }}
+                        </div>
+
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Facebook Handle</label>
+                            {{ form.facebook_handle }}
+                        </div>
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">Twitter Handle</label>
+                            {{ form.twitter_handle }}
+                        </div>
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">LinkedIn Handle</label>
+                            {{ form.linkedin_handle }}
+                        </div>
+                        <div class="col-sm-6 mb-4">
+                            <label class="form-label">YouTube Handle</label>
+                            {{ form.youtube_handle }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-footer text-end">
+                    <a href="{% url 'site_info_detail' site_info.id %}" class="btn btn-danger me-2">Cancel</a>
+                    <input class="btn btn-primary" type="submit" value="Save" />
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% endblock %}

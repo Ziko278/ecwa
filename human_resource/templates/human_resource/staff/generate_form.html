@@ -1,0 +1,145 @@
+{% extends 'admin_dashboard/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<form action="" method="POST">
+    {% csrf_token %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Staff Selection<span style="float:right"><b>Check all</b> <input class="form-check-input"  id="check-all" type="checkbox"></span></h5>
+                {% if staff_list %}
+                <ol class="list-group list-group-numbered">
+                    {% for staff in staff_list %}
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold">{{ staff.surname|title }} {% if staff.middle_name %} {{ staff.middle_name|title }} {% endif %} {{ staff.last_name|title }} </div>
+                            {{ staff.position|upper }}
+                        </div>
+                        <span class="">
+                            <input class="form-check-input staff-check-list" type="checkbox" name="staff_list[]" value="{{ staff.id }}">
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                    <p>No staff Registered</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">Required Fields</h5>
+              <ul class="list-group">
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Full Name
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="full_name"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Surname
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="surname"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Middle Name
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="middle_name"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Last Name
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="last_name"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Staff ID
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="staff_id"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Department
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="department"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Position
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="position"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Phone No
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="mobile"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Email
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="email"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Address
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="residential_address"></span>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Gender
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="gender"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  State of Origin
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="state"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Local Government Area
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="lga"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Religion
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="religion"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Marital Status
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="marital_status"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Date of Birth
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="date_of_birth"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Salary
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="salary"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Account No
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="account_number"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Account Name
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="account_name"></span>
+                </li>
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                  Bank
+                  <span class=""><input class="form-check-input" type="checkbox" name="form_field[]" value="bank_name"></span>
+                </li>
+
+              </ul>
+          </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body" style="padding:20px">
+                <b>File Name</b><input type="search" name="file_name" autocomplete="off" required class="form-control" style="width:70%">
+                <br />
+                <button style="inline-block" class="btn btn-primary">Generate Excel File</button>
+            </div>
+        </div>
+    </div>
+</div>
+</form>
+
+<script src="{% static 'admin_dashboard/scripts/jquery.js' %}"></script>
+<script>
+    $(document).ready(function(){
+        $( '#check-all' ).click( function () {
+            $( '.staff-check-list' ).prop('checked', this.checked)
+        })
+    })
+</script>
+{%endblock %}

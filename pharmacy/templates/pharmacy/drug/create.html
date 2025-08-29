@@ -1,0 +1,188 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Add New Drug Product</h4>
+            <p class="card-description">
+                Use the form below to register a new drug product for your inventory.
+            </p>
+            {% include 'admin_site/partials/error.html' %}
+
+            <form class="forms-sample" method="post" action="{% url 'drug_create' %}">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="formulation-search-input">Search Drug Formulation<span style="color:red"><b>*</b></span></label>
+                            <input type="text" id="formulation-search-input" class="form-control" placeholder="Type to search formulations..." autocomplete="off">
+                            <small class="text-muted">Search by generic name, form type, or strength.</small>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label for="id_formulation" class="d-block">Select Formulation<span style="color:red"><b>*</b></span></label>
+                            <select name="formulation" id="id_formulation" class="form-control" required>
+                                <option value="">--- Select a drug formulation ---</option>
+                                {% for formulation in formulation_list %}
+                                <option
+                                    value="{{ formulation.pk }}"
+                                    data-generic-name="{{ formulation.generic_drug.generic_name|lower }}"
+                                    data-form-type="{{ formulation.form_type|lower }}"
+                                    data-strength="{{ formulation.strength|lower }}"
+                                >
+                                    {{ formulation.generic_drug.generic_name|title }} {{ formulation.strength }} {{ formulation.get_form_type_display }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group mb-3">
+                            <label for="manufacturer-search-input">Search Manufacturer<span style="color:red"><b>*</b></span></label>
+                            <input type="text" id="manufacturer-search-input" class="form-control" placeholder="Type to search manufacturers..." autocomplete="off">
+                            <small class="text-muted">Search by manufacturer name or country.</small>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label for="id_manufacturer" class="d-block">Select Manufacturer<span style="color:red"><b>*</b></span></label>
+                            <select name="manufacturer" id="id_manufacturer" class="form-control" required>
+                                <option value="">--- Select a manufacturer ---</option>
+                                {% for manufacturer in manufacturer_list %}
+                                <option
+                                    value="{{ manufacturer.pk }}"
+                                    data-name="{{ manufacturer.name|lower }}"
+                                    data-country="{{ manufacturer.country|lower|default:'' }}"
+                                >
+                                    {{ manufacturer.name|title }} {% if manufacturer.country %}({{ manufacturer.country|title }}){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.brand_name }}
+                            <label for="id_brand_name">Brand Name</label>
+                            <small class="text-muted">Optional commercial name for the drug.</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.sku }}
+                            <label for="id_sku">SKU (Stock Keeping Unit)<span style="color:red"><b>*</b></span></label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.store_quantity }}
+                            <label for="id_store_quantity">Quantity in Store/Warehouse</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.pharmacy_quantity }}
+                            <label for="id_pharmacy_quantity">Quantity at Pharmacy Counter</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.minimum_stock_level }}
+                            <label for="id_minimum_stock_level">Minimum Stock Level</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mt-3">
+                        <div class="form-check form-switch mb-3">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="id_is_active">Is Active</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end">
+                    <button type="submit" class="btn btn-primary me-2">Save Drug Product</button>
+                    <a href="{% url 'drug_index' %}" class="btn btn-light">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // --- Formulation Search ---
+    const formulationSearchInput = document.getElementById('formulation-search-input');
+    const formulationSelectElement = document.getElementById('id_formulation');
+    const allFormulationOptions = Array.from(formulationSelectElement.options); // Keep a copy of all options
+
+    formulationSearchInput.addEventListener('input', function (event) {
+        const searchText = event.target.value.toLowerCase();
+        // Clear current options, except the first (placeholder)
+        formulationSelectElement.innerHTML = allFormulationOptions[0].outerHTML;
+
+        // Filter and re-add options
+        allFormulationOptions.slice(1).forEach(option => { // Skip the placeholder
+            const genericName = option.dataset.genericName;
+            const formType = option.dataset.formType;
+            const strength = option.dataset.strength;
+
+            if (genericName.includes(searchText) || formType.includes(searchText) || strength.includes(searchText)) {
+                formulationSelectElement.appendChild(option.cloneNode(true)); // Append a clone to avoid moving issues
+            }
+        });
+
+        // If no results, add a "No results found" option
+        if (formulationSelectElement.options.length === 1 && searchText !== '') {
+            const noResultsOption = document.createElement('option');
+            noResultsOption.value = '';
+            noResultsOption.textContent = 'No formulations found';
+            noResultsOption.disabled = true;
+            formulationSelectElement.appendChild(noResultsOption);
+        }
+    });
+
+    // --- Manufacturer Search ---
+    const manufacturerSearchInput = document.getElementById('manufacturer-search-input');
+    const manufacturerSelectElement = document.getElementById('id_manufacturer');
+    const allManufacturerOptions = Array.from(manufacturerSelectElement.options); // Keep a copy of all options
+
+    manufacturerSearchInput.addEventListener('input', function (event) {
+        const searchText = event.target.value.toLowerCase();
+        // Clear current options, except the first (placeholder)
+        manufacturerSelectElement.innerHTML = allManufacturerOptions[0].outerHTML;
+
+        // Filter and re-add options
+        allManufacturerOptions.slice(1).forEach(option => { // Skip the placeholder
+            const name = option.dataset.name;
+            const country = option.dataset.country;
+
+            if (name.includes(searchText) || country.includes(searchText)) {
+                manufacturerSelectElement.appendChild(option.cloneNode(true)); // Append a clone
+            }
+        });
+
+        // If no results, add a "No results found" option
+        if (manufacturerSelectElement.options.length === 1 && searchText !== '') {
+            const noResultsOption = document.createElement('option');
+            noResultsOption.value = '';
+            noResultsOption.textContent = 'No manufacturers found';
+            noResultsOption.disabled = true;
+            manufacturerSelectElement.appendChild(noResultsOption);
+        }
+    });
+
+    // Initial render of all options
+    // This is implicitly handled by the Django template loop for the initial state.
+    // The JS only takes over when searching.
+});
+</script>
+
+{% endblock %}

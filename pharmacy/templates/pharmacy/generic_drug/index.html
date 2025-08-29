@@ -1,0 +1,132 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Add Generic Drug" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#genericDrugHelperModal"><b>Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="{% url 'generic_drug_create' %}">
+                    <button title="Add Generic Drug" type="button" style="width:100%" class="btn btn-sm btn-primary">Add Generic Drug</button>
+                </a></li>
+            </ul>
+        </div>
+
+
+        <div class="card-body">
+            <h5 class="card-title">List of Generic Drugs</h5>
+            {% include 'admin_site/partials/error.html' %}
+            <table class="table table-borderless datatable">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Generic Name</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">ATC Code</th>
+                    <th class="text-center" scope="col">Prescription Only</th>
+                    <th class="text-center" scope="col">Status</th>
+                    <th scope="col" class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+
+                {% for generic_drug in generic_drug_list %}
+                <tr>
+                    <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
+                    <td>{{ generic_drug.generic_name|title }}</td>
+                    <td>{% if generic_drug.category %}{{ generic_drug.category.name|title }}{% else %}---{% endif %}</td>
+                    <td>{% if generic_drug.atc_code %}{{ generic_drug.atc_code|upper }}{% else %}---{% endif %}</td>
+                    <td class="text-center">
+                        {% if generic_drug.is_prescription_only %}
+                            <i class="fs-4 bi bi-check-circle-fill text-success" title="Prescription Required"></i>
+                        {% else %}
+                            <i class="fs-4 bi bi-x-circle-fill text-danger" title="No Prescription Required"></i>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% if generic_drug.status == 'active' %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <a title="Generic Drug Detail" href="{% url 'generic_drug_detail' generic_drug.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
+                        <a title="Edit Generic Drug" href="{% url 'generic_drug_edit' generic_drug.id %}" class="btn btn-warning"><i class="bi bi-pencil-square"></i></a>
+                        <a title="Delete Generic Drug" href="{% url 'generic_drug_delete' generic_drug.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+
+
+                </tbody>
+            </table>
+            {% if not generic_drug_list %}
+                 <h3 class="text-center">No Generic Drugs Added Yet</h3>
+            {% endif %}
+
+            {# Pagination controls #}
+            {% if is_paginated %}
+            <nav aria-label="Page navigation example" class="mt-3">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Previous</span></li>
+                    {% endif %}
+
+                    {% for i in paginator.page_range %}
+                        {% if page_obj.number == i %}
+                            <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                        {% else %}
+                            <li class="page-item"><a class="page-link" href="?page={{ i }}">{{ i }}</a></li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Next</span></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<!-- Generic Drug Helper Modal -->
+<div class="modal fade" id="genericDrugHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Generic Drug Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    A **Generic Drug** represents the active pharmaceutical ingredient (e.g., Paracetamol, Amoxicillin) and serves as the foundation for various drug products.
+                </p>
+
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> Assigning a **Category** and **ATC Code** helps in global standardization and organization.
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> The `Prescription Only` flag indicates whether the drug requires a prescription for dispensing.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

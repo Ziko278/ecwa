@@ -1,0 +1,27 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Drug Formulation</h4>
+            <p>Formulation: <i>{{ formulation.generic_drug.generic_name|title }} {{ formulation.strength }} {{ formulation.get_form_type_display }}</i></p>
+
+            <p>This drug formulation record will be permanently deleted.</p>
+            {% if formulation.products.all|length > 0 %}
+                <p class="text-danger">
+                    **Warning:** {{ formulation.products.all|length }} drug product{{ formulation.products.all|length|pluralize }}
+                    are directly linked to this formulation. Deleting this will also delete these products from your inventory.
+                </p>
+            {% else %}
+                <p>There are no drug products currently linked to this formulation.</p>
+            {% endif %}
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'drug_formulation_index' %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

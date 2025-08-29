@@ -1,0 +1,28 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Manufacturer</h4>
+            <p>Manufacturer: <i>{{ manufacturer.name|title }}</i></p>
+
+            <p>This manufacturer's record will be permanently deleted.</p>
+            {% if manufacturer.products.all|length > 0 %}
+                <p class="text-danger">
+                    **Warning:** {{ manufacturer.products.all|length }} drug product{{ manufacturer.products.all|length|pluralize }}
+                    currently associated with this manufacturer will also be affected.
+                    You may need to update these drug products manually if this manufacturer is essential.
+                </p>
+            {% else %}
+                <p>There are no drug products currently associated with this manufacturer.</p>
+            {% endif %}
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'manufacturer_index' %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

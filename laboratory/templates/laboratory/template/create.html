@@ -1,0 +1,363 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Add Lab Test Template</h4>
+            <p class="card-description">Fill in the details below to create a new lab test template.</p>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form method="post" id="templateForm">
+                {% csrf_token %}
+
+                <div class="form-floating mb-3">
+                    {{ form.name }}
+                    <label for="id_name">Template Name<span class="text-danger">*</span></label>
+                </div>
+
+                <div class="form-floating mb-3">
+                    {{ form.code }}
+                    <label for="id_code">Template Code</label>
+                </div>
+
+                <div class="form-floating mb-3">
+                    {{ form.category }}
+                    <label for="id_category">Category</label>
+                </div>
+
+                <!-- User-friendly Test Parameters Section -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Test Parameters</h5>
+                    <div class="card border-light">
+                        <div class="card-body">
+                            <div id="parametersContainer">
+                                <!-- Parameters will be added here dynamically -->
+                            </div>
+
+                            <button type="button" class="btn btn-success btn-sm" id="addParameterBtn">
+                                <i class="mdi mdi-plus"></i> Add Parameter
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden field for actual JSON data -->
+                <input type="hidden" id="id_test_parameters" name="test_parameters" value='{"parameters": []}'>
+
+                <div class="form-floating mb-3">
+                    {{ form.price }}
+                    <label for="id_price">Price (₦)</label>
+                </div>
+
+                <div class="form-floating mb-3">
+                    {{ form.sample_type }}
+                    <label for="id_sample_type">Sample Type</label>
+                </div>
+
+                <div class="form-floating mb-3">
+                    {{ form.sample_volume }}
+                    <label for="id_sample_volume">Sample Volume</label>
+                </div>
+
+                <div class="form-check mb-3">
+                    {{ form.is_active }}
+                    <label class="form-check-label" for="id_is_active">Active?</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary me-2">Save</button>
+                <a href="{% url 'lab_template_index' %}" class="btn btn-danger">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Parameter Template (Hidden) -->
+<template id="parameterTemplate">
+    <div class="parameter-item border rounded p-3 mb-3" style="background-color: #f8f9fa;">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control parameter-name" placeholder="Parameter Name">
+                    <label>Parameter Name *</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control parameter-code" placeholder="Code">
+                    <label>Code</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-floating mb-3">
+                    <select class="form-control parameter-type">
+                        <option value="numeric">Numeric</option>
+                        <option value="text">Text</option>
+                        <option value="select">Select Options</option>
+                        <option value="boolean">Yes/No</option>
+                    </select>
+                    <label>Type</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-danger btn-sm remove-parameter-btn mt-3">
+                    <i class="mdi mdi-delete"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Numeric specific fields -->
+        <div class="numeric-fields" style="display: none;">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="form-floating mb-3">
+                        <input type="text" class="form-control parameter-unit" placeholder="Unit">
+                        <label>Unit (e.g., g/dL, mg/L)</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-floating mb-3">
+                        <input type="number" class="form-control parameter-min" step="0.01" placeholder="Min">
+                        <label>Normal Range - Min</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-floating mb-3">
+                        <input type="number" class="form-control parameter-max" step="0.01" placeholder="Max">
+                        <label>Normal Range - Max</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-check mt-3">
+                        <input type="checkbox" class="form-check-input parameter-gender-specific">
+                        <label class="form-check-label">Gender Specific</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Select options fields -->
+        <div class="select-fields" style="display: none;">
+            <div class="mb-3">
+                <label class="form-label">Options (Enter each option on a new line):</label>
+                <textarea class="form-control parameter-options" rows="3" placeholder="A+&#10;A-&#10;B+&#10;B-&#10;AB+&#10;AB-&#10;O+&#10;O-"></textarea>
+            </div>
+        </div>
+    </div>
+</template>
+
+<style>
+.parameter-item {
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.parameter-item:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.remove-parameter-btn {
+    width: 40px;
+    height: 40px;
+}
+
+#parametersContainer:empty::before {
+    content: "No parameters added yet. Click 'Add Parameter' to start.";
+    color: #6c757d;
+    font-style: italic;
+    display: block;
+    padding: 20px;
+    text-align: center;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const parametersContainer = document.getElementById('parametersContainer');
+    const addParameterBtn = document.getElementById('addParameterBtn');
+    const parameterTemplate = document.getElementById('parameterTemplate');
+    const hiddenInput = document.getElementById('id_test_parameters');
+    let parameterCounter = 0;
+
+    // Add parameter function
+    function addParameter() {
+        parameterCounter++;
+        const clone = parameterTemplate.content.cloneNode(true);
+
+        // Add unique identifiers
+        const parameterItem = clone.querySelector('.parameter-item');
+        parameterItem.dataset.parameterId = parameterCounter;
+
+        parametersContainer.appendChild(clone);
+
+        // Attach event listeners to the new parameter
+        attachParameterEvents(parameterItem);
+
+        // Update JSON
+        updateJSON();
+    }
+
+    // Attach events to parameter item
+    function attachParameterEvents(parameterItem) {
+        const typeSelect = parameterItem.querySelector('.parameter-type');
+        const removeBtn = parameterItem.querySelector('.remove-parameter-btn');
+        const numericFields = parameterItem.querySelector('.numeric-fields');
+        const selectFields = parameterItem.querySelector('.select-fields');
+
+        // Type change handler
+        typeSelect.addEventListener('change', function() {
+            const type = this.value;
+
+            // Show/hide relevant fields
+            numericFields.style.display = type === 'numeric' ? 'block' : 'none';
+            selectFields.style.display = type === 'select' ? 'block' : 'none';
+
+            updateJSON();
+        });
+
+        // Remove parameter handler
+        removeBtn.addEventListener('click', function() {
+            parameterItem.remove();
+            updateJSON();
+        });
+
+        // Add change listeners to all inputs
+        const inputs = parameterItem.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('input', updateJSON);
+            input.addEventListener('change', updateJSON);
+        });
+
+        // Trigger initial type change
+        typeSelect.dispatchEvent(new Event('change'));
+    }
+
+    // Update JSON function
+    function updateJSON() {
+        const parameters = [];
+        const parameterItems = parametersContainer.querySelectorAll('.parameter-item');
+
+        parameterItems.forEach(item => {
+            const name = item.querySelector('.parameter-name').value.trim();
+            const code = item.querySelector('.parameter-code').value.trim();
+            const type = item.querySelector('.parameter-type').value;
+
+            if (!name) return; // Skip if no name
+
+            const parameter = {
+                name: name,
+                code: code || name.toUpperCase().replace(/\s+/g, '_'),
+                type: type
+            };
+
+            // Add type-specific fields
+            if (type === 'numeric') {
+                const unit = item.querySelector('.parameter-unit').value.trim();
+                const min = parseFloat(item.querySelector('.parameter-min').value);
+                const max = parseFloat(item.querySelector('.parameter-max').value);
+                const genderSpecific = item.querySelector('.parameter-gender-specific').checked;
+
+                if (unit) parameter.unit = unit;
+
+                if (!isNaN(min) || !isNaN(max)) {
+                    parameter.normal_range = {};
+                    if (!isNaN(min)) parameter.normal_range.min = min;
+                    if (!isNaN(max)) parameter.normal_range.max = max;
+                    if (genderSpecific) parameter.normal_range.gender_specific = true;
+                }
+            } else if (type === 'select') {
+                const optionsText = item.querySelector('.parameter-options').value.trim();
+                if (optionsText) {
+                    parameter.options = optionsText.split('\n')
+                        .map(opt => opt.trim())
+                        .filter(opt => opt.length > 0);
+                }
+            }
+
+            parameters.push(parameter);
+        });
+
+        const jsonData = { parameters: parameters };
+        hiddenInput.value = JSON.stringify(jsonData, null, 2);
+    }
+
+    // Load existing data if editing
+    function loadExistingData() {
+        try {
+            const existingData = JSON.parse(hiddenInput.value || '{"parameters": []}');
+            if (existingData.parameters && existingData.parameters.length > 0) {
+                existingData.parameters.forEach(param => {
+                    addParameter();
+                    const latestItem = parametersContainer.lastElementChild;
+
+                    // Fill in the data
+                    latestItem.querySelector('.parameter-name').value = param.name || '';
+                    latestItem.querySelector('.parameter-code').value = param.code || '';
+                    latestItem.querySelector('.parameter-type').value = param.type || 'numeric';
+
+                    if (param.type === 'numeric') {
+                        if (param.unit) latestItem.querySelector('.parameter-unit').value = param.unit;
+                        if (param.normal_range) {
+                            if (param.normal_range.min !== undefined) {
+                                latestItem.querySelector('.parameter-min').value = param.normal_range.min;
+                            }
+                            if (param.normal_range.max !== undefined) {
+                                latestItem.querySelector('.parameter-max').value = param.normal_range.max;
+                            }
+                            if (param.normal_range.gender_specific) {
+                                latestItem.querySelector('.parameter-gender-specific').checked = true;
+                            }
+                        }
+                    } else if (param.type === 'select' && param.options) {
+                        latestItem.querySelector('.parameter-options').value = param.options.join('\n');
+                    }
+
+                    // Trigger type change to show correct fields
+                    latestItem.querySelector('.parameter-type').dispatchEvent(new Event('change'));
+                });
+            }
+        } catch (e) {
+            console.log('No existing parameters to load');
+        }
+    }
+
+    // Event listeners
+    addParameterBtn.addEventListener('click', addParameter);
+
+    // Form submission handler
+    document.getElementById('templateForm').addEventListener('submit', function(e) {
+        updateJSON(); // Ensure JSON is up to date
+
+        // Basic validation
+        const parameters = JSON.parse(hiddenInput.value).parameters;
+        if (parameters.length === 0) {
+            e.preventDefault();
+            alert('Please add at least one test parameter.');
+            return false;
+        }
+
+        // Check for empty parameter names
+        const emptyNames = parameters.filter(p => !p.name.trim());
+        if (emptyNames.length > 0) {
+            e.preventDefault();
+            alert('Please fill in names for all parameters.');
+            return false;
+        }
+    });
+
+    // Load existing data on page load
+    loadExistingData();
+
+    // Add first parameter if none exist
+    if (parametersContainer.children.length === 0) {
+        addParameter();
+    }
+});
+</script>
+
+{% endblock %}

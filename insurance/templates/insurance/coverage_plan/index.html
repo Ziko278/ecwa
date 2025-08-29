@@ -1,0 +1,82 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Coverage Plans <small class="text-muted">({{ coverage_plans.count }})</small></h5>
+            <div>
+                <a href="{% url 'coverage_plan_create' %}" class="btn btn-sm btn-success">
+                    <i class="fas fa-plus-circle me-1"></i> Create New Plan
+                </a>
+            </div>
+        </div>
+
+        {% include 'admin_site/partials/error.html' %}
+
+        <div class="card-body">
+            <table class="table table-borderless datatable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Plan Name</th>
+                        <th>HMO</th>
+                        <th>Provider</th>
+                        <th>Active</th>
+                        <th>Created</th>
+                        <th class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for plan in coverage_plans %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td>{{ plan.name }}</td>
+                            <td>
+                                {% if plan.hmo %}
+                                    <a href="{% url 'hmo_detail' plan.hmo.id %}">{{ plan.hmo.name }}</a>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if plan.hmo and plan.hmo.insurance_provider %}
+                                    <a href="{% url 'insurance_provider_detail' plan.hmo.insurance_provider.id %}">
+                                        {{ plan.hmo.insurance_provider.name }}
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if plan.is_active %}
+                                    <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                    <span class="badge bg-danger">No</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ plan.created_at|date:"Y-m-d" }}</td>
+                            <td class="text-center">
+                                <a href="{% url 'coverage_plan_detail' plan.id %}" class="btn btn-sm btn-primary" title="View">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="{% url 'coverage_plan_update' plan.id %}" class="btn btn-sm btn-outline-primary" title="Edit">
+                                    <i class="bi bi-pencil-square"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            {% if not coverage_plans %}
+                <div class="text-center py-4">
+                    <h6 class="text-muted">No coverage plans yet. <a href="{% url 'coverage_plan_create' %}">Create one now</a>.</h6>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}

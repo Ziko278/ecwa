@@ -1,0 +1,28 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Category</h4>
+            <p>Category: <i>{{ category.name|upper }}</i></p>
+
+            <p>The category will be permanently deleted.</p>
+
+            {% if category.labtesttemplatemodel_set.all|length > 0 %}
+                <p>{{ category.labtesttemplatemodel_set.all|length }} template{{ category.labtesttemplatemodel_set.all|length|pluralize }} under this category will also be deleted.</p>
+            {% else %}
+                <p>There are currently no templates under this category.</p>
+            {% endif %}
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'lab_category_index' %}"> Cancel</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
