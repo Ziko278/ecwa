@@ -1,0 +1,211 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="row">
+    <div class="col-lg-12 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">Create New Consultation
+                    <a href="{% url 'doctor_dashboard' %}" class="btn btn-sm btn-outline-secondary float-end">
+                        <i class="bi bi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </h4>
+                <p class="card-description">
+                    Start a new consultation for walk-in patients or special cases
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 offset-lg-2">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Patient Selection & Details</h5>
+                
+                <form id="newConsultationForm">
+                    {% csrf_token %}
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Search Patient</label>
+                                <input type="text" class="form-control" id="patientSearch" placeholder="Search by name or patient ID...">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Select Patient</label>
+                                <select class="form-control" name="patient_id" id="patientSelect" required>
+                                    <option value="">Choose a patient...</option>
+                                    {% for patient in patients %}
+                                    <option value="{{ patient.id }}" data-name="{{ patient.first_name }} {{ patient.last_name }}" data-id="{{ patient.patient_id }}" data-age="{{ patient.age }}" data-gender="{{ patient.gender }}">
+                                        {{ patient.first_name }} {{ patient.last_name }} ({{ patient.patient_id }})
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="is_emergency" id="isEmergency">
+                                    <label class="form-check-label" for="isEmergency">
+                                        <strong class="text-danger">Emergency Case</strong>
+                                        <small class="text-muted d-block">Check if this is an urgent/emergency consultation</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Patient Information</label>
+                                <div id="selectedPatientInfo" class="alert alert-light">
+                                    <small class="text-muted">Select a patient to view details</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="form-label">Chief Complaint</label>
+                        <textarea class="form-control" name="chief_complaint" rows="3" placeholder="What is the patient complaining of?" required></textarea>
+                        <small class="text-muted">This will be the initial complaint for the consultation</small>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'doctor_dashboard' %}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-play-circle"></i> Start Consultation
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const patientSearch = document.getElementById('patientSearch');
+    const patientSelect = document.getElementById('patientSelect');
+    const patientInfo = document.getElementById('selectedPatientInfo');
+    
+    // Filter patients based on search
+    patientSearch.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const options = patientSelect.querySelectorAll('option');
+        
+        options.forEach(option => {
+            if (option.value === '') return; // Skip the default option
+            
+            const text = option.textContent.toLowerCase();
+            if (text.includes(searchTerm)) {
+                option.style.display = '';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+    });
+    
+    // Show patient info when selected
+    patientSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        
+        if (selectedOption.value) {
+            const name = selectedOption.dataset.name;
+            const patientId = selectedOption.dataset.id;
+            const age = selectedOption.dataset.age;
+            const gender = selectedOption.dataset.gender;
+            
+            patientInfo.innerHTML = `
+                <div>
+                    <strong>${name}</strong><br>
+                    <small class="text-muted">ID: ${patientId} | ${age} years, ${gender.charAt(0).toUpperCase() + gender.slice(1)}</small>
+                </div>
+            `;
+            patientInfo.className = 'alert alert-info';
+        } else {
+            patientInfo.innerHTML = '<small class="text-muted">Select a patient to view details</small>';
+            patientInfo.className = 'alert alert-light';
+        }
+    });
+});
+
+// Form submission
+document.getElementById('newConsultationForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    
+    submitBtn.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Creating...';
+    submitBtn.disabled = true;
+    
+    fetch('/portal/doctor/ajax/create-consultation/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(data.message, 'success');
+            // Redirect to the new consultation
+            setTimeout(() => {
+                window.location.href = `/portal/doctor/consultation/${data.consultation_id}/`;
+            }, 1500);
+        } else {
+            showAlert('Error: ' + (data.error || 'Failed to create consultation'), 'danger');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    });
+});
+
+// Utility functions
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    const main = document.querySelector('.col-lg-12.grid-margin .card-body');
+    main.insertBefore(alertDiv, main.firstChild);
+
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

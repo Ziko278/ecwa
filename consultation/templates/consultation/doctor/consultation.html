@@ -1,0 +1,874 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="row">
+    <div class="col-lg-12 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">
+                    Consultation: {{ consultation.queue_entry.patient|title }}
+                    <span class="badge bg-info ms-2">{{ consultation.queue_entry.queue_number }}</span>
+                    <div class="float-end">
+                        <a href="{% url 'doctor_dashboard' %}" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Queue
+                        </a>
+                        <button class="btn btn-sm btn-warning" onclick="pauseConsultation()" id="pauseBtn">
+                            <i class="bi bi-pause"></i> Pause
+                        </button>
+                        <button class="btn btn-sm btn-success" onclick="completeConsultation()" id="completeBtn">
+                            <i class="bi bi-check"></i> Complete
+                        </button>
+                    </div>
+                </h4>
+                <p class="card-description">
+                    Patient: {{ consultation.queue_entry.patient.patient_id }} | 
+                    {{ consultation.queue_entry.patient.age }} yrs, {{ consultation.queue_entry.patient.gender|title }} |
+                    Started: {{ consultation.created_at|date:"M d, H:i" }}
+                </p>
+                {% include 'admin_site/partials/error.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Left Sidebar: Patient Info & Quick Actions -->
+    <div class="col-lg-3">
+        <!-- Patient Information -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Patient Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="patient-info">
+                    <strong>{{ consultation.queue_entry.patient|title }}</strong><br>
+                    <small class="text-muted">ID: {{ consultation.queue_entry.patient.patient_id }}</small><br>
+                    <small>{{ consultation.queue_entry.patient.age }} years, {{ consultation.queue_entry.patient.gender|title }}</small><br>
+                    <small>Phone: {{ consultation.queue_entry.patient.phone_number|default:"Not provided" }}</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vitals -->
+        {% if consultation.queue_entry.vitals %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">Current Vitals</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <small class="text-muted">BP:</small><br>
+                        <strong>{{ consultation.queue_entry.vitals.blood_pressure }}</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">Pulse:</small><br>
+                        <strong>{{ consultation.queue_entry.vitals.pulse_rate|default:"--" }}</strong>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-6">
+                        <small class="text-muted">Temp:</small><br>
+                        <strong>{{ consultation.queue_entry.vitals.temperature|default:"--" }}°C</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">SpO2:</small><br>
+                        <strong>{{ consultation.queue_entry.vitals.oxygen_saturation|default:"--" }}%</strong>
+                    </div>
+                </div>
+                {% if consultation.queue_entry.vitals.chief_complaint %}
+                <div class="mt-2">
+                    <small class="text-muted">Chief Complaint:</small><br>
+                    <small>{{ consultation.queue_entry.vitals.chief_complaint }}</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Quick Actions -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">Quick Actions</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-sm btn-primary" onclick="prescribeDrug()">
+                        <i class="bi bi-prescription2"></i> Prescribe Drug
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="orderLabTest()">
+                        <i class="bi bi-clipboard2-pulse"></i> Order Lab Test
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="orderScan()">
+                        <i class="bi bi-camera"></i> Order Scan
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="viewPatientHistory()">
+                        <i class="bi bi-clock-history"></i> Patient History
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Quick View -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Recent History</h6>
+            </div>
+            <div class="card-body">
+                {% if recent_consultations %}
+                    {% for prev in recent_consultations|slice:":3" %}
+                    <div class="border-bottom pb-2 mb-2">
+                        <small class="text-muted">{{ prev.created_at|date:"M d" }}</small><br>
+                        <small>{{ prev.diagnosis|truncatechars:40|default:"No diagnosis" }}</small>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <small class="text-muted">No previous consultations</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content: Consultation Form -->
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="consultationTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="consultation-tab" data-bs-toggle="tab" data-bs-target="#consultation-pane" type="button" role="tab">
+                            <i class="bi bi-file-medical"></i> Consultation
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="prescriptions-tab" data-bs-toggle="tab" data-bs-target="#prescriptions-pane" type="button" role="tab">
+                            <i class="bi bi-prescription2"></i> Prescriptions
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tests-tab" data-bs-toggle="tab" data-bs-target="#tests-pane" type="button" role="tab">
+                            <i class="bi bi-clipboard2-pulse"></i> Tests & Scans
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="consultationTabContent">
+                    <!-- Consultation Tab -->
+                    <div class="tab-pane fade show active" id="consultation-pane" role="tabpanel">
+                        <form id="consultationForm">
+                            {% csrf_token %}
+                            <input type="hidden" name="consultation_id" value="{{ consultation.id }}">
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-primary mb-3">History & Examination</h6>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Chief Complaint</label>
+                                        <textarea class="form-control" name="chief_complaint" rows="2" placeholder="What is the patient complaining of?">{{ consultation.chief_complaint }}</textarea>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">History of Present Illness</label>
+                                        <textarea class="form-control" name="history_of_present_illness" rows="4" placeholder="Details of current illness...">{{ consultation.history_of_present_illness }}</textarea>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Past Medical History</label>
+                                        <textarea class="form-control" name="past_medical_history" rows="3" placeholder="Previous illnesses, surgeries, medications...">{{ consultation.past_medical_history }}</textarea>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Physical Examination</label>
+                                        <textarea class="form-control" name="physical_examination" rows="4" placeholder="Physical examination findings...">{{ consultation.physical_examination }}</textarea>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <h6 class="text-primary mb-3">Assessment & Plan</h6>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Clinical Assessment</label>
+                                        <textarea class="form-control" name="assessment" rows="3" placeholder="Your clinical impression...">{{ consultation.assessment }}</textarea>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Diagnosis</label>
+                                        <textarea class="form-control" name="diagnosis" rows="2" placeholder="Primary and secondary diagnoses...">{{ consultation.diagnosis }}</textarea>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Treatment Plan</label>
+                                        <textarea class="form-control" name="treatment_plan" rows="4" placeholder="Treatment approach and plan...">{{ consultation.treatment_plan }}</textarea>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Follow-up Instructions</label>
+                                        <textarea class="form-control" name="follow_up_instructions" rows="3" placeholder="When to return, what to watch for...">{{ consultation.follow_up_instructions }}</textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" onclick="saveDraft()">
+                                    <i class="bi bi-save"></i> Save Draft
+                                </button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-check"></i> Save & Continue
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Prescriptions Tab -->
+                    <div class="tab-pane fade" id="prescriptions-pane" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6>Prescribed Medications</h6>
+                            <button class="btn btn-sm btn-primary" onclick="prescribeDrug()">
+                                <i class="bi bi-plus"></i> Add Drug
+                            </button>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="prescriptionsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Drug</th>
+                                        <th>Dosage</th>
+                                        <th>Duration</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for prescription in prescriptions %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ prescription.drug.brand_name|default:prescription.drug.generic_name }}</strong>
+                                            <small class="text-muted d-block">{{ prescription.drug.formulation }}</small>
+                                        </td>
+                                        <td>{{ prescription.dosage_instructions|truncatechars:30 }}</td>
+                                        <td>{{ prescription.duration }}</td>
+                                        <td>
+                                            <span class="badge bg-{{ prescription.status|yesno:'success,warning' }}">
+                                                {{ prescription.get_status_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-info" onclick="viewPrescription({{ prescription.id }})">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="cancelPrescription({{ prescription.id }})">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-3">
+                                            No medications prescribed yet
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Tests & Scans Tab -->
+                    <div class="tab-pane fade" id="tests-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6>Lab Tests Ordered</h6>
+                                    <button class="btn btn-sm btn-info" onclick="orderLabTest()">
+                                        <i class="bi bi-plus"></i> Order Test
+                                    </button>
+                                </div>
+                                
+                                <div class="list-group">
+                                    {% for test in lab_tests %}
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ test.template.name }}</strong>
+                                                <small class="text-muted d-block">{{ test.order_number }}</small>
+                                            </div>
+                                            <span class="badge bg-{{ test.status|yesno:'success,warning' }}">
+                                                {{ test.get_status_display }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-2">
+                                            <button class="btn btn-xs btn-outline-primary" onclick="viewTestResult({{ test.id }})">
+                                                View Result
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">
+                                        No lab tests ordered
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6>Scans Ordered</h6>
+                                    <button class="btn btn-sm btn-warning" onclick="orderScan()">
+                                        <i class="bi bi-plus"></i> Order Scan
+                                    </button>
+                                </div>
+                                
+                                <div class="list-group">
+                                    {% for scan in scans %}
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ scan.template.name }}</strong>
+                                                <small class="text-muted d-block">{{ scan.order_number }}</small>
+                                            </div>
+                                            <span class="badge bg-{{ scan.status|yesno:'success,warning' }}">
+                                                {{ scan.get_status_display }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-2">
+                                            <button class="btn btn-xs btn-outline-primary" onclick="viewScanResult({{ scan.id }})">
+                                                View Result
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">
+                                        No scans ordered
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Drug Prescription Modal -->
+<div class="modal fade" id="drugPrescriptionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Prescribe Medication</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="drugPrescriptionForm">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Search Drug</label>
+                                <input type="text" class="form-control" id="drugSearch" placeholder="Type drug name...">
+                                <select class="form-control mt-2" id="drugSelect" name="drug_id" required>
+                                    <option value="">Select a drug...</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Quantity</label>
+                                <input type="number" class="form-control" name="quantity_ordered" min="1" required>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Dosage Instructions</label>
+                                <textarea class="form-control" name="dosage_instructions" rows="3" placeholder="e.g., Take 1 tablet twice daily after meals"></textarea>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Duration</label>
+                                <input type="text" class="form-control" name="duration" placeholder="e.g., 7 days, 2 weeks">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" name="notes" rows="2" placeholder="Additional instructions..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Prescribe</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Lab Test Modal -->
+<div class="modal fade" id="labTestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Order Lab Test</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="labTestForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Test Category</label>
+                        <select class="form-control" id="testCategory" onchange="loadTestTemplates()">
+                            <option value="">Select category...</option>
+                            {% for category in lab_categories %}
+                            <option value="{{ category.id }}">{{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Test</label>
+                        <select class="form-control" name="template_id" id="testTemplate" required>
+                            <option value="">Select test...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Clinical Indication</label>
+                        <textarea class="form-control" name="special_instructions" rows="3" placeholder="Why is this test being ordered?"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-info">Order Test</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Scan Modal -->
+<div class="modal fade" id="scanModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Order Scan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="scanForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Scan Category</label>
+                        <select class="form-control" id="scanCategory" onchange="loadScanTemplates()">
+                            <option value="">Select category...</option>
+                            {% for category in scan_categories %}
+                            <option value="{{ category.id }}">{{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Scan Type</label>
+                        <select class="form-control" name="template_id" id="scanTemplate" required>
+                            <option value="">Select scan...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Clinical Indication</label>
+                        <textarea class="form-control" name="clinical_indication" rows="3" placeholder="Why is this scan being ordered?"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Special Instructions</label>
+                        <textarea class="form-control" name="special_instructions" rows="2" placeholder="Any special instructions..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">Order Scan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+const consultationId = {{ consultation.id }};
+let autoSaveTimer;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize TinyMCE for text areas if available
+    if (typeof tinymce !== 'undefined') {
+        tinymce.init({
+            selector: 'textarea[name="assessment"], textarea[name="treatment_plan"]',
+            height: 200,
+            plugins: 'lists',
+            toolbar: 'bold italic | bullist numlist | undo redo',
+            menubar: false
+        });
+    }
+    
+    // Auto-save every 30 seconds
+    autoSaveTimer = setInterval(saveDraft, 30000);
+});
+
+// Consultation form submission
+document.getElementById('consultationForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    submitBtn.textContent = 'Saving...';
+    submitBtn.disabled = true;
+    
+    fetch(`/portal/consultation/ajax/save-consultation/${consultationId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Consultation notes saved successfully', 'success');
+        } else {
+            showAlert('Error: ' + (data.error || 'Failed to save'), 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+    })
+    .finally(() => {
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+    });
+});
+
+// Save draft function
+function saveDraft() {
+    const form = document.getElementById('consultationForm');
+    const formData = new FormData(form);
+    
+    fetch(`/portal/consultation/ajax/save-consultation/${consultationId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Draft saved', 'info');
+        }
+    })
+    .catch(error => {
+        console.error('Auto-save failed:', error);
+    });
+}
+
+// Pause consultation
+function pauseConsultation() {
+    if (confirm('Are you sure you want to pause this consultation?')) {
+        fetch(`/portal/consultation/ajax/pause-consultation/${consultationId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Consultation paused', 'info');
+                window.location.href = '/portal/consultation/';
+            } else {
+                showAlert('Error: ' + (data.error || 'Failed to pause'), 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert('Error: ' + error.message, 'danger');
+        });
+    }
+}
+
+// Complete consultation
+function completeConsultation() {
+    if (confirm('Are you sure you want to complete this consultation?')) {
+        // First save current form data
+        saveDraft();
+        
+        setTimeout(() => {
+            fetch(`/portal/consultation/ajax/complete-consultation/${consultationId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('Consultation completed successfully', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/portal/consultation/';
+                    }, 1500);
+                } else {
+                    showAlert('Error: ' + (data.error || 'Failed to complete'), 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('Error: ' + error.message, 'danger');
+            });
+        }, 1000);
+    }
+}
+
+// Drug prescription functions
+function prescribeDrug() {
+    const modal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+    document.getElementById('drugPrescriptionForm').reset();
+    modal.show();
+}
+
+// Drug search functionality
+document.getElementById('drugSearch').addEventListener('input', function() {
+    const query = this.value;
+    if (query.length >= 2) {
+        fetch(`/portal/consultation/ajax/search-drugs/?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('drugSelect');
+            select.innerHTML = '<option value="">Select a drug...</option>';
+            
+            data.drugs.forEach(drug => {
+                const option = document.createElement('option');
+                option.value = drug.id;
+                option.textContent = `${drug.brand_name || drug.generic_name} - ${drug.formulation}`;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Drug search failed:', error);
+        });
+    }
+});
+
+// Drug prescription form submission
+document.getElementById('drugPrescriptionForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
+    
+    fetch('/portal/consultation/ajax/prescribe-drug/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+            showAlert('Drug prescribed successfully', 'success');
+            // Refresh prescriptions tab
+            location.reload();
+        } else {
+            showAlert('Error: ' + (data.error || 'Failed to prescribe'), 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+    });
+});
+
+// Lab test functions
+function orderLabTest() {
+    const modal = new bootstrap.Modal(document.getElementById('labTestModal'));
+    document.getElementById('labTestForm').reset();
+    modal.show();
+}
+
+function loadTestTemplates() {
+    const categoryId = document.getElementById('testCategory').value;
+    const select = document.getElementById('testTemplate');
+    
+    if (!categoryId) {
+        select.innerHTML = '<option value="">Select test...</option>';
+        return;
+    }
+    
+    fetch(`/portal/consultation/ajax/lab-templates/?category_id=${categoryId}`)
+    .then(response => response.json())
+    .then(data => {
+        select.innerHTML = '<option value="">Select test...</option>';
+        
+        data.templates.forEach(template => {
+            const option = document.createElement('option');
+            option.value = template.id;
+            option.textContent = `${template.name} - ₦${template.price}`;
+            select.appendChild(option);
+        });
+    })
+    .catch(error => {
+        console.error('Failed to load test templates:', error);
+    });
+}
+
+// Lab test form submission
+document.getElementById('labTestForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
+    
+    fetch('/portal/consultation/ajax/order-lab-test/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('labTestModal')).hide();
+            showAlert('Lab test ordered successfully', 'success');
+            location.reload();
+        } else {
+            showAlert('Error: ' + (data.error || 'Failed to order test'), 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+    });
+});
+
+// Scan functions
+function orderScan() {
+    const modal = new bootstrap.Modal(document.getElementById('scanModal'));
+    document.getElementById('scanForm').reset();
+    modal.show();
+}
+
+function loadScanTemplates() {
+    const categoryId = document.getElementById('scanCategory').value;
+    const select = document.getElementById('scanTemplate');
+    
+    if (!categoryId) {
+        select.innerHTML = '<option value="">Select scan...</option>';
+        return;
+    }
+    
+    fetch(`/portal/consultation/ajax/scan-templates/?category_id=${categoryId}`)
+    .then(response => response.json())
+    .then(data => {
+        select.innerHTML = '<option value="">Select scan...</option>';
+        
+        data.templates.forEach(template => {
+            const option = document.createElement('option');
+            option.value = template.id;
+            option.textContent = `${template.name} - ₦${template.price}`;
+            select.appendChild(option);
+        });
+    })
+    .catch(error => {
+        console.error('Failed to load scan templates:', error);
+    });
+}
+
+// Scan form submission
+document.getElementById('scanForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
+    
+    fetch('/portal/consultation/ajax/order-scan/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
+            showAlert('Scan ordered successfully', 'success');
+            location.reload();
+        } else {
+            showAlert('Error: ' + (data.error || 'Failed to order scan'), 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+    });
+});
+
+// View functions
+function viewPatientHistory() {
+    window.open(`/portal/consultation/patient/${{ consultation.queue_entry.patient.id }}/history/`, '_blank');
+}
+
+function viewPrescription(prescriptionId) {
+    window.open(`/portal/consultation/prescription/${prescriptionId}/`, '_blank');
+}
+
+function viewTestResult(testId) {
+    window.open(`/portal/consultation/lab-test/${testId}/result/`, '_blank');
+}
+
+function viewScanResult(scanId) {
+    window.open(`/portal/consultation/scan/${scanId}/result/`, '_blank');
+}
+
+// Utility functions
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    const main = document.querySelector('.col-lg-12.grid-margin .card-body');
+    main.insertBefore(alertDiv, main.firstChild);
+
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (autoSaveTimer) {
+        clearInterval(autoSaveTimer);
+    }
+});
+</script>
+{% endblock %}

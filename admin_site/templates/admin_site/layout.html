@@ -20,11 +20,11 @@
 
   <!-- Vendor CSS Files -->
   <link href="{% static 'admin_site/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
-  <link href="{% static 'admin_site/vendor/bootstrap-icons/bootstrap-icons.css' %}" rel="stylesheet">
-  <link href="{% static 'admin_site/vendor/boxicons/css/boxicons.min.css' %}" rel="stylesheet">
+  <!-- Latest Bootstrap Icons from CDN -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
+
   <link href="{% static 'admin_site/vendor/quill/quill.snow.css' %}" rel="stylesheet">
   <link href="{% static 'admin_site/vendor/quill/quill.bubble.css' %}" rel="stylesheet">
-  <link href="{% static 'admin_site/vendor/remixicon/remixicon.css' %}" rel="stylesheet">
   <link href="{% static 'admin_site/vendor/simple-datatables/style.css' %}" rel="stylesheet">
 
   <!-- Template Main CSS File -->
@@ -43,10 +43,7 @@
       }
     }
   </style>
-</head>
-
-<body>
-<style>
+  <style>
   .nav-link {
     height:35px
   }
@@ -54,6 +51,10 @@
 
 
 </style>
+</head>
+
+<body>
+
   <!-- ======= Header ======= -->
   <header id="header" class="header non-printable fixed-top d-flex align-items-center">
 
@@ -141,16 +142,26 @@
 
       <li class="nav-item">
         <a class="nav-link " href="{% url 'admin_dashboard' %}">
-          <i class="bi bi-grid"></i>
+          <i class="bi  bi-speedometer2"></i>
           <span>Dashboard</span>
         </a>
       </li>
 
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#stud" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-journal-bookmark-fill"></i><span>Finance</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-cash-coin"></i><span>Finance</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="stud" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+          <li>
+            <a href="{% url 'finance_payment_select' %}">
+              <i class="bi bi-circle"></i><span>Make Payment</span>
+            </a>
+          </li>
+          <li>
+            <a href="{% url 'patient_funding' %}">
+              <i class="bi bi-circle"></i><span>Wallet Funding</span>
+            </a>
+          </li>
           <li>
             <a href="{% url 'registration_payment_create' %}">
               <i class="bi bi-circle"></i><span>New Registration Payment</span>
@@ -169,13 +180,18 @@
 
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#acad" data-bs-toggle="collapse" href="#">
-          <i class="ri-book-mark-fill"></i><span>Consultation</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-activity"></i><span>Consultation</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="acad" class="nav-content collapse " data-bs-parent="#sidebar-nav">
 
           <li>
             <a href="{% url 'consultation_payment_create' %}">
               <i class="bi bi-circle"></i><span>Make Payment</span>
+            </a>
+          </li>
+          <li>
+            <a href="{% url 'doctor_dashboard' %}">
+              <i class="bi bi-circle"></i><span>Doctor List</span>
             </a>
           </li>
           <li>
@@ -218,7 +234,7 @@
 
        <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#sb_att" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-alarm"></i><span>Patient</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-person-vcard"></i><span>Patient</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="sb_att" class="nav-content collapse " data-bs-parent="#sidebar-nav">
           <li>
@@ -260,7 +276,7 @@
 
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#lnote" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-pencil"></i><span>INSURANCE</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-shield-check"></i><span>INSURANCE</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="lnote" class="nav-content collapse " data-bs-parent="#sidebar-nav">
           <li>
@@ -290,10 +306,25 @@
 
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#result" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-bar-chart"></i><span>Pharmacy</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-capsule"></i><span>Pharmacy</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="result" class="nav-content collapse " data-bs-parent="#sidebar-nav">
 
+          <li>
+            <a href="{% url 'drug_dispense_page' %}">
+              <i class="bi bi-circle"></i><span>Dispense Drug</span>
+            </a>
+          </li>
+          <li>
+            <a href="{% url 'general_dispense_index' %}">
+              <i class="bi bi-circle"></i><span>Drug Dispenses</span>
+            </a>
+          </li>
+          <li>
+            <a href="{% url 'pharmacy_dashboard' %}">
+              <i class="bi bi-circle"></i><span>Dashboard</span>
+            </a>
+          </li>
           <li>
             <a href="{% url 'drug_index' %}">
               <i class="bi bi-circle"></i><span>Drugs</span>
@@ -343,7 +374,7 @@
 
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#labo" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-bar-chart"></i><span>Laboratory</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-beaker"></i><span>Laboratory</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="labo" class="nav-content collapse " data-bs-parent="#sidebar-nav">
 
@@ -362,6 +393,35 @@
           <li>
             <a href="{% url 'lab_category_index' %}">
               <i class="bi bi-circle"></i><span>Test Category</span>
+            </a>
+          </li>
+
+
+        </ul>
+      </li>
+
+
+      <li class="nav-item">
+        <a class="nav-link collapsed" data-bs-target="#radiog" data-bs-toggle="collapse" href="#">
+          <i class="bi bi-body-text"></i><span>Radiography</span><i class="bi bi-chevron-down ms-auto"></i>
+        </a>
+        <ul id="radiog" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+
+
+          <li>
+            <a href="{% url 'lab_entry' %}">
+              <i class="bi bi-circle"></i><span>Patient Test</span>
+            </a>
+          </li>
+          <li>
+            <a href="{% url 'scan_template_index' %}">
+              <i class="bi bi-circle"></i><span>Scan Templates</span>
+            </a>
+          </li>
+
+          <li>
+            <a href="{% url 'scan_category_index' %}">
+              <i class="bi bi-circle"></i><span>Scan Category</span>
             </a>
           </li>
 
@@ -405,7 +465,7 @@
           </li>
 
 	   <li>
-            <a href="% url 'human_resource_setting_detail' 1 %}">
+            <a href="{% url 'human_resource_setting_detail' 1 %}">
               <i class="bi bi-circle"></i><span>Setting</span>
             </a>
           </li>

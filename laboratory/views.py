@@ -17,10 +17,11 @@ from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
 
-from patient.models import PatientModel
+from insurance.models import InsuranceClaimModel
+from patient.models import PatientModel, PatientWalletModel
 from .models import *
 from .forms import *
-
+from django.db.models import Q, Count, Case, When, IntegerField
 logger = logging.getLogger(__name__)
 
 
@@ -413,11 +414,10 @@ class LabTestOrderCreateView(LoginRequiredMixin, PermissionRequiredMixin, Create
             return redirect(request.path)
 
 
-# -------------------------
-# Payment Processing
-# -------------------------
+
+
 def process_lab_payments(request):
-    """Process payments for selected lab tests"""
+    """Process payments for selected lab tests with wallet balance and insurance validation"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
@@ -429,37 +429,163 @@ def process_lab_payments(request):
         return JsonResponse({'success': False, 'error': 'No tests selected'})
 
     try:
-        orders = LabTestOrderModel.objects.filter(
-            id__in=selected_orders,
-            status='pending'
-        )
+        with transaction.atomic():
+            # Get all selected orders
+            orders = LabTestOrderModel.objects.filter(
+                id__in=selected_orders,
+                status='pending'
+            ).select_related('template', 'patient')
 
-        if not orders.exists():
-            return JsonResponse({'success': False, 'error': 'No valid pending tests found'})
+            if not orders.exists():
+                return JsonResponse({'success': False, 'error': 'No valid pending tests found'})
 
-        # Calculate total amount
-        total_amount = sum(order.amount_charged or order.template.price for order in orders)
+            # Get patient (assuming all orders are for the same patient)
+            patient = orders.first().patient
 
-        # Update orders to paid status
-        updated_count = 0
-        for order in orders:
-            order.status = 'paid'
-            order.payment_status = True
-            order.payment_date = timezone.now()
-            order.payment_by = request.user
-            if not order.amount_charged:
-                order.amount_charged = order.template.price
-            order.save()
-            updated_count += 1
+            # Get or create patient wallet
+            wallet, created = PatientWalletModel.objects.get_or_create(
+                patient=patient,
+                defaults={'amount': Decimal('0.00')}
+            )
 
+            # Check for active insurance
+            active_insurance = None
+            if hasattr(patient, 'insurance_policies'):
+                active_insurance = patient.insurance_policies.filter(
+                    is_active=True,
+                    valid_to__gte=date.today()
+                ).select_related('hmo', 'coverage_plan').first()
+
+            # Calculate insurance amount helper function
+            def calculate_patient_amount(base_amount, coverage_percentage):
+                """Calculate patient's portion after insurance"""
+                if coverage_percentage and coverage_percentage > 0:
+                    covered_amount = base_amount * (coverage_percentage / 100)
+                    return base_amount - covered_amount
+                return base_amount
+
+            # Calculate total amounts considering insurance
+            total_base_amount = Decimal('0.00')
+            total_patient_amount = Decimal('0.00')
+            total_insurance_covered = Decimal('0.00')
+            order_details = []
+
+            for order in orders:
+                # Get base amount
+                base_amount = order.amount_charged or order.template.price
+
+                # Apply insurance if applicable
+                if active_insurance and active_insurance.coverage_plan.is_lab_covered(order.template):
+                    patient_amount = calculate_patient_amount(
+                        base_amount,
+                        active_insurance.coverage_plan.lab_coverage_percentage
+                    )
+                    insurance_covered = base_amount - patient_amount
+                else:
+                    patient_amount = base_amount
+                    insurance_covered = Decimal('0.00')
+
+                total_base_amount += base_amount
+                total_patient_amount += patient_amount
+                total_insurance_covered += insurance_covered
+
+                order_details.append({
+                    'order': order,
+                    'base_amount': base_amount,
+                    'patient_amount': patient_amount,
+                    'insurance_covered': insurance_covered
+                })
+
+            # Check wallet balance
+            if wallet.amount < total_patient_amount:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Insufficient wallet balance. Required: ₦{total_patient_amount:,.2f}, Available: ₦{wallet.amount:,.2f}. Please visit Finance to fund wallet.',
+                    'required_amount': float(total_patient_amount),
+                    'available_amount': float(wallet.amount),
+                    'shortage': float(total_patient_amount - wallet.amount)
+                })
+
+            # Create insurance claim if insurance is active and covers any amount
+            insurance_claim = None
+            if active_insurance and total_insurance_covered > 0:
+                # Determine claim type
+                claim_type = 'laboratory' if len(orders) == 1 else 'multiple'
+
+                insurance_claim = InsuranceClaimModel.objects.create(
+                    patient_insurance=active_insurance,
+                    claim_type=claim_type,
+                    total_amount=total_base_amount,
+                    covered_amount=total_insurance_covered,
+                    patient_amount=total_patient_amount,
+                    service_date=timezone.now(),
+                    created_by=request.user,
+                    notes=f'Auto-generated claim for {len(orders)} lab test(s)'
+                )
+
+            # Process payments and update orders
+            updated_count = 0
+
+            for detail in order_details:
+                order = detail['order']
+                patient_amount = detail['patient_amount']
+                insurance_covered = detail['insurance_covered']
+
+                # Deduct patient amount from wallet
+                wallet.amount -= patient_amount
+
+                # Update order
+                order.status = 'paid'
+                order.payment_status = True
+                order.payment_date = timezone.now()
+                order.payment_by = request.user
+
+                if not order.amount_charged:
+                    order.amount_charged = detail['base_amount']
+
+                # Link to insurance claim if created
+                if insurance_claim:
+                    order.insurance_claim = insurance_claim
+
+                order.save()
+                updated_count += 1
+
+            # Save wallet
+            wallet.save()
+
+            # Prepare response message
+            message_parts = [
+                f'Successfully processed payment for {updated_count} test(s)',
+                f'Patient paid: ₦{total_patient_amount:,.2f}'
+            ]
+
+            if insurance_claim:
+                message_parts.append(
+                    f'Insurance claim {insurance_claim.claim_number} created for ₦{total_insurance_covered:,.2f}')
+
+            return JsonResponse({
+                'success': True,
+                'message': '. '.join(message_parts),
+                'details': {
+                    'processed_count': updated_count,
+                    'patient_amount_paid': float(total_patient_amount),
+                    'insurance_amount_covered': float(total_insurance_covered),
+                    'new_wallet_balance': float(wallet.amount),
+                    'formatted_wallet_balance': f'₦{wallet.amount:,.2f}',
+                    'insurance_claim_number': insurance_claim.claim_number if insurance_claim else None
+                }
+            })
+
+    except PatientWalletModel.DoesNotExist:
         return JsonResponse({
-            'success': True,
-            'message': f'Successfully processed payment for {updated_count} test(s)',
-            'total_amount': float(total_amount)
+            'success': False,
+            'error': 'Patient wallet not found. Please contact Finance to create wallet.'
         })
-
     except Exception as e:
-        return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'})
+        return JsonResponse({
+            'success': False,
+            'error': f'Error processing payment: {str(e)}'
+        })
 
 
 # -------------------------
@@ -508,19 +634,7 @@ def collect_sample(request, order_id):
         return JsonResponse({'success': False, 'error': f'Error collecting sample: {str(e)}'})
 
 
-# -------------------------
-# Test Results (Dummy Page)
-# -------------------------
-class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    """Dummy page for creating test results - will be implemented later"""
-    permission_required = 'laboratory.add_labtestresultmodel'
-    template_name = 'laboratory/result/create.html'
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['page_title'] = 'Create Lab Test Results'
-        # This will be updated later to handle specific test orders
-        return context
 
 
 # -------------------------
@@ -623,33 +737,164 @@ class LabTestOrderUpdateView(
 # -------------------------
 # Lab Test Result Views
 # -------------------------
-class LabTestResultCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
-    CreateView
-):
+class LabResultDashboardView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """Main dashboard for lab results - shows orders ready for result entry"""
+    model = LabTestOrderModel
+    permission_required = 'laboratory.view_labtestordermodel'
+    template_name = 'laboratory/result/dashboard.html'
+    context_object_name = 'orders'
+    paginate_by = 20
+
+    def get_queryset(self):
+        status_filter = self.request.GET.get('status', '')
+        search_query = self.request.GET.get('search', '')
+
+        # Base queryset - orders that can have results entered
+        queryset = LabTestOrderModel.objects.filter(
+            status__in=['collected', 'processing', 'completed']
+        ).select_related('patient', 'template', 'sample_collected_by').order_by('-sample_collected_at')
+
+        # Apply filters
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        if search_query:
+            queryset = queryset.filter(
+                Q(patient__first_name__icontains=search_query) |
+                Q(patient__last_name__icontains=search_query) |
+                Q(order_number__icontains=search_query) |
+                Q(template__name__icontains=search_query) |
+                Q(sample_label__icontains=search_query)
+            )
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Status counts for dashboard
+        status_counts = LabTestOrderModel.objects.filter(
+            status__in=['collected', 'processing', 'completed']
+        ).aggregate(
+            collected=Count(Case(When(status='collected', then=1), output_field=IntegerField())),
+            processing=Count(Case(When(status='processing', then=1), output_field=IntegerField())),
+            completed=Count(Case(When(status='completed', then=1), output_field=IntegerField())),
+        )
+
+        # Results needing verification
+        unverified_count = LabTestResultModel.objects.filter(is_verified=False).count()
+
+        context.update({
+            'status_counts': status_counts,
+            'unverified_count': unverified_count,
+            'status_choices': LabTestOrderModel.STATUS_CHOICES,
+            'current_status': self.request.GET.get('status', ''),
+            'search_query': self.request.GET.get('search', ''),
+        })
+
+        return context
+
+
+class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    """Create lab test results"""
     model = LabTestResultModel
     permission_required = 'laboratory.add_labtestresultmodel'
-    form_class = LabTestResultForm
     template_name = 'laboratory/result/create.html'
-    success_message = 'Lab Test Result Successfully Created'
+    fields = ['results_data', 'technician_comments']
+
+    def dispatch(self, request, *args, **kwargs):
+        # Get the order from URL or POST data
+        order_id = kwargs.get('order_id') or request.POST.get('order_id')
+        if order_id:
+            self.order = get_object_or_404(LabTestOrderModel, pk=order_id)
+            # Check if result already exists
+            if hasattr(self.order, 'result'):
+                messages.warning(request, 'Results already exist for this order. Use edit instead.')
+                return redirect('lab_result_edit', pk=self.order.result.pk)
+        else:
+            self.order = None
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.order:
+            context.update({
+                'order': self.order,
+                'patient': self.order.patient,
+                'template': self.order.template,
+                'parameters': self.order.template.test_parameters.get('parameters', [])
+            })
+        else:
+            # Show available orders for selection
+            context['available_orders'] = LabTestOrderModel.objects.filter(
+                status__in=['collected', 'processing']
+            ).exclude(result__isnull=False).select_related('patient', 'template')
+        return context
+
+    def form_valid(self, form):
+        if not self.order and 'order_id' in self.request.POST:
+            self.order = get_object_or_404(LabTestOrderModel, pk=self.request.POST['order_id'])
+
+        if not self.order:
+            messages.error(self.request, 'Please select a valid lab order.')
+            return self.form_invalid(form)
+
+        # Set the order and update status
+        form.instance.order = self.order
+
+        with transaction.atomic():
+            response = super().form_valid(form)
+            # Update order status to processing or completed
+            self.order.status = 'completed'
+            self.order.processed_at = now()
+            self.order.processed_by = self.request.user
+            self.order.save(update_fields=['status', 'processed_at', 'processed_by'])
+
+        messages.success(self.request, f'Results entered successfully for {self.order.template.name}')
+        return response
 
     def get_success_url(self):
         return reverse('lab_result_detail', kwargs={'pk': self.object.pk})
 
+
+class LabTestResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    """Update lab test results (only if not verified)"""
+    model = LabTestResultModel
+    permission_required = 'laboratory.change_labtestresultmodel'
+    template_name = 'laboratory/result/edit.html'
+    fields = ['results_data', 'technician_comments']
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.is_verified:
+            messages.error(request, 'Cannot edit verified results.')
+            return redirect('lab_result_detail', pk=self.object.pk)
+        return super().dispatch(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Only show orders that don't have results yet
-        context['order_list'] = LabTestOrderModel.objects.filter(
-            status__in=['processing', 'collected']
-        ).exclude(result__isnull=False).select_related('patient', 'template')
+        context.update({
+            'result': self.object,
+            'order': self.object.order,
+            'patient': self.object.order.patient,
+            'template': self.object.order.template,
+            'parameters': self.object.order.template.test_parameters.get('parameters', [])
+        })
         return context
+
+    def form_valid(self, form):
+        messages.success(self.request, 'Lab results updated successfully')
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('lab_result_detail', kwargs={'pk': self.object.pk})
 
 
 class LabTestResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = LabTestResultModel
     permission_required = 'laboratory.view_labtestresultmodel'
     template_name = 'laboratory/result/detail.html'
-    context_object_name = "result"
+    context_object_name = 'result'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -657,50 +902,347 @@ class LabTestResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
 
         context.update({
             'can_verify': not result.is_verified and self.request.user.has_perm('laboratory.change_labtestresultmodel'),
+            'can_edit': not result.is_verified and self.request.user.has_perm('laboratory.change_labtestresultmodel'),
             'order': result.order,
             'patient': result.order.patient,
             'template': result.order.template,
+            'parameters': result.order.template.test_parameters.get('parameters', []),
+            'results': result.results_data.get('results', [])
         })
 
         return context
 
 
-class LabTestResultUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
-):
-    model = LabTestResultModel
-    permission_required = 'laboratory.change_labtestresultmodel'
-    form_class = LabTestResultForm
-    template_name = 'laboratory/result/edit.html'
-    success_message = 'Lab Test Result Successfully Updated'
-
-    def get_success_url(self):
-        return reverse('lab_result_detail', kwargs={'pk': self.object.pk})
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['result'] = self.object
-        return context
-
-
 class LabTestResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """List all lab results with filtering options"""
     model = LabTestResultModel
     permission_required = 'laboratory.view_labtestresultmodel'
     template_name = 'laboratory/result/index.html'
-    context_object_name = "result_list"
+    context_object_name = 'results'
     paginate_by = 20
 
     def get_queryset(self):
-        return LabTestResultModel.objects.select_related(
+        verified_filter = self.request.GET.get('verified', '')
+        search_query = self.request.GET.get('search', '')
+
+        queryset = LabTestResultModel.objects.select_related(
             'order__patient', 'order__template', 'verified_by'
         ).order_by('-created_at')
 
+        if verified_filter == 'verified':
+            queryset = queryset.filter(is_verified=True)
+        elif verified_filter == 'unverified':
+            queryset = queryset.filter(is_verified=False)
+
+        if search_query:
+            queryset = queryset.filter(
+                Q(order__patient__first_name__icontains=search_query) |
+                Q(order__patient__last_name__icontains=search_query) |
+                Q(order__order_number__icontains=search_query) |
+                Q(order__template__name__icontains=search_query)
+            )
+
+        return queryset
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+
+        # Summary stats
         context['pending_verification'] = LabTestResultModel.objects.filter(is_verified=False).count()
-        context['abnormal_results'] = LabTestResultModel.objects.filter(
-            is_verified=True).count()  # You'd need to implement has_abnormal_values logic
+        context['total_results'] = LabTestResultModel.objects.count()
+        context['verified_results'] = LabTestResultModel.objects.filter(is_verified=True).count()
+
+        # Filter options
+        context['verified_choices'] = [
+            ('', 'All Results'),
+            ('verified', 'Verified Only'),
+            ('unverified', 'Unverified Only')
+        ]
+        context['current_verified'] = self.request.GET.get('verified', '')
+        context['search_query'] = self.request.GET.get('search', '')
+
         return context
+
+
+@login_required
+@permission_required('laboratory.change_labtestresultmodel', raise_exception=True)
+def verify_result(request, result_id):
+    """AJAX endpoint to verify a lab result"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    try:
+        result = get_object_or_404(LabTestResultModel, pk=result_id)
+
+        if result.is_verified:
+            return JsonResponse({
+                'success': False,
+                'error': 'Result is already verified.'
+            }, status=400)
+
+        # Optional pathologist comments
+        pathologist_comments = request.POST.get('pathologist_comments', '').strip()
+
+        with transaction.atomic():
+            result.is_verified = True
+            result.verified_by = request.user
+            result.verified_at = now()
+            if pathologist_comments:
+                result.pathologist_comments = pathologist_comments
+            result.save(update_fields=['is_verified', 'verified_by', 'verified_at', 'pathologist_comments'])
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Result verified successfully',
+            'verified_by': result.verified_by.get_full_name() or result.verified_by.username,
+            'verified_at': result.verified_at.strftime('%B %d, %Y at %I:%M %p')
+        })
+
+    except LabTestResultModel.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Lab result not found.'
+        }, status=404)
+
+    except Exception as e:
+        logger.exception("Error verifying result id=%s", result_id)
+        return JsonResponse({
+            'success': False,
+            'error': 'An error occurred while verifying result. Please contact administrator.'
+        }, status=500)
+
+
+@login_required
+@permission_required('laboratory.view_labtestordermodel', raise_exception=True)
+def process_to_result_entry(request, order_id):
+    """AJAX endpoint to move order from collected to processing status for result entry"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    try:
+        order = get_object_or_404(LabTestOrderModel, pk=order_id)
+
+        if order.status != 'collected':
+            return JsonResponse({
+                'success': False,
+                'error': 'Only collected samples can be processed for result entry.'
+            }, status=400)
+
+        with transaction.atomic():
+            order.status = 'processing'
+            order.processed_at = now()
+            order.processed_by = request.user
+            order.save(update_fields=['status', 'processed_at', 'processed_by'])
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Order {order.order_number} moved to processing. Ready for result entry.',
+            'redirect_url': reverse('lab_result_create_for_order', kwargs={'order_id': order.id})
+        })
+
+    except LabTestOrderModel.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Lab order not found.'
+        }, status=404)
+
+    except Exception as e:
+        logger.exception("Error processing order id=%s", order_id)
+        return JsonResponse({
+            'success': False,
+            'error': 'An error occurred while processing order. Please contact administrator.'
+        }, status=500)
+
+
+class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    """Create lab test results"""
+    model = LabTestResultModel
+    permission_required = 'laboratory.add_labtestresultmodel'
+    template_name = 'laboratory/result/create.html'
+    fields = ['technician_comments']
+
+    def dispatch(self, request, *args, **kwargs):
+        # Get the order from URL
+        order_id = kwargs.get('order_id')
+        if order_id:
+            self.order = get_object_or_404(LabTestOrderModel, pk=order_id)
+            # Check if result already exists
+            if hasattr(self.order, 'result'):
+                messages.warning(request, 'Results already exist for this order. Redirecting to edit.')
+                return redirect('lab_result_edit', pk=self.order.result.pk)
+            # Check if order is ready for results
+            if self.order.status not in ['processing', 'collected']:
+                messages.error(request, 'This order is not ready for result entry.')
+                return redirect('lab_result_dashboard')
+        else:
+            self.order = None
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.order:
+            context.update({
+                'order': self.order,
+                'patient': self.order.patient,
+                'template': self.order.template,
+                'parameters': self.order.template.test_parameters.get('parameters', [])
+            })
+        return context
+
+    def post(self, request, *args, **kwargs):
+        if not self.order:
+            messages.error(request, 'Invalid order selected.')
+            return redirect('lab_result_dashboard')
+
+        # Process the results data from form
+        parameters = self.order.template.test_parameters.get('parameters', [])
+        results = []
+
+        for param in parameters:
+            param_code = param.get('code', '')
+            value = request.POST.get(f'param_{param_code}', '').strip()
+
+            if value:  # Only add if value is provided
+                result_entry = {
+                    'parameter_code': param_code,
+                    'parameter_name': param.get('name', ''),
+                    'value': value,
+                    'unit': param.get('unit', ''),
+                    'type': param.get('type', 'text')
+                }
+
+                # Add normal range if available
+                if 'normal_range' in param:
+                    result_entry['normal_range'] = param['normal_range']
+                    # Determine status (normal/abnormal) for numeric values
+                    if param.get('type') == 'numeric' and param['normal_range'].get('min') and param[
+                        'normal_range'].get('max'):
+                        try:
+                            numeric_value = float(value)
+                            min_val = float(param['normal_range']['min'])
+                            max_val = float(param['normal_range']['max'])
+
+                            if numeric_value < min_val:
+                                result_entry['status'] = 'low'
+                            elif numeric_value > max_val:
+                                result_entry['status'] = 'high'
+                            else:
+                                result_entry['status'] = 'normal'
+                        except (ValueError, TypeError):
+                            result_entry['status'] = 'normal'
+                    else:
+                        result_entry['status'] = 'normal'
+
+                results.append(result_entry)
+
+        # Create the result object
+        technician_comments = request.POST.get('technician_comments', '').strip()
+
+        try:
+            with transaction.atomic():
+                result = LabTestResultModel.objects.create(
+                    order=self.order,
+                    results_data={'results': results},
+                    technician_comments=technician_comments
+                )
+
+                # Update order status
+                self.order.status = 'completed'
+                self.order.save(update_fields=['status'])
+
+            messages.success(request, f'Results entered successfully for {self.order.template.name}')
+            return redirect('lab_result_detail', pk=result.pk)
+
+        except Exception as e:
+            logger.exception("Error creating lab result for order %s", self.order.id)
+            messages.error(request, 'An error occurred while saving results. Please try again.')
+            return self.get(request, *args, **kwargs)
+
+
+class LabTestResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    """Update lab test results (only if not verified)"""
+    model = LabTestResultModel
+    permission_required = 'laboratory.change_labtestresultmodel'
+    template_name = 'laboratory/result/edit.html'
+    fields = ['technician_comments']
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.is_verified:
+            messages.error(request, 'Cannot edit verified results.')
+            return redirect('lab_result_detail', pk=self.object.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update({
+            'result': self.object,
+            'order': self.object.order,
+            'patient': self.object.order.patient,
+            'template': self.object.order.template,
+            'parameters': self.object.order.template.test_parameters.get('parameters', []),
+            'existing_results': {r['parameter_code']: r for r in self.object.results_data.get('results', [])}
+        })
+        return context
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+
+        # Process updated results
+        parameters = self.object.order.template.test_parameters.get('parameters', [])
+        results = []
+
+        for param in parameters:
+            param_code = param.get('code', '')
+            value = request.POST.get(f'param_{param_code}', '').strip()
+
+            if value:
+                result_entry = {
+                    'parameter_code': param_code,
+                    'parameter_name': param.get('name', ''),
+                    'value': value,
+                    'unit': param.get('unit', ''),
+                    'type': param.get('type', 'text')
+                }
+
+                # Add normal range and status logic (same as create view)
+                if 'normal_range' in param:
+                    result_entry['normal_range'] = param['normal_range']
+                    if param.get('type') == 'numeric' and param['normal_range'].get('min') and param[
+                        'normal_range'].get('max'):
+                        try:
+                            numeric_value = float(value)
+                            min_val = float(param['normal_range']['min'])
+                            max_val = float(param['normal_range']['max'])
+
+                            if numeric_value < min_val:
+                                result_entry['status'] = 'low'
+                            elif numeric_value > max_val:
+                                result_entry['status'] = 'high'
+                            else:
+                                result_entry['status'] = 'normal'
+                        except (ValueError, TypeError):
+                            result_entry['status'] = 'normal'
+                    else:
+                        result_entry['status'] = 'normal'
+
+                results.append(result_entry)
+
+        # Update the result
+        technician_comments = request.POST.get('technician_comments', '').strip()
+
+        try:
+            self.object.results_data = {'results': results}
+            self.object.technician_comments = technician_comments
+            self.object.save(update_fields=['results_data', 'technician_comments'])
+
+            messages.success(request, 'Lab results updated successfully')
+            return redirect('lab_result_detail', pk=self.object.pk)
+
+        except Exception as e:
+            logger.exception("Error updating lab result %s", self.object.id)
+            messages.error(request, 'An error occurred while updating results. Please try again.')
+            return self.get(request, *args, **kwargs)
 
 
 # -------------------------
@@ -1335,27 +1877,83 @@ def process_payment(request, pk):
 @login_required
 @permission_required('laboratory.change_labtestordermodel', raise_exception=True)
 def collect_sample(request, order_id):
-    pk = order_id
-    order = get_object_or_404(LabTestOrderModel, pk=pk)
-    try:
-        if order.status != 'paid':
-            messages.info(request, "Sample can only be collected for paid orders.")
-            return redirect(reverse('lab_order_detail', kwargs={'pk': pk}))
+    """
+    Collect sample for a lab test order - AJAX endpoint
+    Returns JSON response for frontend consumption
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
 
+    try:
+        order = get_object_or_404(LabTestOrderModel, pk=order_id)
+
+        # Check if order status allows sample collection
+        if order.status != 'paid':
+            return JsonResponse({
+                'success': False,
+                'error': 'Sample can only be collected for paid orders.'
+            }, status=400)
+
+        # Get form data
+        sample_label = request.POST.get('sample_label', '').strip()
+        expected_completion = request.POST.get('expected_completion', '').strip()
+
+        # Validate required fields
+        if not sample_label:
+            return JsonResponse({
+                'success': False,
+                'error': 'Sample label is required.'
+            }, status=400)
+
+        # Process sample collection
         with transaction.atomic():
             order.status = 'collected'
             order.sample_collected_at = now()
             order.sample_collected_by = request.user
-            if not order.sample_label:
-                order.sample_label = f"SAMPLE-{order.order_number}"
-            order.save(update_fields=['status', 'sample_collected_at', 'sample_collected_by', 'sample_label'])
+            order.sample_label = sample_label
 
-        messages.success(request, f"Sample collected for order {order.order_number}")
-    except Exception:
-        logger.exception("Error collecting sample for order id=%s", pk)
-        messages.error(request, "An error occurred while collecting sample. Contact admin.")
-    return redirect(reverse('lab_order_detail', kwargs={'pk': pk}))
+            # Handle expected completion if provided
+            if expected_completion:
+                try:
+                    # Parse the datetime-local input
+                    from datetime import datetime
+                    expected_dt = datetime.fromisoformat(expected_completion)
+                    order.expected_completion = expected_dt
+                except ValueError:
+                    # Invalid datetime format - ignore but don't fail
+                    pass
 
+            # Save the order
+            update_fields = [
+                'status',
+                'sample_collected_at',
+                'sample_collected_by',
+                'sample_label'
+            ]
+            if expected_completion:
+                update_fields.append('expected_completion')
+
+            order.save(update_fields=update_fields)
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Sample collected successfully for order {order.order_number}',
+            'order_id': order.id,
+            'sample_label': order.sample_label
+        })
+
+    except LabTestOrderModel.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Lab test order not found.'
+        }, status=404)
+
+    except Exception as e:
+        logger.exception("Error collecting sample for order id=%s", order_id)
+        return JsonResponse({
+            'success': False,
+            'error': 'An error occurred while collecting sample. Please contact administrator.'
+        }, status=500)
 
 @login_required
 @permission_required('laboratory.change_labtestordermodel', raise_exception=True)

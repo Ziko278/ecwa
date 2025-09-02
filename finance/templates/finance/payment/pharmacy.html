@@ -1,0 +1,156 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+{% block 'main' %}
+
+<div class="container-fluid mt-4">
+  <div class="card">
+    <div class="card-header">
+      <h4>Pharmacy Payment - Patient: {{ patient }} (Wallet: ₦{{patient.wallet.amount|intcomma}})</h4>
+    </div>
+    <div class="card-body">
+      {% if items %}
+      <form id="pharmacy-payment-form" method="post" action="{% url 'finance_pharmacy_patient_payment' patient.id %}">
+        {% csrf_token %}
+        <div class="mb-3">
+          <h5>Pending Medication Orders (last 30 days)</h5>
+        </div>
+
+        <div id="items-list">
+          {% for it in items %}
+          <div class="d-flex justify-content-between align-items-center mb-2 item-row">
+            <div>
+              <input type="checkbox" class="item-checkbox" name="selected_items[]" value="{{ it.id }}" checked>
+              <strong>{{ it.name }}</strong>
+              <small class="text-muted">Order: {{ it.order_number }} | Date: {{ it.ordered_date }} | Qty: {{ it.quantity }}</small>
+
+              {% comment %}
+                Show strike-through only if base and patient amounts differ.
+                Use numeric comparison (safer than checking string filters).
+              {% endcomment %}
+              {% if it.base_amount and it.base_amount != it.patient_amount %}
+                <div><small><s>₦{{ it.base_amount|floatformat:2 }}</s></small></div>
+              {% endif %}
+            </div>
+            <div class="text-end">
+              {# data-amount must be numeric; formatted_patient_amount already contains currency symbol #}
+              <div class="item-amount" data-amount="{{ it.patient_amount }}">{{ it.formatted_patient_amount }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <hr>
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <strong>Total: </strong> <span id="selected-total">₦{{ total|floatformat:2 }}</span>
+          </div>
+          <div>
+            <button type="button" id="fund-now-btn" class="btn btn-warning" style="display:none;">Fund Now</button>
+            <button type="submit" id="pay-btn" class="btn btn-success">Pay with Wallet</button>
+          </div>
+        </div>
+      </form>
+      {% else %}
+      <div class="alert alert-info">No pending medication orders in the last 30 days.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const payBtn = document.getElementById('pay-btn');
+  const fundBtn = document.getElementById('fund-now-btn');
+  const totalEl = document.getElementById('selected-total');
+
+  function parseAmount(text) {
+    if (!text) return 0;
+    return parseFloat(text.toString().replace(/[^0-9.-]+/g,"")) || 0;
+  }
+
+  function computeTotal() {
+    let t = 0;
+    document.querySelectorAll('.item-checkbox').forEach(cb => {
+      if (cb.checked) {
+        const row = cb.closest('.item-row');
+        const amtEl = row.querySelector('.item-amount');
+        // prefer the numeric data-amount attribute
+        const amt = parseFloat(amtEl.dataset.amount || parseAmount(amtEl.textContent));
+        t += isNaN(amt) ? 0 : amt;
+      }
+    });
+    return t;
+  }
+
+  function updateUI() {
+    const total = computeTotal();
+    totalEl.textContent = '₦' + total.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+
+    // walletBalance should be set by the verify endpoint fetch below; fallback to 0
+    const walletBalance = window.WALLET_BALANCE || 0;
+
+    if (total <= 0) {
+      payBtn.disabled = true;
+      fundBtn.style.display = 'none';
+      return;
+    }
+
+    if (walletBalance >= total) {
+      payBtn.disabled = false;
+      fundBtn.style.display = 'none';
+    } else {
+      payBtn.disabled = true;
+      fundBtn.style.display = 'inline-block';
+    }
+  }
+
+  // attach change listeners (works even if no checkboxes exist)
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.classList && e.target.classList.contains('item-checkbox')) {
+      updateUI();
+    }
+  });
+
+  // initial UI update
+  updateUI();
+
+  fundBtn.addEventListener('click', function(){
+    const total = computeTotal();
+    const walletBalance = window.WALLET_BALANCE || 0;
+    const shortfall = (total - walletBalance);
+    // use your funding page URL (the view you provided earlier is patient_wallet_funding)
+    const url = "{% url 'patient_funding' %}?amount=" + encodeURIComponent(shortfall.toFixed(2)) + "&redirect=pharmacy_payment&patient_id={{ patient.id }}";
+    window.location.href = url;
+  });
+
+  // Prevent form submit if pay button is disabled (client-side)
+  const form = document.getElementById('pharmacy-payment-form');
+  if (form) {
+    form.addEventListener('submit', function(e){
+      // re-check total to avoid races
+      updateUI();
+      if (payBtn.disabled) {
+        e.preventDefault();
+        alert('Insufficient wallet balance. Either remove some items or click "Fund Now".');
+      }
+    });
+  }
+
+  // Insert wallet balance from server via verify endpoint (non-blocking).
+  // We call verify endpoint with the patient's card_number if available in context.
+  {% if patient and patient.card_number %}
+    fetch("{% url 'finance_verify_patient_ajax' %}?card_number={{ patient.card_number|urlencode }}")
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.wallet) {
+          window.WALLET_BALANCE = parseFloat(data.wallet.balance) || 0;
+          updateUI();
+        }
+      })
+      .catch(()=>{ /* ignore errors - UI still works but pay will be disabled until balance is known */ });
+  {% endif %}
+})();
+</script>
+
+{% endblock %}

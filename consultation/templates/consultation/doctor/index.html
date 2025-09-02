@@ -1,0 +1,458 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="row">
+    <div class="col-lg-12 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">Doctor Dashboard - Dr. {{ consultant.staff.first_name }} {{ consultant.staff.last_name }}
+                    <a title="Refresh" href="{% url 'doctor_dashboard' %}" class="btn btn-sm btn-info text-white float-end"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
+                </h4>
+                <p class="card-description">
+                    Specialization: {{ consultant.specialization.name|title }} | Room: {{ consultant.assigned_room|default:"Not Assigned" }}
+                </p>
+                {% include 'admin_site/partials/error.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Left Column: Today's Statistics & Quick Actions -->
+    <div class="col-lg-4 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Today's Summary</h5>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="card text-center bg-primary">
+                            <div class="card-body py-2">
+                                <h6 class="text-white">{{ today_stats.total_queue|default:0 }}</h6>
+                                <small class="text-white">My Queue</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="card text-center bg-success">
+                            <div class="card-body py-2">
+                                <h6 class="text-white">{{ today_stats.completed|default:0 }}</h6>
+                                <small class="text-white">Completed</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-6">
+                        <div class="card text-center bg-warning">
+                            <div class="card-body py-2">
+                                <h6 class="text-white">{{ today_stats.waiting|default:0 }}</h6>
+                                <small class="text-white">Waiting</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="card text-center bg-info">
+                            <div class="card-body py-2">
+                                <h6 class="text-white">{{ today_stats.in_consultation|default:0 }}</h6>
+                                <small class="text-white">In Progress</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
+                <h5 class="card-title">Quick Actions</h5>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-success" onclick="callNextPatient()">
+                        <i class="bi bi-person-check"></i> Call Next Patient
+                    </button>
+                    <button class="btn btn-primary" onclick="viewConsultationHistory()">
+                        <i class="bi bi-clock-history"></i> View History
+                    </button>
+                    <button class="btn btn-outline-info" onclick="createNewConsultation()">
+                        <i class="bi bi-plus-circle"></i> New Consultation
+                    </button>
+                </div>
+
+                <hr class="my-4">
+
+                <h5 class="card-title">Current Status</h5>
+                {% if current_consultation %}
+                    <div class="alert alert-info">
+                        <strong>Currently with:</strong><br>
+                        {{ current_consultation.queue_entry.patient|title }}<br>
+                        <small>Queue #{{ current_consultation.queue_entry.queue_number }}</small><br>
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-warning" onclick="pauseConsultation({{ current_consultation.id }})">
+                                <i class="bi bi-pause"></i> Pause
+                            </button>
+                            <button class="btn btn-sm btn-success" onclick="completeConsultation({{ current_consultation.id }})">
+                                <i class="bi bi-check"></i> Complete
+                            </button>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="alert alert-secondary">
+                        <i class="bi bi-check-circle"></i> Ready for next patient
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Patient Queue -->
+    <div class="col-lg-8 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">My Patient Queue</h5>
+
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="12%">Queue #</th>
+                                <th width="20%">Patient</th>
+                                <th width="15%">Status</th>
+                                <th width="15%">Time</th>
+                                <th width="15%">Chief Complaint</th>
+                                <th width="23%">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for queue in my_queue %}
+                            <tr data-queue-id="{{ queue.id }}" class="queue-row">
+                                <td>
+                                    <strong class="text-primary">{{ queue.queue_number }}</strong>
+                                    {% if queue.is_emergency %}
+                                        <span class="badge bg-danger ms-1">EMERGENCY</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div>
+                                        <strong>{{ queue.patient|title }}</strong>
+                                        <small class="text-muted d-block">ID: {{ queue.patient.patient_id }}</small>
+                                        <small class="text-muted d-block">{{ queue.patient.age }} yrs, {{ queue.patient.gender|title }}</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if queue.status == 'vitals_done' %}
+                                        <span class="badge bg-success">Ready</span>
+                                    {% elif queue.status == 'with_doctor' %}
+                                        <span class="badge bg-info">In Progress</span>
+                                    {% elif queue.status == 'consultation_paused' %}
+                                        <span class="badge bg-warning">Paused</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small>{{ queue.joined_queue_at|date:"H:i" }}</small>
+                                    {% if queue.vitals_completed_at %}
+                                        <small class="text-success d-block">V: {{ queue.vitals_completed_at|date:"H:i" }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if queue.vitals %}
+                                        <small>{{ queue.vitals.chief_complaint|truncatechars:50 }}</small>
+                                    {% else %}
+                                        <small class="text-muted">Not recorded</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group-sm" role="group">
+                                        {% if queue.status == 'vitals_done' %}
+                                            <button class="btn btn-sm btn-success" onclick="startConsultation({{ queue.id }})">
+                                                <i class="bi bi-play"></i> Start
+                                            </button>
+                                        {% elif queue.status == 'with_doctor' %}
+                                            <button class="btn btn-sm btn-primary" onclick="openConsultation({{ queue.consultation.id }})">
+                                                <i class="bi bi-file-medical"></i> Open
+                                            </button>
+                                            <button class="btn btn-sm btn-warning" onclick="pauseConsultation({{ queue.consultation.id }})">
+                                                <i class="bi bi-pause"></i>
+                                            </button>
+                                        {% elif queue.status == 'consultation_paused' %}
+                                            <button class="btn btn-sm btn-info" onclick="resumeConsultation({{ queue.consultation.id }})">
+                                                <i class="bi bi-play"></i> Resume
+                                            </button>
+                                        {% endif %}
+
+                                        <button class="btn btn-sm btn-outline-info" onclick="viewPatientProfile({{ queue.patient.id }})">
+                                            <i class="bi bi-person"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4">
+                                    <h5 class="text-muted">No Patients in Your Queue</h5>
+                                    <p class="text-muted">Patients will appear here once they're assigned to you.</p>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Consultations -->
+<div class="row">
+    <div class="col-lg-12 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Recent Consultations (Last 7 Days)</h5>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Patient</th>
+                                <th>Diagnosis</th>
+                                <th>Duration</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for consultation in recent_consultations %}
+                            <tr>
+                                <td>{{ consultation.created_at|date:"M d, H:i" }}</td>
+                                <td>
+                                    <strong>{{ consultation.queue_entry.patient|title }}</strong>
+                                    <small class="text-muted d-block">{{ consultation.queue_entry.patient.patient_id }}</small>
+                                </td>
+                                <td>{{ consultation.diagnosis|truncatechars:50|default:"Not recorded" }}</td>
+                                <td>
+                                    {% if consultation.completed_at %}
+                                        {{ consultation.created_at|timesince:consultation.completed_at }}
+                                    {% else %}
+                                        <span class="text-warning">In progress</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewConsultationDetail({{ consultation.id }})">
+                                        <i class="bi bi-eye"></i> View
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center py-3">
+                                    <span class="text-muted">No recent consultations</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Global variables
+let currentConsultationId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-refresh every 60 seconds
+    setInterval(() => {
+        if (!document.querySelector('.modal.show')) {
+            location.reload();
+        }
+    }, 60000);
+});
+
+// Call next patient
+function callNextPatient() {
+    fetch('/portal/consultation/ajax/call-next-patient/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(data.message, 'success');
+            if (data.consultation_id) {
+                // Open consultation immediately
+                window.location.href = `/portal/consultation/consultation/${data.consultation_id}/`;
+
+            } else {
+                location.reload();
+            }
+        } else {
+            showAlert('Error: ' + (data.error || 'No patients available'), 'warning');
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+    });
+}
+
+// Start consultation
+function startConsultation(queueId) {
+    fetch(`/portal/consultation/ajax/start-consultation/${queueId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Consultation started', 'success');
+            // Redirect to consultation page
+            window.location.href = `/portal/consultation/consultation/${data.consultation_id}/`;
+        } else {
+            showAlert('Error: ' + (data.error || 'Failed to start consultation'), 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+    });
+}
+
+// Open existing consultation
+function openConsultation(queueId) {
+
+    window.location.href = `/portal/consultation/consultation/${queueId}/`;
+
+}
+
+// Pause consultation
+function pauseConsultation(consultationId) {
+    if (confirm('Are you sure you want to pause this consultation?')) {
+        fetch(`/portal/consultation/ajax/pause-consultation/${consultationId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Consultation paused', 'info');
+                location.reload();
+            } else {
+                showAlert('Error: ' + (data.error || 'Failed to pause'), 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert('Error: ' + error.message, 'danger');
+        });
+    }
+}
+
+// Resume consultation
+function resumeConsultation(consultationId) {
+    fetch(`/portal/consultation/ajax/resume-consultation/${consultationId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Consultation resumed', 'success');
+            window.location.href = `/portal/consultation/consultation/${consultationId}/`;
+        } else {
+            showAlert('Error: ' + (data.error || 'Failed to resume'), 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+    });
+}
+
+// Complete consultation
+function completeConsultation(consultationId) {
+    if (confirm('Are you sure you want to complete this consultation?')) {
+        fetch(`/portal/consultation/ajax/complete-consultation/${consultationId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Consultation completed successfully', 'success');
+                location.reload();
+            } else {
+                showAlert('Error: ' + (data.error || 'Failed to complete'), 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert('Error: ' + error.message, 'danger');
+        });
+    }
+}
+
+// View consultation history
+function viewConsultationHistory() {
+    window.location.href = '/portal/consultation/consultations/history/';
+}
+
+// Create new consultation
+function createNewConsultation() {
+    window.location.href = '/portal/consultation/consultation/new/';
+}
+
+// View consultation detail
+function viewConsultationDetail(consultationId) {
+    window.location.href = `/portal/consultation/consultation/${consultationId}/view/`;
+}
+
+// View patient profile
+function viewPatientProfile(patientId) {
+    window.open(`/patient/${patientId}/detail/`, '_blank');
+
+}
+
+// Utility functions
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    const main = document.querySelector('.col-lg-12.grid-margin .card-body');
+    main.insertBefore(alertDiv, main.firstChild);
+
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

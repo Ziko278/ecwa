@@ -77,7 +77,8 @@ urlpatterns = [
     path('import/<int:pk>/detail', DrugImportLogDetailView.as_view(), name='drug_import_log_detail'),
 
     # 13: Dashboard and Reports URLs
-    path('dashboard/', PharmacyDashboardView.as_view(), name='pharmacy_dashboard'),
+    path('dashboard/', pharmacy_dashboard, name='pharmacy_dashboard'),
+    path('dashboard/print/', pharmacy_dashboard_print, name='pharmacy_dashboard_print'),
     path('reports/stock/', StockReportView.as_view(), name='stock_report'),
 
     # 14: AJAX and API URLs
@@ -88,4 +89,14 @@ urlpatterns = [
     # 15: Export Views
     path('export/drugs/', export_drug_list_view, name='export_drug_list'),
     path('export/stock-report/', export_stock_report_view, name='export_stock_report'),
+
+    path('dispense/', drug_dispense_page, name='drug_dispense_page'),
+    path('verify-patient/', verify_patient_pharmacy_ajax, name='pharmacy_verify_patient_ajax'),
+    path('process-dispense/', process_dispense_ajax, name='pharmacy_process_dispense'),
+    path('dispense-history/', dispense_history_ajax, name='pharmacy_dispense_history'),
+    path('create-pharmacy-order/', create_pharmacy_order_ajax, name='pharmacy_create_order_ajax'),
+    path("dispense/general/", general_dispense_view, name="general_dispense_index"),
+    path("dispense/patient/<int:patient_id>/", patient_dispense_view, name="patient_dispense_index"),
+
+
 ]

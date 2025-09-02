@@ -19,6 +19,9 @@
       <a title="Delete Drug Product" href="{% url 'drug_delete' drug.pk %}" class="btn btn-danger">
         <i class="bi bi-trash"></i>
       </a>
+        <button type="button" class="btn btn-info"
+            data-bs-toggle="modal" data-bs-target="#stockOutModal{{ stock.pk }}"
+            title="Stock Out"><i class="bi bi-box-arrow-up"></i></button>
 
       <a onclick="window.history.back()" title="Go Back" style="float:right" class="btn btn-info text-white"><i class="bi bi-arrow-left"></i></a>
     </div>
@@ -131,47 +134,7 @@
 
             <hr class="my-3">
 
-            <h5 class="card-title">Quick Actions</h5>
-            <div class="row mb-3">
-                <div class="col-md-6">
-                    <h6>Quick Transfer (Store <i class="bi bi-arrow-right"></i> Pharmacy)</h6>
-                    <form method="post" action="{% url 'quick_transfer' %}" class="row g-2">
-                        {% csrf_token %}
-                        <input type="hidden" name="drug_id" value="{{ drug.pk }}">
-                        <div class="col-auto">
-                            <div class="form-floating">
-                                {{ quick_transfer_form.quantity }}
-                                <label for="id_transfer_quantity">Quantity</label>
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <button type="submit" class="btn btn-sm btn-primary mt-2">Transfer</button>
-                        </div>
-                    </form>
-                    {% if form.quantity.errors %}
-                        <div class="text-danger small">{{ form.quantity.errors }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-md-6">
-                    <h6>Update Stock Alert</h6>
-                    <form method="post" action="{% url 'update_stock_alert' %}" class="row g-2">
-                        {% csrf_token %}
-                        <input type="hidden" name="drug_id" value="{{ drug.pk }}">
-                        <div class="col-auto">
-                            <div class="form-floating">
-                                {{ stock_alert_form.minimum_stock_level }}
-                                <label for="id_min_level">Min. Level</label>
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <button type="submit" class="btn btn-sm btn-secondary mt-2">Update</button>
-                        </div>
-                    </form>
-                    {% if stock_alert_form.minimum_stock_level.errors %}
-                        <div class="text-danger small">{{ stock_alert_form.minimum_stock_level.errors }}</div>
-                    {% endif %}
-                </div>
-            </div>
+
           </div>
 
           <!-- Stock Movements Tab -->
@@ -281,4 +244,51 @@
     </div>
   </div>
 </div>
+
+{# Stock Out Modal for each stock item #}
+    <div class="modal fade" id="stockOutModal{{ stock.pk }}" tabindex="-1" aria-labelledby="stockOutModalLabel{{ stock.pk }}" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form method="post" class="p-3" action="{% url 'drug_stock_out' drug.pk %}">
+                    <h4 class="card-title">Stock Out {{ drug|title }}</h4>
+
+                    {% csrf_token %}
+
+                    <div class="form-group mb-3">
+                        <label for="location">Stock Out From:</label>
+                        <select name="location" id="location" class="form-control" required>
+                            <option value="store">Store/Warehouse ({{ drug.store_quantity }} available)</option>
+                            <option value="pharmacy">Pharmacy Counter ({{ drug.pharmacy_quantity }} available)</option>
+                        </select>
+
+                    </div>
+
+
+                    <div class="form-group mb-3">
+                        <label for="quantity_to_reduce">Quantity to Reduce:</label>
+                        <input type="number" name="quantity_to_reduce" id="quantity_to_reduce"
+                               class="form-control" step="0.01" min="0.01" required>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="reason">Reason:</label>
+                        <select name="reason" required id="reason" class="form-control">
+                            <option value=""></option>
+                            <option value="expired">Expired</option>
+                            <option value="damaged">Damaged/Spoilt</option>
+                            <option value="return">Return to Supplier</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="remark">Remark (Optional):</label>
+                        <textarea name="remark" id="remark" class="form-control" rows="3"></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Reduce Stock</button>
+                </form>
+            </div>
+        </div>
+    </div>
 {% endblock %}

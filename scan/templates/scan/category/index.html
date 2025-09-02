@@ -1,0 +1,155 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Add Category" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#categoryHelperModal"><b>Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#">
+                        <button title="Add Category" type="button" style="width:100%" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">Add Category</button>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">List of Scan Categories</h5>
+            {% include 'admin_site/partials/error.html' %}
+            <table class="table table-borderless datatable">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Category Name</th>
+                    <th scope="col">Code</th>
+                    <th scope="col">Description</th>
+                    <th scope="col" class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for category in category_list %}
+                <tr>
+                    <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
+                    <td title="created at {{ category.created_at|date }}">{{ category.name|upper }}</td>
+                    <td>{% if category.code %}{{ category.code }}{% endif %}</td>
+                    <td>{% if category.description %}{{ category.description }}{% else %} --------- {% endif %}</td>
+                    <td class="text-center">
+                        <a title="Edit Category" href="#" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#edit{{ forloop.counter }}"><i class="bi bi-pencil-square"></i></a>
+                        <a title="Delete Category" href="{% url 'scan_category_delete' category.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% if not category_list %}
+                <h3 class="text-center">No Category Added Yet</h3>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Category Helper Modal -->
+<div class="modal fade" id="categoryHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Category Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    Categories group scans into logical sets (e.g. X-Ray, CT). Each category can have a code and description.
+                </p>
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> Use short, unique codes for easier referencing in reports.
+                </div>
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> Descriptions are optional, but recommended for clarity.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Category Modal -->
+<form method="POST" action="{% url 'scan_category_create' %}">
+    {% csrf_token %}
+    <div class="modal fade" id="addCategoryModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Add Scan Category</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating">
+                        {{ form.name }}
+                        <label>Category Name<span style="color:red"><b>*</b></span></label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        {{ form.code }}
+                        <label>Category Code</label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        {{ form.description }}
+                        <label>Description</label>
+                    </div><br />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Edit Category Modals -->
+{% for category in category_list %}
+<form method="POST" action="{% url 'scan_category_edit' category.id %}">
+    {% csrf_token %}
+    <div class="modal fade" id="edit{{ forloop.counter }}" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit Scan Category</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating">
+                        <input type="text" name="name" value="{{ category.name }}" required class="form-control">
+                        <label>Category Name <span style="color:red"><b>*</b></span></label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        <input type="text" name="code" value="{{ category.code }}" class="form-control">
+                        <label>Category Code</label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        <textarea name="description" class="form-control">{{ category.description }}</textarea>
+                        <label>Description</label>
+                    </div><br />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endfor %}
+
+{% endblock %}

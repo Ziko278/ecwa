@@ -55,16 +55,16 @@ class ScanCategoryForm(forms.ModelForm):
 class ScanTemplateForm(forms.ModelForm):
     class Meta:
         model = ScanTemplateModel
-        fields = ['name', 'code', 'category', 'scan_parameters', 'price',
-                  'scan_type', 'estimated_duration', 'preparation_required',
+        fields = ['name', 'code', 'category', 'scan_parameters', 'expected_images',
+                  'price', 'estimated_duration', 'preparation_required',
                   'fasting_required', 'equipment_required', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'code': forms.TextInput(attrs={'class': 'form-control'}),
             'category': forms.Select(attrs={'class': 'form-control'}),
-            'scan_parameters': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
+            'scan_parameters': forms.Textarea(attrs={'class': 'form-control', 'rows': 8}),
+            'expected_images': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
             'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'scan_type': forms.Select(attrs={'class': 'form-control'}),
             'estimated_duration': forms.TextInput(attrs={'class': 'form-control'}),
             'preparation_required': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'fasting_required': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -93,6 +93,32 @@ class ScanTemplateForm(forms.ModelForm):
                 raise ValidationError("Template code already exists.")
         return code
 
+    def clean_scan_parameters(self):
+        """Validate JSON format"""
+        import json
+        data = self.cleaned_data.get('scan_parameters')
+        if data:
+            try:
+                if isinstance(data, str):
+                    json.loads(data)
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for scan parameters.")
+        return data
+
+    def clean_expected_images(self):
+        """Validate expected images JSON format"""
+        import json
+        data = self.cleaned_data.get('expected_images')
+        if data:
+            try:
+                if isinstance(data, str):
+                    parsed = json.loads(data)
+                    if not isinstance(parsed, list):
+                        raise ValidationError("Expected images must be a list.")
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for expected images.")
+        return data
+
 
 class ScanOrderForm(forms.ModelForm):
     class Meta:
@@ -119,28 +145,64 @@ class ScanOrderForm(forms.ModelForm):
             'special_instructions': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
 
+    def clean(self):
+        cleaned_data = super().clean()
+        payment_status = cleaned_data.get('payment_status')
+        payment_date = cleaned_data.get('payment_date')
+
+        # If payment is marked as paid, ensure payment_date is set
+        if payment_status and not payment_date:
+            raise ValidationError("Payment date is required when payment status is marked as paid.")
+
+        return cleaned_data
+
 
 class ScanResultForm(forms.ModelForm):
     class Meta:
         model = ScanResultModel
-        fields = ['order', 'measurements_data', 'findings', 'impression',
-                  'recommendations', 'scan_images', 'scan_files',
-                  'is_verified', 'verified_by', 'verified_at',
-                  'technician_notes', 'doctor_interpretation']
+        fields = '__all__'
+
+
+    def clean_measurements_data(self):
+        """Validate JSON format"""
+        import json
+        data = self.cleaned_data.get('measurements_data')
+        if data:
+            try:
+                if isinstance(data, str):
+                    json.loads(data)
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for measurements data.")
+        return data
+
+
+# NEW: Form for the ScanImageModel
+class ScanImageForm(forms.ModelForm):
+    class Meta:
+        model = ScanImageModel
+        fields = ['scan_result', 'image', 'view_type', 'description',
+                  'sequence_number', 'image_quality', 'technical_parameters']
         widgets = {
-            'order': forms.Select(attrs={'class': 'form-control'}),
-            'measurements_data': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
-            'findings': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'impression': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'recommendations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'scan_images': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-            'scan_files': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-            'is_verified': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'verified_by': forms.Select(attrs={'class': 'form-control'}),
-            'verified_at': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
-            'technician_notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'doctor_interpretation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'scan_result': forms.Select(attrs={'class': 'form-control'}),
+            'image': forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
+            'view_type': forms.TextInput(attrs={'class': 'form-control'}),
+            'description': forms.TextInput(attrs={'class': 'form-control'}),
+            'sequence_number': forms.NumberInput(attrs={'class': 'form-control', 'min': '1'}),
+            'image_quality': forms.Select(attrs={'class': 'form-control'}),
+            'technical_parameters': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def clean_technical_parameters(self):
+        """Validate JSON format for technical parameters"""
+        import json
+        data = self.cleaned_data.get('technical_parameters')
+        if data:
+            try:
+                if isinstance(data, str):
+                    json.loads(data)
+            except json.JSONDecodeError:
+                raise ValidationError("Invalid JSON format for technical parameters.")
+        return data
 
 
 class ScanEquipmentForm(forms.ModelForm):
@@ -191,14 +253,13 @@ class ScanTemplateBuilderForm(forms.ModelForm):
     class Meta:
         model = ScanTemplateBuilderModel
         fields = ['name', 'category', 'scan_preset', 'custom_parameters',
-                  'price', 'scan_type', 'estimated_duration']
+                  'price', 'estimated_duration']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'category': forms.Select(attrs={'class': 'form-control'}),
             'scan_preset': forms.Select(attrs={'class': 'form-control'}),
             'custom_parameters': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
             'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'scan_type': forms.TextInput(attrs={'class': 'form-control'}),
             'estimated_duration': forms.TextInput(attrs={'class': 'form-control'}),
         }
 

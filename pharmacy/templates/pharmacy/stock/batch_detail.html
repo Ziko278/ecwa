@@ -74,9 +74,7 @@
                             </td>
                             <td class="text-center">
                                 <div class="btn-group" role="group" aria-label="Stock Actions">
-                                    <button type="button" class="btn btn-sm btn-outline-info"
-                                            data-bs-toggle="modal" data-bs-target="#stockOutModal{{ stock.pk }}"
-                                            title="Stock Out"><i class="bi bi-box-arrow-up"></i></button>
+
                                     <button type="button" class="btn btn-sm btn-outline-warning"
                                             data-bs-toggle="modal" data-bs-target="#editStockModal{{ stock.pk }}"
                                             title="Edit Stock"><i class="bi bi-pencil-square"></i></button>
@@ -168,35 +166,8 @@
         </div>
     </div>
 
-    {# Stock Out Modal for each stock item #}
-    <div class="modal fade" id="stockOutModal{{ stock.pk }}" tabindex="-1" aria-labelledby="stockOutModalLabel{{ stock.pk }}" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <form method="post" action="{% url 'drug_stock_out' stock.pk %}">
-                    {% csrf_token %}
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="stockOutModalLabel{{ stock.pk }}">Stock Out: {{ stock.drug|title }}</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p>Current Quantity Left: <strong>{{ stock.quantity_left|floatformat:2 }}</strong></p>
-                        {% with form=stock_out_form %}
-                            <div class="form-floating mb-3">
-                                {{ form.quantity_to_reduce }}
-                                <label for="{{ form.quantity_to_reduce.id_for_label }}">{{ form.quantity_to_reduce.label }}</label>
-                                {% if form.quantity_to_reduce.errors %}<div class="text-danger">{{ form.quantity_to_reduce.errors }}</div>{% endif %}
-                            </div>
-                        {% endwith %}
-                        <small class="text-muted">Enter the amount of {{ stock.drug|lower }} to remove from stock.</small>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Stock Out</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+
+
 {% endfor %}
 
 {% comment %} Helper for get_item filter in template {% endcomment %}

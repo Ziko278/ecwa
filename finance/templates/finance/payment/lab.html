@@ -1,0 +1,141 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<div class="container-fluid mt-4">
+  <div class="card">
+    <div class="card-header">
+      <h4>Laboratory Payment - Patient: {{ patient }}</h4>
+    </div>
+    <div class="card-body">
+      {% if items %}
+      <form id="lab-payment-form" method="post" action="{% url 'finance_laboratory_patient_payment' patient.id %}">
+        {% csrf_token %}
+        <div class="mb-3">
+          <h5>Pending Laboratory Orders (last 30 days)</h5>
+        </div>
+
+        <div id="items-list">
+          {% for it in items %}
+          <div class="d-flex justify-content-between align-items-center mb-2 item-row">
+            <div>
+              <input type="checkbox" class="item-checkbox" name="selected_items[]" value="{{ it.id }}" checked>
+              <strong>{{ it.name }}</strong>
+              <small class="text-muted">Order: {{ it.order_number }}{% if it.ordered_date %} | Date: {{ it.ordered_date }}{% endif %}</small>
+            </div>
+            <div class="text-end">
+              <div class="item-amount" data-amount="{{ it.patient_amount }}">{{ it.formatted_patient_amount }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <hr>
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <strong>Total: </strong> <span id="selected-total">₦{{ total|floatformat:2 }}</span>
+          </div>
+          <div>
+            <button type="button" id="fund-now-btn" class="btn btn-warning" style="display:none;">Fund Now</button>
+            <button type="submit" id="pay-btn" class="btn btn-success">Pay with Wallet</button>
+          </div>
+        </div>
+      </form>
+      {% else %}
+      <div class="alert alert-info">No pending laboratory orders in the last 30 days.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const payBtn = document.getElementById('pay-btn');
+  const fundBtn = document.getElementById('fund-now-btn');
+  const totalEl = document.getElementById('selected-total');
+
+  function parseAmount(text) {
+    if (!text) return 0;
+    return parseFloat(text.toString().replace(/[^0-9.-]+/g,"")) || 0;
+  }
+
+  function computeTotal() {
+    let t = 0;
+    document.querySelectorAll('.item-checkbox').forEach(cb => {
+      if (cb.checked) {
+        const row = cb.closest('.item-row');
+        const amtEl = row.querySelector('.item-amount');
+        const amt = parseFloat(amtEl.dataset.amount || parseAmount(amtEl.textContent));
+        t += isNaN(amt) ? 0 : amt;
+      }
+    });
+    return t;
+  }
+
+  function updateUI() {
+    const total = computeTotal();
+    totalEl.textContent = '₦' + total.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+
+    const walletBalance = window.WALLET_BALANCE || 0;
+
+    if (total <= 0) {
+      payBtn.disabled = true;
+      fundBtn.style.display = 'none';
+      return;
+    }
+
+    if (walletBalance >= total) {
+      payBtn.disabled = false;
+      fundBtn.style.display = 'none';
+    } else {
+      payBtn.disabled = true;
+      fundBtn.style.display = 'inline-block';
+    }
+  }
+
+  // Re-compute on checkbox change
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.classList && e.target.classList.contains('item-checkbox')) {
+      updateUI();
+    }
+  });
+
+  // initial UI update
+  updateUI();
+
+  fundBtn.addEventListener('click', function(){
+    const total = computeTotal();
+    const walletBalance = window.WALLET_BALANCE || 0;
+    const shortfall = Math.max(0, total - walletBalance);
+    const url = "{% url 'patient_funding' %}?amount=" + encodeURIComponent(shortfall.toFixed(2)) + "&redirect=lab_payment&patient_id={{ patient.id }}";
+    window.location.href = url;
+  });
+
+  // Prevent submit if pay disabled (client-side guard)
+  const form = document.getElementById('lab-payment-form');
+  if (form) {
+    form.addEventListener('submit', function(e){
+      updateUI();
+      if (payBtn.disabled) {
+        e.preventDefault();
+        alert('Insufficient wallet balance. Remove items or click "Fund Now".');
+      }
+    });
+  }
+
+  // Fetch wallet balance via verify endpoint if patient.card_number is available
+  {% if patient and patient.card_number %}
+    fetch("{% url 'finance_verify_patient_ajax' %}?card_number={{ patient.card_number|urlencode }}")
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.wallet) {
+          window.WALLET_BALANCE = parseFloat(data.wallet.balance) || 0;
+          updateUI();
+        }
+      })
+      .catch(()=>{ /* ignore fetch errors; pay will remain disabled until balance is known */ });
+  {% endif %}
+})();
+</script>
+
+{% endblock %}

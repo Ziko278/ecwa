@@ -1,0 +1,670 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="pagetitle">
+    <h1>Pharmacy Dashboard</h1>
+</div>
+
+<section class="section dashboard">
+    <div class="row">
+        <!-- Print Button -->
+<!--        <div class="col-12 mb-3">-->
+<!--            <button class="btn btn-primary" onclick="printDashboard()">-->
+<!--                <i class="bi bi-printer"></i> Print Statistics-->
+<!--            </button>-->
+<!--        </div>-->
+
+        <!-- Alert Cards Row -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card {% if low_stock_count > 0 %}border-warning{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title">Low Stock Alert</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-exclamation-triangle {% if low_stock_count > 0 %}text-warning{% else %}text-muted{% endif %}"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 class="{% if low_stock_count > 0 %}text-warning{% endif %}">{{ low_stock_count }}</h6>
+                            {% if low_stock_count > 0 %}
+                                <span class="text-warning small pt-2 ps-1">Restocking</span>
+                            {% else %}
+                                <span class="text-success small pt-2 ps-1">All good</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card {% if expired_count > 0 %}border-danger{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title">Expired Drugs</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-x-circle {% if expired_count > 0 %}text-danger{% else %}text-muted{% endif %}"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 class="{% if expired_count > 0 %}text-danger{% endif %}">{{ expired_count }}</h6>
+                            {% if expired_count > 0 %}
+                                <span class="text-danger small pt-2 ps-1">Remove from stock</span>
+                            {% else %}
+                                <span class="text-success small pt-2 ps-1">All fresh</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card {% if near_expiry_count > 0 %}border-info{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title">Near Expiry</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-clock {% if near_expiry_count > 0 %}text-info{% else %}text-muted{% endif %}"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 class="{% if near_expiry_count > 0 %}text-info{% endif %}">{{ near_expiry_count }}</h6>
+                            {% if near_expiry_count > 0 %}
+                                <span class="text-info small pt-2 ps-1">Plan for sale</span>
+                            {% else %}
+                                <span class="text-success small pt-2 ps-1">Good dates</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Orders</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-list-task text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ pending_orders }}</h6>
+                            {% if pending_orders > 0 %}
+                                <span class="text-primary small pt-2 ps-1">Dispensing</span>
+                            {% else %}
+                                <span class="text-muted small pt-2 ps-1">Caught up</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Summary Row -->
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card info-card sales-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Inventory</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-cash-stack text-success"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_inventory_value|floatformat:2|intcomma }}</h6>
+                            <span class="text-muted small pt-2 ps-1">Worth</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card info-card revenue-card">
+                <div class="card-body">
+                    <h5 class="card-title">Store Inventory</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-building text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ store_inventory_value|floatformat:2|intcomma }}</h6>
+                            <span class="text-muted small pt-2 ps-1">Worth</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card info-card customers-card">
+                <div class="card-body">
+                    <h5 class="card-title">Pharmacy Inventory</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-shop text-warning"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ pharmacy_inventory_value|floatformat:2|intcomma }}</h6>
+                            <span class="text-muted small pt-2 ps-1">Counter stock</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Drug Products</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-capsule text-info"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ total_drugs }}</h6>
+                            <span class="text-muted small pt-2 ps-1">Active products</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sales Statistics -->
+    <div class="row">
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Today's Sales</h5>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="ps-3">
+                                    <h6 class="text-success">₦{{ today_sales_revenue|floatformat:2 }}</h6>
+                                    <span class="text-muted small">Revenue</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ today_sales_quantity|floatformat:0 }}</h6>
+                                    <span class="text-muted small">Items Sold</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ today_orders_completed }}</h6>
+                                    <span class="text-muted small">Orders</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">This Week</h5>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="ps-3">
+                                    <h6 class="text-primary">₦{{ week_sales_revenue|floatformat:2 }}</h6>
+                                    <span class="text-muted small">Revenue</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ week_sales_quantity|floatformat:0 }}</h6>
+                                    <span class="text-muted small">Items Sold</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ recent_transfers_quantity|floatformat:0 }}</h6>
+                                    <span class="text-muted small">Transfers</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">This Month</h5>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="ps-3">
+                                    <h6 class="text-warning">₦{{ month_sales_revenue|floatformat:2 }}</h6>
+                                    <span class="text-muted small">Revenue</span>
+                                    {% if revenue_growth > 0 %}
+                                        <br><span class="text-success small fw-bold">+{{ revenue_growth }}%</span>
+                                    {% elif revenue_growth < 0 %}
+                                        <br><span class="text-danger small fw-bold">{{ revenue_growth }}%</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ month_sales_quantity|floatformat:0 }}</h6>
+                                    <span class="text-muted small">Items Sold</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row">
+        <!-- Daily Sales Chart -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Daily Sales Trends <span>/Last 7 Days</span></h5>
+                    <div id="salesChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drug Category Distribution -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Drug Categories</h5>
+                    <div id="categoryChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Trends and Top Selling -->
+    <div class="row">
+        <!-- Monthly Trends Chart -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Trends <span>/Last 12 Months</span></h5>
+                    <div id="monthlyTrendChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Selling Drugs -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Top Selling Drugs <span>/This Month</span></h5>
+                    <div class="activity">
+                        {% for drug in top_selling_drugs %}
+                        <div class="activity-item d-flex">
+                            <div class="activite-label">{{ drug.total_sold|floatformat:0 }}</div>
+                            <i class="bi bi-circle-fill activity-badge text-success align-self-start"></i>
+                            <div class="activity-content">
+                                {{ drug.drug__formulation__generic_drug__generic_name|title }}
+                                {% if drug.drug__brand_name %}
+                                    <br><small class="text-muted">{{ drug.drug__brand_name }}</small>
+                                {% endif %}
+                                <br><small class="text-success">₦{{ drug.total_revenue|floatformat:2 }}</small>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="text-muted text-center py-3">
+                            <i class="bi bi-graph-down"></i><br>
+                            No sales data available
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts and Recent Activity -->
+    <div class="row">
+        <!-- Low Stock Alerts -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Low Stock Alerts</h5>
+                    {% for drug in low_stock_drugs %}
+                    <div class="d-flex align-items-center mb-2 p-2 border rounded">
+                        <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+                        <div class="flex-grow-1">
+                            <strong>{{ drug.formulation.generic_drug.generic_name|title }}</strong>
+                            {% if drug.brand_name %}<br><small>{{ drug.brand_name }}</small>{% endif %}
+                            <br><small class="text-muted">Store: {{ drug.store_quantity|floatformat:0 }} | Pharmacy: {{ drug.pharmacy_quantity|floatformat:0 }}</small>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-success py-3">
+                        <i class="bi bi-check-circle"></i><br>
+                        All stocks are good!
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Expired Drugs -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Expired Drugs</h5>
+                    {% for stock in expired_drugs %}
+                    <div class="d-flex align-items-center mb-2 p-2 border rounded border-danger">
+                        <i class="bi bi-x-circle text-danger me-2"></i>
+                        <div class="flex-grow-1">
+                            <strong>{{ stock.drug.formulation.generic_drug.generic_name|title }}</strong>
+                            <br><small class="text-muted">Qty: {{ stock.quantity_left|floatformat:0 }} | Exp: {{ stock.expiry_date }}</small>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-success py-3">
+                        <i class="bi bi-shield-check"></i><br>
+                        No expired drugs!
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Near Expiry Drugs -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Near Expiry (30 days)</h5>
+                    {% for stock in near_expiry_drugs %}
+                    <div class="d-flex align-items-center mb-2 p-2 border rounded border-info">
+                        <i class="bi bi-clock text-info me-2"></i>
+                        <div class="flex-grow-1">
+                            <strong>{{ stock.drug.formulation.generic_drug.generic_name|title }}</strong>
+                            <br><small class="text-muted">Qty: {{ stock.quantity_left|floatformat:0 }} | Exp: {{ stock.expiry_date }}</small>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-success py-3">
+                        <i class="bi bi-calendar-check"></i><br>
+                        All drugs have good expiry dates!
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Stock Additions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Recent Stock Additions <span>/This Week</span></h5>
+                    
+                    {% if recent_stock_additions %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless datatable">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Drug</th>
+                                    <th scope="col">Quantity</th>
+                                    <th scope="col">Location</th>
+                                    <th scope="col">Cost Price</th>
+                                    <th scope="col">Selling Price</th>
+                                    <th scope="col">Date Added</th>
+                                    <th scope="col">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stock in recent_stock_additions %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ stock.drug.formulation.generic_drug.generic_name|title }}</strong>
+                                        {% if stock.drug.brand_name %}<br><small class="text-muted">{{ stock.drug.brand_name }}</small>{% endif %}
+                                    </td>
+                                    <td>{{ stock.quantity_bought|floatformat:0 }}</td>
+                                    <td>
+                                        <span class="badge {% if stock.location == 'store' %}bg-primary{% else %}bg-warning{% endif %}">
+                                            {{ stock.get_location_display }}
+                                        </span>
+                                    </td>
+                                    <td>₦{{ stock.unit_cost_price }}</td>
+                                    <td>₦{{ stock.selling_price }}</td>
+                                    <td>{{ stock.date_added }}</td>
+                                    <td>
+                                        <span class="badge {% if stock.status == 'active' %}bg-success{% elif stock.status == 'expired' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                            {{ stock.get_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                        <p>No recent stock additions this week</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<!-- Chart Scripts -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    
+    // Daily Sales Chart (Last 7 days)
+    const salesData = {{ sales_chart_data|safe }};
+    
+    new ApexCharts(document.querySelector("#salesChart"), {
+        series: [
+            {
+                name: 'Revenue (₦)',
+                data: salesData.map(d => d.sales_worth),
+                yAxisIndex: 0
+            },
+            {
+                name: 'Items Sold',
+                data: salesData.map(d => d.sales_quantity),
+                yAxisIndex: 1
+            },
+            {
+                name: 'Orders Completed',
+                data: salesData.map(d => d.orders_completed),
+                yAxisIndex: 1
+            }
+        ],
+        chart: {
+            height: 350,
+            type: 'line',
+            toolbar: { show: false }
+        },
+        stroke: {
+            width: [3, 2, 2],
+            curve: 'smooth'
+        },
+        colors: ['#2eca6a', '#4154f1', '#ff771d'],
+        xaxis: {
+            categories: salesData.map(d => d.date),
+            type: 'datetime'
+        },
+        yaxis: [
+            {
+                title: { text: 'Revenue (₦)' },
+                labels: {
+                    formatter: function(val) {
+                        return "₦" + val.toFixed(0);
+                    }
+                }
+            },
+            {
+                opposite: true,
+                title: { text: 'Quantity/Orders' }
+            }
+        ],
+        markers: { size: 4 },
+        tooltip: {
+            shared: true,
+            intersect: false,
+            y: [
+                {
+                    formatter: function(val) {
+                        return "₦" + val.toFixed(2);
+                    }
+                },
+                {
+                    formatter: function(val) {
+                        return val + " items";
+                    }
+                },
+                {
+                    formatter: function(val) {
+                        return val + " orders";
+                    }
+                }
+            ]
+        }
+    }).render();
+
+    // Drug Category Distribution Pie Chart
+    const categoryData = {{ category_distribution|safe }};
+    
+    if (categoryData && categoryData.length > 0) {
+        echarts.init(document.querySelector("#categoryChart")).setOption({
+            tooltip: {
+                trigger: 'item',
+                formatter: '{a} <br/>{b}: {c} drugs ({d}%)'
+            },
+            legend: {
+                top: '5%',
+                left: 'center'
+            },
+            series: [{
+                name: 'Drug Categories',
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: false,
+                label: {
+                    show: false,
+                    position: 'center'
+                },
+                emphasis: {
+                    label: {
+                        show: true,
+                        fontSize: '18',
+                        fontWeight: 'bold'
+                    }
+                },
+                labelLine: { show: false },
+                data: categoryData
+            }]
+        });
+    } else {
+        document.querySelector("#categoryChart").innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-pie-chart" style="font-size: 3rem;"></i><p>No category data available</p></div>';
+    }
+
+    // Monthly Trends Chart
+    const monthlyData = {{ monthly_trends|safe }};
+    
+    if (monthlyData && monthlyData.length > 0) {
+        new ApexCharts(document.querySelector("#monthlyTrendChart"), {
+            series: [
+                {
+                    name: 'Sales Revenue (₦)',
+                    data: monthlyData.map(d => d.sales_revenue),
+                    type: 'column'
+                },
+                {
+                    name: 'Items Sold',
+                    data: monthlyData.map(d => d.sales_quantity),
+                    type: 'line'
+                },
+                {
+                    name: 'Stock Added',
+                    data: monthlyData.map(d => d.stock_added),
+                    type: 'line'
+                }
+            ],
+            chart: {
+                height: 350,
+                type: 'line',
+                toolbar: { show: false }
+            },
+            stroke: {
+                width: [0, 3, 3],
+                curve: 'smooth'
+            },
+            colors: ['#2eca6a', '#4154f1', '#ff771d'],
+            xaxis: {
+                categories: monthlyData.map(d => d.month)
+            },
+            yaxis: [
+                {
+                    title: { text: 'Revenue (₦)' },
+                    labels: {
+                        formatter: function(val) {
+                            return "₦" + (val/1000).toFixed(0) + "k";
+                        }
+                    }
+                }
+            ],
+            markers: { size: [0, 4, 4] },
+            tooltip: {
+                shared: true,
+                intersect: false,
+                y: [
+                    {
+                        formatter: function(val) {
+                            return "₦" + val.toFixed(2);
+                        }
+                    },
+                    {
+                        formatter: function(val) {
+                            return val + " items";
+                        }
+                    },
+                    {
+                        formatter: function(val) {
+                            return val + " units";
+                        }
+                    }
+                ]
+            }
+        }).render();
+    }
+
+});
+
+function printDashboard() {
+    window.open('{% url "pharmacy_dashboard_print" %}', '_blank');
+}
+</script>
+
+{% endblock %}

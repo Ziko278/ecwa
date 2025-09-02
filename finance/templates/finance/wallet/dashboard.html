@@ -1,0 +1,299 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+    <style>
+        .wallet-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        .balance-amount {
+            font-size: 3rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .quick-action-card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+            cursor: pointer;
+        }
+        .quick-action-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+        }
+        .transaction-item {
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+        }
+        .transaction-item:last-child {
+            border-bottom: none;
+        }
+        .credit {
+            color: #28a745;
+        }
+        .debit {
+            color: #dc3545;
+        }
+        .stats-card {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border-radius: 10px;
+        }
+        .patient-header {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+            border-radius: 10px 10px 0 0;
+        }
+    </style>
+
+    <div class="container-fluid mt-4">
+        <!-- Header with Patient Info -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header patient-header">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h4 class="mb-1">
+                                    <i class="fas fa-user-circle"></i> {{ patient }}
+                                </h4>
+                                <small>
+                                    Card Number: {{ patient.card_number }} |
+                                    Phone: {{ patient.mobile|default:'' }} |
+                                    Age: {{ patient.age }}
+                                </small>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <a href="{% url 'patient_funding' %}" class="btn btn-light">
+                                    <i class="fas fa-plus"></i> Fund Wallet
+                                </a>
+                                <a href="{% url 'patient_detail' patient.id %}" class="btn btn-outline-light ms-2">
+                                    <i class="fas fa-user"></i> Patient Profile
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Wallet Balance Card -->
+            <div class="col-md-8">
+                <div class="wallet-card">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h5 class="mb-2">
+                                <i class="fas fa-wallet"></i> Wallet Balance
+                            </h5>
+                            <div class="balance-amount">₦{{ wallet_balance|floatformat:2|add:","|join:"" }}</div>
+                            <small class="opacity-75">
+                                Last updated: {{ wallet.updated_at|date:"M d, Y - H:i" }}
+                            </small>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <i class="fas fa-credit-card fa-5x opacity-25"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="col-md-4">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <h5><i class="fas fa-chart-line"></i> This Month</h5>
+                        <div class="row">
+                            <div class="col-6">
+                                <h6>Funded</h6>
+                                <h4>₦0.00</h4>
+                            </div>
+                            <div class="col-6">
+                                <h6>Spent</h6>
+                                <h4>₦0.00</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h5 class="mb-3">Quick Actions</h5>
+            </div>
+            <div class="col-md-3">
+                <div class="card quick-action-card text-center" onclick="location.href='{% url 'patient_funding' %}'">
+                    <div class="card-body">
+                        <i class="fas fa-plus-circle fa-3x text-success mb-3"></i>
+                        <h6>Fund Wallet</h6>
+                        <small class="text-muted">Add money to wallet</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card quick-action-card text-center" onclick="showPaymentOptions()">
+                    <div class="card-body">
+                        <i class="fas fa-credit-card fa-3x text-primary mb-3"></i>
+                        <h6>Pay Bills</h6>
+                        <small class="text-muted">Pay pending services</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card quick-action-card text-center" onclick="location.href='{ url 'laboratory:patient_orders' patient.id %}'">
+                    <div class="card-body">
+                        <i class="fas fa-vial fa-3x text-info mb-3"></i>
+                        <h6>Lab Tests</h6>
+                        <small class="text-muted">View lab orders</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card quick-action-card text-center" onclick="location.href='{ url 'pharmacy:patient_orders' patient.id %}'">
+                    <div class="card-body">
+                        <i class="fas fa-pills fa-3x text-warning mb-3"></i>
+                        <h6>Medications</h6>
+                        <small class="text-muted">View drug orders</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity & Transactions -->
+        <div class="row">
+            <!-- Recent Transactions -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-history"></i> Recent Transactions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% comment %}
+                        {% if recent_transactions %}
+                            {% for transaction in recent_transactions %}
+                            <div class="transaction-item">
+                                <div class="row align-items-center">
+                                    <div class="col-md-8">
+                                        <h6 class="mb-1">{{ transaction.description }}</h6>
+                                        <small class="text-muted">
+                                            {{ transaction.created_at|date:"M d, Y - H:i" }}
+                                            {% if transaction.created_by %}
+                                                by {{ transaction.created_by.get_full_name }}
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        {% if transaction.transaction_type == 'credit' %}
+                                            <span class="credit">+₦{{ transaction.amount|floatformat:2 }}</span>
+                                        {% else %}
+                                            <span class="debit">-₦{{ transaction.amount|floatformat:2 }}</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                        {% endcomment %}
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-history fa-3x mb-3"></i>
+                            <h6>No recent transactions</h6>
+                            <p>Transactions will appear here when you fund your wallet or make payments.</p>
+                        </div>
+                        {% comment %}
+                        {% endif %}
+                        {% endcomment %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Orders Summary -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-clipboard-list"></i> Current Orders
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="orders-summary">
+                            <div class="text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading orders...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Insurance Info -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-shield-alt"></i> Insurance Status
+                        </h5>
+                    </div>
+                    <div class="card-body" id="insurance-info">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading insurance info...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment Options Modal -->
+        <div class="modal fade" id="paymentOptionsModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-credit-card"></i> Payment Options
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <a href="{ url 'laboratory:patient_payment' patient.id %}" class="btn btn-outline-success w-100 py-3">
+                                    <i class="fas fa-vial fa-2x d-block mb-2"></i>
+                                    Laboratory Tests
+                                </a>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <a href="{ url 'scan:patient_payment' patient.id %}" class="btn btn-outline-info w-100 py-3">
+                                    <i class="fas fa-x-ray fa-2x d-block mb-2"></i>
+                                    Scans/Radiology
+                                </a>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <a href="{ url 'pharmacy:patient_payment' patient.id %}" class="btn btn-outline-warning w-100 py-3">
+                                    <i class="fas fa-pills fa-2x d-block mb-2"></i>
+                                    Medications
+                                </a>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <a href="{ url 'consultation:patient_payment' patient.id %}" class="btn btn-outline-primary w-100 py-3">
+                                    <i class="fas fa-user-md fa-2x d-block mb-2"></i>
+                                    Consultation
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

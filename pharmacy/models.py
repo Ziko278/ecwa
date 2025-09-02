@@ -137,6 +137,7 @@ class DrugModel(models.Model):
     store_quantity = models.FloatField(default=0, help_text="Quantity in store/warehouse")
     pharmacy_quantity = models.FloatField(default=0, help_text="Quantity in pharmacy counter")
     minimum_stock_level = models.IntegerField(default=10)
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2)
 
     # Status
     is_active = models.BooleanField(default=True)
@@ -312,6 +313,7 @@ class DrugStockOutModel(models.Model):
         ('expired', 'Expired'),
         ('damaged', 'Damaged/Spoilt'),
         ('return', 'Return to Supplier'),
+        ('transfer', 'Transfer'),  # Added for internal transfers
         ('other', 'Other'),
     ]
 
@@ -320,6 +322,8 @@ class DrugStockOutModel(models.Model):
 
     quantity = models.FloatField()
     reason = models.CharField(max_length=20, choices=REASON_CHOICES, default='sale')
+    location_reduced_from = models.CharField(max_length=20, choices=[('store', 'Store'), ('pharmacy', 'Pharmacy')],
+                                           help_text="Which drug location was reduced")
     worth = models.DecimalField(max_digits=12, decimal_places=2, blank=True)
 
     remark = models.TextField(null=True, blank=True)
@@ -338,21 +342,9 @@ class DrugStockOutModel(models.Model):
         if not self.worth:
             self.worth = self.stock.selling_price * self.quantity
 
-        is_new = not self.id
+        # REMOVED: Automatic stock and drug quantity updates
+        # These are now handled in the view for better control
         super().save(*args, **kwargs)
-
-        if is_new:
-            # Update stock quantities
-            self.stock.quantity_left -= self.quantity
-            self.stock.current_worth = self.stock.quantity_left * self.stock.selling_price
-            self.stock.save()
-
-            # Update drug quantities based on stock location
-            if self.stock.location == 'store':
-                self.drug.store_quantity -= self.quantity
-            else:
-                self.drug.pharmacy_quantity -= self.quantity
-            self.drug.save()
 
 
 # 8. DRUG TRANSFER MODEL (Store to Pharmacy transfers)
@@ -397,6 +389,170 @@ class PharmacySettingModel(models.Model):
 
     def __str__(self):
         return "Pharmacy Settings"
+
+
+class DrugOrderModel(models.Model):
+    """
+    Represents a patient's order or prescription for a specific drug.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending Dispense'),
+        ('paid', 'Paid'),
+        ('partially_paid', 'Partially Paid'),
+        ('dispensed', 'Dispensed'),
+        ('partially_dispensed', 'Partially Dispensed'),
+        ('cancelled', 'Cancelled'),
+        ('returned', 'Returned'),
+    ]
+
+    patient = models.ForeignKey(
+        'patient.PatientModel',
+        on_delete=models.CASCADE,
+        related_name='drug_prescriptions',
+        help_text="The patient for whom the drug is ordered."
+    )
+    drug = models.ForeignKey(
+        DrugModel, # Assuming DrugModel is in the same app
+        on_delete=models.CASCADE,
+        related_name='drug_orders',
+        help_text="The specific drug product ordered."
+    )
+
+    quantity_ordered = models.FloatField(
+        validators=[MinValueValidator(0.01)],
+        help_text="The total quantity of the drug ordered (e.g., 30 tablets, 1 bottle)."
+    )
+    quantity_paid = models.FloatField(
+        default=0.0,
+        help_text="The quantity of the drug actually dispensed."
+    )
+    quantity_dispensed = models.FloatField(
+        default=0.0,
+        help_text="The quantity of the drug actually dispensed."
+    )
+
+    # Prescription/Dosage Details
+    dosage_instructions = models.TextField(
+        blank=True,
+        help_text="e.g., 'Take 1 tablet twice daily after meals for 7 days'."
+    )
+    duration = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="e.g., '7 days', 'until finished', 'PRN'."
+    )
+
+    # Order & Dispensing Tracking
+    order_number = models.CharField(
+        max_length=20,
+        unique=True,
+        blank=True,
+        help_text="Auto-generated unique order number."
+    )
+    ordered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='prescribed_drugs',
+        help_text="The user (e.g., doctor, nurse) who ordered the drug."
+    )
+    ordered_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when the order was placed."
+    )
+
+    dispensed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dispensed_drugs',
+        help_text="The user (e.g., pharmacist) who dispensed the drug."
+    )
+    dispensed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when the drug was dispensed."
+    )
+
+    status = models.CharField(
+        max_length=25,
+        choices=STATUS_CHOICES,
+        default='pending',
+        help_text="Current status of the drug order."
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text="Any additional notes about the order or dispensing."
+    )
+
+    class Meta:
+        db_table = 'drug_orders'
+        ordering = ['-ordered_at']
+        verbose_name = 'Drug Order'
+        verbose_name_plural = 'Drug Orders'
+
+    def __str__(self):
+        return f"Order {self.order_number} for {self.patient} - {self.drug.brand_name}"
+
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            # Auto-generate order number (similar to your existing pattern)
+            today = date.today()
+            date_str = today.strftime('%Y%m%d')
+            last_order = DrugOrderModel.objects.filter(
+                order_number__startswith=f'DRG{date_str}'
+            ).order_by('-order_number').first()
+
+            if last_order:
+                try:
+                    last_num = int(last_order.order_number[-3:])
+                    next_num = last_num + 1
+                except ValueError:
+                    next_num = 1
+            else:
+                next_num = 1
+            self.order_number = f'DRG{date_str}{str(next_num).zfill(3)}'
+
+        super().save(*args, **kwargs)
+
+    @property
+    def is_fully_dispensed(self):
+        return self.quantity_ordered == self.quantity_dispensed
+
+    @property
+    def remaining_to_dispense(self):
+        return self.quantity_ordered - self.quantity_dispensed
+
+
+class DispenseRecord(models.Model):
+    """
+    Record each dispense event (partial dispensing allowed).
+    """
+    order = models.ForeignKey(
+        'DrugOrderModel',
+        on_delete=models.CASCADE,
+        related_name='dispense_records'
+    )
+    dispensed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text="Pharmacist or staff who dispensed the drug."
+    )
+    dispensed_qty = models.FloatField()
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Dispense Record"
+        verbose_name_plural = "Dispense Records"
+
+    def __str__(self):
+        return f"Dispensed {self.dispensed_qty} for {self.order.order_number}"
 
 
 # 10. DRUG TEMPLATES (For bulk drug creation)

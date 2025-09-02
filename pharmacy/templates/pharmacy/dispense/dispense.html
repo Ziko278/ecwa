@@ -1,0 +1,728 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<style>
+    /* --- Styles for Drug Search (New Feature) --- */
+    #drug-search-results {
+        position: absolute;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-top: none;
+        z-index: 999;
+        width: calc(100% - 2rem); /* Match input width */
+        max-height: 250px;
+        overflow-y: auto;
+    }
+    .search-result-item {
+        padding: 10px;
+        cursor: pointer;
+    }
+    .search-result-item:hover {
+        background-color: #f0f0f0;
+    }
+    .search-result-item small {
+        display: block;
+        color: #6c757d;
+    }
+    /* --- End New Styles --- */
+
+    .card-header {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+    }
+    .patient-info-card {
+        border-left: 4px solid #28a745;
+    }
+    .wallet-balance {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #28a745;
+    }
+    .service-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        transition: all 0.3s ease;
+    }
+    .service-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .service-header {
+        padding: 10px 15px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .ready-to-dispense { background-color: #d4edda; }
+    .unpaid-orders { background-color: #f8d7da; }
+
+    .item-row {
+        padding: 12px 15px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .item-row:last-child {
+        border-bottom: none;
+    }
+    .quantity-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .quantity-input {
+        width: 80px;
+        text-align: center;
+    }
+    .hidden {
+        display: none;
+    }
+    .step-indicator {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 30px;
+    }
+    .step {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #dee2e6;
+        color: #6c757d;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 10px;
+        position: relative;
+    }
+    .step.active {
+        background: #007bff;
+        color: white;
+    }
+    .step.completed {
+        background: #28a745;
+        color: white;
+    }
+    .step::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 100%;
+        width: 20px;
+        height: 2px;
+        background: #dee2e6;
+        transform: translateY(-50%);
+    }
+    .step:last-child::after {
+        display: none;
+    }
+    .action-section {
+        background: linear-gradient(135deg, #007bff 0%, #6f42c1 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px 0;
+    }
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 4px 8px;
+    }
+</style>
+
+    <div class="container-fluid mt-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="mb-0">
+                            <i class="fas fa-pills"></i> Drug Dispensing System
+                        </h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="step-indicator">
+            <div class="step active" id="step-1">1</div>
+            <div class="step" id="step-2">2</div>
+        </div>
+
+        <div id="patient-verification-section">
+            <div class="row justify-content-center">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-search"></i> Verify Patient</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="patient-verification-form">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label for="card_number" class="form-label">Patient Card Number</label>
+                                    <input type="text" class="form-control form-control-lg"
+                                           id="card_number" name="card_number"
+                                           placeholder="Enter patient card number" required>
+                                </div>
+                                <button type="submit" class="btn btn-success btn-lg w-100">
+                                    <i class="fas fa-search"></i> Verify Patient
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="dispensing-section" class="hidden">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card patient-info-card mb-3">
+                        <div class="card-header">
+                            <h5><i class="fas fa-user"></i> Patient Information</h5>
+                        </div>
+                        <div class="card-body" id="patient-info">
+                            </div>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h5><i class="fas fa-wallet"></i> Wallet Balance</h5>
+                        </div>
+                        <div class="card-body text-center">
+                            <div class="wallet-balance" id="wallet-balance">₦0.00</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-plus-circle"></i> Add New Drug Sale</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="add-drug-form">
+                                <div class="mb-3 position-relative">
+                                    <label for="drug-search" class="form-label">Search Drug</label>
+                                    <input type="text" id="drug-search" class="form-control" placeholder="Type to search for a drug...">
+                                    <div id="drug-search-results"></div>
+                                </div>
+                                <input type="hidden" id="selected-drug-id">
+                                <div class="mb-3">
+                                    <label for="sale-quantity" class="form-label">Quantity</label>
+                                    <input type="number" id="sale-quantity" class="form-control" min="1" value="1">
+                                </div>
+                                <button type="button" class="btn btn-primary w-100" id="add-drug-btn" disabled>
+                                    <i class="fas fa-cart-plus"></i> Add to Order
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-8">
+                    <div id="ready-to-dispense-section"></div>
+
+                    <div id="unpaid-orders-section"></div>
+
+                    <div class="action-section" id="action-section" style="display: none;">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h5 id="action-summary">No actions selected</h5>
+                                <small id="action-details"></small>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <button class="btn btn-light btn-lg" id="process-action-btn" onclick="processActions()">
+                                    <i class="fas fa-check"></i> Process
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <div class="mt-3">Processing... Please wait.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    <div class="modal fade" id="notificationModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="notificationModalTitle">Notification</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="notificationModalBody">
+                    </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        let patientData = null;
+        let drugOrders = null;
+        let walletBalance = 0;
+        let selectedActions = [];
+        let notificationModal; // <-- Modal instance variable
+        let loadingModal;
+
+
+        // ---- Page Ready Function ----
+        $(document).ready(function() {
+            // Initialize the notification modal instance
+             notificationModal = new bootstrap.Modal(document.getElementById('notificationModal'));
+    loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+
+            $('#patient-verification-form').on('submit', function(e) {
+                e.preventDefault();
+                const cardNumber = $('#card_number').val().trim();
+                if (!cardNumber) {
+                    showNotificationModal("Please enter a card number.", "Validation Error", true);
+                    return;
+                }
+                verifyPatient(cardNumber);
+            });
+
+            // --- Event Listeners for New Drug Sale Feature ---
+            $('#drug-search').on('keyup', function() {
+                const query = $(this).val();
+                if (query.length < 2) {
+                    $('#drug-search-results').hide();
+                    return;
+                }
+                $.ajax({
+                    url: "{% url 'ajax_search_drugs' %}",
+                    data: { 'q': query },
+                    success: function(data) {
+                        let resultsHtml = '';
+                        if (data.drugs && data.drugs.length > 0) {
+                            data.drugs.forEach(drug => {
+                                let isPrescription = drug.is_prescription_only ? `<span class="badge bg-danger">Rx Only</span>` : `<span class="badge bg-success">OTC</span>`;
+                                resultsHtml += `
+                                    <div class="search-result-item" data-id="${drug.id}" data-name="${drug.brand_name || drug.formulation}" data-is-prescription="${drug.is_prescription_only}">
+                                        <strong>${drug.brand_name || drug.formulation}</strong> ${isPrescription}
+                                        <small>Generic: ${drug.generic_name} | Price: ₦${drug.price}</small>
+                                    </div>
+                                `;
+                            });
+                        } else {
+                            resultsHtml = '<div class="p-2 text-muted">No drugs found.</div>';
+                        }
+                        $('#drug-search-results').html(resultsHtml).show();
+                    }
+                });
+            });
+
+            $(document).on('click', '.search-result-item', function() {
+                const drugId = $(this).data('id');
+                const drugName = $(this).data('name');
+                const isPrescription = $(this).data('is-prescription');
+
+                if (isPrescription) {
+                    showNotificationModal(`'${drugName}' is a prescription-only drug and cannot be sold directly.`, "Sale Restricted", true);
+                    $('#add-drug-btn').prop('disabled', true);
+                    return;
+                }
+
+                $('#selected-drug-id').val(drugId);
+                $('#drug-search').val(drugName);
+                $('#drug-search-results').hide();
+                $('#add-drug-btn').prop('disabled', false);
+            });
+
+            $('#add-drug-btn').on('click', function() {
+                const drugId = $('#selected-drug-id').val();
+                const quantity = $('#sale-quantity').val();
+
+                if (!drugId || !quantity || quantity < 1) {
+                    showNotificationModal("Please select a valid drug and quantity.", "Input Error", true);
+                    return;
+                }
+
+                //showLoading();
+
+                $.ajax({
+                    url: "{% url 'pharmacy_create_order_ajax' %}",
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        patient_id: patientData.id,
+                        drug_id: drugId,
+                        quantity: quantity,
+                        csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+                    }),
+                    headers: { 'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val() },
+                    success: function(response) {
+                        hideLoading();
+                        showNotificationModal(response.message, "Success");
+                        // Clear the form and refresh the patient's order list
+                        $('#add-drug-form')[0].reset();
+                        $('#selected-drug-id').val('');
+                        $('#add-drug-btn').prop('disabled', true);
+                        verifyPatient(patientData.card_number);
+                    },
+                    error: function(xhr) {
+                        hideLoading();
+                        const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : "An unknown error occurred.";
+                        showNotificationModal(errorMsg, "Error Creating Order", true);
+                    }
+                });
+            });
+
+            // Hide search results if clicked outside
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('#drug-search-results, #drug-search').length) {
+                    $('#drug-search-results').hide();
+                }
+            });
+        });
+
+        // --- Core Functions ----
+
+        function verifyPatient(cardNumber) {
+            //showLoading();
+            // REMOVED MOCK DATA. This is the only part that runs now.
+            $.ajax({
+                url: "{% url 'pharmacy_verify_patient_ajax' %}",
+                method: 'GET',
+                data: { card_number: cardNumber },
+                success: function(response) {
+
+                    hideLoading();
+
+                    if (response.success) {
+                        patientData = response.patient;
+                        drugOrders = response.drug_orders;
+                        walletBalance = response.wallet.balance;
+
+                        displayPatientInfo(response);
+                        displayDrugOrders(response.drug_orders);
+
+                        $('#step-1').removeClass('active').addClass('completed');
+                        $('#step-2').addClass('active');
+                        $('#patient-verification-section').addClass('hidden');
+                        $('#dispensing-section').removeClass('hidden');
+                    }
+                },
+                error: function(xhr) {
+                    hideLoading();
+                    const response = xhr.responseJSON;
+                    showNotificationModal(response.error || 'Error verifying patient', "Verification Failed", true);
+                }
+            });
+        }
+
+        function displayPatientInfo(data) {
+            const patient = data.patient;
+            $('#patient-info').html(`
+                <h5>${patient.full_name}</h5>
+                <p class="mb-1"><strong>Card Number:</strong> ${patient.card_number}</p>
+                <p class="mb-1"><strong>Phone:</strong> ${patient.phone || 'N/A'}</p>
+                <p class="mb-1"><strong>Age:</strong> ${patient.age || 'N/A'}</p>
+                <p class="mb-1"><strong>Gender:</strong> ${patient.gender || 'N/A'}</p>
+            `);
+            $('#wallet-balance').text(data.wallet.formatted_balance);
+        }
+
+        function displayDrugOrders(orders) {
+            // FIX: Clear existing content to prevent duplication
+            $('#ready-to-dispense-section').empty();
+            $('#unpaid-orders-section').empty();
+
+            // Ready to Dispense Section
+            if (orders.ready_to_dispense.length > 0) {
+                $('#ready-to-dispense-section').html(createDispenseSection(orders.ready_to_dispense));
+            }
+
+            // Unpaid Orders Section
+            if (orders.unpaid_orders.length > 0) {
+                $('#unpaid-orders-section').html(createUnpaidSection(orders.unpaid_orders));
+            }
+
+            // No Orders Message
+            if (orders.ready_to_dispense.length === 0 && orders.unpaid_orders.length === 0) {
+                $('#ready-to-dispense-section').html(`
+                    <div class="card mt-2">
+                        <div class="card-body text-center text-muted py-4">
+                            <i class="fas fa-pills fa-3x mb-3"></i>
+                            <h5>No Pending Drug Orders Found</h5>
+                            <p>This patient has no orders awaiting payment or dispensing.</p>
+                        </div>
+                    </div>
+                `);
+            }
+            updateActionSummary();
+        }
+
+        function createDispenseSection(orders) {
+            let html = `
+                <div class="card service-card">
+                    <div class="service-header ready-to-dispense">
+                        <div>
+                            <h6 class="mb-0">
+                                <i class="fas fa-check-circle text-success"></i> Ready to Dispense
+                            </h6>
+                            <small>Paid orders ready for dispensing</small>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-success" onclick="selectAllDispense()">
+                                Select All
+                            </button>
+                        </div>
+                    </div>
+            `;
+            orders.forEach(order => {
+                const statusBadge = order.status === 'paid' ?
+                    '<span class="badge bg-success status-badge">Paid</span>' :
+                    '<span class="badge bg-warning text-dark status-badge">Partially Dispensed</span>';
+
+                const maxQuantity = order.remaining_quantity;
+
+                html += `
+                    <div class="item-row">
+                        <div class="form-check">
+                            <input class="form-check-input dispense-checkbox" type="checkbox"
+                                   value="${order.id}" data-type="dispense" onchange="updateActionSummary()">
+                            <label class="form-check-label">
+                                <strong>${order.drug_name}</strong>
+                                ${statusBadge}
+                                <br>
+                                <small class="text-muted">
+                                    Order: ${order.order_number} | ${order.dosage_instructions}
+                                </small>
+                                <br>
+                                <small class="text-muted">
+                                    Ordered: ${order.quantity_ordered} |
+                                    Dispensed: ${order.quantity_dispensed} |
+                                    Remaining: ${order.remaining_quantity}
+                                </small>
+                            </label>
+                        </div>
+                        <div class="quantity-controls">
+                            <label class="form-label small mb-0">Qty:</label>
+                            <input type="number" class="form-control form-control-sm quantity-input dispense-qty"
+                                   data-order-id="${order.id}" min="1" max="${maxQuantity}"
+                                   value="${maxQuantity}" onchange="updateActionSummary()">
+                            <small class="text-muted">/ ${maxQuantity}</small>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function createUnpaidSection(orders) {
+            let html = `
+                <div class="card service-card mt-3">
+                    <div class="service-header unpaid-orders">
+                        <div>
+                            <h6 class="mb-0">
+                                <i class="fas fa-exclamation-circle text-danger"></i> Unpaid Orders
+                            </h6>
+                            <small>Orders pending payment from wallet</small>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-danger" onclick="selectAllPayment()">
+                                Select All
+                            </button>
+                        </div>
+                    </div>
+            `;
+            orders.forEach(order => {
+                html += `
+                    <div class="item-row">
+                        <div class="form-check">
+                            <input class="form-check-input payment-checkbox" type="checkbox"
+                                   value="${order.id}" data-type="payment"
+                                   data-amount="${order.total_amount}" onchange="updateActionSummary()">
+                            <label class="form-check-label">
+                                <strong>${order.drug_name}</strong>
+                                <span class="badge bg-danger status-badge">Unpaid</span>
+                                <br>
+                                <small class="text-muted">
+                                    Order: ${order.order_number} | Qty: ${order.quantity_ordered}
+                                </small>
+                                <br>
+                                <small class="text-muted">
+                                    ${order.dosage_instructions}
+                                </small>
+                            </label>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold">₦${parseFloat(order.total_amount).toLocaleString()}</div>
+                            <small class="text-muted">@ ₦${order.price_per_unit}/unit</small>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function selectAllDispense() {
+            const checkboxes = $('.dispense-checkbox');
+            const allChecked = checkboxes.length > 0 && checkboxes.filter(':checked').length === checkboxes.length;
+            checkboxes.prop('checked', !allChecked);
+            updateActionSummary();
+        }
+
+        function selectAllPayment() {
+            const checkboxes = $('.payment-checkbox');
+            const allChecked = checkboxes.length > 0 && checkboxes.filter(':checked').length === checkboxes.length;
+            checkboxes.prop('checked', !allChecked);
+            updateActionSummary();
+        }
+
+        function updateActionSummary() {
+            const dispenseItems = $('.dispense-checkbox:checked');
+            const paymentItems = $('.payment-checkbox:checked');
+            let paymentTotal = 0;
+
+            paymentItems.each(function() {
+                paymentTotal += parseFloat($(this).data('amount'));
+            });
+
+            let summary = '';
+            let details = '';
+            let showActions = false;
+
+            if (dispenseItems.length > 0) {
+                summary += `Dispense ${dispenseItems.length} item(s)`;
+                showActions = true;
+            }
+
+            if (paymentItems.length > 0) {
+                if (summary) summary += ' and ';
+                summary += `Pay for ${paymentItems.length} item(s)`;
+                details = `Payment Total: ₦${paymentTotal.toLocaleString()}`;
+                showActions = true;
+
+                if (paymentTotal > walletBalance) {
+                    const shortfall = paymentTotal - walletBalance;
+                    details += ` <span class="badge bg-warning text-dark">Insufficient Funds (Short by ₦${shortfall.toLocaleString()})</span>`;
+                    $('#process-action-btn').prop('disabled', true).html('<i class="fas fa-times"></i> Insufficient Funds');
+                } else {
+                    $('#process-action-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Process Actions');
+                }
+            } else if (dispenseItems.length > 0) {
+                 $('#process-action-btn').prop('disabled', false).html('<i class="fas fa-check"></i> Process Actions');
+            }
+
+            if (!showActions) {
+                summary = 'No actions selected';
+                $('#action-section').slideUp();
+            } else {
+                $('#action-summary').text(summary);
+                $('#action-details').html(details);
+                $('#action-section').slideDown();
+            }
+        }
+
+        function processActions() {
+            const dispenseItems = [];
+            const paymentItems = [];
+
+            $('.dispense-checkbox:checked').each(function() {
+                const orderId = $(this).val();
+                const quantity = $(`.dispense-qty[data-order-id="${orderId}"]`).val();
+                dispenseItems.push({
+                    order_id: orderId,
+                    quantity: parseFloat(quantity)
+                });
+            });
+
+            $('.payment-checkbox:checked').each(function() {
+                paymentItems.push($(this).val());
+            });
+
+            if (dispenseItems.length === 0 && paymentItems.length === 0) {
+                showNotificationModal('Please select at least one action to process.', "No Action Selected", true);
+                return;
+            }
+
+            //showLoading();
+
+            $.ajax({
+                url: "{% url 'pharmacy_process_dispense' %}",
+                method: 'POST',
+                data: {
+                    patient_id: patientData.id,
+                    dispense_items: JSON.stringify(dispenseItems),
+                    payment_items: JSON.stringify(paymentItems),
+                    csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+                },
+                success: function(response) {
+                    hideLoading();
+                    if (response.success) {
+                        showNotificationModal(response.message, "Actions Processed");
+                        // Refresh the patient data to show updated lists
+                        verifyPatient(patientData.card_number);
+                    }
+                },
+                error: function(xhr) {
+                    hideLoading();
+                    const response = xhr.responseJSON;
+                    showNotificationModal(response.error || 'Error processing actions', "Processing Failed", true);
+                }
+            });
+        }
+
+        function resetToStart() {
+            $('#patient-verification-form')[0].reset();
+            $('.step').removeClass('active completed');
+            $('#step-1').addClass('active');
+            $('#dispensing-section').addClass('hidden');
+            $('#patient-verification-section').removeClass('hidden');
+            $('#action-section').hide();
+            patientData = null;
+            drugOrders = null;
+        }
+
+        // --- Modal & Loading Helper Functions ---
+      function showLoading() {
+        if (loadingModal) loadingModal.show();
+    }
+
+function hideLoading() {
+    if (loadingModal) {
+        loadingModal.hide();
+
+        // Force clean-up in case Bootstrap backdrop hangs
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('padding-right');
+    }
+}
+
+
+        function showNotificationModal(message, title = 'Notification', isError = false) {
+            const titleElement = document.getElementById('notificationModalTitle');
+            document.getElementById('notificationModalBody').innerHTML = message;
+            titleElement.textContent = title;
+            if (isError) {
+                titleElement.classList.remove('text-success');
+                titleElement.classList.add('text-danger');
+            } else {
+                titleElement.classList.remove('text-danger');
+                titleElement.classList.add('text-success');
+            }
+            notificationModal.show();
+        }
+    </script>
+{% endblock %}

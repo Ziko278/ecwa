@@ -9,28 +9,78 @@ urlpatterns = [
     path('category/<int:pk>/edit', ScanCategoryUpdateView.as_view(), name='scan_category_edit'),
     path('category/<int:pk>/delete', ScanCategoryDeleteView.as_view(), name='scan_category_delete'),
     path('category/multi-action', multi_category_action, name='multi_category_action'),
+    
+    path('', ScanDashboardView.as_view(), name='scan_dashboard'),
+    path('dashboard/data/', scan_dashboard_data, name='scan_dashboard_data'),
 
+    # -------------------------
+    # Entry Point
+    # -------------------------
+    path('entry/', ScanEntryView.as_view(), name='scan_entry'),
+    path('verify-patient/', verify_scan_patient_ajax, name='verify_scan_patient_ajax'),
+
+
+    # -------------------------
     # Templates
-    path('template/create', ScanTemplateCreateView.as_view(), name='scan_template_create'),
-    path('template/index', ScanTemplateListView.as_view(), name='scan_template_index'),
-    path('template/<int:pk>/detail', ScanTemplateDetailView.as_view(), name='scan_template_detail'),
-    path('template/<int:pk>/edit', ScanTemplateUpdateView.as_view(), name='scan_template_edit'),
-    path('template/<int:pk>/delete', ScanTemplateDeleteView.as_view(), name='scan_template_delete'),
+    # -------------------------
+    path('templates/', ScanTemplateListView.as_view(), name='scan_template_index'),
+    path('templates/create/', ScanTemplateCreateView.as_view(), name='scan_template_create'),
+    path('templates/<int:pk>/', ScanTemplateDetailView.as_view(), name='scan_template_detail'),
+    path('templates/<int:pk>/edit/', ScanTemplateUpdateView.as_view(), name='scan_template_edit'),
+    path('templates/<int:pk>/delete/', ScanTemplateDeleteView.as_view(), name='scan_template_delete'),
 
+    # AJAX - Template details
+    path('api/template-details/', get_scan_template_details, name='get_scan_template_details'),
+
+    # -------------------------
+    # Patient Scans
+    # -------------------------
+    path('patient/<int:patient_id>/', PatientScansView.as_view(), name='patient_scans'),
+    path('patient/<int:patient_id>/create-order/', ScanOrderCreateView.as_view(), name='scan_order_create'),
+    path('api/patient-scans/', get_patient_scans, name='get_patient_scans'),
+
+    # -------------------------
     # Orders
-    path('order/create', ScanOrderCreateView.as_view(), name='scan_order_create'),
-    path('order/index', ScanOrderListView.as_view(), name='scan_order_index'),
-    path('order/<int:pk>/detail', ScanOrderDetailView.as_view(), name='scan_order_detail'),
-    path('order/<int:pk>/edit', ScanOrderUpdateView.as_view(), name='scan_order_edit'),
-    path('order/multi-action', multi_order_action, name='multi_order_action'),
+    # -------------------------
+    path('orders/', ScanOrderListView.as_view(), name='scan_order_index'),
+    path('orders/<int:pk>/', ScanOrderDetailView.as_view(), name='scan_order_detail'),
+    path('orders/<int:pk>/edit/', ScanOrderUpdateView.as_view(), name='scan_order_edit'),
 
-    # Results
-    path('result/create', ScanResultCreateView.as_view(), name='scan_result_create'),
-    path('result/index', ScanResultListView.as_view(), name='scan_result_index'),
-    path('result/<int:pk>/detail', ScanResultDetailView.as_view(), name='scan_result_detail'),
-    path('result/<int:pk>/edit', ScanResultUpdateView.as_view(), name='scan_result_edit'),
-    path('result/<int:pk>/verify', verify_result, name='scan_result_verify'),
+    # Order Actions
+    path('orders/process-payments/', process_scan_payments, name='process_scan_payments'),
+    path('orders/<int:order_id>/schedule/', schedule_scan, name='schedule_scan'),
+    path('orders/<int:order_id>/start/', start_scan, name='start_scan'),
+    path('orders/bulk-action/', multi_scan_order_action, name='multi_scan_order_action'),
 
+    # -------------------------
+    # Results Dashboard
+    # -------------------------
+    path('results/', ScanResultDashboardView.as_view(), name='scan_result_dashboard'),
+    path('results/create/<int:order_id>/', ScanResultCreateView.as_view(), name='scan_result_create_for_order'),
+    path('results/<int:pk>/', ScanResultDetailView.as_view(), name='scan_result_detail'),
+    path('results/<int:pk>/edit/', ScanResultUpdateView.as_view(), name='scan_result_edit'),
+    path('results/<int:pk>/verify/', verify_scan_result, name='verify_scan_result'),
+
+    # -------------------------
+    # Image Management
+    # -------------------------
+    path('results/<int:result_id>/upload-image/', ScanImageUploadView.as_view(), name='scan_image_upload'),
+    path('results/<int:result_id>/upload-multiple/', MultipleImageUploadView.as_view(), name='scan_multiple_image_upload'),
+    path('images/<int:image_id>/delete/', delete_scan_image, name='delete_scan_image'),
+    path('images/<int:image_id>/update/', update_image_details, name='update_image_details'),
+
+    # -------------------------
+    # Print Views
+    # -------------------------
+    path('orders/<int:pk>/print/', print_scan_order, name='print_scan_order'),
+    path('results/<int:pk>/print/', print_scan_result, name='print_scan_result'),
+
+    # -------------------------
+    # Reports
+    # -------------------------
+    path('reports/', ScanReportView.as_view(), name='scan_reports'),
+
+    
     # Equipment
     path('equipment/create', ScanEquipmentCreateView.as_view(), name='scan_equipment_create'),
     path('equipment/index', ScanEquipmentListView.as_view(), name='scan_equipment_index'),
@@ -74,3 +124,4 @@ urlpatterns = [
     path('ajax/patient-orders', get_patient_orders, name='get_patient_orders'),
     path('ajax/dashboard-data', scan_dashboard_data, name='scan_dashboard_data'),
 ]
+

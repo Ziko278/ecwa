@@ -1,0 +1,96 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="container mt-4">
+  <h2>General Dispense Records</h2>
+
+  <!-- Filters -->
+  <form method="get" class="row g-3 mb-4">
+    <div class="col-md-3">
+      <label>Start Date</label>
+      <input type="date" name="start_date" value="{{ start_date }}" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label>End Date</label>
+      <input type="date" name="end_date" value="{{ end_date }}" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label>Staff</label>
+      <select name="staff" class="form-control">
+        <option value="">All</option>
+        {% for staff in staffs %}
+          <option value="{{ staff.id }}" {% if staff_id|default:'' == staff.id|stringformat:"s" %}selected{% endif %}>{% if staff.staff_profile %} {{ staff.staff_profile.staff }} {% else %} {{ staff }} {% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label>Drug</label>
+      <select name="drug" class="form-control">
+        <option value="">All</option>
+        {% for drug in drugs %}
+          <option value="{{ drug.id }}" {% if drug_id|default:'' == drug.drug__id|stringformat:"s" %}selected{% endif %}>{{ drug|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Filter</button>
+    </div>
+  </form>
+
+  <!-- Table -->
+  <div class="table-responsive">
+    <table class="table table-bordered table-striped">
+      <thead class="table-dark">
+        <tr>
+          <th>Date</th>
+          <th>Drug</th>
+          <th>Patient</th>
+          <th>Quantity</th>
+          <th>Dispensed By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in page_obj %}
+          <tr>
+            <td>{{ record.created_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ record.order.drug|title }}</td>
+            <td><a href="{% url 'patient_dispense_index' record.order.patient.id %}">{{ record.order.patient|title }}</a></td>
+            <td>{{ record.dispensed_qty }}</td>
+            <td>{% if record.dispensed_by.staff_profile %} {{record.dispensed_by.staff_profile.staff}} {% else %} {{ record.dispensed_by }} {% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" class="text-center">No records found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <nav>
+    <ul class="pagination">
+      {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if staff_id %}&staff={{ staff_id }}{% endif %}{% if drug_id %}&drug={{ drug_id }}{% endif %}&start_date={{ start_date }}&end_date={{ end_date }}">Previous</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">Previous</span></li>
+      {% endif %}
+
+      {% for num in page_obj.paginator.page_range %}
+        {% if page_obj.number == num %}
+          <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+        {% else %}
+          <li class="page-item"><a class="page-link" href="?page={{ num }}{% if staff_id %}&staff={{ staff_id }}{% endif %}{% if drug_id %}&drug={{ drug_id }}{% endif %}&start_date={{ start_date }}&end_date={{ end_date }}">{{ num }}</a></li>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if staff_id %}&staff={{ staff_id }}{% endif %}{% if drug_id %}&drug={{ drug_id }}{% endif %}&start_date={{ start_date }}&end_date={{ end_date }}">Next</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">Next</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+</div>
+{% endblock %}

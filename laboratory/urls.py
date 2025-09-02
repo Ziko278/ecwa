@@ -38,11 +38,16 @@ urlpatterns = [
     path('collect-sample/<int:order_id>/', collect_sample, name='collect_sample'),
 
     # Results
-    path('result/create', LabTestResultCreateView.as_view(), name='lab_result_create'),
-    path('result/index', LabTestResultListView.as_view(), name='lab_result_index'),
-    path('result/<int:pk>/detail', LabTestResultDetailView.as_view(), name='lab_result_detail'),
-    path('result/<int:pk>/edit', LabTestResultUpdateView.as_view(), name='lab_result_edit'),
-    path('result/<int:pk>/verify', verify_result, name='lab_result_verify'),
+    path('results/', LabResultDashboardView.as_view(), name='lab_result_dashboard'),
+    path('results/all/', LabTestResultListView.as_view(), name='lab_result_index'),
+    path('results/create/', LabTestResultCreateView.as_view(), name='lab_result_create'),
+    path('results/create/<int:order_id>/', LabTestResultCreateView.as_view(), name='lab_result_create_for_order'),
+    path('results/<int:pk>/', LabTestResultDetailView.as_view(), name='lab_result_detail'),
+    path('results/<int:pk>/edit/', LabTestResultUpdateView.as_view(), name='lab_result_edit'),
+
+    # AJAX endpoints
+    path('results/<int:result_id>/verify/', verify_result, name='verify_result'),
+    path('orders/<int:order_id>/process-for-results/', process_to_result_entry, name='process_to_result_entry'),
 
     # Equipment
     path('equipment/create', LabEquipmentCreateView.as_view(), name='lab_equipment_create'),

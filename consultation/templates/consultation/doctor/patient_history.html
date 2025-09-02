@@ -1,0 +1,287 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="row">
+    <div class="col-lg-12 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">Patient History - {{ patient.first_name }} {{ patient.last_name }}
+                    <button onclick="window.close()" class="btn btn-sm btn-outline-secondary float-end">
+                        <i class="bi bi-x"></i> Close
+                    </button>
+                </h4>
+                <p class="card-description">
+                    Patient ID: {{ patient.patient_id }} | {{ patient.age }} years, {{ patient.gender|title }}
+                    {% if patient.phone_number %} | Phone: {{ patient.phone_number }}{% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Patient Overview -->
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Patient Overview</h5>
+                <div class="patient-info">
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Name:</strong></td>
+                            <td>{{ patient.first_name }} {{ patient.last_name }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>ID:</strong></td>
+                            <td>{{ patient.patient_id }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Age:</strong></td>
+                            <td>{{ patient.age }} years</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Gender:</strong></td>
+                            <td>{{ patient.gender|title }}</td>
+                        </tr>
+                        {% if patient.phone_number %}
+                        <tr>
+                            <td><strong>Phone:</strong></td>
+                            <td>{{ patient.phone_number }}</td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <td><strong>Registered:</strong></td>
+                            <td>{{ patient.created_at|date:"M Y" }}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <hr class="my-3">
+                
+                <h6>Statistics</h6>
+                <div class="stats">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="badge bg-primary">{{ consultations.count }}</div>
+                            <small class="text-muted d-block">Consultations</small>
+                        </div>
+                        <div class="col-6">
+                            <div class="badge bg-info">{{ prescriptions.count }}</div>
+                            <small class="text-muted d-block">Prescriptions</small>
+                        </div>
+                        <div class="col-6 mt-2">
+                            <div class="badge bg-warning">{{ lab_tests.count }}</div>
+                            <small class="text-muted d-block">Lab Tests</small>
+                        </div>
+                        <div class="col-6 mt-2">
+                            <div class="badge bg-secondary">{{ scans.count }}</div>
+                            <small class="text-muted d-block">Scans</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content with Tabs -->
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="historyTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="consultations-tab" data-bs-toggle="tab" data-bs-target="#consultations-pane" type="button" role="tab">
+                            <i class="bi bi-file-medical"></i> Consultations
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="prescriptions-tab" data-bs-toggle="tab" data-bs-target="#prescriptions-pane" type="button" role="tab">
+                            <i class="bi bi-prescription2"></i> Prescriptions
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tests-tab" data-bs-toggle="tab" data-bs-target="#tests-pane" type="button" role="tab">
+                            <i class="bi bi-clipboard2-pulse"></i> Test Results
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="historyTabContent">
+                    <!-- Consultations Tab -->
+                    <div class="tab-pane fade show active" id="consultations-pane" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Doctor</th>
+                                        <th>Chief Complaint</th>
+                                        <th>Diagnosis</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for consultation in consultations %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ consultation.created_at|date:"M d, Y" }}</strong>
+                                            <small class="text-muted d-block">{{ consultation.created_at|date:"H:i" }}</small>
+                                        </td>
+                                        <td>
+                                            Dr. {{ consultation.queue_entry.consultant.staff.first_name }} {{ consultation.queue_entry.consultant.staff.last_name }}<br>
+                                            <small class="text-muted">{{ consultation.queue_entry.consultant.specialization.name }}</small>
+                                        </td>
+                                        <td>{{ consultation.chief_complaint|truncatechars:50|default:"Not recorded" }}</td>
+                                        <td>{{ consultation.diagnosis|truncatechars:50|default:"Not recorded" }}</td>
+                                        <td>
+                                            <span class="badge bg-success">{{ consultation.get_status_display }}</span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="viewConsultationDetails({{ consultation.id }})">
+                                                <i class="bi bi-eye"></i> View
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-3">
+                                            No consultation records found
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Prescriptions Tab -->
+                    <div class="tab-pane fade" id="prescriptions-pane" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Drug</th>
+                                        <th>Dosage</th>
+                                        <th>Prescribed By</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for prescription in prescriptions %}
+                                    <tr>
+                                        <td>{{ prescription.ordered_at|date:"M d, Y" }}</td>
+                                        <td>
+                                            <strong>{{ prescription.drug.brand_name|default:prescription.drug.generic_name }}</strong>
+                                            <small class="text-muted d-block">{{ prescription.drug.formulation }}</small>
+                                        </td>
+                                        <td>
+                                            {{ prescription.dosage_instructions|truncatechars:40 }}<br>
+                                            <small class="text-muted">{{ prescription.duration }}</small>
+                                        </td>
+                                        <td>{{ prescription.ordered_by.get_full_name|default:prescription.ordered_by.username }}</td>
+                                        <td>
+                                            <span class="badge bg-{{ prescription.status|yesno:'success,warning' }}">
+                                                {{ prescription.get_status_display }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-3">
+                                            No prescriptions found
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Tests Tab -->
+                    <div class="tab-pane fade" id="tests-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Lab Tests</h6>
+                                <div class="list-group">
+                                    {% for test in lab_tests %}
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ test.template.name }}</strong>
+                                                <small class="text-muted d-block">{{ test.ordered_at|date:"M d, Y" }}</small>
+                                            </div>
+                                            <span class="badge bg-{{ test.status|yesno:'success,warning' }}">
+                                                {{ test.get_status_display }}
+                                            </span>
+                                        </div>
+                                        {% if test.result %}
+                                        <div class="mt-2">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="viewTestResult({{ test.id }})">
+                                                View Result
+                                            </button>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">
+                                        No lab tests found
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h6>Scans</h6>
+                                <div class="list-group">
+                                    {% for scan in scans %}
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ scan.template.name }}</strong>
+                                                <small class="text-muted d-block">{{ scan.ordered_at|date:"M d, Y" }}</small>
+                                            </div>
+                                            <span class="badge bg-{{ scan.status|yesno:'success,warning' }}">
+                                                {{ scan.get_status_display }}
+                                            </span>
+                                        </div>
+                                        {% if scan.result %}
+                                        <div class="mt-2">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="viewScanResult({{ scan.id }})">
+                                                View Result
+                                            </button>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">
+                                        No scans found
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function viewConsultationDetails(consultationId) {
+    window.open(`/portal/doctor/consultation/${consultationId}/view/`, '_blank');
+}
+
+function viewTestResult(testId) {
+    window.open(`/portal/doctor/lab-test/${testId}/result/`, '_blank');
+}
+
+function viewScanResult(scanId) {
+    window.open(`/portal/doctor/scan/${scanId}/result/`, '_blank');
+}
+</script>
+{% endblock %}

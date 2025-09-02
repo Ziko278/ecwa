@@ -19,6 +19,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMix
 from django.utils import timezone
 from admin_site.forms import SiteInfoForm
 from admin_site.models import SiteInfoModel, ActivityLogModel
+from human_resource.models import StaffProfileModel
 from patient.models import PatientModel, RegistrationPaymentModel
 from patient.views import calculate_growth_percentage, calculate_age_groups, get_monthly_trends, \
     get_registration_chart_data

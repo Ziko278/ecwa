@@ -1,0 +1,192 @@
+<!-- laboratory/result/edit.html -->
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load pharmacy_filters %}
+{% block 'main' %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title mb-0">Edit Results - {{ order.template.name }}</h4>
+                <p class="card-description mb-0">
+                    Patient: {{ patient.full_name }} | Order: {{ order.order_number }}
+                    <span class="badge badge-warning ms-2">Unverified</span>
+                </p>
+            </div>
+
+            <div class="card-body">
+                <form method="post" id="edit-result-form">
+                    {% csrf_token %}
+
+                    <!-- Patient & Order Info -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body p-3">
+                                    <h6>Patient Information</h6>
+                                    <p class="mb-1"><strong>Name:</strong> {{ patient.full_name }}</p>
+                                    <p class="mb-1"><strong>Card Number:</strong> {{ patient.card_number }}</p>
+                                    <p class="mb-0"><strong>Age/Sex:</strong> {{ patient.age|default:"N/A" }} / {{ patient.get_gender_display|default:"N/A" }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body p-3">
+                                    <h6>Test Information</h6>
+                                    <p class="mb-1"><strong>Test:</strong> {{ order.template.name }}</p>
+                                    <p class="mb-1"><strong>Sample:</strong> {{ order.sample_label }}</p>
+                                    <p class="mb-0"><strong>Collected:</strong> {{ order.sample_collected_at|date:"M d, Y H:i" }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Test Parameters Edit -->
+                    <div class="mb-4">
+                        <h5 class="mb-3">Edit Test Results</h5>
+                        {% if parameters %}
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width: 25%;">Parameter</th>
+                                            <th style="width: 20%;">Result Value</th>
+                                            <th style="width: 15%;">Unit</th>
+                                            <th style="width: 20%;">Normal Range</th>
+                                            <th style="width: 20%;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for param in parameters %}
+                                        {% with existing_results|default_if_none:dict as existing %}
+                                        {% with existing|get_item:param.code as current_result %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ param.name }}</strong>
+                                                <br><small class="text-muted">{{ param.code }}</small>
+                                            </td>
+                                            <td>
+                                                {% if param.type == 'numeric' %}
+                                                    <input type="number"
+                                                           name="param_{{ param.code }}"
+                                                           class="form-control"
+                                                           step="0.01"
+                                                           value="{{ current_result.value|default:'' }}"
+                                                           placeholder="Enter value">
+                                                {% elif param.type == 'select' %}
+                                                    <select name="param_{{ param.code }}" class="form-control">
+                                                        <option value="">Select...</option>
+                                                        {% for option in param.options %}
+                                                            <option value="{{ option }}" {% if current_result.value == option %}selected{% endif %}>
+                                                                {{ option }}
+                                                            </option>
+                                                        {% endfor %}
+                                                    </select>
+                                                {% elif param.type == 'boolean' %}
+                                                    <select name="param_{{ param.code }}" class="form-control">
+                                                        <option value="">Select...</option>
+                                                        <option value="Positive" {% if current_result.value == 'Positive' %}selected{% endif %}>Positive</option>
+                                                        <option value="Negative" {% if current_result.value == 'Negative' %}selected{% endif %}>Negative</option>
+                                                    </select>
+                                                {% else %}
+                                                    <input type="text"
+                                                           name="param_{{ param.code }}"
+                                                           class="form-control"
+                                                           value="{{ current_result.value|default:'' }}"
+                                                           placeholder="Enter result">
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ param.unit|default:"-" }}</small>
+                                            </td>
+                                            <td>
+                                                {% if param.normal_range %}
+                                                    <small class="text-muted">
+                                                        {% if param.normal_range.min %}{{ param.normal_range.min }}{% endif %}
+                                                        {% if param.normal_range.min and param.normal_range.max %} - {% endif %}
+                                                        {% if param.normal_range.max %}{{ param.normal_range.max }}{% endif %}
+                                                        {% if param.normal_range.gender_specific %}
+                                                            <br>(Gender specific)
+                                                        {% endif %}
+                                                    </small>
+                                                {% else %}
+                                                    <small class="text-muted">-</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if current_result.status %}
+                                                    <span class="badge badge-{% if current_result.status == 'normal' %}success{% elif current_result.status == 'high' %}danger{% elif current_result.status == 'low' %}warning{% else %}secondary{% endif %}">
+                                                        {{ current_result.status|capfirst }}
+                                                    </span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endwith %}
+                                        {% endwith %}
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Technician Comments -->
+                    <div class="mb-4">
+                        <label for="technician_comments" class="form-label">Technician Comments</label>
+                        <textarea name="technician_comments" id="technician_comments"
+                                  class="form-control" rows="3"
+                                  placeholder="Enter any additional observations or comments...">{{ result.technician_comments }}</textarea>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'lab_result_detail' pk=result.pk %}" class="btn btn-secondary">
+                            <i class="mdi mdi-arrow-left me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="mdi mdi-content-save me-2"></i>Update Results
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="col-lg-4">
+        <!-- Current Results Summary -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Current Results</h5>
+                {% if result.results_data.results %}
+                    {% for res in result.results_data.results %}
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                            <div>
+                                <strong>{{ res.parameter_name }}</strong>
+                                <br><small class="text-muted">{{ res.value }} {{ res.unit|default:"" }}</small>
+                            </div>
+                            <span class="badge badge-{% if res.status == 'normal' %}success{% elif res.status == 'high' %}danger{% elif res.status == 'low' %}warning{% else %}secondary{% endif %}">
+                                {{ res.status|default:"normal"|capfirst }}
+                            </span>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No results entered yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Test Info -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Test Information</h5>
+                <p><strong>Category:</strong> {{ template.category.name }}</p>
+                <p><strong>Sample Type:</strong> {{ template.get_sample_type_display }}</p>
+                <p><strong>Created:</strong> {{ result.created_at|date:"M d, Y H:i" }}</p>
+                <p><strong>Last Updated:</strong> {{ result.updated_at|date:"M d, Y H:i" }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

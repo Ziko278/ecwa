@@ -1,0 +1,334 @@
+<!-- laboratory/result/create.html -->
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title mb-0">
+                    {% if order %}
+                        Enter Results - {{ order.template.name }}
+                    {% else %}
+                        Select Order for Result Entry
+                    {% endif %}
+                </h4>
+                {% if order %}
+                    <p class="card-description mb-0">
+                        Patient: {{ patient.full_name }} | Order: {{ order.order_number }}
+                    </p>
+                {% endif %}
+            </div>
+
+            <div class="card-body">
+                {% if not order %}
+                    <!-- Order Selection -->
+                    <div class="mb-4">
+                        <h5>Select Lab Order</h5>
+                        {% if available_orders %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Patient</th>
+                                            <th>Test</th>
+                                            <th>Order Number</th>
+                                            <th>Sample Label</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for available_order in available_orders %}
+                                        <tr>
+                                            <td>{{ available_order.patient.full_name }}</td>
+                                            <td>{{ available_order.template.name }}</td>
+                                            <td>{{ available_order.order_number }}</td>
+                                            <td>{{ available_order.sample_label|default:"-" }}</td>
+                                            <td>
+                                                <span class="badge badge-{% if available_order.status == 'collected' %}warning{% else %}info{% endif %}">
+                                                    {{ available_order.get_status_display }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <a href="{% url 'lab_result_create_for_order' order_id=available_order.id %}"
+                                                   class="btn btn-sm btn-primary">
+                                                    Enter Results
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="mdi mdi-clipboard-text-outline" style="font-size: 3rem; color: #ccc;"></i>
+                                <h6 class="mt-3 text-muted">No Orders Available</h6>
+                                <p class="text-muted">No lab orders are ready for result entry.</p>
+                                <a href="{% url 'lab_result_dashboard' %}" class="btn btn-primary">
+                                    Back to Dashboard
+                                </a>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <!-- Result Entry Form -->
+                    <form method="post" id="result-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="order_id" value="{{ order.id }}">
+
+                        <!-- Patient & Order Info -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body p-3">
+                                        <h6>Patient Information</h6>
+                                        <p class="mb-1"><strong>Name:</strong> {{ patient.full_name }}</p>
+                                        <p class="mb-1"><strong>Card Number:</strong> {{ patient.card_number }}</p>
+                                        <p class="mb-0"><strong>Age/Sex:</strong> {{ patient.age|default:"N/A" }} / {{ patient.get_gender_display|default:"N/A" }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body p-3">
+                                        <h6>Test Information</h6>
+                                        <p class="mb-1"><strong>Test:</strong> {{ order.template.name }}</p>
+                                        <p class="mb-1"><strong>Sample:</strong> {{ order.sample_label }}</p>
+                                        <p class="mb-0"><strong>Collected:</strong> {{ order.sample_collected_at|date:"M d, Y H:i" }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Test Parameters Input -->
+                        <div class="mb-4">
+                            <h5 class="mb-3">Test Parameters</h5>
+                            {% if parameters %}
+                                <div class="table-responsive">
+                                    <table class="table table-bordered">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 25%;">Parameter</th>
+                                                <th style="width: 20%;">Result Value</th>
+                                                <th style="width: 15%;">Unit</th>
+                                                <th style="width: 20%;">Normal Range</th>
+                                                <th style="width: 20%;">Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for param in parameters %}
+                                            <tr>
+                                                <td>
+                                                    <strong>{{ param.name }}</strong>
+                                                    <br><small class="text-muted">{{ param.code }}</small>
+                                                </td>
+                                                <td>
+                                                    {% if param.type == 'numeric' %}
+                                                        <input type="number"
+                                                               name="param_{{ param.code }}"
+                                                               class="form-control"
+                                                               step="0.01"
+                                                               placeholder="Enter value">
+                                                    {% elif param.type == 'select' %}
+                                                        <select name="param_{{ param.code }}" class="form-control">
+                                                            <option value="">Select...</option>
+                                                            {% for option in param.options %}
+                                                                <option value="{{ option }}">{{ option }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    {% elif param.type == 'boolean' %}
+                                                        <select name="param_{{ param.code }}" class="form-control">
+                                                            <option value="">Select...</option>
+                                                            <option value="Positive">Positive</option>
+                                                            <option value="Negative">Negative</option>
+                                                        </select>
+                                                    {% else %}
+                                                        <input type="text"
+                                                               name="param_{{ param.code }}"
+                                                               class="form-control"
+                                                               placeholder="Enter result">
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <small class="text-muted">{{ param.unit|default:"-" }}</small>
+                                                </td>
+                                                <td>
+                                                    {% if param.normal_range %}
+                                                        <small class="text-muted">
+                                                            {% if param.normal_range.min %}{{ param.normal_range.min }}{% endif %}
+                                                            {% if param.normal_range.min and param.normal_range.max %} - {% endif %}
+                                                            {% if param.normal_range.max %}{{ param.normal_range.max }}{% endif %}
+                                                            {% if param.normal_range.gender_specific %}
+                                                                <br>(Gender specific)
+                                                            {% endif %}
+                                                        </small>
+                                                    {% else %}
+                                                        <small class="text-muted">-</small>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <input type="text"
+                                                           name="param_{{ param.code }}_notes"
+                                                           class="form-control form-control-sm"
+                                                           placeholder="Optional notes">
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-warning">
+                                    <i class="mdi mdi-alert"></i> No parameters defined for this test template.
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Technician Comments -->
+                        <div class="mb-4">
+                            <label for="technician_comments" class="form-label">Technician Comments</label>
+                            <textarea name="technician_comments" id="technician_comments"
+                                      class="form-control" rows="3"
+                                      placeholder="Enter any additional observations or comments..."></textarea>
+                        </div>
+
+                        <!-- Form Actions -->
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'lab_result_dashboard' %}" class="btn btn-secondary">
+                                <i class="mdi mdi-arrow-left me-2"></i>Back to Dashboard
+                            </a>
+                            <div>
+                                <button type="button" class="btn btn-outline-primary me-2" onclick="validateForm()">
+                                    <i class="mdi mdi-check me-2"></i>Validate
+                                </button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="mdi mdi-content-save me-2"></i>Save Results
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="col-lg-4">
+        {% if order %}
+            <!-- Test Template Info -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Test Information</h5>
+                    <p><strong>Category:</strong> {{ template.category.name }}</p>
+                    <p><strong>Sample Type:</strong> {{ template.get_sample_type_display }}</p>
+                    <p><strong>Sample Volume:</strong> {{ template.sample_volume|default:"Not specified" }}</p>
+                    <p><strong>Price:</strong> ₦{{ template.price|floatformat:2 }}</p>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Quick Actions</h5>
+                    <div class="d-grid gap-2">
+                        <a href="{ url 'lab_patient_tests' patient_id=patient.id %}" class="btn btn-outline-primary">
+                            <i class="mdi mdi-account"></i> View Patient Tests
+                        </a>
+                        <button class="btn btn-outline-info" onclick="previewReport()">
+                            <i class="mdi mdi-printer"></i> Preview Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.btn-loading {
+    position: relative;
+}
+
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: button-loading-spinner 1s ease infinite;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+}
+
+@keyframes button-loading-spinner {
+    from { transform: rotate(0turn); }
+    to { transform: rotate(1turn); }
+}
+</style>
+
+<script>
+function validateForm() {
+    const form = document.getElementById('result-form');
+    const inputs = form.querySelectorAll('input[name^="param_"], select[name^="param_"]');
+    let hasValues = false;
+
+    inputs.forEach(input => {
+        if (input.value.trim()) {
+            hasValues = true;
+        }
+    });
+
+    if (!hasValues) {
+        alert('Please enter at least one test result value.');
+        return false;
+    }
+
+    alert('Form validation passed! All required fields have values.');
+    return true;
+}
+
+function previewReport() {
+    // Collect current form values for preview
+    const form = document.getElementById('result-form');
+    const formData = new FormData(form);
+
+    // You could implement a preview functionality here
+    alert('Report preview functionality can be implemented here.');
+}
+
+// Auto-save draft functionality (optional)
+let autoSaveTimeout;
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('result-form');
+    if (form) {
+        const inputs = form.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('input', function() {
+                clearTimeout(autoSaveTimeout);
+                autoSaveTimeout = setTimeout(() => {
+                    // Could implement auto-save draft here
+                    console.log('Auto-saving draft...');
+                }, 3000);
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

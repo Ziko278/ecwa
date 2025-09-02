@@ -158,6 +158,7 @@ const totalAmountDisplay = document.getElementById("totalAmountDisplay");
 const feeBreakdown = document.getElementById("feeBreakdown");
 
 let regFees = {{ registration_fees|safe }}; // passed from view as JSON
+feeValue = 1
 
 // Step 1: Populate reg fees when patient type changes
 patientType.addEventListener("change", function() {
@@ -168,6 +169,7 @@ patientType.addEventListener("change", function() {
         regFees.filter(f => f.patient_type === type).forEach(f => {
             regFeeSelect.innerHTML += `<option value="${f.id}" data-amount="${f.amount}">${f.title} - ₦${f.amount}</option>`;
         });
+
 
         // Show name field always, card field only for old patients
         fullNameField.style.display = "block";
@@ -211,9 +213,13 @@ function updateTotal() {
     let total = 0;
     let breakdown = "";
 
+
     // Registration fee
     let regFee = regFeeSelect.options[regFeeSelect.selectedIndex];
+
     if (regFee && regFee.value) {
+
+        feeValue = regFee.dataset.amount;
         total += parseFloat(regFee.dataset.amount);
         breakdown += `<div class="d-flex justify-content-between">
             <span>${regFee.text.split(' - ')[0]}:</span>
@@ -232,7 +238,7 @@ function updateTotal() {
     }
 
     // Update display
-    if (total > 0) {
+    if (total >= feeValue) {
         totalDisplay.style.display = "block";
         feeBreakdown.innerHTML = breakdown;
         totalAmountDisplay.textContent = total.toFixed(2);

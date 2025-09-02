@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 
-from insurance.models import PatientInsuranceModel
+from insurance.models import PatientInsuranceModel, HMOCoveragePlanModel
 
 
 # 1. SPECIALIZATION (Moved from HR - makes more sense here)
@@ -128,7 +128,7 @@ class ConsultationFeeModel(models.Model):
         ('insurance', 'Insurance Patient'),
     ]
     patient_category = models.CharField(max_length=20, choices=PATIENT_CATEGORIES, default='regular')
-    insurance = models.ForeignKey(PatientInsuranceModel, on_delete=models.CASCADE, blank=True, null=True, related_name='insurance')
+    insurance = models.ForeignKey(HMOCoveragePlanModel, on_delete=models.CASCADE, blank=True, null=True, related_name='insurance')
 
     # Pricing
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -314,7 +314,8 @@ class PatientQueueModel(models.Model):
 
     def complete_vitals(self):
         """Mark vitals as completed"""
-        self.status = 'vitals_done'
+        if self.status == 'waiting_vitals':
+            self.status = 'vitals_done'
         self.vitals_completed_at = datetime.now()
         self.save()
 
@@ -348,8 +349,8 @@ class PatientVitalsModel(models.Model):
 
     # Basic vitals
     temperature = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True, help_text="°C")
-    blood_pressure_systolic = models.IntegerField(null=True, blank=True)
-    blood_pressure_diastolic = models.IntegerField(null=True, blank=True)
+    blood_pressure_systolic = models.IntegerField()
+    blood_pressure_diastolic = models.IntegerField()
     pulse_rate = models.IntegerField(null=True, blank=True, help_text="BPM")
     respiratory_rate = models.IntegerField(null=True, blank=True, help_text="per minute")
     oxygen_saturation = models.IntegerField(null=True, blank=True, help_text="SpO2 %")

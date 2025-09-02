@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultation Report - {{ consultation.queue_entry.patient.first_name }} {{ consultation.queue_entry.patient.last_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .patient-info, .doctor-info {
+            display: inline-block;
+            width: 48%;
+            vertical-align: top;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+        .vitals-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .vitals-table th, .vitals-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .vitals-table th {
+            background-color: #f5f5f5;
+        }
+        .footer {
+            margin-top: 40px;
+            border-top: 1px solid #ccc;
+            padding-top: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="text-align: right; margin-bottom: 20px;">
+        <button onclick="window.print()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px;">Print Report</button>
+        <button onclick="window.close()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; margin-left: 10px;">Close</button>
+    </div>
+
+    <div class="header">
+        <h1>Medical Consultation Report</h1>
+        <p><strong>Date:</strong> {{ consultation.created_at|date:"F d, Y" }} | <strong>Time:</strong> {{ consultation.created_at|date:"h:i A" }}</p>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+        <div class="patient-info">
+            <div class="section-title">Patient Information</div>
+            <p><strong>Name:</strong> {{ consultation.queue_entry.patient.first_name }} {{ consultation.queue_entry.patient.last_name }}</p>
+            <p><strong>Patient ID:</strong> {{ consultation.queue_entry.patient.patient_id }}</p>
+            <p><strong>Age:</strong> {{ consultation.queue_entry.patient.age }} years</p>
+            <p><strong>Gender:</strong> {{ consultation.queue_entry.patient.gender|title }}</p>
+            <p><strong>Queue Number:</strong> {{ consultation.queue_entry.queue_number }}</p>
+        </div>
+
+        <div class="doctor-info" style="margin-left: 4%;">
+            <div class="section-title">Doctor Information</div>
+            <p><strong>Doctor:</strong> Dr. {{ consultation.queue_entry.consultant.staff.first_name }} {{ consultation.queue_entry.consultant.staff.last_name }}</p>
+            <p><strong>Specialization:</strong> {{ consultation.queue_entry.consultant.specialization.name }}</p>
+            <p><strong>Room:</strong> {{ consultation.queue_entry.consultant.assigned_room|default:"Not specified" }}</p>
+        </div>
+    </div>
+
+    {% if consultation.queue_entry.vitals %}
+    <div class="section">
+        <div class="section-title">Vital Signs</div>
+        <table class="vitals-table">
+            <tr>
+                <th>Parameter</th>
+                <th>Value</th>
+                <th>Parameter</th>
+                <th>Value</th>
+            </tr>
+            <tr>
+                <td>Blood Pressure</td>
+                <td>{{ consultation.queue_entry.vitals.blood_pressure }}</td>
+                <td>Pulse Rate</td>
+                <td>{{ consultation.queue_entry.vitals.pulse_rate|default:"N/A" }} BPM</td>
+            </tr>
+            <tr>
+                <td>Temperature</td>
+                <td>{{ consultation.queue_entry.vitals.temperature|default:"N/A" }}°C</td>
+                <td>Oxygen Saturation</td>
+                <td>{{ consultation.queue_entry.vitals.oxygen_saturation|default:"N/A" }}%</td>
+            </tr>
+            <tr>
+                <td>Height</td>
+                <td>{{ consultation.queue_entry.vitals.height|default:"N/A" }} cm</td>
+                <td>Weight</td>
+                <td>{{ consultation.queue_entry.vitals.weight|default:"N/A" }} kg</td>
+            </tr>
+            {% if consultation.queue_entry.vitals.bmi %}
+            <tr>
+                <td>BMI</td>
+                <td colspan="3">{{ consultation.queue_entry.vitals.bmi }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <div class="section-title">Chief Complaint</div>
+        <p>{{ consultation.chief_complaint|default:"Not recorded" }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">History of Present Illness</div>
+        <p>{{ consultation.history_of_present_illness|default:"Not recorded" }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Past Medical History</div>
+        <p>{{ consultation.past_medical_history|default:"Not recorded" }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Physical Examination</div>
+        <p>{{ consultation.physical_examination|default:"Not recorded" }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Clinical Assessment</div>
+        <p>{{ consultation.assessment|default:"Not recorded" }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Diagnosis</div>
+        <p>{{ consultation.diagnosis|default:"Not recorded" }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Treatment Plan</div>
+        <p>{{ consultation.treatment_plan|default:"Not recorded" }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Follow-up Instructions</div>
+        <p>{{ consultation.follow_up_instructions|default:"Not recorded" }}</p>
+    </div>
+
+    <div class="footer">
+        <p>This consultation report was generated on {{ "now"|date:"F d, Y \a\\t h:i A" }}</p>
+        <p>© {% now "Y" %} Hospital Management System - Confidential Medical Record</p>
+    </div>
+</body>
+</html>

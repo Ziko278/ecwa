@@ -24,7 +24,6 @@ class ScanCategoryModel(models.Model):
         return self.name
 
 
-# 2. SCAN TEMPLATES (The Key Model - Like Lab Templates!)
 class ScanTemplateModel(models.Model):
     """Pre-built scan templates with standard procedures"""
     name = models.CharField(max_length=200, unique=True)
@@ -35,11 +34,11 @@ class ScanTemplateModel(models.Model):
         related_name='templates'
     )
 
-    # Scan configuration as JSON
+    # Scan configuration as JSON - more flexible structure
     scan_parameters = models.JSONField(
         default=dict,
         help_text="""
-        Standard format:
+        Flexible format based on scan type:
         {
             "preparation": [
                 "Patient should fast for 12 hours",
@@ -47,55 +46,62 @@ class ScanTemplateModel(models.Model):
             ],
             "procedure_steps": [
                 "Position patient supine",
-                "Apply gel to chest",
+                "Apply electrodes to chest",
                 "Record 12-lead ECG"
             ],
+            "imaging": {
+                "views": [
+                    {"name": "AP", "description": "Anterior-Posterior", "required": true},
+                    {"name": "Lateral", "description": "Lateral view", "required": true}
+                ],
+                "contrast": {"required": false, "type": "oral"},
+                "technical_factors": {
+                    "kvp": 120,
+                    "mas": 100
+                }
+            },
             "measurements": [
                 {
                     "name": "Heart Rate",
                     "code": "HR",
                     "unit": "bpm",
-                    "normal_range": {"min": 60, "max": 100}
-                },
-                {
-                    "name": "PR Interval",
-                    "code": "PR",
-                    "unit": "ms",
-                    "normal_range": {"min": 120, "max": 200}
+                    "normal_range": {"min": 60, "max": 100},
+                    "type": "numeric"
                 }
-            ]
+            ],
+            "monitoring": {
+                "duration": "24 hours",
+                "frequency": "continuous"
+            }
         }
+        """
+    )
+
+    # Expected images configuration
+    expected_images = models.JSONField(
+        default=list,
+        help_text="""
+        Expected images for this scan:
+        [
+            {"view": "AP", "description": "Chest AP view", "required": true},
+            {"view": "Lateral", "description": "Chest Lateral view", "required": true},
+            {"view": "Oblique", "description": "Optional oblique view", "required": false}
+        ]
         """
     )
 
     # Pricing
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
 
-    # Scan requirements
-    scan_type = models.CharField(
-        max_length=50,
-        choices=[
-            ('ecg', 'ECG/EKG'),
-            ('echo', 'Echocardiogram'),
-            ('xray', 'X-Ray'),
-            ('ct', 'CT Scan'),
-            ('mri', 'MRI'),
-            ('ultrasound', 'Ultrasound'),
-            ('eeg', 'EEG'),
-            ('stress_test', 'Stress Test'),
-            ('holter', 'Holter Monitor'),
-            ('other', 'Other'),
-        ],
-        default='ecg'
-    )
-
     # Duration and preparation
     estimated_duration = models.CharField(max_length=50, blank=True, help_text="e.g., 30 minutes, 1 hour")
     preparation_required = models.BooleanField(default=False)
     fasting_required = models.BooleanField(default=False)
 
-    # Equipment needed
+    # Equipment and requirements
     equipment_required = models.TextField(blank=True, help_text="List of equipment/machines needed")
+
+    # Keep it simple - add more fields later as needed
 
     # Status
     is_active = models.BooleanField(default=True)
@@ -112,10 +118,95 @@ class ScanTemplateModel(models.Model):
 
     @property
     def measurement_names(self):
-        """Quick preview of measurements"""
+        """Quick preview of measurements (for ECG-type scans)"""
         if self.scan_parameters and 'measurements' in self.scan_parameters:
             return [param['name'] for param in self.scan_parameters['measurements']]
         return []
+
+    @property
+    def image_views(self):
+        """Quick preview of expected image views"""
+        return [img['view'] for img in self.expected_images]
+
+    @property
+    def required_images_count(self):
+        """Count of required images"""
+        return len([img for img in self.expected_images if img.get('required', True)])
+
+
+# Separate model for actual scan images
+class ScanImageModel(models.Model):
+    """Individual images from scan results"""
+    scan_result = models.ForeignKey(
+        'ScanResultModel',  # Your actual scan execution
+        on_delete=models.CASCADE,
+        related_name='images'
+    )
+    image = models.ImageField(upload_to='scan_images/%Y/%m/')
+    view_type = models.CharField(max_length=50, blank=True)
+    description = models.CharField(max_length=200, blank=True)
+    sequence_number = models.PositiveIntegerField(default=1)
+
+    # Image metadata
+    image_quality = models.CharField(
+        max_length=20,
+        choices=[
+            ('excellent', 'Excellent'),
+            ('good', 'Good'),
+            ('fair', 'Fair'),
+            ('poor', 'Poor'),
+        ],
+        default='good'
+    )
+
+    # Technical parameters (optional)
+    technical_parameters = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="kVp, mAs, exposure time, etc."
+    )
+
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'scan_images'
+        ordering = ['scan_result', 'sequence_number']
+        unique_together = ['scan_result', 'sequence_number']
+
+    def __str__(self):
+        return f"{self.scan_result} - {self.view_type} #{self.sequence_number}"
+
+
+# Example usage in your scan results model
+class ScanResultModel(models.Model):
+    """Actual scan execution results"""
+    template = models.ForeignKey(ScanTemplateModel, on_delete=models.CASCADE)
+    patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE)
+
+    # Results and findings
+    findings = models.TextField(blank=True)
+    impression = models.TextField(blank=True)
+
+    # Status
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('in_progress', 'In Progress'),
+            ('completed', 'Completed'),
+            ('reviewed', 'Reviewed'),
+        ],
+        default='pending'
+    )
+
+    performed_at = models.DateTimeField()
+    performed_by = models.ForeignKey('human_resource.StaffModel', on_delete=models.CASCADE)
+
+    # Images are handled by ScanImageModel with related_name='images'
+    # Access via: scan_result.images.all()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 # 3. SCAN ORDERS (When a scan is requested)
@@ -193,79 +284,6 @@ class ScanOrderModel(models.Model):
             self.amount_charged = self.template.price
 
         super().save(*args, **kwargs)
-
-
-# 4. SCAN RESULTS (The actual scan results)
-class ScanResultModel(models.Model):
-    """Scan results - stores measurements and findings"""
-    order = models.OneToOneField(ScanOrderModel, on_delete=models.CASCADE, related_name='result')
-
-    # Results stored as JSON matching the template structure
-    measurements_data = models.JSONField(
-        default=dict,
-        help_text="""
-        Results in same structure as template:
-        {
-            "measurements": [
-                {
-                    "parameter_code": "HR",
-                    "parameter_name": "Heart Rate", 
-                    "value": "78",
-                    "unit": "bpm",
-                    "normal_range": "60-100",
-                    "status": "normal"
-                }
-            ]
-        }
-        """
-    )
-
-    # Key findings
-    findings = models.TextField(blank=True, help_text="Main findings from the scan")
-    impression = models.TextField(blank=True, help_text="Clinical impression/conclusion")
-    recommendations = models.TextField(blank=True, help_text="Recommended follow-up or treatment")
-
-    # Image/file attachments
-    scan_images = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="List of image file paths or URLs"
-    )
-
-    scan_files = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="List of additional files (PDFs, reports, etc.)"
-    )
-
-    # Quality control
-    is_verified = models.BooleanField(default=False)
-    verified_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='verified_scans')
-    verified_at = models.DateTimeField(blank=True, null=True)
-
-    # Technician and doctor notes
-    technician_notes = models.TextField(blank=True)
-    doctor_interpretation = models.TextField(blank=True)
-
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'scan_results'
-
-    def __str__(self):
-        return f"Results: {self.order}"
-
-    @property
-    def has_abnormal_findings(self):
-        """Check if any measurements are outside normal range"""
-        if self.measurements_data and 'measurements' in self.measurements_data:
-            return any(
-                result.get('status') in ['high', 'low', 'abnormal']
-                for result in self.measurements_data['measurements']
-            )
-        return False
 
 
 # 5. SCAN EQUIPMENT (Equipment used for scans)

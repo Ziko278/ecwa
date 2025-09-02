@@ -10,18 +10,21 @@ from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMix
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Q, Sum, F, Count
-from django.db.models.functions import Lower
+from django.db.models import Q, Sum, F, Count, ExpressionWrapper, DecimalField
+from django.db.models.functions import Lower, Cast
 from django.forms import modelformset_factory
 from django.http import JsonResponse, HttpResponse, Http404, HttpResponseRedirect
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.timezone import now
 from django.views import View
+from django.views.decorators.http import require_POST
 from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
 
+from patient.models import PatientModel, PatientWalletModel
 from pharmacy.forms import (
     DrugCategoryForm, GenericDrugForm, DrugFormulationForm, ManufacturerForm,
     DrugForm, DrugBatchForm, DrugStockForm, DrugStockOutForm, DrugTransferForm,
@@ -32,7 +35,7 @@ from pharmacy.forms import (
 from pharmacy.models import (
     DrugCategoryModel, GenericDrugModel, DrugFormulationModel, ManufacturerModel,
     DrugModel, DrugBatchModel, DrugStockModel, DrugStockOutModel, DrugTransferModel,
-    PharmacySettingModel, DrugTemplateModel, DrugImportLogModel
+    PharmacySettingModel, DrugTemplateModel, DrugImportLogModel, DrugOrderModel, DispenseRecord
 )
 
 logger = logging.getLogger(__name__)
@@ -976,36 +979,108 @@ class DrugStockDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVie
         return super().dispatch(request, *args, **kwargs)
 
 
-class DrugStockOutView(LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, View):
-    # This will be a POST-only view to handle reducing stock quantity
-    permission_required = 'pharmacy.change_drugstockmodel'  # Requires permission to change stock
-    success_message = 'Drug Stock Quantity Successfully Reduced'
+class DrugStockOutView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Handle drug stock out with FIFO allocation across multiple stocks"""
+    permission_required = 'pharmacy.change_drugmodel'
+    success_message = 'Drug Stock Successfully Reduced'
 
     def post(self, request, pk):
-        stock = get_object_or_404(DrugStockModel, pk=pk)
+        drug = get_object_or_404(DrugModel, pk=pk)
+
+        # Get form data
         quantity_to_reduce = float(request.POST.get('quantity_to_reduce', 0))
+        location = request.POST.get('location', 'store')  # 'store' or 'pharmacy'
+        reason = request.POST.get('reason', 'sale')
+        remark = request.POST.get('remark', '')
 
+        # Validation
         if quantity_to_reduce <= 0:
-            messages.error(self.request, "Quantity to reduce must be greater than zero.")
-        elif quantity_to_reduce > stock.quantity_left:
-            messages.error(self.request,
-                           f"Cannot reduce {quantity_to_reduce} units. Only {stock.quantity_left} units left.")
+            messages.error(request, "Quantity to reduce must be greater than zero.")
+            return self.redirect_back(drug)
+
+        # Check if sufficient quantity in selected location
+        current_quantity = drug.store_quantity if location == 'store' else drug.pharmacy_quantity
+
+        if quantity_to_reduce > current_quantity:
+            messages.error(request,
+                           f"Cannot reduce {quantity_to_reduce} units from {location}. "
+                           f"Only {current_quantity} units available in {location}.")
+            return self.redirect_back(drug)
+
+        # Perform FIFO stock reduction
+        try:
+            with transaction.atomic():
+                self.process_stock_reduction(drug, quantity_to_reduce, location, reason, remark, request.user)
+                messages.success(request, self.success_message)
+        except Exception as e:
+            messages.error(request, f"Error processing stock reduction: {str(e)}")
+
+        return self.redirect_back(drug)
+
+    def process_stock_reduction(self, drug, quantity_to_reduce, location, reason, remark, user):
+        """Process stock reduction using FIFO logic"""
+        remaining_to_reduce = quantity_to_reduce
+
+        # Get active stocks for this drug in FIFO order (oldest first)
+        active_stocks = DrugStockModel.objects.filter(
+            drug=drug,
+            status='active',
+            quantity_left__gt=0
+        ).order_by('date_added')
+
+        if not active_stocks.exists():
+            raise ValueError("No active stocks found for this drug")
+
+        stock_outs_created = []
+
+        # Process each stock in FIFO order
+        for stock in active_stocks:
+            if remaining_to_reduce <= 0:
+                break
+
+            # Calculate how much to deduct from this stock
+            quantity_from_this_stock = min(remaining_to_reduce, stock.quantity_left)
+
+            # Create stock out record
+            stock_out = DrugStockOutModel.objects.create(
+                stock=stock,
+                drug=drug,
+                quantity=quantity_from_this_stock,
+                reason=reason,
+                location_reduced_from=location,
+                worth=stock.selling_price * Decimal(str(quantity_from_this_stock)),
+                remark=remark,
+                created_by=user
+            )
+            stock_outs_created.append(stock_out)
+
+            # Update stock quantity and worth
+            stock.quantity_left -= quantity_from_this_stock
+            stock.current_worth = Decimal(str(stock.quantity_left)) * stock.selling_price
+            stock.save()
+
+            # Update remaining quantity to reduce
+            remaining_to_reduce -= quantity_from_this_stock
+
+        # Update drug quantities based on location
+        if location == 'store':
+            drug.store_quantity -= quantity_to_reduce
         else:
-            stock.quantity_left -= quantity_to_reduce
-            stock.save()  # The save method will update current_worth and drug quantities
-            # You might also want to create a DrugStockOutModel entry here
-            messages.success(self.request, self.success_message)
+            drug.pharmacy_quantity -= quantity_to_reduce
 
-        return redirect(reverse('drug_batch_detail', kwargs={'pk': stock.batch.pk}))
+        drug.save()
 
+        # If we couldn't fulfill the entire request (shouldn't happen due to validation)
+        if remaining_to_reduce > 0:
+            raise ValueError(f"Could not fulfill complete request. {remaining_to_reduce} units remaining.")
 
-# Assume DrugStockOutForm exists (a simple form with a 'quantity' field)
-class DrugStockOutForm(forms.Form):
-    quantity_to_reduce = forms.FloatField(
-        min_value=0.01,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-        label='Quantity to Stock Out'
-    )
+        return stock_outs_created
+
+    def redirect_back(self, drug):
+        """Redirect back to appropriate page"""
+        # You can customize this based on where you want to redirect
+        # For now, assuming we go back to drug detail or drug list
+        return redirect(reverse('drug_detail', kwargs={'pk': drug.pk}))
 
 
 # -------------------------
@@ -1658,3 +1733,796 @@ def export_stock_report_view(request):
     )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+
+@login_required
+def drug_dispense_page(request):
+    """Main drug dispensing page"""
+    return render(request, 'pharmacy/dispense/dispense.html')
+
+
+@login_required
+def verify_patient_pharmacy_ajax(request):
+    """Verify patient and get drug orders for dispensing"""
+    card_number = request.GET.get('card_number', '').strip()
+
+    if not card_number:
+        return JsonResponse({'error': 'Card number required'}, status=400)
+
+    try:
+        # Look up patient by card number
+        patient = PatientModel.objects.get(card_number__iexact=card_number)
+
+        # Get or create wallet
+        wallet, created = PatientWalletModel.objects.get_or_create(
+            patient=patient,
+            defaults={'amount': Decimal('0.00')}
+        )
+
+        # Get ready to dispense orders (paid but not fully dispensed)
+        ready_to_dispense = DrugOrderModel.objects.filter(
+            patient=patient,
+            status__in=['paid', 'partially_dispensed']
+        ).exclude(
+            quantity_dispensed__gte=F('quantity_ordered')
+        ).select_related('drug').order_by('-ordered_at')
+
+        # Get unpaid orders
+        unpaid_orders = DrugOrderModel.objects.filter(
+            patient=patient,
+            status='pending'
+        ).select_related('drug').order_by('-ordered_at')
+
+        # Serialize ready to dispense orders
+        ready_items = []
+        for order in ready_to_dispense:
+            ready_items.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'drug_name': f"{order.drug.brand_name or order.drug.generic_name}",
+                'quantity_ordered': float(order.quantity_ordered),
+                'quantity_dispensed': float(order.quantity_dispensed),
+                'remaining_quantity': float(order.remaining_to_dispense),
+                'dosage_instructions': order.dosage_instructions,
+                'duration': order.duration,
+                'status': order.status,
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d')
+            })
+
+        # Serialize unpaid orders
+        unpaid_items = []
+        for order in unpaid_orders:
+            total_amount = Decimal(order.drug.selling_price) * Decimal(order.quantity_ordered)
+            unpaid_items.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'drug_name': f"{order.drug.brand_name or order.drug.generic_name}",
+                'quantity_ordered': float(order.quantity_ordered),
+                'price_per_unit': float(order.drug.selling_price),
+                'total_amount': float(total_amount),
+                'dosage_instructions': order.dosage_instructions,
+                'duration': order.duration,
+                'status': order.status,
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d')
+            })
+
+        return JsonResponse({
+            'success': True,
+            'patient': {
+                'id': patient.id,
+                'full_name': str(patient),
+                'card_number': patient.card_number,
+                'phone': getattr(patient, 'mobile', ''),
+                'email': getattr(patient, 'email', ''),
+                'age': patient.age() if hasattr(patient, 'age') and callable(patient.age) else '',
+                'gender': getattr(patient, 'gender', ''),
+            },
+            'wallet': {
+                'balance': float(wallet.amount),
+                'formatted_balance': f'₦{wallet.amount:,.2f}'
+            },
+            'drug_orders': {
+                'ready_to_dispense': ready_items,
+                'unpaid_orders': unpaid_items
+            }
+        })
+
+    except PatientModel.DoesNotExist:
+        return JsonResponse({
+            'error': 'Patient not found with this card number'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'error': f'Error verifying patient: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@transaction.atomic
+def process_dispense_ajax(request):
+    """Process drug dispensing and/or payments with pharmacy stock management"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        patient_id = request.POST.get('patient_id')
+        dispense_items = json.loads(request.POST.get('dispense_items', '[]'))
+        payment_items = json.loads(request.POST.get('payment_items', '[]'))
+
+        if not patient_id:
+            return JsonResponse({'error': 'Patient ID required'}, status=400)
+
+        patient = get_object_or_404(PatientModel, id=patient_id)
+        wallet = PatientWalletModel.objects.get_or_create(
+            patient=patient,
+            defaults={'amount': Decimal('0.00')}
+        )[0]
+
+        dispensed_count = 0
+        paid_count = 0
+        total_payment = Decimal('0.00')
+
+        # Process payments first
+        if payment_items:
+            payment_orders = DrugOrderModel.objects.filter(
+                id__in=payment_items,
+                patient=patient,
+                status='pending'
+            )
+
+            for order in payment_orders:
+                order_total = Decimal(order.drug.selling_price) * Decimal(order.quantity_ordered)
+                total_payment += Decimal(order_total)
+
+            # Check wallet balance
+            if wallet.amount < total_payment:
+                return JsonResponse({
+                    'error': f'Insufficient wallet balance. Required: ₦{total_payment:,.2f}, Available: ₦{wallet.amount:,.2f}'
+                }, status=400)
+
+            # Process payments
+            for order in payment_orders:
+                order_total = Decimal(order.drug.selling_price) * Decimal(order.quantity_ordered)
+
+                # Deduct from wallet
+                wallet.amount -= order_total
+
+                # Update order status
+                order.status = 'paid'
+                order.quantity_paid = order.quantity_ordered
+                order.save()
+
+                paid_count += 1
+
+            wallet.save()
+
+        # Process dispensing with pharmacy stock management
+        if dispense_items:
+            for item in dispense_items:
+                order_id = item.get('order_id')
+                dispense_quantity = Decimal(str(item.get('quantity', 0)))
+
+                try:
+                    order = DrugOrderModel.objects.get(
+                        id=order_id,
+                        patient=patient,
+                        status__in=['paid', 'partially_dispensed']
+                    )
+
+                    remaining_quantity = order.remaining_to_dispense
+
+                    if dispense_quantity <= 0:
+                        continue
+
+                    if dispense_quantity > remaining_quantity:
+                        return JsonResponse({
+                            'error': f'Cannot dispense {dispense_quantity} of {order.drug.brand_name or order.drug.generic_name}. Only {remaining_quantity} remaining.'
+                        }, status=400)
+
+                    # Check if sufficient quantity in pharmacy
+                    if order.drug.pharmacy_quantity < float(dispense_quantity):
+                        return JsonResponse({
+                            'error': f'Insufficient stock in pharmacy for {order.drug.brand_name or order.drug.generic_name}. '
+                                     f'Requested: {dispense_quantity}, Available: {order.drug.pharmacy_quantity}'
+                        }, status=400)
+
+                    # Process FIFO stock reduction
+                    try:
+                        stock_outs_created = process_fifo_stock_reduction(
+                            drug=order.drug,
+                            quantity_to_reduce=float(dispense_quantity),
+                            location='pharmacy',
+                            reason='sale',
+                            remark=f'Dispensed to patient {patient.__str__() or patient.registration_id}',
+                            user=request.user
+                        )
+                    except ValueError as e:
+                        return JsonResponse({
+                            'error': f'Stock allocation error for {order.drug.brand_name or order.drug.generic_name}: {str(e)}'
+                        }, status=400)
+
+                    # Create dispense record
+                    dispense_record = DispenseRecord.objects.create(
+                        order=order,
+                        dispensed_by=request.user,
+                        dispensed_qty=dispense_quantity,
+                        notes=f'Dispensed by {request.user.__str__() or request.user.username}. '
+                              f'Stock reduced from {len(stock_outs_created)} stock entries.'
+                    )
+
+                    # Update order quantities
+                    order.quantity_dispensed += float(dispense_quantity)
+
+                    # Update dispensed_at timestamp
+                    order.dispensed_at = timezone.now()
+                    order.dispensed_by = request.user
+
+                    # Update status based on dispensing completion
+                    if order.quantity_dispensed >= order.quantity_ordered:
+                        order.status = 'dispensed'
+                    else:
+                        order.status = 'partially_dispensed'
+
+                    order.save()
+                    dispensed_count += 1
+
+                except DrugOrderModel.DoesNotExist:
+                    return JsonResponse({
+                        'error': f'Drug order {order_id} not found or not eligible for dispensing'
+                    }, status=404)
+
+        # Build success message
+        messages = []
+        if paid_count > 0:
+            messages.append(f'Paid for {paid_count} drug order(s) - ₦{total_payment:,.2f} deducted from wallet')
+        if dispensed_count > 0:
+            messages.append(f'Dispensed {dispensed_count} drug order(s) from pharmacy stock')
+
+        return JsonResponse({
+            'success': True,
+            'message': '. '.join(messages),
+            'new_wallet_balance': float(wallet.amount),
+            'formatted_balance': f'₦{wallet.amount:,.2f}'
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'error': f'Error processing request: {str(e)}'
+        }, status=500)
+
+
+def process_fifo_stock_reduction(drug, quantity_to_reduce, location, reason, remark, user):
+    """
+    Process FIFO stock reduction logic for dispensing
+    Returns list of DrugStockOutModel objects created
+    """
+    from decimal import Decimal
+
+    remaining_to_reduce = quantity_to_reduce
+
+    # Get active stocks for this drug in FIFO order (oldest first)
+    active_stocks = DrugStockModel.objects.filter(
+        drug=drug,
+        status='active',
+        quantity_left__gt=0
+    ).order_by('date_added')
+
+    if not active_stocks.exists():
+        raise ValueError("No active stocks available for this drug")
+
+    stock_outs_created = []
+
+    # Process each stock in FIFO order
+    for stock in active_stocks:
+        if remaining_to_reduce <= 0:
+            break
+
+        # Calculate how much to deduct from this stock
+        quantity_from_this_stock = min(remaining_to_reduce, stock.quantity_left)
+
+        # Create stock out record
+        stock_out = DrugStockOutModel.objects.create(
+            stock=stock,
+            drug=drug,
+            quantity=quantity_from_this_stock,
+            reason=reason,
+            location_reduced_from=location,
+            worth=stock.selling_price * Decimal(str(quantity_from_this_stock)),
+            remark=remark,
+            created_by=user
+        )
+        stock_outs_created.append(stock_out)
+
+        # Update stock quantity and worth
+        stock.quantity_left -= quantity_from_this_stock
+        stock.current_worth = Decimal(str(stock.quantity_left)) * stock.selling_price
+        stock.save()
+
+        # Update remaining quantity to reduce
+        remaining_to_reduce -= quantity_from_this_stock
+
+    # Update drug pharmacy quantity
+    drug.pharmacy_quantity -= quantity_to_reduce
+    drug.save()
+
+    # If we couldn't fulfill the entire request (shouldn't happen due to validation)
+    if remaining_to_reduce > 0:
+        raise ValueError(f"Could not fulfill complete request. {remaining_to_reduce} units remaining.")
+
+    return stock_outs_created
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def create_pharmacy_order_ajax(request):
+    """Creates a new drug order from the pharmacy dispense page for non-prescription drugs."""
+    try:
+        data = json.loads(request.body)
+        patient_id = data.get('patient_id')
+        drug_id = data.get('drug_id')
+        quantity = data.get('quantity')
+
+        if not all([patient_id, drug_id, quantity]):
+            return JsonResponse({'error': 'Missing required data.'}, status=400)
+
+        patient = get_object_or_404(PatientModel, id=patient_id)
+        drug = get_object_or_404(DrugModel, id=drug_id)
+
+        # Security check: Prevent sale of prescription-only drugs
+        if drug.formulation.generic_drug.is_prescription_only:
+            return JsonResponse({
+                'error': f'Cannot sell "{drug.brand_name or drug.generic_name}". It is a prescription-only medication.'
+            }, status=403) # 403 Forbidden
+
+        # Create the new drug order
+        DrugOrderModel.objects.create(
+            patient=patient,
+            drug=drug,
+            quantity_ordered=float(quantity),
+            ordered_by=request.user,
+            status='pending',
+            dosage_instructions='As directed by pharmacist.', # Default instruction
+            duration='N/A'
+        )
+
+        return JsonResponse({'success': True, 'message': f'{drug.brand_name or drug.generic_name} added to unpaid orders.'})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON format.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'An unexpected error occurred: {str(e)}'}, status=500)
+
+
+@login_required
+def dispense_history_ajax(request):
+    """Get dispensing history for a patient"""
+    patient_id = request.GET.get('patient_id')
+
+    if not patient_id:
+        return JsonResponse({'error': 'Patient ID required'}, status=400)
+
+    try:
+        patient = get_object_or_404(PatientModel, id=patient_id)
+
+        dispense_records = DispenseRecord.objects.filter(
+            order__patient=patient
+        ).select_related('order', 'order__drug', 'dispensed_by').order_by('-created_at')[:20]
+
+        records = []
+        for record in dispense_records:
+            records.append({
+                'id': record.id,
+                'order_number': record.order.order_number,
+                'drug_name': f"{record.order.drug.brand_name or record.order.drug.generic_name}",
+                'dispensed_qty': float(record.dispensed_qty),
+                'dispensed_by': record.dispensed_by.__str__() if record.dispensed_by else 'Unknown',
+                'dispensed_at': record.created_at.strftime('%Y-%m-%d %H:%M'),
+                'notes': record.notes
+            })
+
+        return JsonResponse({
+            'success': True,
+            'records': records
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'error': f'Error fetching history: {str(e)}'
+        }, status=500)
+
+
+@login_required
+def general_dispense_view(request):
+    # Defaults
+    today = now().date()
+    start_date = request.GET.get("start_date", today.strftime("%Y-%m-%d"))
+    end_date = request.GET.get("end_date", today.strftime("%Y-%m-%d"))
+    staff_id = request.GET.get("staff")
+    drug_id = request.GET.get("drug")
+
+    records = DispenseRecord.objects.all()
+
+    # Filter date range
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        records = records.filter(created_at__date__range=[start_dt, end_dt])
+    except Exception:
+        records = records.filter(created_at__date=today)
+
+    # Filter by staff
+    if staff_id:
+        records = records.filter(dispensed_by_id=staff_id)
+
+    # Filter by drug (assuming order has a drug FK)
+    if drug_id:
+        records = records.filter(order__drug_id=drug_id)
+
+    staffs = User.objects.filter(dispenserecord__isnull=False).distinct()
+    drugs = DrugModel.objects.filter(drug_orders__isnull=False).distinct()
+
+    # Pagination (20 per page)
+    paginator = Paginator(records, 20)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        "page_obj": page_obj,
+        "start_date": start_date,
+        "end_date": end_date,
+        "staffs": staffs,
+        "drugs": drugs,
+        "staff_id": staff_id,
+        "drug_id": drug_id,
+    }
+    return render(request, "pharmacy/dispense/index.html", context)
+
+
+def patient_dispense_view(request, patient_id):
+    patient = get_object_or_404(PatientModel, id=patient_id)
+    records = DispenseRecord.objects.filter(order__patient=patient)
+
+    # Pagination (20 per page)
+    paginator = Paginator(records, 20)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        "patient": patient,
+        "page_obj": page_obj,
+    }
+    return render(request, "pharmacy/dispense/patient_index.html", context)
+
+
+def calculate_growth_percentage(current, previous):
+    """Calculate growth percentage between two values"""
+    if previous == 0:
+        return 100 if current > 0 else 0
+    return round(((current - previous) / previous) * 100, 1)
+
+
+def get_low_stock_alerts():
+    """Get drugs that are below minimum stock level"""
+    return DrugModel.objects.filter(
+        Q(store_quantity__lte=F('minimum_stock_level')) |
+        Q(pharmacy_quantity__lte=F('minimum_stock_level'))
+    ).select_related('formulation__generic_drug', 'manufacturer')
+
+
+def get_expired_drugs():
+    """Get expired drug stocks"""
+    today = timezone.now().date()
+    return DrugStockModel.objects.filter(
+        expiry_date__lte=today,
+        status='active',
+        quantity_left__gt=0
+    ).select_related('drug__formulation__generic_drug')
+
+
+def get_near_expiry_drugs(days=30):
+    """Get drugs expiring within specified days"""
+    near_expiry_date = timezone.now().date() + timedelta(days=days)
+    return DrugStockModel.objects.filter(
+        expiry_date__lte=near_expiry_date,
+        expiry_date__gt=timezone.now().date(),
+        status='active',
+        quantity_left__gt=0
+    ).select_related('drug__formulation__generic_drug')
+
+
+def get_sales_chart_data(days=7):
+    """Get daily sales data for the last N days"""
+    end_date = timezone.now().date()
+    start_date = end_date - timedelta(days=days - 1)
+
+    sales_data = []
+    for i in range(days):
+        current_date = start_date + timedelta(days=i)
+
+        # Sales (stock outs with reason='sale')
+        daily_sales = DrugStockOutModel.objects.filter(
+            created_at__date=current_date,
+            reason='sale'
+        ).aggregate(
+            total_quantity=Sum('quantity'),
+            total_worth=Sum('worth')
+        )
+
+        # Orders completed
+        daily_orders = DrugOrderModel.objects.filter(
+            dispensed_at__date=current_date,
+            status='dispensed'
+        ).count()
+
+        sales_data.append({
+            'date': current_date.strftime('%Y-%m-%d'),
+            'sales_quantity': float(daily_sales['total_quantity'] or 0),
+            'sales_worth': float(daily_sales['total_worth'] or 0),
+            'orders_completed': daily_orders
+        })
+
+    return sales_data
+
+
+def get_category_distribution():
+    """Get drug distribution by category"""
+    categories = DrugCategoryModel.objects.annotate(
+        drug_count=Count('generic_drugs__formulations__products'),
+        total_stock=Sum('generic_drugs__formulations__products__store_quantity') +
+                    Sum('generic_drugs__formulations__products__pharmacy_quantity')
+    ).filter(drug_count__gt=0)
+
+    return [
+        {
+            'name': category.name,
+            'value': category.drug_count,
+            'stock': float(category.total_stock or 0)
+        }
+        for category in categories
+    ]
+
+
+def get_top_selling_drugs(limit=10):
+    """Get top selling drugs by quantity"""
+    return DrugStockOutModel.objects.filter(
+        reason='sale',
+        created_at__gte=timezone.now() - timedelta(days=30)
+    ).values(
+        'drug__formulation__generic_drug__generic_name',
+        'drug__brand_name'
+    ).annotate(
+        total_sold=Sum('quantity'),
+        total_revenue=Sum('worth')
+    ).order_by('-total_sold')[:limit]
+
+
+def get_inventory_value():
+    """Calculate total inventory value from DrugModel aggregated quantities."""
+
+    # choose precision that fits your data; adjust if you expect larger totals or more decimals
+    DECIMAL_MAX_DIGITS = 18
+    DECIMAL_DECIMAL_PLACES = 2
+    DECIMAL_OUTPUT = DecimalField(max_digits=DECIMAL_MAX_DIGITS, decimal_places=DECIMAL_DECIMAL_PLACES)
+
+    # Cast the float quantity to Decimal and multiply by the Decimal selling_price
+    store_price_expr = ExpressionWrapper(
+        Cast(F('store_quantity'), output_field=DECIMAL_OUTPUT) * F('selling_price'),
+        output_field=DECIMAL_OUTPUT
+    )
+
+    pharmacy_price_expr = ExpressionWrapper(
+        Cast(F('pharmacy_quantity'), output_field=DECIMAL_OUTPUT) * F('selling_price'),
+        output_field=DECIMAL_OUTPUT
+    )
+
+    qs = DrugModel.objects.filter(is_active=True)
+
+    store_value = qs.aggregate(total=Sum(store_price_expr))['total'] or Decimal('0.00')
+    pharmacy_value = qs.aggregate(total=Sum(pharmacy_price_expr))['total'] or Decimal('0.00')
+
+    total_value = store_value + pharmacy_value
+
+    # return floats for compatibility with existing code; keep Decimal if you prefer precision
+    return {
+        'store_value': float(store_value),
+        'pharmacy_value': float(pharmacy_value),
+        'total_value': float(total_value)
+    }
+
+
+def get_monthly_trends(months=12):
+    """Get monthly trends for sales and stock movements"""
+    end_date = timezone.now().date()
+    start_date = end_date.replace(day=1) - timedelta(days=30 * (months - 1))
+
+    monthly_data = []
+    current_date = start_date
+
+    while current_date <= end_date:
+        month_start = current_date.replace(day=1)
+        if month_start.month == 12:
+            month_end = month_start.replace(year=month_start.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            month_end = month_start.replace(month=month_start.month + 1, day=1) - timedelta(days=1)
+
+        # Sales data
+        monthly_sales = DrugStockOutModel.objects.filter(
+            created_at__date__gte=month_start,
+            created_at__date__lte=month_end,
+            reason='sale'
+        ).aggregate(
+            total_quantity=Sum('quantity'),
+            total_revenue=Sum('worth')
+        )
+
+        # Stock additions
+        monthly_additions = DrugStockModel.objects.filter(
+            date_added__gte=month_start,
+            date_added__lte=month_end
+        ).aggregate(
+            total_added=Sum('quantity_bought')
+        )
+
+        monthly_data.append({
+            'month': month_start.strftime('%b %Y'),
+            'sales_quantity': float(monthly_sales['total_quantity'] or 0),
+            'sales_revenue': float(monthly_sales['total_revenue'] or 0),
+            'stock_added': float(monthly_additions['total_added'] or 0)
+        })
+
+        # Move to next month
+        if current_date.month == 12:
+            current_date = current_date.replace(year=current_date.year + 1, month=1)
+        else:
+            current_date = current_date.replace(month=current_date.month + 1)
+
+    return monthly_data
+
+
+def get_pharmacy_dashboard_context(request):
+    """Get comprehensive pharmacy dashboard context"""
+    today = timezone.now().date()
+    week_start = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+
+    # Basic inventory statistics
+    total_drugs = DrugModel.objects.filter(is_active=True).count()
+    total_categories = DrugCategoryModel.objects.count()
+    total_manufacturers = ManufacturerModel.objects.count()
+
+    # Stock statistics
+    total_stock_items = DrugStockModel.objects.filter(status='active').count()
+    low_stock_count = get_low_stock_alerts().count()
+    expired_count = get_expired_drugs().count()
+    near_expiry_count = get_near_expiry_drugs().count()
+
+    # Inventory values
+    inventory_values = get_inventory_value()
+
+    # Sales statistics
+    today_sales = DrugStockOutModel.objects.filter(
+        created_at__date=today,
+        reason='sale'
+    ).aggregate(
+        quantity=Sum('quantity'),
+        revenue=Sum('worth')
+    )
+
+    week_sales = DrugStockOutModel.objects.filter(
+        created_at__date__gte=week_start,
+        reason='sale'
+    ).aggregate(
+        quantity=Sum('quantity'),
+        revenue=Sum('worth')
+    )
+
+    month_sales = DrugStockOutModel.objects.filter(
+        created_at__date__gte=month_start,
+        reason='sale'
+    ).aggregate(
+        quantity=Sum('quantity'),
+        revenue=Sum('worth')
+    )
+
+    # Order statistics
+    pending_orders = DrugOrderModel.objects.filter(status='pending').count()
+    today_orders_completed = DrugOrderModel.objects.filter(
+        dispensed_at__date=today,
+        status='dispensed'
+    ).count()
+
+    # Recent transfers
+    recent_transfers = DrugTransferModel.objects.filter(
+        transferred_at__gte=week_start
+    ).aggregate(
+        total_quantity=Sum('quantity')
+    )['total_quantity'] or 0
+
+    # Growth calculations (compare with last month)
+    last_month_start = (month_start - timedelta(days=1)).replace(day=1)
+    last_month_end = month_start - timedelta(days=1)
+
+    last_month_sales = DrugStockOutModel.objects.filter(
+        created_at__date__gte=last_month_start,
+        created_at__date__lte=last_month_end,
+        reason='sale'
+    ).aggregate(revenue=Sum('worth'))['revenue'] or 0
+
+    revenue_growth = calculate_growth_percentage(
+        float(month_sales['revenue'] or 0),
+        float(last_month_sales)
+    )
+
+    # Chart data
+    sales_chart_data = get_sales_chart_data()
+    category_distribution = get_category_distribution()
+    monthly_trends = get_monthly_trends()
+    top_selling_drugs = list(get_top_selling_drugs())
+
+    # Recent activity
+    recent_stock_additions = DrugStockModel.objects.filter(
+        date_added__gte=week_start
+    ).select_related('drug__formulation__generic_drug').order_by('-created_at')[:5]
+
+    return {
+        # Basic counts
+        'total_drugs': total_drugs,
+        'total_categories': total_categories,
+        'total_manufacturers': total_manufacturers,
+        'total_stock_items': total_stock_items,
+
+        # Alerts
+        'low_stock_count': low_stock_count,
+        'expired_count': expired_count,
+        'near_expiry_count': near_expiry_count,
+        'pending_orders': pending_orders,
+
+        # Inventory values
+        'store_inventory_value': inventory_values['store_value'],
+        'pharmacy_inventory_value': inventory_values['pharmacy_value'],
+        'total_inventory_value': inventory_values['total_value'],
+
+        # Sales data
+        'today_sales_quantity': float(today_sales['quantity'] or 0),
+        'today_sales_revenue': float(today_sales['revenue'] or 0),
+        'week_sales_quantity': float(week_sales['quantity'] or 0),
+        'week_sales_revenue': float(week_sales['revenue'] or 0),
+        'month_sales_quantity': float(month_sales['quantity'] or 0),
+        'month_sales_revenue': float(month_sales['revenue'] or 0),
+        'revenue_growth': revenue_growth,
+
+        # Orders
+        'today_orders_completed': today_orders_completed,
+        'recent_transfers_quantity': float(recent_transfers),
+
+        # Chart data (JSON serialized)
+        'sales_chart_data': json.dumps(sales_chart_data),
+        'category_distribution': json.dumps(category_distribution),
+        'monthly_trends': json.dumps(monthly_trends),
+        'top_selling_drugs': top_selling_drugs,
+
+        # Recent activity
+        'recent_stock_additions': recent_stock_additions,
+        'low_stock_drugs': get_low_stock_alerts()[:10],  # Show top 10
+        'expired_drugs': get_expired_drugs()[:10],
+        'near_expiry_drugs': get_near_expiry_drugs()[:10],
+    }
+
+
+@login_required
+def pharmacy_dashboard(request):
+    """
+    Comprehensive pharmacy dashboard with inventory, sales, and operational insights
+    """
+    context = get_pharmacy_dashboard_context(request)
+    return render(request, 'pharmacy/dashboard.html', context)
+
+
+@login_required
+def pharmacy_dashboard_print(request):
+    """
+    Print-friendly version of pharmacy dashboard
+    """
+    context = get_pharmacy_dashboard_context(request)
+    return render(request, 'pharmacy/dashboard_print.html', context)

@@ -90,14 +90,14 @@ class GenericDrugForm(ModelForm):
 
         return name
 
-    def clean_atc_code(self):
-        code = self.cleaned_data.get('atc_code')
-        if code:
-            code = code.upper().strip()
-            # Basic ATC code validation (letter + 2 digits + letter + letter + 2 digits)
-            if not re.match(r'^[A-Z]\d{2}[A-Z]{2}\d{2}$', code):
-                raise ValidationError("Invalid ATC code format. Expected format: A10BA02")
-        return code
+    # def clean_atc_code(self):
+    #     code = self.cleaned_data.get('atc_code')
+    #     if code:
+    #         code = code.upper().strip()
+    #         # Basic ATC code validation (letter + 2 digits + letter + letter + 2 digits)
+    #         if not re.match(r'^[A-Z]\d{2}[A-Z]{2}\d{2}$', code):
+    #             raise ValidationError("Invalid ATC code format. Expected format: A10BA02")
+    #     return code
 
 
 class DrugFormulationForm(ModelForm):
@@ -190,10 +190,106 @@ class ManufacturerForm(ModelForm):
         return name
 
 
-from django import forms
-from django.forms import ModelForm, NumberInput, TextInput, CheckboxInput
-from django.core.exceptions import ValidationError
-from .models import DrugModel, DrugFormulationModel, ManufacturerModel # Import necessary models
+class DrugOrderForm(ModelForm):
+    """
+    Form for creating new drug orders for patients.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Apply form-control to most fields
+        for field_name in self.fields:
+            # Skip specific fields if they need different styling or are read-only
+            if field_name in ['ordered_by', 'patient', 'drug', 'status']:
+                self.fields[field_name].widget.attrs.update({
+                    'class': 'form-control',
+                })
+            elif field_name not in ['quantity_dispensed', 'dispensed_at', 'dispensed_by', 'order_number', 'ordered_at']:
+                self.fields[field_name].widget.attrs.update({
+                    'class': 'form-control',
+                    'autocomplete': 'off'
+                })
+
+        # Customize widgets for specific fields
+        self.fields['dosage_instructions'].widget = Textarea(attrs={
+            'class': 'form-control',
+            'rows': 3,
+            'placeholder': 'e.g., Take 1 tablet twice daily after meals for 7 days.'
+        })
+        self.fields['notes'].widget = Textarea(attrs={
+            'class': 'form-control',
+            'rows': 3,
+            'placeholder': 'Add any special notes or instructions here...'
+        })
+        self.fields['quantity_ordered'].widget = NumberInput(attrs={
+            'class': 'form-control',
+            'min': '0.01', # Ensure positive quantity
+            'step': 'any' # Allow decimal quantities
+        })
+        self.fields['duration'].widget = TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'e.g., 7 days, until finished, PRN'
+        })
+        # Set initial choices for User fields if needed, or let Django handle it
+        # For 'ordered_by', you might filter users if only certain roles can order
+        # self.fields['ordered_by'].queryset = User.objects.filter(is_staff=True) # Example filter
+
+        # Make auto-generated/auto-updated fields read-only or exclude them
+        # For a creation form, these fields are usually not present or are read-only
+        if 'order_number' in self.fields:
+            self.fields['order_number'].widget.attrs['readonly'] = True
+        if 'ordered_at' in self.fields:
+            self.fields['ordered_at'].widget.attrs['readonly'] = True
+        if 'quantity_dispensed' in self.fields:
+            self.fields['quantity_dispensed'].widget.attrs['readonly'] = True
+        if 'dispensed_by' in self.fields:
+            self.fields['dispensed_by'].widget.attrs['readonly'] = True
+        if 'dispensed_at' in self.fields:
+            self.fields['dispensed_at'].widget.attrs['readonly'] = True
+        if 'status' in self.fields:
+            self.fields['status'].widget.attrs['readonly'] = True
+
+
+    class Meta:
+        model = DrugOrderModel
+        fields = [
+            'patient',
+            'drug',
+            'quantity_ordered',
+            'dosage_instructions',
+            'duration',
+            'ordered_by', # Assuming this is manually assigned from a list of users
+            'notes',
+        ]
+        # Exclude fields that are auto-generated or updated in separate steps
+        # 'order_number', 'ordered_at', 'quantity_dispensed', 'dispensed_by', 'dispensed_at', 'status'
+
+
+    def clean_quantity_ordered(self):
+        quantity = self.cleaned_data.get('quantity_ordered')
+        if quantity is not None and quantity <= 0:
+            raise ValidationError("Quantity ordered must be a positive value.")
+        return quantity
+
+    def clean(self):
+        cleaned_data = super().clean()
+        quantity_ordered = cleaned_data.get('quantity_ordered')
+        drug = cleaned_data.get('drug')
+
+        # Example of a more complex validation (e.g., checking available stock)
+        # This might be more robustly done in the view/service layer during dispense.
+        if drug and quantity_ordered:
+            # You might want to check total_quantity on the DrugModel
+            # However, for an *order*, the immediate stock isn't a hard blocker,
+            # but it's a good place to warn or flag.
+            # if drug.total_quantity < quantity_ordered:
+            #     # This might be too strict for just an order form,
+            #     # as stock can be replenished before dispense.
+            #     # Consider this more for a 'dispense' form.
+            #     self.add_error('quantity_ordered', "Ordered quantity exceeds available drug stock.")
+            pass # Keep it simple for an order form
+        return cleaned_data
+
 
 class DrugForm(ModelForm):
     """Form for drug products"""

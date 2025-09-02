@@ -1,3 +1,5 @@
 from django.contrib import admin
+from laboratory.models import LabTestOrderModel
 
-# Register your models here.
+
+admin.site.register(LabTestOrderModel)

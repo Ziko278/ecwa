@@ -1,0 +1,451 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="row">
+    <div class="col-lg-12 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">Consultation History - Dr. {{ consultant.staff.first_name }} {{ consultant.staff.last_name }}
+                    <a href="{% url 'doctor_dashboard' %}" class="btn btn-sm btn-outline-secondary float-end">
+                        <i class="bi bi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </h4>
+                <p class="card-description">
+                    View and manage your consultation history
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Filters and Stats -->
+    <div class="col-lg-3 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Filters</h5>
+                <form id="filterForm">
+                    <div class="mb-3">
+                        <label class="form-label">Date Range</label>
+                        <select class="form-control" name="date_range" onchange="applyFilters()">
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="this_week">This Week</option>
+                            <option value="last_week">Last Week</option>
+                            <option value="this_month" selected>This Month</option>
+                            <option value="last_month">Last Month</option>
+                            <option value="all">All Time</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-control" name="status" onchange="applyFilters()">
+                            <option value="">All Statuses</option>
+                            <option value="completed">Completed</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="paused">Paused</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Search Patient</label>
+                        <input type="text" class="form-control" name="patient_search" placeholder="Patient name or ID" onkeyup="applyFilters()">
+                    </div>
+                </form>
+                
+                <hr class="my-4">
+                
+                <h5 class="card-title">Statistics</h5>
+                <div class="stats">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card text-center bg-primary mb-2">
+                                <div class="card-body py-2">
+                                    <h6 class="text-white">{{ stats.total_consultations|default:0 }}</h6>
+                                    <small class="text-white">Total Consultations</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="card text-center bg-success mb-2">
+                                <div class="card-body py-1">
+                                    <h6 class="text-white">{{ stats.completed|default:0 }}</h6>
+                                    <small class="text-white">Completed</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="card text-center bg-info mb-2">
+                                <div class="card-body py-1">
+                                    <h6 class="text-white">{{ stats.avg_duration|default:0 }}</h6>
+                                    <small class="text-white">Avg Duration</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="card text-center bg-warning mb-2">
+                                <div class="card-body py-1">
+                                    <h6 class="text-white">{{ stats.prescriptions|default:0 }}</h6>
+                                    <small class="text-white">Prescriptions</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="card text-center bg-secondary mb-2">
+                                <div class="card-body py-1">
+                                    <h6 class="text-white">{{ stats.tests_ordered|default:0 }}</h6>
+                                    <small class="text-white">Tests Ordered</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Consultation List -->
+    <div class="col-lg-9 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Consultation Records
+                    <button class="btn btn-sm btn-outline-primary float-end" onclick="exportHistory()">
+                        <i class="bi bi-download"></i> Export
+                    </button>
+                </h5>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover" id="consultationsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="12%">Date</th>
+                                <th width="18%">Patient</th>
+                                <th width="15%">Queue #</th>
+                                <th width="20%">Diagnosis</th>
+                                <th width="10%">Duration</th>
+                                <th width="10%">Status</th>
+                                <th width="15%">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for consultation in consultations %}
+                            <tr>
+                                <td>
+                                    <strong>{{ consultation.created_at|date:"M d" }}</strong>
+                                    <small class="text-muted d-block">{{ consultation.created_at|date:"H:i" }}</small>
+                                </td>
+                                <td>
+                                    <div>
+                                        <strong>{{ consultation.queue_entry.patient|title }}</strong>
+                                        <small class="text-muted d-block">{{ consultation.queue_entry.patient.patient_id }}</small>
+                                        <small class="text-muted">{{ consultation.queue_entry.patient.age }}yrs, {{ consultation.queue_entry.patient.gender|title }}</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <strong class="text-primary">{{ consultation.queue_entry.queue_number }}</strong>
+                                    {% if consultation.queue_entry.is_emergency %}
+                                        <span class="badge bg-danger ms-1">ER</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if consultation.diagnosis %}
+                                        <span title="{{ consultation.diagnosis }}">{{ consultation.diagnosis|truncatechars:50 }}</span>
+                                    {% else %}
+                                        <span class="text-muted">Not recorded</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if consultation.completed_at %}
+                                        {{ consultation.created_at|timesince:consultation.completed_at }}
+                                    {% else %}
+                                        <span class="text-warning">{{ consultation.created_at|timesince }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if consultation.status == 'completed' %}
+                                        <span class="badge bg-success">Completed</span>
+                                    {% elif consultation.status == 'in_progress' %}
+                                        <span class="badge bg-info">In Progress</span>
+                                    {% elif consultation.status == 'paused' %}
+                                        <span class="badge bg-warning">Paused</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group-sm" role="group">
+                                        <button class="btn btn-sm btn-outline-primary" onclick="viewConsultation({{ consultation.id }})">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        {% if consultation.status != 'completed' %}
+                                            <button class="btn btn-sm btn-outline-success" onclick="resumeConsultation({{ consultation.id }})">
+                                                <i class="bi bi-play"></i>
+                                            </button>
+                                        {% endif %}
+                                        <div class="btn-group" role="group">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                                <i class="bi bi-three-dots"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li><a class="dropdown-item" href="#" onclick="viewPrescriptions({{ consultation.queue_entry.patient.id }})">View Prescriptions</a></li>
+                                                <li><a class="dropdown-item" href="#" onclick="viewTestResults({{ consultation.queue_entry.patient.id }})">View Test Results</a></li>
+                                                <li><a class="dropdown-item" href="#" onclick="viewPatientHistory({{ consultation.queue_entry.patient.id }})">Patient History</a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item" href="#" onclick="printConsultation({{ consultation.id }})">Print Report</a></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4">
+                                    <h5 class="text-muted">No Consultation Records Found</h5>
+                                    <p class="text-muted">Try adjusting your filters or date range.</p>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Pagination -->
+                {% if consultations.has_other_pages %}
+                <nav aria-label="Consultation pagination" class="mt-3">
+                    <ul class="pagination justify-content-center">
+                        {% if consultations.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1{% if request.GET.date_range %}&date_range={{ request.GET.date_range }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">First</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ consultations.previous_page_number }}{% if request.GET.date_range %}&date_range={{ request.GET.date_range }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Previous</a>
+                            </li>
+                        {% endif %}
+                        
+                        <li class="page-item active">
+                            <span class="page-link">
+                                Page {{ consultations.number }} of {{ consultations.paginator.num_pages }}
+                            </span>
+                        </li>
+                        
+                        {% if consultations.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ consultations.next_page_number }}{% if request.GET.date_range %}&date_range={{ request.GET.date_range }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Next</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ consultations.paginator.num_pages }}{% if request.GET.date_range %}&date_range={{ request.GET.date_range }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Last</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Consultation Detail Modal -->
+<div class="modal fade" id="consultationDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Consultation Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="consultationDetailContent">
+                <!-- Content loaded via AJAX -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="printCurrentConsultation()">
+                    <i class="bi bi-printer"></i> Print
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentConsultationId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize filters from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('date_range')) {
+        document.querySelector('[name="date_range"]').value = urlParams.get('date_range');
+    }
+    if (urlParams.get('status')) {
+        document.querySelector('[name="status"]').value = urlParams.get('status');
+    }
+    if (urlParams.get('patient_search')) {
+        document.querySelector('[name="patient_search"]').value = urlParams.get('patient_search');
+    }
+});
+
+// Apply filters
+function applyFilters() {
+    const form = document.getElementById('filterForm');
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+    
+    for (let [key, value] of formData.entries()) {
+        if (value) {
+            params.append(key, value);
+        }
+    }
+    
+    // Update URL and reload
+    window.location.search = params.toString();
+}
+
+// View consultation details
+function viewConsultation(consultationId) {
+    currentConsultationId = consultationId;
+    const modal = new bootstrap.Modal(document.getElementById('consultationDetailModal'));
+    
+    // Show loading
+    document.getElementById('consultationDetailContent').innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading consultation details...</p>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Load consultation details
+    fetch(`/portal/consultation/ajax/consultation/${consultationId}/details/`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('consultationDetailContent').innerHTML = data.html;
+        } else {
+            document.getElementById('consultationDetailContent').innerHTML = `
+                <div class="alert alert-danger">
+                    Error loading consultation details: ${data.error || 'Unknown error'}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        document.getElementById('consultationDetailContent').innerHTML = `
+            <div class="alert alert-danger">
+                Network error: ${error.message}
+            </div>
+        `;
+    });
+}
+
+// Resume consultation
+function resumeConsultation(consultationId) {
+    if (confirm('Do you want to resume this consultation?')) {
+        fetch(`/portal/consultation/ajax/resume-consultation/${consultationId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Consultation resumed', 'success');
+                window.location.href = `/portal/consultation/consultation/${consultationId}/`;
+            } else {
+                showAlert('Error: ' + (data.error || 'Failed to resume consultation'), 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert('Error: ' + error.message, 'danger');
+        });
+    }
+}
+
+// View prescriptions for patient
+function viewPrescriptions(patientId) {
+    window.open(`/portal/consultation/patient/${patientId}/prescriptions/`, '_blank');
+}
+
+// View test results for patient
+function viewTestResults(patientId) {
+    window.open(`/portal/consultation/patient/${patientId}/test-results/`, '_blank');
+}
+
+// View patient history
+function viewPatientHistory(patientId) {
+    window.open(`/portal/consultation/patient/${patientId}/history/`, '_blank');
+}
+
+// Print consultation
+function printConsultation(consultationId) {
+    window.open(`/portal/consultation/consultation/${consultationId}/print/`, '_blank');
+}
+
+// Print current consultation in modal
+function printCurrentConsultation() {
+    if (currentConsultationId) {
+        printConsultation(currentConsultationId);
+    }
+}
+
+// Export history
+function exportHistory() {
+    const form = document.getElementById('filterForm');
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+    
+    for (let [key, value] of formData.entries()) {
+        if (value) {
+            params.append(key, value);
+        }
+    }
+    
+    params.append('export', 'csv');
+    
+    // Create download link
+    const link = document.createElement('a');
+    link.href = `/portal/consultation/consultations/history/?${params.toString()}`;
+    link.download = 'consultation_history.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Utility functions
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    const main = document.querySelector('.col-lg-12.grid-margin .card-body');
+    main.insertBefore(alertDiv, main.firstChild);
+
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

@@ -1,3 +1,177 @@
-from django.test import TestCase
-
-# Create your tests here.
+# {% extends 'admin_site/layout.html' %}
+# {% block 'main' %}
+# {% load static %}
+# {% load humanize %}
+#
+# <div class="row">
+#     <div class="col-lg-12 grid-margin stretch-card">
+#         <div class="card">
+#             <div class="card-body">
+#                 <h4 class="card-title">Patient Queue Dashboard
+#                     <a title="Refresh Queue" href="% url 'patient_queue_index' %}" class="btn btn-sm btn-info text-white float-end"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
+#                 </h4>
+#                 <p class="card-description">
+#                     Overview of today's patient queue and consultant availability.
+#                 </p>
+#                 {% include 'admin_site/partials/error.html' %}
+#             </div>
+#         </div>
+#     </div>
+# </div>
+#
+# <div class="row">
+#     <!-- Left Column: Queue Statistics & Consultant Status -->
+#     <div class="col-lg-4 grid-margin stretch-card">
+#         <div class="card">
+#             <div class="card-body">
+#                 <h5 class="card-title">Queue Statistics Today</h5>
+#                 <p><strong>Total Patients:</strong> <span class="badge bg-primary">{{ queue_stats.total|default:0 }}</span></p>
+#                 <p><strong>Waiting for Vitals:</strong> <span class="badge bg-warning">{{ queue_stats.waiting_vitals|default:0 }}</span></p>
+#                 <p><strong>Vitals Done:</strong> <span class="badge bg-info">{{ queue_stats.vitals_done|default:0 }}</span></p>
+#                 <p><strong>With Doctor:</strong> <span class="badge bg-secondary">{{ queue_stats.with_doctor|default:0 }}</span></p>
+#                 <p><strong>Consultation Completed:</strong> <span class="badge bg-success">{{ queue_stats.completed|default:0 }}</span></p>
+#
+#                 <hr class="my-4">
+#
+#                 <h5 class="card-title">Consultant Availability</h5>
+#                 {% if consultants_status %}
+#                     <ul class="list-group">
+#                         {% for consultant in consultants_status %}
+#                             <li class="list-group-item d-flex justify-content-between align-items-center">
+#                                 <div>
+#                                     Dr. <strong>{{ consultant.staff|title }}</strong>
+#                                     <small class="text-muted d-block">{{ consultant.specialization.name|title }}</small>
+#                                 </div>
+#                                 <span class="badge {% if consultant.queue_count > 0 %}bg-danger{% else %}bg-success{% endif %} rounded-pill">
+#                                     Queue: {{ consultant.queue_count }}
+#                                 </span>
+#                             </li>
+#                         {% endfor %}
+#                     </ul>
+#                 {% else %}
+#                     <p class="text-muted">No active consultants available.</p>
+#                 {% endif %}
+#             </div>
+#         </div>
+#     </div>
+#
+#     <!-- Right Column: Main Patient Queue List -->
+#     <div class="col-lg-8 grid-margin stretch-card">
+#         <div class="card">
+#             <div class="card-body">
+#                 <h5 class="card-title">Today's Patient Queue (Active)
+#                     <button class="btn btn-sm btn-info text-white float-end" data-bs-toggle="modal" data-bs-target="#queueHelperModal"><b>Helper</b></button>
+#                 </h5>
+#                 <table class="table table-borderless datatable">
+#                     <thead>
+#                     <tr>
+#                         <th scope="col">#</th>
+#                         <th scope="col">Patient</th>
+#                         <th scope="col">Consultant</th>
+#                         <th scope="col">Specialization</th>
+#                         <th scope="col">Status</th>
+#                         <th scope="col">Joined At</th>
+#                         <th scope="col" class="text-center">Actions</th>
+#                     </tr>
+#                     </thead>
+#                     <tbody>
+#
+#                     {% for queue in queue_list %}
+#                     <tr>
+#                         <th scope="row">{{ forloop.counter }}</th>
+#                         <td><a href="% url 'patient_detail' queue.patient.id %}">{{ queue.patient|title }}</a></td>
+#                         <td>
+#                             {% if queue.consultant %}
+#                                 Dr. {{ queue.consultant.staff|title }}
+#                             {% else %}
+#                                 Not Assigned
+#                             {% endif %}
+#                         </td>
+#                         <td>{{ queue.payment.fee_structure.specialization|title }}</td>
+#                         <td>
+#                             {% if queue.status == 'waiting_vitals' %}
+#                                 <span class="badge bg-warning">Waiting Vitals</span>
+#                             {% elif queue.status == 'vitals_done' %}
+#                                 <span class="badge bg-info">Vitals Done</span>
+#                             {% elif queue.status == 'with_doctor' %}
+#                                 <span class="badge bg-secondary">With Doctor</span>
+#                             {% elif queue.status == 'consultation_paused' %}
+#                                 <span class="badge bg-dark">Paused</span>
+#                             {% elif queue.status == 'consultation_completed' %}
+#                                 <span class="badge bg-success">Completed</span>
+#                             {% elif queue.status == 'cancelled' %}
+#                                 <span class="badge bg-danger">Cancelled</span>
+#                             {% else %}
+#                                 <span class="badge bg-light text-dark">{{ queue.status|title }}</span>
+#                             {% endif %}
+#                         </td>
+#                         <td>{{ queue.joined_queue_at|date:"H:i" }}</td>
+#                         <td class="text-center">
+#                             <div class="dropdown">
+#                                 <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" id="queueActions{{ queue.id }}" data-bs-toggle="dropdown" aria-expanded="false">
+#                                     Actions
+#                                 </button>
+#                                 <ul class="dropdown-menu" aria-labelledby="queueActions{{ queue.id }}">
+#                                     {% if queue.status == 'waiting_vitals' %}
+#                                         <li><a class="dropdown-item" href="% url 'start_vitals' queue.id %}">Start Vitals</a></li>
+#                                     {% elif queue.status == 'vitals_started' %} {# Assuming a 'vitals_started' status might exist, adjust as per your model #}
+#                                         <li><a class="dropdown-item" href="% url 'complete_vitals' queue.id %}">Complete Vitals</a></li>
+#                                     {% elif queue.status == 'vitals_done' %}
+#                                         <li><a class="dropdown-item" href="% url 'start_consultation' queue.id %}">Start Consultation</a></li>
+#                                     {% elif queue.status == 'with_doctor' %}
+#                                         <li><a class="dropdown-item" href="% url 'pause_consultation' queue.id %}">Pause Consultation</a></li>
+#                                         <li><a class="dropdown-item" href="% url 'complete_consultation' queue.id %}">Complete Consultation</a></li>
+#                                     {% elif queue.status == 'consultation_paused' %}
+#                                         <li><a class="dropdown-item" href="% url 'resume_consultation' queue.id %}">Resume Consultation</a></li>
+#                                         <li><a class="dropdown-item" href="% url 'complete_consultation' queue.id %}">Complete Consultation</a></li>
+#                                     {% endif %}
+#                                     <li><a class="dropdown-item text-danger" href="% url 'cancel_queue' queue.id %}">Cancel Queue</a></li>
+#                                 </ul>
+#                             </div>
+#                         </td>
+#                     </tr>
+#                     {% empty %}
+#                     <tr><td colspan="8"><h3 class="text-center">No Patients in Queue Today</h3></td></tr>
+#                     {% endfor %}
+#
+#                     </tbody>
+#                 </table>
+#             </div>
+#         </div>
+#     </div>
+# </div>
+#
+# <!-- Queue Helper Modal -->
+# <div class="modal fade" id="queueHelperModal" tabindex="-1" style="font-family: sans-serif">
+#     <div class="modal-dialog modal-dialog-centered">
+#         <div class="modal-content">
+#             <div class="modal-header">
+#                 <h5 class="modal-title"><b>Patient Queue Helper</b></h5>
+#                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+#             </div>
+#             <div class="modal-body">
+#                 <p class="card-description">
+#                     The Patient Queue system manages the flow of patients from arrival to consultation completion.
+#                     Each patient's journey is tracked through various **statuses**:
+#                 </p>
+#                 <ul>
+#                     <li><span class="badge bg-warning">Waiting Vitals</span>: Patient has joined the queue, awaiting initial vital signs check.</li>
+#                     <li><span class="badge bg-info">Vitals Done</span>: Vital signs have been recorded; patient is waiting to see the assigned doctor.</li>
+#                     <li><span class="badge bg-secondary">With Doctor</span>: Patient is currently in consultation with the doctor.</li>
+#                     <li><span class="badge bg-dark">Paused</span>: Consultation is temporarily paused (e.g., patient stepped out).</li>
+#                     <li><span class="badge bg-success">Completed</span>: Consultation is finished, and the patient has left the queue.</li>
+#                     <li><span class="badge bg-danger">Cancelled</span>: The patient's queue entry has been cancelled.</li>
+#                 </ul>
+#
+#                 <p class="card-description">
+#                     **Actions** for each patient in the queue allow staff to update their status as they progress.
+#                 </p>
+#             </div>
+#             <div class="modal-footer">
+#                 <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+#             </div>
+#         </div>
+#     </div>
+# </div>
+#
+# {% endblock %}
