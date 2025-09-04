@@ -147,47 +147,87 @@
         </a>
       </li>
 
-      <li class="nav-item">
-        <a class="nav-link collapsed" data-bs-target="#stud" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-cash-coin"></i><span>Finance</span><i class="bi bi-chevron-down ms-auto"></i>
-        </a>
-        <ul id="stud" class="nav-content collapse " data-bs-parent="#sidebar-nav">
-          <li>
-            <a href="{% url 'finance_payment_select' %}">
-              <i class="bi bi-circle"></i><span>Make Payment</span>
-            </a>
-          </li>
-          <li>
-            <a href="{% url 'patient_transaction_index' %}">
-              <i class="bi bi-circle"></i><span>View Payments</span>
-            </a>
-          </li>
-          <li>
-            <a href="{% url 'patient_funding' %}">
-              <i class="bi bi-circle"></i><span>Wallet Funding</span>
-            </a>
-          </li>
-          <li>
-            <a href="{% url 'registration_payment_create' %}">
-              <i class="bi bi-circle"></i><span>New Registration Payment</span>
-            </a>
-          </li>
+     <li class="nav-item">
+  <a class="nav-link collapsed" data-bs-target="#finance-nav" data-bs-toggle="collapse" href="#">
+    <i class="bi bi-cash-coin"></i><span>Finance</span><i class="bi bi-chevron-down ms-auto"></i>
+  </a>
+  <ul id="finance-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
 
-          <li>
-            <a href="{% url 'registration_payment_index' %}">
-              <i class="bi bi-circle"></i><span>View Registration Payment</span>
-            </a>
-          </li>
+    <!-- Patient Finance -->
+    <li>
+      <a href="{% url 'finance_payment_select' %}">
+        <i class="bi bi-circle"></i><span>Make Payment</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'patient_transaction_index' %}">
+        <i class="bi bi-circle"></i><span>All Payments</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'patient_funding' %}">
+        <i class="bi bi-circle"></i><span>Wallet Funding</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'registration_payment_index' %}">
+        <i class="bi bi-circle"></i><span>Registration Payments</span>
+      </a>
+    </li>
 
-          <li>
-            <a href="{% url 'finance_setting_detail' 1 %}">
-              <i class="bi bi-circle"></i><span>Settings</span>
-            </a>
-          </li>
+    <!-- Operational Finance -->
+    <li>
+      <a href="{% url 'quotation_index' %}">
+        <i class="bi bi-circle"></i><span>Quotations</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'income_index' %}">
+        <i class="bi bi-circle"></i><span>Income Records</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'expense_index' %}">
+        <i class="bi bi-circle"></i><span>Expense Records</span>
+      </a>
+    </li>
 
+    <!-- Payroll -->
+    <li>
+      <a href="{% url 'salary_record_index' %}">
+        <i class="bi bi-circle"></i><span>Salary Records</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'salary_structure_index' %}">
+        <i class="bi bi-circle"></i><span>Salary Structures</span>
+      </a>
+    </li>
+     <li>
+      <a href="{% url 'staff_bank_detail_index' %}">
+        <i class="bi bi-circle"></i><span>Staff Bank Details</span>
+      </a>
+    </li>
 
-        </ul>
-      </li>
+    <!-- Setup & Configuration -->
+    <li>
+      <a href="{% url 'income_category_index' %}">
+        <i class="bi bi-circle"></i><span>Income Categories</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'expense_category_index' %}">
+        <i class="bi bi-circle"></i><span>Expense Categories</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'finance_setting_detail' 1 %}">
+        <i class="bi bi-circle"></i><span>Settings</span>
+      </a>
+    </li>
+
+  </ul>
+</li>
 
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#acad" data-bs-toggle="collapse" href="#">

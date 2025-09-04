@@ -1,0 +1,71 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="col-lg-12">
+    <!-- Action Buttons Card -->
+    <div class="card">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="card-title mb-0 pb-0">Actions</h5>
+            </div>
+            <div>
+                <a title="Edit Income Record" href="{% url 'income_update' income.pk %}" class="btn btn-warning">
+                    <i class="bi bi-pencil-square"></i> Edit
+                </a>
+                <a href="{% url 'income_index' %}" title="Go Back to List" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Card -->
+    <div class="card">
+        <div class="card-body pt-3">
+            <h5 class="card-title">Income Details</h5>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Income Number</div>
+                <div class="col-lg-9 col-md-8">{{ income.income_number }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Title</div>
+                <div class="col-lg-9 col-md-8">{{ income.title }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Amount</div>
+                <div class="col-lg-9 col-md-8 h5 text-success">₦{{ income.amount|intcomma }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Category</div>
+                <div class="col-lg-9 col-md-8">{{ income.category.name|title }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Department</div>
+                <div class="col-lg-9 col-md-8">{{ income.department.name|title }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Source of Income</div>
+                <div class="col-lg-9 col-md-8">{{ income.source|default:"Not specified." }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Date of Income</div>
+                <div class="col-lg-9 col-md-8">{{ income.date|date:"F d, Y" }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Received By</div>
+                <div class="col-lg-9 col-md-8">{{ income.received_by.get_full_name|title|default:"N/A" }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Description</div>
+                <div class="col-lg-9 col-md-8">{{ income.description|default:"No description provided." }}</div>
+            </div>
+             <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Recorded At</div>
+                <div class="col-lg-9 col-md-8">{{ income.created_at|date:"F d, Y, P" }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

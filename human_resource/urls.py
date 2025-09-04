@@ -50,5 +50,7 @@ urlpatterns = [
     path('leave/<int:pk>/approve/', approve_leave, name='leave_approve'),
     path('leave/<int:pk>/decline/', decline_leave, name='leave_decline'),
 
+
+
 ]
 

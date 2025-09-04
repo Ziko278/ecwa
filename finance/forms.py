@@ -92,13 +92,14 @@ class QuotationForm(forms.ModelForm):
         model = Quotation
         fields = [
             'quotation_number', 'title', 'description', 'category',
-            'department', 'requested_by', 'amount'
+            'document', 'department', 'requested_by', 'amount'
         ]
         widgets = {
             'quotation_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'QUO-XXXX'}),
             'title': forms.TextInput(attrs={'class': 'form-control'}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
             'category': forms.Select(attrs={'class': 'form-control'}),
+            'document': forms.FileInput(attrs={'class': 'form-control'}),
             'department': forms.Select(attrs={'class': 'form-control'}),
             'requested_by': forms.Select(attrs={'class': 'form-control'}),
             'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0.01'}),
@@ -174,6 +175,20 @@ class QuotationForm(forms.ModelForm):
 
         return amount
 
+    def clean_document(self):
+        document = self.cleaned_data.get('document')
+        if document:
+            # Check file size (max 10MB)
+            if document.size > 10 * 1024 * 1024:
+                raise ValidationError("File size cannot exceed 10MB.")
+
+            # Check file extension
+            allowed_extensions = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png']
+            if not any(document.name.lower().endswith(ext) for ext in allowed_extensions):
+                raise ValidationError("Only PDF, DOC, DOCX, JPG, JPEG, PNG files are allowed.")
+
+        return document
+
 
 class QuotationReviewForm(forms.ModelForm):
     action = forms.ChoiceField(
@@ -203,6 +218,48 @@ class QuotationReviewForm(forms.ModelForm):
             raise ValidationError("Comments must be at least 10 characters long.")
 
         return comments
+
+
+class QuotationItemForm(forms.ModelForm):
+    class Meta:
+        model = QuotationItem
+        fields = ['description', 'quantity', 'unit_price']
+        widgets = {
+            'description': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Item description'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'value': '1'}),
+            'unit_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0.01'}),
+        }
+
+    def clean_description(self):
+        description = self.cleaned_data.get('description')
+        if not description:
+            raise ValidationError("Item description is required.")
+
+        description = description.strip()
+        if len(description) < 3:
+            raise ValidationError("Item description must be at least 3 characters long.")
+
+        return description
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data.get('quantity')
+        if not quantity or quantity <= 0:
+            raise ValidationError("Quantity must be greater than 0.")
+
+        if quantity > 9999:
+            raise ValidationError("Quantity cannot exceed 9999.")
+
+        return quantity
+
+    def clean_unit_price(self):
+        unit_price = self.cleaned_data.get('unit_price')
+        if not unit_price or unit_price <= 0:
+            raise ValidationError("Unit price must be greater than 0.")
+
+        if unit_price > Decimal('999999.99'):
+            raise ValidationError("Unit price is too large.")
+
+        return unit_price
 
 
 class ExpenseForm(forms.ModelForm):

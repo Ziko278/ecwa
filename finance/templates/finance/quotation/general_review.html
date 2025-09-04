@@ -1,0 +1,44 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<div class="col-lg-8 offset-lg-2">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="card-title mb-0">General Management Review</h4>
+                <a href="{{ object.get_absolute_url|default:'#' }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Cancel and Go Back
+                </a>
+            </div>
+
+            <div class="alert alert-info">
+                You are reviewing quotation <strong>{{ object.quotation_number }}</strong> titled "<em>{{ object.title }}</em>".
+            </div>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form method="POST" action="">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label for="{{ form.action.id_for_label }}" class="form-label">Action <span class="text-danger">*</span></label>
+                        {{ form.action }}
+                        <small class="form-text text-muted">Choose to approve, reject, or query the quotation.</small>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <label for="{{ form.comments.id_for_label }}" class="form-label">Reviewer Comments</label>
+                        {{ form.comments }}
+                        <small class="form-text text-muted">Provide comments for clarification, especially if you are rejecting or querying.</small>
+                    </div>
+                </div>
+
+                <hr>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-primary">Submit Review</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

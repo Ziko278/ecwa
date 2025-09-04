@@ -1,0 +1,77 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="col-lg-12">
+    <!-- Action Buttons Card -->
+    <div class="card">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="card-title mb-0 pb-0">Actions</h5>
+            </div>
+            <div>
+                <a title="Edit Expense" href="{% url 'expense_update' expense.pk %}" class="btn btn-warning">
+                    <i class="bi bi-pencil-square"></i> Edit
+                </a>
+                <a href="{% url 'expense_index' %}" title="Go Back to List" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Card -->
+    <div class="card">
+        <div class="card-body pt-3">
+            <h5 class="card-title">Expense Details</h5>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Expense Number</div>
+                <div class="col-lg-9 col-md-8">{{ expense.expense_number }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Title</div>
+                <div class="col-lg-9 col-md-8">{{ expense.title }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Amount</div>
+                <div class="col-lg-9 col-md-8 h5 text-danger">₦{{ expense.amount|intcomma }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Category</div>
+                <div class="col-lg-9 col-md-8">{{ expense.category.name|title }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Department</div>
+                <div class="col-lg-9 col-md-8">{{ expense.department.name|title }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Date of Expense</div>
+                <div class="col-lg-9 col-md-8">{{ expense.date|date:"F d, Y" }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Paid By</div>
+                <div class="col-lg-9 col-md-8">{{ expense.paid_by.get_full_name|title|default:"N/A" }}</div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Related Quotation</div>
+                <div class="col-lg-9 col-md-8">
+                    {% if expense.quotation %}
+                        <a href="{% url 'quotation_detail' expense.quotation.pk %}">{{ expense.quotation.quotation_number }} - {{ expense.quotation.title }}</a>
+                    {% else %}
+                        Not linked to a quotation.
+                    {% endif %}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Description</div>
+                <div class="col-lg-9 col-md-8">{{ expense.description|default:"No description provided." }}</div>
+            </div>
+             <div class="row">
+                <div class="col-lg-3 col-md-4 label fw-bold">Recorded At</div>
+                <div class="col-lg-9 col-md-8">{{ expense.created_at|date:"F d, Y, P" }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

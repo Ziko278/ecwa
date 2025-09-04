@@ -1,0 +1,81 @@
+{% extends 'admin_site/layout.html' %}
+{% load humanize %}
+{% block 'main' %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Actions" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="{% url 'salary_structure_create' %}">
+                    <button title="Add Salary Structure" type="button" style="width:100%" class="btn btn-sm btn-primary">
+                        Create New Structure
+                    </button>
+                </a></li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">Salary Structures</h5>
+
+            <!-- Salary Structures Table -->
+            <div class="table-responsive">
+                <table class="table table-hover datatable">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Staff Member</th>
+                            <th scope="col">Basic Salary</th>
+                            <th scope="col">Gross Salary</th>
+                            <th scope="col">Net Salary</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for structure in salary_structure_list %}
+                        <tr>
+                            <th scope="row">{{ forloop.counter }}</th>
+                            <td>
+                                <div>
+                                    <strong>{{ structure.staff|title }}</strong><br>
+                                    <small class="text-muted">{{ structure.staff.staff_id }}</small>
+                                </div>
+                            </td>
+                            <td>₦{{ structure.basic_salary|intcomma }}</td>
+                            <td>₦{{ structure.gross_salary|intcomma }}</td>
+                            <td><strong>₦{{ structure.net_salary|intcomma }}</strong></td>
+                            <td>
+                                {% if structure.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'salary_structure_detail' structure.pk %}" class="btn btn-sm btn-outline-primary" title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <div class="text-muted">
+                                    <i class="bi bi-journal-medical" style="font-size: 3rem;"></i>
+                                    <h5 class="mt-3">No salary structures found</h5>
+                                    <p>Click the action button above to create a new salary structure for a staff member.</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

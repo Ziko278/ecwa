@@ -1,0 +1,279 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="col-lg-12">
+    <!-- Action Buttons Card -->
+    <div class="card">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="card-title mb-0 pb-0">Actions</h5>
+            </div>
+            <div>
+                <!-- Edit Button (Conditional) -->
+                {% if perms.finance.change_quotation_others %}
+                    <a title="Edit Quotation" href="{% url 'quotation_edit_others' quotation.pk %}" class="btn btn-warning">
+                        <i class="bi bi-pencil-square"></i> Edit
+                    </a>
+                {% elif perms.finance.change_quotation_self and quotation.requested_by.user == request.user %}
+                    <a title="Edit Quotation" href="{% url 'quotation_edit_self' quotation.pk %}" class="btn btn-warning">
+                        <i class="bi bi-pencil-square"></i> Edit
+                    </a>
+                {% endif %}
+
+                <!-- Department Review Button -->
+                {% if can_dept_review %}
+                <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#deptReviewModal">
+                    <i class="bi bi-building"></i> Department Review
+                </button>
+                {% endif %}
+
+                <!-- General Review Button -->
+                {% if can_general_review %}
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generalReviewModal">
+                    <i class="bi bi-shield-check"></i> General Review
+                </button>
+                {% endif %}
+
+                <!-- Collect Money Button -->
+                {% if can_collect_money %}
+                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#collectMoneyModal">
+                    <i class="bi bi-cash-coin"></i> Collect Money
+                </button>
+                {% endif %}
+                
+                <a href="{% url 'quotation_index' %}" title="Go Back" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Card -->
+    <div class="card">
+        <div class="card-body pt-3">
+            <!-- Nav Tabs -->
+            <ul class="nav nav-tabs nav-tabs-bordered">
+                <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#overview">Quotation Details</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#items">Quotation Items</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#history">Approval History</a></li>
+            </ul>
+
+            <div class="tab-content pt-2">
+                <!-- Overview Tab -->
+                <div class="tab-pane fade show active profile-overview" id="overview">
+                    <h5 class="card-title">Quotation Information</h5>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Quotation Number</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.quotation_number }}</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Title</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.title }}</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Requested By</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.requested_by|title }}</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Department</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.department.name|title }}</div>
+                    </div>
+                     <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Status</div>
+                        <div class="col-lg-9 col-md-8">
+                             <span class="badge {% if 'APPROVED' in quotation.status %}bg-success{% elif 'PENDING' in quotation.status or 'DRAFT' in quotation.status %}bg-warning{% elif 'REJECTED' in quotation.status or 'QUERY' in quotation.status %}bg-danger{% elif 'COLLECTED' in quotation.status %}bg-info{% else %}bg-secondary{% endif %}">
+                                {{ quotation.get_status_display }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Total Amount</div>
+                        <div class="col-lg-9 col-md-8"><strong>₦{{ quotation.total_amount|intcomma }}</strong></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Description</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.description|default:"No description provided." }}</div>
+                    </div>
+                </div>
+
+                <!-- Items Tab -->
+                <div class="tab-pane fade" id="items">
+                    <h5 class="card-title">Items Requested</h5>
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Description</th>
+                                <th class="text-center">Quantity</th>
+                                <th class="text-end">Unit Price</th>
+                                <th class="text-end">Total Price</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td>{{ item.description }}</td>
+                                <td class="text-center">{{ item.quantity }}</td>
+                                <td class="text-end">₦{{ item.unit_price|intcomma }}</td>
+                                <td class="text-end">₦{{ item.total_price|intcomma }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">No items have been added to this quotation.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th colspan="4" class="text-end">Grand Total:</th>
+                                <th class="text-end h5">₦{{ quotation.total_amount|intcomma }}</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- History Tab -->
+                <div class="tab-pane fade" id="history">
+                    <h5 class="card-title">Approval Workflow</h5>
+                    {% if quotation.dept_reviewed_by %}
+                    <h6>Department Review</h6>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Reviewed By</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.dept_reviewed_by.get_full_name|title }}</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Reviewed At</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.dept_reviewed_at }}</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Comments</div>
+                        <div class="col-lg-9 col-md-8"><em>"{{ quotation.dept_comments|default:'No comments.' }}"</em></div>
+                    </div>
+                    <hr>
+                    {% endif %}
+
+                    {% if quotation.general_reviewed_by %}
+                    <h6>General Review</h6>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Reviewed By</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.general_reviewed_by.get_full_name|title }}</div>
+                    </div>
+                     <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Reviewed At</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.general_reviewed_at }}</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Comments</div>
+                        <div class="col-lg-9 col-md-8"><em>"{{ quotation.general_comments|default:'No comments.' }}"</em></div>
+                    </div>
+                    <hr>
+                    {% endif %}
+                    
+                    {% if quotation.collected_by %}
+                    <h6>Money Collection</h6>
+                    <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Collected By</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.collected_by.get_full_name|title }}</div>
+                    </div>
+                     <div class="row">
+                        <div class="col-lg-3 col-md-4 label">Collected At</div>
+                        <div class="col-lg-9 col-md-8">{{ quotation.collected_at }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Department Review Modal -->
+{% if can_dept_review %}
+<div class="modal fade" id="deptReviewModal" tabindex="-1">
+    <form method="POST" action="{% url 'quotation_dept_review' quotation.pk %}">
+        {% csrf_token %}
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Department Level Review</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Review the quotation and select an action.</p>
+                    <div class="mb-3">
+                        <label class="form-label">Action <span class="text-danger">*</span></label>
+                        {{ review_form.action }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Comments</label>
+                        {{ review_form.comments }}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Submit Review</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<!-- General Review Modal -->
+{% if can_general_review %}
+<div class="modal fade" id="generalReviewModal" tabindex="-1">
+    <form method="POST" action="{% url 'quotation_general_review' quotation.pk %}">
+        {% csrf_token %}
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">General Management Review</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Review the quotation and select an action.</p>
+                    <div class="mb-3">
+                        <label class="form-label">Action <span class="text-danger">*</span></label>
+                        {{ review_form.action }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Comments</label>
+                        {{ review_form.comments }}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Submit Review</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<!-- Collect Money Modal -->
+{% if can_collect_money %}
+<div class="modal fade" id="collectMoneyModal" tabindex="-1">
+    <form method="POST" action="{% url 'quotation_collect_money' quotation.pk %}">
+        {% csrf_token %}
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Money Collection</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Please confirm that you have collected the full amount of <strong>₦{{ quotation.total_amount|intcomma }}</strong> for this quotation.</p>
+                    <div class="alert alert-info">This action will mark the quotation as "Money Collected" and cannot be undone.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Confirm Collection</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+{% endblock %}

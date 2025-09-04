@@ -1,0 +1,39 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+{% block 'main' %}
+
+<div class="col-lg-8 offset-lg-2">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Confirm Money Collection</h4>
+            
+            <div class="alert alert-secondary">
+                <p class="mb-1"><strong>Quotation Number:</strong> {{ quotation.quotation_number }}</p>
+                <p class="mb-1"><strong>Title:</strong> {{ quotation.title }}</p>
+                <p class="mb-0"><strong>Requested By:</strong> {{ quotation.requested_by|title }}</p>
+            </div>
+
+            <p class="lead mt-4">
+                Please confirm that you have collected the full amount of 
+                <strong class="text-success h5">₦{{ quotation.total_amount|intcomma }}</strong> 
+                for this quotation.
+            </p>
+
+            <div class="alert alert-info">
+                <strong>Note:</strong> This action will mark the quotation's status as "Money Collected" and cannot be easily undone.
+            </div>
+
+            <form style="display:inline" method="post" action="{% url 'quotation_collect_money' quotation.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-check-circle"></i> Yes, I Confirm Collection
+                </button>
+            </form>
+            <a class="btn btn-secondary" href="{% url 'quotation_detail' quotation.pk %}">
+                <i class="bi bi-x-circle"></i> Cancel
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

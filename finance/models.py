@@ -25,9 +25,6 @@ class FinanceSettingModel(models.Model):
     )
 
 
-
-# -------------------- EXPENSE MANAGEMENT --------------------
-
 class ExpenseCategory(models.Model):
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=20, unique=True)
@@ -54,12 +51,13 @@ class Quotation(models.Model):
         ('CANCELLED', 'Cancelled'),
     ]
 
-    quotation_number = models.CharField(max_length=50, unique=True)
+    quotation_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
     title = models.CharField(max_length=200)
     description = models.TextField()
     category = models.ForeignKey(ExpenseCategory, on_delete=models.CASCADE)
-    department = models.ForeignKey('human_resource.DepartmentModel', on_delete=models.CASCADE)
-    requested_by = models.ForeignKey(User, related_name='quotations', on_delete=models.CASCADE)
+    document = models.FileField(upload_to='quotations/%Y/%m/', blank=True, null=True)
+    department = models.ForeignKey('human_resource.DepartmentModel', on_delete=models.SET_NULL, blank=True, null=True)
+    requested_by = models.ForeignKey('human_resource.StaffModel', related_name='quotations', on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
 
@@ -83,11 +81,29 @@ class Quotation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        # Auto-populate department from staff if not provided
+        if not self.department and self.requested_by and hasattr(self.requested_by, 'department'):
+            self.department = self.requested_by.department
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.quotation_number} - {self.title}"
 
     class Meta:
         ordering = ['-created_at']
+
+
+class QuotationItem(models.Model):
+    quotation = models.ForeignKey(Quotation, related_name='items', on_delete=models.CASCADE)
+    description = models.CharField(max_length=200)
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def save(self, *args, **kwargs):
+        self.total_price = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
 
 
 class PatientTransactionModel(models.Model):
@@ -267,7 +283,7 @@ class StaffBankDetail(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.staff.get_full_name()} - {self.bank_name}"
+        return f"{self.staff.__str__()} - {self.bank_name}"
 
 
 class SalaryStructure(models.Model):

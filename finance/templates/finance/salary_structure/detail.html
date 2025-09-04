@@ -1,0 +1,107 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="col-lg-12">
+    <!-- Action Buttons Card -->
+    <div class="card">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="card-title mb-0 pb-0">Actions</h5>
+            </div>
+            <div>
+                <a title="Edit Salary Structure" href="{% url 'salary_structure_update' salary_structure.pk %}" class="btn btn-warning">
+                    <i class="bi bi-pencil-square"></i> Edit
+                </a>
+                <a href="{% url 'salary_structure_index' %}" title="Go Back to List" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Card -->
+    <div class="card">
+        <div class="card-body pt-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title">Salary Structure for {{ salary_structure.staff|title }}</h5>
+                 {% if salary_structure.is_active %}
+                    <span class="badge bg-success">Active</span>
+                {% else %}
+                    <span class="badge bg-secondary">Inactive</span>
+                {% endif %}
+            </div>
+
+            <div class="row">
+                <!-- Left Column: Earnings -->
+                <div class="col-md-6">
+                    <div class="card card-body">
+                        <h6 class="text-success">Earnings</h6>
+                        <hr>
+                        <dl class="row">
+                            <dt class="col-sm-6">Basic Salary</dt>
+                            <dd class="col-sm-6 text-end">₦{{ salary_structure.basic_salary|intcomma }}</dd>
+
+                            <dt class="col-sm-6">Housing Allowance</dt>
+                            <dd class="col-sm-6 text-end">₦{{ salary_structure.housing_allowance|intcomma }}</dd>
+
+                            <dt class="col-sm-6">Transport Allowance</dt>
+                            <dd class="col-sm-6 text-end">₦{{ salary_structure.transport_allowance|intcomma }}</dd>
+                            
+                            <dt class="col-sm-6">Medical Allowance</dt>
+                            <dd class="col-sm-6 text-end">₦{{ salary_structure.medical_allowance|intcomma }}</dd>
+                            
+                            <dt class="col-sm-6">Other Allowances</dt>
+                            <dd class="col-sm-6 text-end">₦{{ salary_structure.other_allowances|intcomma }}</dd>
+                        </dl>
+                    </div>
+                </div>
+
+                <!-- Right Column: Deductions -->
+                <div class="col-md-6">
+                    <div class="card card-body">
+                        <h6 class="text-danger">Deductions</h6>
+                        <hr>
+                        <dl class="row">
+                            <dt class="col-sm-6">Tax (PAYE)</dt>
+                            <dd class="col-sm-6 text-end">₦{{ salary_structure.tax_amount|intcomma }}</dd>
+
+                            <dt class="col-sm-6">Pension</dt>
+                            <dd class="col-sm-6 text-end">₦{{ salary_structure.pension_amount|intcomma }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Section -->
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h5 class="card-title">Summary</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="d-flex justify-content-between">
+                                <span class="fw-bold">Gross Salary:</span>
+                                <span class="h5">₦{{ salary_structure.gross_salary|intcomma }}</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-flex justify-content-between">
+                                <span class="fw-bold">Total Deductions:</span>
+                                <span class="h5 text-danger">₦{{ salary_structure.total_deductions|intcomma }}</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-flex justify-content-between">
+                                <span class="fw-bold">Net Salary:</span>
+                                <span class="h5 text-success">₦{{ salary_structure.net_salary|intcomma }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

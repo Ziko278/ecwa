@@ -1,16 +1,18 @@
 # views.py
-from datetime import timedelta, date
+from datetime import timedelta, date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.models import User
 from django.contrib.messages.views import SuccessMessageMixin
 from django.db import transaction
+from django.forms import forms
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.timezone import now
 from django.views.decorators.http import require_http_methods
-from django.views.generic import CreateView, ListView, DetailView, UpdateView
+from django.views.generic import CreateView, ListView, DetailView, UpdateView, DeleteView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db.models import Q, Sum
 from django.contrib import messages
@@ -19,8 +21,13 @@ from django.template.loader import render_to_string
 
 from admin_site.models import SiteInfoModel
 from consultation.models import ConsultationFeeModel, SpecializationModel, PatientQueueModel
-from finance.forms import FinanceSettingForm
-from finance.models import PatientTransactionModel, FinanceSettingModel
+from finance.forms import FinanceSettingForm, ExpenseCategoryForm, QuotationReviewForm, QuotationItemForm, \
+    SalaryStructureForm, StaffBankDetailForm, SalaryRecordForm, IncomeForm, IncomeCategoryForm, QuotationForm, \
+    ExpenseForm
+from finance.models import PatientTransactionModel, FinanceSettingModel, ExpenseCategory, Quotation, SalaryStructure, \
+    StaffBankDetail, SalaryRecord, Income, IncomeCategory, QuotationItem, Expense
+from human_resource.models import DepartmentModel, StaffModel
+from human_resource.views import FlashFormErrorsMixin
 from insurance.models import PatientInsuranceModel
 from laboratory.models import LabTestOrderModel
 from patient.forms import RegistrationPaymentForm
@@ -1605,3 +1612,933 @@ class FinanceSettingUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Succ
     def get_success_url(self):
         return reverse('finance_setting_detail', kwargs={'pk': self.object.pk})
 
+
+# -------------------------
+# Expense Category Views (Simple - Same HTML Pattern)
+# -------------------------
+class ExpenseCategoryCreateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
+):
+    model = ExpenseCategory
+    permission_required = 'finance.add_expensecategory'
+    form_class = ExpenseCategoryForm
+    template_name = 'finance/expense_category/index.html'
+    success_message = 'Expense Category Successfully Created'
+
+    def get_success_url(self):
+        return reverse('expense_category_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('expense_category_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class ExpenseCategoryListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = ExpenseCategory
+    permission_required = 'finance.view_expensecategory'
+    template_name = 'finance/expense_category/index.html'
+    context_object_name = "category_list"
+
+    def get_queryset(self):
+        return ExpenseCategory.objects.all().order_by('name')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['form'] = ExpenseCategoryForm()
+        return context
+
+
+class ExpenseCategoryUpdateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
+):
+    model = ExpenseCategory
+    permission_required = 'finance.change_expensecategory'
+    form_class = ExpenseCategoryForm
+    template_name = 'finance/expense_category/index.html'
+    success_message = 'Expense Category Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('expense_category_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('expense_category_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class ExpenseCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+    model = ExpenseCategory
+    permission_required = 'finance.delete_expensecategory'
+    template_name = 'finance/expense_category/delete.html'
+    context_object_name = "category"
+    success_message = 'Expense Category Successfully Deleted'
+
+    def get_success_url(self):
+        return reverse('expense_category_index')
+
+
+# -------------------------
+# Quotation Views
+# -------------------------
+class QuotationListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = Quotation
+    permission_required = 'finance.view_quotation'
+    template_name = 'finance/quotation/index.html'
+    context_object_name = "quotation_list"
+    paginate_by = 20
+
+    def get_queryset(self):
+        queryset = Quotation.objects.select_related(
+            'category', 'department', 'requested_by'
+        ).prefetch_related('items').order_by('-created_at')
+
+        # Filter by status if provided
+        status = self.request.GET.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+
+        # Search functionality
+        search = self.request.GET.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(quotation_number__icontains=search) |
+                Q(title__icontains=search) |
+                Q(requested_by__first_name__icontains=search) |
+                Q(requested_by__last_name__icontains=search)
+            )
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['status_choices'] = Quotation.STATUS_CHOICES
+        context['current_status'] = self.request.GET.get('status', '')
+        context['search_query'] = self.request.GET.get('search', '')
+        return context
+
+
+class QuotationCreateSelfView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = Quotation
+    permission_required = 'finance.add_quotation_self'
+    form_class = QuotationForm
+    template_name = 'finance/quotation/create_self.html'
+    success_message = 'Quotation Successfully Created'
+
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        # Hide requested_by field and set to current user's staff
+        if 'requested_by' in form.fields:
+            form.fields['requested_by'].widget = forms.HiddenInput()
+            try:
+                staff = self.request.user.staffmodel
+                form.fields['requested_by'].initial = staff
+            except:
+                messages.error(self.request, 'Staff profile not found for current user')
+        return form
+
+    def form_valid(self, form):
+        try:
+            form.instance.requested_by = self.request.user.staffmodel
+            form.instance.created_by = self.request.user  # Track who created it
+        except:
+            messages.error(self.request, 'Staff profile not found for current user')
+            return self.form_invalid(form)
+
+        response = super().form_valid(form)
+
+        # Handle continue editing
+        if 'save_and_continue' in self.request.POST:
+            return redirect('quotation_edit_self', pk=self.object.pk)
+
+        return response
+
+    def get_success_url(self):
+        return reverse('quotation_detail', kwargs={'pk': self.object.pk})
+
+
+class QuotationCreateOthersView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = Quotation
+    permission_required = 'finance.add_quotation_others'
+    form_class = QuotationForm
+    template_name = 'finance/quotation/create_others.html'
+    success_message = 'Quotation Successfully Created'
+
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        # Filter requested_by to staff in current user's department
+        if 'requested_by' in form.fields:
+            try:
+                user_dept = self.request.user.staffmodel.department
+                form.fields['requested_by'].queryset = StaffModel.objects.filter(
+                    department=user_dept, is_active=True
+                )
+            except:
+                form.fields['requested_by'].queryset = StaffModel.objects.filter(is_active=True)
+        return form
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user  # Track who created it
+        response = super().form_valid(form)
+
+        # Handle continue editing
+        if 'save_and_continue' in self.request.POST:
+            return redirect('quotation_edit_others', pk=self.object.pk)
+
+        return response
+
+    def get_success_url(self):
+        return reverse('quotation_detail', kwargs={'pk': self.object.pk})
+
+
+class QuotationUpdateSelfView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = Quotation
+    permission_required = 'finance.change_quotation_self'
+    form_class = QuotationForm
+    template_name = 'finance/quotation/edit_self.html'
+    success_message = 'Quotation Successfully Updated'
+
+    def get_queryset(self):
+        # Only allow editing own quotations
+        try:
+            return Quotation.objects.filter(requested_by=self.request.user.staffmodel)
+        except:
+            return Quotation.objects.none()
+
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        # Hide requested_by field
+        if 'requested_by' in form.fields:
+            form.fields['requested_by'].widget = forms.HiddenInput()
+        return form
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+
+        if 'save_and_continue' in self.request.POST:
+            return redirect('quotation_edit_self', pk=self.object.pk)
+
+        return response
+
+    def get_success_url(self):
+        return reverse('quotation_detail', kwargs={'pk': self.object.pk})
+
+
+class QuotationUpdateOthersView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = Quotation
+    permission_required = 'finance.change_quotation_others'
+    form_class = QuotationForm
+    template_name = 'finance/quotation/edit_others.html'
+    success_message = 'Quotation Successfully Updated'
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+
+        if 'save_and_continue' in self.request.POST:
+            return redirect('quotation_edit_others', pk=self.object.pk)
+
+        return response
+
+    def get_success_url(self):
+        return reverse('quotation_detail', kwargs={'pk': self.object.pk})
+
+
+class QuotationDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = Quotation
+    permission_required = 'finance.view_quotation'
+    template_name = 'finance/quotation/detail.html'
+    context_object_name = "quotation"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['items'] = self.object.items.all()
+        context['review_form'] = QuotationReviewForm()
+        context['can_dept_review'] = (
+                self.request.user.has_perm('finance.review_quotation_dept') and
+                self.object.status in ['DRAFT', 'DEPT_QUERY']
+        )
+        context['can_general_review'] = (
+                self.request.user.has_perm('finance.review_quotation_general') and
+                self.object.status in ['DEPT_APPROVED', 'GENERAL_QUERY']
+        )
+        context['can_collect_money'] = (
+                self.request.user.has_perm('finance.collect_quotation_money') and
+                self.object.status == 'GENERAL_APPROVED'
+        )
+        return context
+
+
+# -------------------------
+# Quotation Approval Views
+# -------------------------
+class QuotationDeptReviewView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = Quotation
+    permission_required = 'finance.review_quotation_dept'
+    form_class = QuotationReviewForm
+    template_name = 'finance/quotation/dept_review.html'
+
+    def get_queryset(self):
+        return Quotation.objects.filter(status__in=['DRAFT', 'DEPT_QUERY'])
+
+    def form_valid(self, form):
+        action = form.cleaned_data.get('action')
+        comments = form.cleaned_data.get('comments')
+
+        if action == 'approve':
+            self.object.status = 'GENERAL_PENDING'
+        elif action == 'reject':
+            self.object.status = 'DEPT_REJECTED'
+        else:  # query
+            self.object.status = 'DEPT_QUERY'
+
+        self.object.dept_reviewed_by = self.request.user
+        self.object.dept_reviewed_at = timezone.now()
+        self.object.dept_comments = comments
+        self.object.save()
+
+        messages.success(self.request, f'Quotation {action}d successfully')
+        return redirect('quotation_detail', pk=self.object.pk)
+
+
+class QuotationGeneralReviewView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = Quotation
+    permission_required = 'finance.review_quotation_general'
+    form_class = QuotationReviewForm
+    template_name = 'finance/quotation/general_review.html'
+
+    def get_queryset(self):
+        return Quotation.objects.filter(status__in=['GENERAL_PENDING', 'GENERAL_QUERY'])
+
+    def form_valid(self, form):
+        action = form.cleaned_data.get('action')
+        comments = form.cleaned_data.get('comments')
+
+        if action == 'approve':
+            self.object.status = 'GENERAL_APPROVED'
+        elif action == 'reject':
+            self.object.status = 'GENERAL_REJECTED'
+        else:  # query
+            self.object.status = 'GENERAL_QUERY'
+
+        self.object.general_reviewed_by = self.request.user
+        self.object.general_reviewed_at = timezone.now()
+        self.object.general_comments = comments
+        self.object.save()
+
+        messages.success(self.request, f'Quotation {action}d successfully')
+        return redirect('quotation_detail', pk=self.object.pk)
+
+
+@login_required
+@permission_required('finance.collect_quotation_money')
+def quotation_collect_money(request, pk):
+    quotation = get_object_or_404(Quotation, pk=pk)
+
+    if quotation.status != 'GENERAL_APPROVED':
+        messages.error(request, 'Only approved quotations can have money collected')
+        return redirect('quotation_detail', pk=pk)
+
+    if request.method == 'POST':
+        quotation.status = 'MONEY_COLLECTED'
+        quotation.collected_by = request.user
+        quotation.collected_at = timezone.now()
+        quotation.save()
+
+        messages.success(request, 'Money collection recorded successfully')
+        return redirect('quotation_detail', pk=pk)
+
+    return render(request, 'finance/quotation/collect_money.html', {'quotation': quotation})
+
+
+# -------------------------
+# AJAX Views for Quotation Items
+# -------------------------
+@login_required
+@permission_required('finance.add_quotationitem')
+def quotation_item_create_ajax(request, quotation_pk):
+    if request.method == 'POST':
+        quotation = get_object_or_404(Quotation, pk=quotation_pk)
+        form = QuotationItemForm(request.POST)
+
+        if form.is_valid():
+            item = form.save(commit=False)
+            item.quotation = quotation
+            item.save()
+
+            return JsonResponse({
+                'success': True,
+                'item': {
+                    'id': item.id,
+                    'description': item.description,
+                    'quantity': item.quantity,
+                    'unit_price': str(item.unit_price),
+                    'total_price': str(item.total_price)
+                }
+            })
+        else:
+            return JsonResponse({'success': False, 'errors': form.errors})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+@permission_required('finance.change_quotationitem')
+def quotation_item_update_ajax(request, item_pk):
+    if request.method == 'POST':
+        item = get_object_or_404(QuotationItem, pk=item_pk)
+        form = QuotationItemForm(request.POST, instance=item)
+
+        if form.is_valid():
+            item = form.save()
+            return JsonResponse({
+                'success': True,
+                'item': {
+                    'id': item.id,
+                    'description': item.description,
+                    'quantity': item.quantity,
+                    'unit_price': str(item.unit_price),
+                    'total_price': str(item.total_price)
+                }
+            })
+        else:
+            return JsonResponse({'success': False, 'errors': form.errors})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+@permission_required('finance.delete_quotationitem')
+def quotation_item_delete_ajax(request, item_pk):
+    if request.method == 'POST':
+        item = get_object_or_404(QuotationItem, pk=item_pk)
+        item.delete()
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+def quotation_items_get_ajax(request, quotation_pk):
+    quotation = get_object_or_404(Quotation, pk=quotation_pk)
+    items = quotation.items.all()
+
+    items_data = [{
+        'id': item.id,
+        'description': item.description,
+        'quantity': item.quantity,
+        'unit_price': str(item.unit_price),
+        'total_price': str(item.total_price)
+    } for item in items]
+
+    return JsonResponse({'items': items_data})
+
+
+# -------------------------
+# Expense Views
+# -------------------------
+class ExpenseListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = Expense
+    permission_required = 'finance.view_expense'
+    template_name = 'finance/expense/index.html'
+    context_object_name = "expense_list"
+    paginate_by = 20
+
+    def get_queryset(self):
+        queryset = Expense.objects.select_related(
+            'category', 'department', 'paid_by', 'quotation'
+        ).order_by('-date')
+
+        # Filter functionality
+        category = self.request.GET.get('category')
+        if category:
+            queryset = queryset.filter(category_id=category)
+
+        department = self.request.GET.get('department')
+        if department:
+            queryset = queryset.filter(department_id=department)
+
+        search = self.request.GET.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(expense_number__icontains=search) |
+                Q(title__icontains=search)
+            )
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['categories'] = ExpenseCategory.objects.all()
+        context['departments'] = DepartmentModel.objects.all()
+        context['total_amount'] = self.get_queryset().aggregate(Sum('amount'))['amount__sum'] or 0
+        return context
+
+
+class ExpenseCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = Expense
+    permission_required = 'finance.add_expense'
+    form_class = ExpenseForm
+    template_name = 'finance/expense/create.html'
+    success_message = 'Expense Successfully Created'
+
+    def get_success_url(self):
+        return reverse('expense_detail', kwargs={'pk': self.object.pk})
+
+
+class ExpenseUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = Expense
+    permission_required = 'finance.change_expense'
+    form_class = ExpenseForm
+    template_name = 'finance/expense/edit.html'
+    success_message = 'Expense Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('expense_detail', kwargs={'pk': self.object.pk})
+
+
+class ExpenseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = Expense
+    permission_required = 'finance.view_expense'
+    template_name = 'finance/expense/detail.html'
+    context_object_name = "expense"
+
+
+# -------------------------
+# Income Category Views (Simple - Same HTML Pattern)
+# -------------------------
+class IncomeCategoryCreateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
+):
+    model = IncomeCategory
+    permission_required = 'finance.add_incomecategory'
+    form_class = IncomeCategoryForm
+    template_name = 'finance/income_category/index.html'
+    success_message = 'Income Category Successfully Created'
+
+    def get_success_url(self):
+        return reverse('income_category_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('income_category_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class IncomeCategoryListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = IncomeCategory
+    permission_required = 'finance.view_incomecategory'
+    template_name = 'finance/income_category/index.html'
+    context_object_name = "category_list"
+
+    def get_queryset(self):
+        return IncomeCategory.objects.all().order_by('name')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['form'] = IncomeCategoryForm()
+        return context
+
+
+class IncomeCategoryUpdateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
+):
+    model = IncomeCategory
+    permission_required = 'finance.change_incomecategory'
+    form_class = IncomeCategoryForm
+    template_name = 'finance/income_category/index.html'
+    success_message = 'Income Category Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('income_category_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('income_category_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class IncomeCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+    model = IncomeCategory
+    permission_required = 'finance.delete_incomecategory'
+    template_name = 'finance/income_category/delete.html'
+    context_object_name = "category"
+    success_message = 'Income Category Successfully Deleted'
+
+    def get_success_url(self):
+        return reverse('income_category_index')
+
+
+# -------------------------
+# Income Views
+# -------------------------
+class IncomeListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = Income
+    permission_required = 'finance.view_income'
+    template_name = 'finance/income/index.html'
+    context_object_name = "income_list"
+    paginate_by = 20
+
+    def get_queryset(self):
+        queryset = Income.objects.select_related(
+            'category', 'department', 'received_by'
+        ).order_by('-date')
+
+        # Filter functionality
+        category = self.request.GET.get('category')
+        if category:
+            queryset = queryset.filter(category_id=category)
+
+        department = self.request.GET.get('department')
+        if department:
+            queryset = queryset.filter(department_id=department)
+
+        search = self.request.GET.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(income_number__icontains=search) |
+                Q(title__icontains=search) |
+                Q(source__icontains=search)
+            )
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['categories'] = IncomeCategory.objects.all()
+        context['departments'] = DepartmentModel.objects.all()
+        context['total_amount'] = self.get_queryset().aggregate(Sum('amount'))['amount__sum'] or 0
+        return context
+
+
+class IncomeCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = Income
+    permission_required = 'finance.add_income'
+    form_class = IncomeForm
+    template_name = 'finance/income/create.html'
+    success_message = 'Income Successfully Created'
+
+    def get_success_url(self):
+        return reverse('income_detail', kwargs={'pk': self.object.pk})
+
+
+class IncomeUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = Income
+    permission_required = 'finance.change_income'
+    form_class = IncomeForm
+    template_name = 'finance/income/edit.html'
+    success_message = 'Income Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('income_detail', kwargs={'pk': self.object.pk})
+
+
+class IncomeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = Income
+    permission_required = 'finance.view_income'
+    template_name = 'finance/income/detail.html'
+    context_object_name = "income"
+
+
+# -------------------------
+# Staff Bank Detail Views (Simple - Same HTML Pattern)
+# -------------------------
+class StaffBankDetailCreateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
+):
+    model = StaffBankDetail
+    permission_required = 'finance.add_staffbankdetail'
+    form_class = StaffBankDetailForm
+    template_name = 'finance/staff_bank/index.html'
+    success_message = 'Bank Detail Successfully Created'
+
+    def get_success_url(self):
+        return reverse('staff_bank_detail_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('staff_bank_detail_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class StaffBankDetailListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = StaffBankDetail
+    permission_required = 'finance.view_staffbankdetail'
+    template_name = 'finance/staff_bank/index.html'
+    context_object_name = "bank_detail_list"
+
+    def get_queryset(self):
+        return StaffBankDetail.objects.select_related('staff').order_by('-created_at')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['form'] = StaffBankDetailForm()
+        return context
+
+
+class StaffBankDetailUpdateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
+):
+    model = StaffBankDetail
+    permission_required = 'finance.change_staffbankdetail'
+    form_class = StaffBankDetailForm
+    template_name = 'finance/staff_bank/index.html'
+    success_message = 'Bank Detail Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('staff_bank_detail_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('staff_bank_detail_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class StaffBankDetailDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+    model = StaffBankDetail
+    permission_required = 'finance.delete_staffbankdetail'
+    template_name = 'finance/staff_bank/delete.html'
+    context_object_name = "bank_detail"
+    success_message = 'Bank Detail Successfully Deleted'
+
+    def get_success_url(self):
+        return reverse('staff_bank_detail_index')
+
+
+# -------------------------
+# Salary Structure Views
+# -------------------------
+class SalaryStructureListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = SalaryStructure
+    permission_required = 'finance.view_salarystructure'
+    template_name = 'finance/salary_structure/index.html'
+    context_object_name = "salary_structure_list"
+
+    def get_queryset(self):
+        return SalaryStructure.objects.select_related('staff').order_by('-created_at')
+
+
+class SalaryStructureCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = SalaryStructure
+    permission_required = 'finance.add_salarystructure'
+    form_class = SalaryStructureForm
+    template_name = 'finance/salary_structure/create.html'
+    success_message = 'Salary Structure Successfully Created'
+
+    def get_success_url(self):
+        return reverse('salary_structure_detail', kwargs={'pk': self.object.pk})
+
+
+class SalaryStructureUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = SalaryStructure
+    permission_required = 'finance.change_salarystructure'
+    form_class = SalaryStructureForm
+    template_name = 'finance/salary_structure/edit.html'
+    success_message = 'Salary Structure Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('salary_structure_detail', kwargs={'pk': self.object.pk})
+
+
+class SalaryStructureDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = SalaryStructure
+    permission_required = 'finance.view_salarystructure'
+    template_name = 'finance/salary_structure/detail.html'
+    context_object_name = "salary_structure"
+
+
+# -------------------------
+# Salary Record Views
+# -------------------------
+class SalaryRecordListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = SalaryRecord
+    permission_required = 'finance.view_salaryrecord'
+    template_name = 'finance/salary_record/index.html'
+    context_object_name = "salary_record_list"
+    paginate_by = 20
+
+    def get_queryset(self):
+        queryset = SalaryRecord.objects.select_related('staff').order_by('-year', '-month')
+
+        # Filter by year/month
+        year = self.request.GET.get('year')
+        month = self.request.GET.get('month')
+        if year:
+            queryset = queryset.filter(year=year)
+        if month:
+            queryset = queryset.filter(month=month)
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['years'] = range(2020, 2031)
+        context['months'] = [(i, f'{i:02d}') for i in range(1, 13)]
+        context['current_year'] = datetime.now().year
+        context['current_month'] = datetime.now().month
+        return context
+
+
+class SalaryRecordCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = SalaryRecord
+    permission_required = 'finance.add_salaryrecord'
+    form_class = SalaryRecordForm
+    template_name = 'finance/salary_record/create.html'
+    success_message = 'Salary Record Successfully Created'
+
+    def form_valid(self, form):
+        # Auto-populate from salary structure
+        staff = form.cleaned_data['staff']
+        try:
+            salary_structure = SalaryStructure.objects.get(staff=staff, is_active=True)
+            form.instance.basic_salary = salary_structure.basic_salary
+            form.instance.housing_allowance = salary_structure.housing_allowance
+            form.instance.transport_allowance = salary_structure.transport_allowance
+            form.instance.medical_allowance = salary_structure.medical_allowance
+            form.instance.other_allowances = salary_structure.other_allowances
+
+            # Calculate tax and pension if not provided
+            if not form.instance.tax_amount:
+                form.instance.tax_amount = salary_structure.tax_amount
+            if not form.instance.pension_amount:
+                form.instance.pension_amount = salary_structure.pension_amount
+
+        except SalaryStructure.DoesNotExist:
+            messages.error(self.request, 'No active salary structure found for this staff member')
+            return self.form_invalid(form)
+
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('salary_record_detail', kwargs={'pk': self.object.pk})
+
+
+class SalaryRecordUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = SalaryRecord
+    permission_required = 'finance.change_salaryrecord'
+    form_class = SalaryRecordForm
+    template_name = 'finance/salary_record/edit.html'
+    success_message = 'Salary Record Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('salary_record_detail', kwargs={'pk': self.object.pk})
+
+
+class SalaryRecordDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = SalaryRecord
+    permission_required = 'finance.view_salaryrecord'
+    template_name = 'finance/salary_record/detail.html'
+    context_object_name = "salary_record"
+
+
+@login_required
+@permission_required('finance.change_salaryrecord')
+def salary_record_pay(request, pk):
+    """Mark a salary record as paid"""
+    salary_record = get_object_or_404(SalaryRecord, pk=pk)
+
+    if salary_record.is_paid:
+        messages.warning(request, 'This salary record is already marked as paid')
+        return redirect('salary_record_detail', pk=pk)
+
+    if request.method == 'POST':
+        salary_record.is_paid = True
+        salary_record.paid_date = date.today()
+        salary_record.paid_by = request.user
+        salary_record.save()
+
+        messages.success(request, f'Salary payment recorded for {salary_record.staff.get_full_name()}')
+        return redirect('salary_record_detail', pk=pk)
+
+    return render(request, 'finance/salary_record/pay.html', {'salary_record': salary_record})
+
+
+@login_required
+@permission_required('finance.add_salaryrecord')
+def bulk_salary_generation(request):
+    """Generate salary records for all staff for a specific month/year"""
+    if request.method == 'POST':
+        month = int(request.POST.get('month'))
+        year = int(request.POST.get('year'))
+
+        # Get all staff with active salary structures
+        active_structures = SalaryStructure.objects.filter(is_active=True).select_related('staff')
+
+        created_count = 0
+        errors = []
+
+        with transaction.atomic():
+            for structure in active_structures:
+                # Check if salary record already exists
+                existing = SalaryRecord.objects.filter(
+                    staff=structure.staff, month=month, year=year
+                ).exists()
+
+                if existing:
+                    errors.append(f'Record already exists for {structure.staff.get_full_name()}')
+                    continue
+
+                # Create salary record
+                SalaryRecord.objects.create(
+                    staff=structure.staff,
+                    month=month,
+                    year=year,
+                    basic_salary=structure.basic_salary,
+                    housing_allowance=structure.housing_allowance,
+                    transport_allowance=structure.transport_allowance,
+                    medical_allowance=structure.medical_allowance,
+                    other_allowances=structure.other_allowances,
+                    tax_amount=structure.tax_amount,
+                    pension_amount=structure.pension_amount,
+                    gross_salary=structure.gross_salary,
+                    net_salary=structure.net_salary,
+                )
+                created_count += 1
+
+        if created_count > 0:
+            messages.success(request, f'Successfully generated {created_count} salary records')
+
+        for error in errors:
+            messages.warning(request, error)
+
+        return redirect('salary_record_index')
+
+    context = {
+        'years': range(2020, 2031),
+        'months': [(i, f'{i:02d}') for i in range(1, 13)],
+        'current_year': datetime.now().year,
+        'current_month': datetime.now().month,
+        'staff_count': SalaryStructure.objects.filter(is_active=True).count()
+    }
+
+    return render(request, 'finance/salary_record/bulk_generate.html', context)
+
+
+# -------------------------
+# AJAX Helper Views
+# -------------------------
+@login_required
+def get_staff_salary_structure_ajax(request, staff_id):
+    """Get salary structure details for a staff member"""
+    try:
+        staff = User.objects.get(id=staff_id)
+        salary_structure = SalaryStructure.objects.get(staff=staff, is_active=True)
+
+        return JsonResponse({
+            'success': True,
+            'data': {
+                'basic_salary': str(salary_structure.basic_salary),
+                'housing_allowance': str(salary_structure.housing_allowance),
+                'transport_allowance': str(salary_structure.transport_allowance),
+                'medical_allowance': str(salary_structure.medical_allowance),
+                'other_allowances': str(salary_structure.other_allowances),
+                'gross_salary': str(salary_structure.gross_salary),
+                'tax_amount': str(salary_structure.tax_amount),
+                'pension_amount': str(salary_structure.pension_amount),
+                'net_salary': str(salary_structure.net_salary),
+            }
+        })
+    except (User.DoesNotExist, SalaryStructure.DoesNotExist):
+        return JsonResponse({
+            'success': False,
+            'error': 'No active salary structure found for this staff member'
+        })
