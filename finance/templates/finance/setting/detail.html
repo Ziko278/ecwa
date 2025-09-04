@@ -1,0 +1,47 @@
+{% extends 'admin_site/layout.html' %}
+{% load humanize %}
+{% block 'main' %}
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card profile-card card-bx m-b30">
+            <div class="card-header">
+                <h6 class="title"><b>Finance Settings</b></h6>
+                <a href="{% url 'finance_setting_edit' finance_setting.pk %}"
+                   class="btn btn-primary" style="float:right">
+                   Update Settings
+                </a>
+            </div>
+
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Minimum Wallet Funding</label>
+                        <br />
+                        <h3 class="card-title">₦{{ finance_setting.minimum_funding|intcomma }}</h3>
+                    </div>
+
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Maximum Wallet Funding</label>
+                        <br />
+                        <h3 class="card-title">₦{{ finance_setting.maximum_funding|intcomma }}</h3>
+                    </div>
+
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Allow Negative Wallet Balance</label>
+                        <br />
+                        <h3 class="card-title">
+                            {% if finance_setting.allow_negative_balance %}
+                                <span class="badge bg-success">YES</span>
+                            {% else %}
+                                <span class="badge bg-danger">NO</span>
+                            {% endif %}
+                        </h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

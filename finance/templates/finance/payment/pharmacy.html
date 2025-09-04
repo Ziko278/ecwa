@@ -2,11 +2,22 @@
 {% load static %}
 {% load humanize %}
 {% block 'main' %}
+<style>
+  /* --- Styles for the new Modals --- */
+  #success-modal .modal-header { background-color: #28a745; color: white; }
+  #success-modal .success-icon { font-size: 3rem; color: #28a745; }
+  #error-modal .modal-header { background-color: #dc3545; color: white; }
+  #error-modal .error-icon { font-size: 3rem; color: #dc3545; }
+  .modal-title { font-weight: bold; }
+  .modal-footer { border-top: none; }
+  .item-row { padding: 0.5rem; border-bottom: 1px solid #f0f0f0; }
+  .item-row:last-child { border-bottom: none; }
+</style>
 
 <div class="container-fluid mt-4">
   <div class="card">
-    <div class="card-header">
-      <h4>Pharmacy Payment - Patient: {{ patient }} (Wallet: ₦{{patient.wallet.amount|intcomma}})</h4>
+    <div class="card-header bg-primary text-white">
+      <h4>Pharmacy Payment - {{ patient }} (Wallet: ₦{{ patient.wallet.amount|default:0|intcomma }})</h4>
     </div>
     <div class="card-body">
       {% if items %}
@@ -18,36 +29,35 @@
 
         <div id="items-list">
           {% for it in items %}
-          <div class="d-flex justify-content-between align-items-center mb-2 item-row">
+          <div class="d-flex justify-content-between align-items-center item-row">
             <div>
-              <input type="checkbox" class="item-checkbox" name="selected_items[]" value="{{ it.id }}" checked>
-              <strong>{{ it.name }}</strong>
-              <small class="text-muted">Order: {{ it.order_number }} | Date: {{ it.ordered_date }} | Qty: {{ it.quantity }}</small>
-
-              {% comment %}
-                Show strike-through only if base and patient amounts differ.
-                Use numeric comparison (safer than checking string filters).
-              {% endcomment %}
+              <input type="checkbox" class="form-check-input item-checkbox" name="selected_items" value="{{ it.id }}" checked>
+              <strong class="ms-2">{{ it.name }}</strong>
+              <small class="d-block text-muted ms-4">
+                Order: {{ it.order_number }} | Date: {{ it.ordered_date }} | Qty: {{ it.quantity }}
+                {% if it.insurance_covered %}
+                  <span class="badge bg-success">Insured</span>
+                {% endif %}
+              </small>
               {% if it.base_amount and it.base_amount != it.patient_amount %}
-                <div><small><s>₦{{ it.base_amount|floatformat:2 }}</s></small></div>
+                <div class="ms-4"><small class="text-danger"><s>₦{{ it.base_amount|floatformat:2|intcomma }}</s></small></div>
               {% endif %}
             </div>
-            <div class="text-end">
-              {# data-amount must be numeric; formatted_patient_amount already contains currency symbol #}
-              <div class="item-amount" data-amount="{{ it.patient_amount }}">{{ it.formatted_patient_amount }}</div>
-            </div>
+            <div class="text-end fw-bold" data-amount="{{ it.patient_amount }}">{{ it.formatted_patient_amount }}</div>
           </div>
           {% endfor %}
         </div>
 
         <hr>
-        <div class="d-flex justify-content-between align-items-center">
+        <div class="d-flex justify-content-between align-items-center mt-3">
           <div>
-            <strong>Total: </strong> <span id="selected-total">₦{{ total|floatformat:2 }}</span>
+            <strong class="h5">Total: </strong> <span class="h5" id="selected-total">₦{{ total|floatformat:2|intcomma }}</span>
           </div>
           <div>
             <button type="button" id="fund-now-btn" class="btn btn-warning" style="display:none;">Fund Now</button>
-            <button type="submit" id="pay-btn" class="btn btn-success">Pay with Wallet</button>
+            <button type="submit" id="pay-btn" class="btn btn-success">
+              <i class="fas fa-wallet"></i> Pay with Wallet
+            </button>
           </div>
         </div>
       </form>
@@ -58,37 +68,76 @@
   </div>
 </div>
 
+<!-- ======================================================= -->
+<!-- START: SUCCESS & ERROR MODALS                           -->
+<!-- ======================================================= -->
+<div class="modal fade" id="success-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-check-circle"></i> Success</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div class="success-icon mb-3"><i class="fas fa-check-circle"></i></div>
+        <p class="lead" id="success-message-text"></p>
+      </div>
+      <div class="modal-footer justify-content-center">
+        <button type="button" class="btn btn-primary" id="modal-ok-button">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="error-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-times-circle"></i> Payment Failed</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div class="error-icon mb-3"><i class="fas fa-exclamation-triangle"></i></div>
+        <p class="lead" id="error-message-text"></p>
+      </div>
+      <div class="modal-footer justify-content-center">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ======================================================= -->
+<!-- END: MODALS                                             -->
+<!-- ======================================================= -->
+
+
 <script>
-(function(){
+document.addEventListener('DOMContentLoaded', function() {
   const payBtn = document.getElementById('pay-btn');
   const fundBtn = document.getElementById('fund-now-btn');
   const totalEl = document.getElementById('selected-total');
+  const form = document.getElementById('pharmacy-payment-form');
+  let walletBalance = 0; // Will be fetched from server
 
-  function parseAmount(text) {
-    if (!text) return 0;
-    return parseFloat(text.toString().replace(/[^0-9.-]+/g,"")) || 0;
-  }
+  const successModalEl = document.getElementById('success-modal');
+  const errorModalEl = document.getElementById('error-modal');
+  const successModal = new bootstrap.Modal(successModalEl);
+  const errorModal = new bootstrap.Modal(errorModalEl);
 
   function computeTotal() {
     let t = 0;
-    document.querySelectorAll('.item-checkbox').forEach(cb => {
-      if (cb.checked) {
-        const row = cb.closest('.item-row');
-        const amtEl = row.querySelector('.item-amount');
-        // prefer the numeric data-amount attribute
-        const amt = parseFloat(amtEl.dataset.amount || parseAmount(amtEl.textContent));
-        t += isNaN(amt) ? 0 : amt;
-      }
+    document.querySelectorAll('.item-checkbox:checked').forEach(cb => {
+      const row = cb.closest('.item-row');
+      const amtEl = row.querySelector('[data-amount]');
+      const amt = parseFloat(amtEl.dataset.amount);
+      t += isNaN(amt) ? 0 : amt;
     });
     return t;
   }
 
   function updateUI() {
     const total = computeTotal();
-    totalEl.textContent = '₦' + total.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-
-    // walletBalance should be set by the verify endpoint fetch below; fallback to 0
-    const walletBalance = window.WALLET_BALANCE || 0;
+    totalEl.textContent = '₦' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
     if (total <= 0) {
       payBtn.disabled = true;
@@ -105,52 +154,82 @@
     }
   }
 
-  // attach change listeners (works even if no checkboxes exist)
-  document.addEventListener('change', function(e){
-    if (e.target && e.target.classList && e.target.classList.contains('item-checkbox')) {
+  document.addEventListener('change', e => {
+    if (e.target.classList.contains('item-checkbox')) {
       updateUI();
     }
   });
 
-  // initial UI update
-  updateUI();
-
-  fundBtn.addEventListener('click', function(){
+  fundBtn.addEventListener('click', () => {
     const total = computeTotal();
-    const walletBalance = window.WALLET_BALANCE || 0;
-    const shortfall = (total - walletBalance);
-    // use your funding page URL (the view you provided earlier is patient_wallet_funding)
-    const url = "{% url 'patient_funding' %}?amount=" + encodeURIComponent(shortfall.toFixed(2)) + "&redirect=pharmacy_payment&patient_id={{ patient.id }}";
+    const shortfall = Math.max(0, total - walletBalance);
+    const url = `{% url 'patient_funding' %}?amount=${shortfall.toFixed(2)}&redirect=pharmacy_payment&patient_id={{ patient.id }}`;
     window.location.href = url;
   });
 
-  // Prevent form submit if pay button is disabled (client-side)
-  const form = document.getElementById('pharmacy-payment-form');
   if (form) {
-    form.addEventListener('submit', function(e){
-      // re-check total to avoid races
-      updateUI();
-      if (payBtn.disabled) {
-        e.preventDefault();
-        alert('Insufficient wallet balance. Either remove some items or click "Fund Now".');
-      }
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      updateUI(); // Final check before submitting
+      if (payBtn.disabled) return;
+
+      payBtn.disabled = true;
+      payBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...`;
+
+      const formData = new FormData(form);
+
+      fetch(form.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+      })
+      .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+      .then(({ ok, data }) => {
+        if (ok) {
+          document.getElementById('success-message-text').textContent = data.message;
+          successModal.show();
+          document.getElementById('modal-ok-button').onclick = () => {
+            if (data.redirect_url) {
+                // Correctly build the full URL if the provided one is relative
+                const redirectUrl = new URL(data.redirect_url, window.location.origin);
+                window.location.href = redirectUrl.href;
+            } else {
+                successModal.hide();
+            }
+          };
+        } else {
+          document.getElementById('error-message-text').textContent = data.error || 'An unknown error occurred.';
+          errorModal.show();
+        }
+      })
+      .catch(error => {
+        console.error('Fetch Error:', error);
+        document.getElementById('error-message-text').textContent = 'A network or server error occurred. Please try again.';
+        errorModal.show();
+      })
+      .finally(() => {
+        payBtn.disabled = false;
+        payBtn.innerHTML = `<i class="fas fa-wallet"></i> Pay with Wallet`;
+      });
     });
   }
 
-  // Insert wallet balance from server via verify endpoint (non-blocking).
-  // We call verify endpoint with the patient's card_number if available in context.
+  // Fetch initial wallet balance
   {% if patient and patient.card_number %}
     fetch("{% url 'finance_verify_patient_ajax' %}?card_number={{ patient.card_number|urlencode }}")
       .then(r => r.json())
       .then(data => {
         if (data && data.wallet) {
-          window.WALLET_BALANCE = parseFloat(data.wallet.balance) || 0;
+          walletBalance = parseFloat(data.wallet.balance) || 0;
           updateUI();
         }
-      })
-      .catch(()=>{ /* ignore errors - UI still works but pay will be disabled until balance is known */ });
+      }).catch(console.error);
+  {% else %}
+    updateUI();
   {% endif %}
-})();
+});
 </script>
 
 {% endblock %}

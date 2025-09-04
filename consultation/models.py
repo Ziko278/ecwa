@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 
+from finance.models import PatientTransactionModel
 from insurance.models import PatientInsuranceModel, HMOCoveragePlanModel
 
 
@@ -147,102 +148,11 @@ class ConsultationFeeModel(models.Model):
         return f"{self.specialization.name} - {self.patient_category} (₦{self.amount})"
 
 
-# 5. CONSULTATION PAYMENTS (Simplified - just payment tracking)
-class ConsultationPaymentModel(models.Model):
-    """Payment for consultation services"""
-    patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE, related_name='consultation_payments')
-    fee_structure = models.ForeignKey(ConsultationFeeModel, on_delete=models.CASCADE)
-
-    # Payment details
-    amount_due = models.DecimalField(max_digits=10, decimal_places=2, blank=True)
-    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, blank=True)
-    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0, blank=True)
-
-    # Insurance handling
-    patient_insurance = models.ForeignKey('insurance.PatientInsuranceModel', on_delete=models.SET_NULL, null=True,
-                                          blank=True)
-    insurance_claim = models.OneToOneField('insurance.InsuranceClaimModel', on_delete=models.SET_NULL, null=True,
-                                        blank=True)
-    insurance_coverage = models.DecimalField(max_digits=10, decimal_places=2, default=0, blank=True)
-    patient_portion = models.DecimalField(max_digits=10, decimal_places=2, default=0, blank=True)
-
-    # Transaction info
-    transaction_id = models.CharField(max_length=100, unique=True, blank=True)
-    payment_method = models.CharField(
-        max_length=20, blank=True,
-        choices=[
-            ('cash', 'Cash'),
-            ('card', 'Card'),
-            ('wallet', 'Wallet'),
-            ('transfer', 'Transfer'),
-            ('insurance', 'Insurance'),
-        ],
-        default='wallet'
-    )
-
-    # Status
-    PAYMENT_STATUS = [
-        ('pending', 'Pending Payment'),
-        ('partial', 'Partially Paid'),
-        ('paid', 'Fully Paid'),
-        ('overpaid', 'Overpaid'),
-    ]
-    status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='paid')
-
-    # Tracking
-    created_at = models.DateTimeField(auto_now_add=True)
-    paid_at = models.DateTimeField(null=True, blank=True)
-    processed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='consultation_processed_payments')
-
-    class Meta:
-        db_table = 'consultation_payments'
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"Payment: {self.patient} - {self.transaction_id} (₦{self.amount_paid})"
-
-    def save(self, *args, **kwargs):
-        # Generate transaction ID
-        if not self.transaction_id:
-            today = date.today().strftime('%Y%m%d')
-            last_payment = ConsultationPaymentModel.objects.filter(
-                transaction_id__startswith=f'CSL{today}'
-            ).order_by('-transaction_id').last()
-
-            if last_payment:
-                try:
-                    last_num = int(last_payment.transaction_id[-4:])
-                    next_num = last_num + 1
-                except ValueError:
-                    next_num = 1
-            else:
-                next_num = 1
-
-            self.transaction_id = f'CSL{today}{str(next_num).zfill(4)}'
-
-        # Calculate balance and status
-        self.balance = self.amount_due - self.amount_paid - self.insurance_coverage
-
-        if self.amount_paid == 0:
-            self.status = 'pending'
-        elif self.balance > 0:
-            self.status = 'partial'
-        elif self.balance == 0:
-            self.status = 'paid'
-        else:
-            self.status = 'overpaid'
-
-        if self.status in ['paid', 'overpaid'] and not self.paid_at:
-            self.paid_at = datetime.now()
-
-        super().save(*args, **kwargs)
-
-
 # 6. PATIENT QUEUE SYSTEM (The Real Queue!)
 class PatientQueueModel(models.Model):
     """Main patient queue - tracks patient journey"""
     patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE)
-    payment = models.ForeignKey(ConsultationPaymentModel, on_delete=models.CASCADE)
+    payment = models.ForeignKey(PatientTransactionModel, on_delete=models.CASCADE)
     consultant = models.ForeignKey(ConsultantModel, on_delete=models.CASCADE, blank=True, null=True)
 
     # Queue position and status
@@ -287,10 +197,11 @@ class PatientQueueModel(models.Model):
     def save(self, *args, **kwargs):
         if not self.queue_number:
             # Generate queue number: CSL20241225001
+
             today = date.today().strftime('%Y%m%d')
             last_queue = PatientQueueModel.objects.filter(
                 queue_number__startswith=f'Q{today}'
-            ).order_by('-queue_number').last()
+            ).order_by('id').last()
 
             if last_queue:
                 try:
@@ -300,6 +211,8 @@ class PatientQueueModel(models.Model):
                     next_num = 1
             else:
                 next_num = 1
+
+            print(next_num)
 
             self.queue_number = f'Q{today}{str(next_num).zfill(3)}'
 

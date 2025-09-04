@@ -3,21 +3,25 @@ from datetime import timedelta, date
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.contrib.auth.decorators import login_required
+from django.contrib.messages.views import SuccessMessageMixin
 from django.db import transaction
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.timezone import now
 from django.views.decorators.http import require_http_methods
-from django.views.generic import CreateView, ListView, DetailView
+from django.views.generic import CreateView, ListView, DetailView, UpdateView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.contrib import messages
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
 
 from admin_site.models import SiteInfoModel
-from consultation.models import ConsultationFeeModel
+from consultation.models import ConsultationFeeModel, SpecializationModel, PatientQueueModel
+from finance.forms import FinanceSettingForm
+from finance.models import PatientTransactionModel, FinanceSettingModel
+from insurance.models import PatientInsuranceModel
 from laboratory.models import LabTestOrderModel
 from patient.forms import RegistrationPaymentForm
 from patient.models import RegistrationPaymentModel, RegistrationFeeModel, PatientModel, PatientWalletModel
@@ -150,7 +154,11 @@ def print_receipt(request, pk):
 @login_required
 def patient_wallet_funding(request):
     """Initial page for patient wallet funding"""
-    return render(request, 'finance/wallet/funding.html')
+    context = {
+        'finance_setting': FinanceSettingModel.objects.first()
+    }
+
+    return render(request, 'finance/wallet/funding.html', context)
 
 
 @login_required
@@ -350,6 +358,7 @@ def process_wallet_funding(request):
         # Get form data
         patient_id = request.POST.get('patient_id')
         funding_amount = Decimal(request.POST.get('funding_amount', '0'))
+        payment_method = request.POST.get('payment_method', 'cash')
         action_type = request.POST.get('action_type', 'fund_only')  # 'fund_only' or 'fund_and_pay'
 
         # Validate inputs
@@ -365,19 +374,27 @@ def process_wallet_funding(request):
             defaults={'amount': Decimal('0.00')}
         )
 
+        patient_old_balance = wallet.amount
+
         with transaction.atomic():
             # Add funds to wallet
             wallet.amount += funding_amount
             wallet.save()
 
-            # Create wallet transaction record (if you have a transaction model)
-            # WalletTransactionModel.objects.create(
-            #     wallet=wallet,
-            #     transaction_type='credit',
-            #     amount=funding_amount,
-            #     description=f'Wallet funding by {request.user.get_full_name()}',
-            #     created_by=request.user
-            # )
+            patient_new_balance = wallet.amount
+
+            PatientTransactionModel.objects.create(
+                patient=patient,
+                transaction_type='wallet_funding',
+                transaction_direction='in',
+                amount=funding_amount,
+                old_balance=patient_old_balance,
+                new_balance=patient_new_balance,
+                payment_method=payment_method,
+                received_by=request.user,
+                status='completed',
+                date=timezone.now().date()
+            )
 
             if action_type == 'fund_only':
                 messages.success(request, f'Successfully funded wallet with ₦{funding_amount:,.2f}')
@@ -390,9 +407,8 @@ def process_wallet_funding(request):
 
             elif action_type == 'fund_and_pay':
                 payment_type = request.POST.get('payment_type')
-                selected_items = request.POST.getlist('selected_items[]')
 
-                if not payment_type or not selected_items:
+                if not payment_type:
                     return JsonResponse({
                         'error': 'Payment type and items selection required'
                     }, status=400)
@@ -408,9 +424,6 @@ def process_wallet_funding(request):
                 redirect_url = redirect_urls.get(payment_type)
                 if not redirect_url:
                     return JsonResponse({'error': 'Invalid payment type'}, status=400)
-
-                # Store selected items in session for payment processing
-                request.session[f'selected_{payment_type}_items'] = selected_items
 
                 messages.success(request, f'Wallet funded with ₦{funding_amount:,.2f}. Proceeding to payment...')
                 return JsonResponse({
@@ -533,20 +546,39 @@ def patient_wallet_dashboard(request, patient_id):
         defaults={'amount': Decimal('0.00')}
     )
 
-    # Get recent transactions (if you have a transaction model)
-    # recent_transactions = WalletTransactionModel.objects.filter(
-    #     wallet=wallet
-    # ).order_by('-created_at')[:20]
+    # Filter transactions for the patient
+    patient_transactions = PatientTransactionModel.objects.filter(patient=patient)
+
+    # Get the current month and year
+    current_month = timezone.now().month
+    current_year = timezone.now().year
+
+    # Aggregate funded (IN) and spent (OUT) amounts for the current month
+    monthly_summary = patient_transactions.filter(
+        created_at__year=current_year,
+        created_at__month=current_month
+    ).aggregate(
+        funded_amount=Sum('amount', filter=Q(transaction_direction='in')),
+        spent_amount=Sum('amount', filter=Q(transaction_direction='out'))
+    )
+
+    # Use 0 if the sum is None (no transactions found)
+    funded_amount = monthly_summary.get('funded_amount', Decimal('0.00')) or Decimal('0.00')
+    spent_amount = monthly_summary.get('spent_amount', Decimal('0.00')) or Decimal('0.00')
+
+    # Get recent transactions (e.g., last 20) for the patient
+    recent_transactions = patient_transactions.order_by('-created_at')[:20]
 
     context = {
         'patient': patient,
         'wallet': wallet,
         'wallet_balance': wallet.amount,
-        # 'recent_transactions': recent_transactions,
+        'recent_transactions': recent_transactions,
+        'funded_amount': funded_amount,
+        'spent_amount': spent_amount,
     }
 
     return render(request, 'finance/wallet/dashboard.html', context)
-
 
 @login_required
 @require_http_methods(["POST"])
@@ -708,18 +740,8 @@ def process_wallet_payment(request):
         }, status=500)
 
 
-@login_required
-def finance_payment_select(request):
-    """
-    Initial payment selection page.
-    The patient is verified by AJAX (finance_verify_patient_ajax) and the page
-    will show radio options (consultation, drug, lab, scan) with counts & totals.
-    """
-    # GET only renders the page; verification happens client-side via AJAX.
-    return render(request, 'finance/payment/select.html', {})
-
-
 THIRTY_DAYS = 30
+
 
 def _to_decimal(v):
     if isinstance(v, Decimal):
@@ -729,10 +751,344 @@ def _to_decimal(v):
     except Exception:
         return Decimal('0.00')
 
+
 def _quantize_money(d: Decimal) -> Decimal:
     return d.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+@login_required
+def finance_payment_select(request):
+    """
+    Initial payment selection page.
+    The patient is verified by AJAX (finance_verify_patient_ajax) and the page
+    will show radio options (consultation, drug, lab, scan) with counts & totals.
+    """
+    return render(request, 'finance/payment/select.html', {})
+
+
+@login_required
+def finance_verify_patient_ajax(request):
+    """
+    AJAX endpoint to verify patient and return pending payments summary
+    """
+    card_number = request.GET.get('card_number', '').strip()
+    if not card_number:
+        return JsonResponse({'success': False, 'error': 'Card number is required'})
+
+    try:
+        # Find patient by card number
+        patient = PatientModel.objects.get(card_number=card_number)
+    except PatientModel.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Patient not found with this card number'})
+
+    # Get or create wallet
+    try:
+        wallet = patient.wallet
+        has_wallet = True
+        balance = float(wallet.amount)
+        formatted_balance = f'₦{wallet.amount:,.2f}'
+    except:
+        # Create wallet if it doesn't exist
+        from patient.models import PatientWalletModel
+        wallet = PatientWalletModel.objects.create(patient=patient, amount=Decimal('0.00'))
+        has_wallet = True
+        balance = 0.00
+        formatted_balance = '₦0.00'
+
+    # Get active insurance
+    active_insurance = None
+    try:
+        policies_qs = patient.insurance_policies.all()
+    except:
+        try:
+            policies_qs = patient.insurancepolicy_set.all()
+        except:
+            policies_qs = PatientInsuranceModel.objects.none()
+
+    active_insurance = policies_qs.filter(
+        is_active=True,
+        valid_to__gte=timezone.now().date()
+    ).select_related('hmo', 'coverage_plan').first()
+
+    # Calculate pending payments for last 30 days
+    thirty_days_ago = timezone.now() - timedelta(days=THIRTY_DAYS)
+
+    # Drugs
+    pending_drugs = DrugOrderModel.objects.filter(
+        patient=patient,
+        status__in=['pending'],
+        ordered_at__gte=thirty_days_ago
+    ).select_related('drug')
+
+    drug_total = Decimal('0.00')
+    drug_count = 0
+    for order in pending_drugs:
+        base_amount = _to_decimal(order.drug.selling_price)
+        patient_amount = base_amount
+
+        if active_insurance and hasattr(active_insurance.coverage_plan, 'is_drug_covered'):
+            try:
+                if active_insurance.coverage_plan.is_drug_covered(order.drug):
+                    pct = _to_decimal(getattr(active_insurance.coverage_plan, 'drug_coverage_percentage', 0))
+                    covered = (base_amount * (pct / Decimal('100')))
+                    patient_amount = base_amount - covered
+            except Exception:
+                patient_amount = base_amount
+
+        drug_total += _quantize_money(patient_amount)
+        drug_count += 1
+
+    # Labs
+    pending_labs = LabTestOrderModel.objects.filter(
+        patient=patient,
+        status__in=['pending', 'unpaid', 'awaiting_payment'],
+        ordered_at__gte=thirty_days_ago
+    ).select_related('template')
+
+    lab_total = Decimal('0.00')
+    lab_count = 0
+    for order in pending_labs:
+        base_amount = _to_decimal(getattr(order, 'amount_charged', None) or order.template.price)
+        patient_amount = base_amount
+
+        if active_insurance and hasattr(active_insurance.coverage_plan, 'is_lab_covered'):
+            try:
+                if active_insurance.coverage_plan.is_lab_covered(order.template):
+                    pct = _to_decimal(getattr(active_insurance.coverage_plan, 'lab_coverage_percentage', 0))
+                    covered = (base_amount * (pct / Decimal('100')))
+                    patient_amount = base_amount - covered
+            except Exception:
+                patient_amount = base_amount
+
+        lab_total += _quantize_money(patient_amount)
+        lab_count += 1
+
+    # Scans
+    pending_scans = ScanOrderModel.objects.filter(
+        patient=patient,
+        status__in=['pending', 'unpaid', 'awaiting_payment'],
+        ordered_at__gte=thirty_days_ago
+    ).select_related('template')
+
+    scan_total = Decimal('0.00')
+    scan_count = 0
+    for order in pending_scans:
+        base_amount = _to_decimal(getattr(order, 'amount_charged', None) or order.template.price)
+        patient_amount = base_amount
+
+        if active_insurance and hasattr(active_insurance.coverage_plan, 'is_radiology_covered'):
+            try:
+                if active_insurance.coverage_plan.is_radiology_covered(order.template):
+                    pct = _to_decimal(getattr(active_insurance.coverage_plan, 'radiology_coverage_percentage', 0))
+                    covered = (base_amount * (pct / Decimal('100')))
+                    patient_amount = base_amount - covered
+            except Exception:
+                patient_amount = base_amount
+
+        scan_total += _quantize_money(patient_amount)
+        scan_count += 1
+
+    grand_total = drug_total + lab_total + scan_total
+
+    return JsonResponse({
+        'success': True,
+        'patient': {
+            'id': patient.id,
+            'full_name': f'{patient.first_name} {patient.last_name}',
+            'card_number': patient.card_number,
+            'phone': getattr(patient, 'phone', ''),
+            'age': getattr(patient, 'age', None),
+            'patient_id': patient.card_number
+        },
+        'wallet': {
+            'has_wallet': has_wallet,
+            'balance': balance,
+            'formatted_balance': formatted_balance
+        },
+        'insurance': {
+            'has_insurance': active_insurance is not None,
+            'hmo_name': active_insurance.hmo.name if active_insurance else None,
+            'plan_name': active_insurance.coverage_plan.name if active_insurance else None
+        },
+        'pending_payments': {
+            'drugs': {'count': drug_count, 'total': float(drug_total)},
+            'labs': {'count': lab_count, 'total': float(lab_total)},
+            'scans': {'count': scan_count, 'total': float(scan_total)},
+            'grand_total': float(grand_total)
+        }
+    })
+
+
+@login_required
+def get_consultation_fees_ajax(request):
+    """
+    AJAX endpoint to get consultation fees for a specialization and patient
+    """
+    specialization_id = request.GET.get('specialization_id')
+    patient_id = request.GET.get('patient_id')
+
+    if not specialization_id or not patient_id:
+        return JsonResponse({'success': False, 'error': 'Missing required parameters'})
+
+    try:
+        patient = PatientModel.objects.get(id=patient_id)
+        specialization = SpecializationModel.objects.get(id=specialization_id)
+    except (PatientModel.DoesNotExist, SpecializationModel.DoesNotExist):
+        return JsonResponse({'success': False, 'error': 'Patient or specialization not found'})
+
+    # Check if patient has active insurance
+    try:
+        policies_qs = patient.insurance_policies.all()
+    except:
+        try:
+            policies_qs = patient.insurancepolicy_set.all()
+        except:
+            policies_qs = PatientInsuranceModel.objects.none()
+
+    active_insurance = policies_qs.filter(
+        is_active=True,
+        valid_to__gte=timezone.now().date()
+    ).select_related('hmo', 'coverage_plan').first()
+
+    # Get appropriate fee
+    try:
+        if active_insurance and active_insurance.coverage_plan.consultation_covered:
+            # Try to get insurance-specific fee first
+            fee = ConsultationFeeModel.objects.filter(
+                specialization=specialization,
+                patient_category='insurance',
+                insurance=active_insurance.coverage_plan,
+                is_active=True
+            ).first()
+
+            if not fee:
+                # Fall back to regular insurance fee
+                fee = ConsultationFeeModel.objects.filter(
+                    specialization=specialization,
+                    patient_category='insurance',
+                    insurance__isnull=True,
+                    is_active=True
+                ).first()
+        else:
+            fee = None
+
+        if not fee:
+            # Get regular patient fee
+            fee = ConsultationFeeModel.objects.filter(
+                specialization=specialization,
+                patient_category='regular',
+                is_active=True
+            ).first()
+
+        if not fee:
+            return JsonResponse({'success': False, 'error': 'No fee structure found for this specialization'})
+
+        # Calculate patient amount after insurance
+        base_amount = fee.amount
+        patient_amount = base_amount
+
+        if (active_insurance and
+                active_insurance.coverage_plan.consultation_covered and
+                fee.patient_category == 'insurance'):
+            pct = _to_decimal(active_insurance.coverage_plan.consultation_coverage_percentage)
+            covered = (base_amount * (pct / Decimal('100')))
+            patient_amount = base_amount - covered
+
+        return JsonResponse({
+            'success': True,
+            'fee': {
+                'id': fee.id,
+                'amount': float(patient_amount),
+                'base_amount': float(base_amount),
+                'formatted_amount': f'₦{patient_amount:,.2f}',
+                'patient_category': fee.patient_category,
+                'duration_minutes': 30,  # Default or from fee model
+                'coverage_applied': patient_amount < base_amount
+            }
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Error retrieving fees: {str(e)}'})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def finance_consultation_patient_payment(request, patient_id):
+    """
+    Consultation payment - handles both verification and payment processing
+    """
+    patient = get_object_or_404(PatientModel, id=patient_id)
+
+    if request.method == 'GET':
+        # Get specializations
+        specializations = SpecializationModel.objects.all().order_by('name')
+
+        return render(request, 'finance/payment/consultation.html', {
+            'patient': patient,
+            'specializations': specializations
+        })
+
+    # POST: process consultation payment
+    fee_id = request.POST.get('fee_structure') or request.POST.get('fee_structure_id')
+    amount_paid = _to_decimal(request.POST.get('amount_paid') or request.POST.get('amount_due') or '0')
+
+    if amount_paid <= 0:
+        return JsonResponse({'success': False, 'error': 'Invalid payment amount.'}, status=400)
+
+    try:
+        with transaction.atomic():
+            # Get wallet with lock
+            wallet_qs = PatientWalletModel.objects.select_for_update().filter(patient=patient)
+            if wallet_qs.exists():
+                wallet = wallet_qs.first()
+            else:
+                wallet = PatientWalletModel.objects.create(patient=patient, amount=Decimal('0.00'))
+
+            if wallet.amount < amount_paid:
+                shortfall = _quantize_money(amount_paid - wallet.amount)
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Insufficient wallet balance.',
+                    'shortfall': float(shortfall),
+                    'formatted_shortfall': f'₦{shortfall:,.2f}'
+                }, status=400)
+
+            # Deduct from wallet
+            wallet.amount = _quantize_money(wallet.amount - amount_paid)
+            wallet.save()
+
+            payment = PatientTransactionModel.objects.create(
+                patient=patient,
+                transaction_type='consultation_payment',
+                transaction_direction='out',
+                amount=amount_paid,
+                old_balance=wallet.amount + amount_paid,
+                new_balance=wallet.amount,
+                date=timezone.now().date(),
+                received_by=request.user,
+                payment_method='wallet',
+                status='completed'
+            )
+
+            PatientQueueModel.objects.create(
+                patient=patient,
+                payment=payment,
+                status='waiting_vitals'
+            )
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Consultation payment successful.',
+            'new_balance': float(wallet.amount),
+            'formatted_new_balance': f'₦{wallet.amount:,.2f}',
+            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.id})
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'}, status=500)
+
+
+# The existing pharmacy, lab, and scan payment views remain the same
 @login_required
 @require_http_methods(["GET", "POST"])
 def finance_pharmacy_patient_payment(request, patient_id):
@@ -758,8 +1114,12 @@ def finance_pharmacy_patient_payment(request, patient_id):
         try:
             policies_qs = patient.insurance_policies.all()
         except Exception:
-            policies_qs = patient.insurancepolicy_set.all()
-        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo', 'coverage_plan').first()
+            try:
+                policies_qs = patient.insurancepolicy_set.all()
+            except:
+                policies_qs = PatientInsuranceModel.objects.none()
+        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo',
+                                                                                                                  'coverage_plan').first()
 
         items = []
         total = Decimal('0.00')
@@ -785,7 +1145,8 @@ def finance_pharmacy_patient_payment(request, patient_id):
                 'patient_amount': float(patient_amount),
                 'formatted_patient_amount': f'₦{patient_amount:,.2f}',
                 'status': o.status,
-                'ordered_date': getattr(o, 'ordered_at').date().isoformat() if getattr(o, 'ordered_at', None) else ''
+                'ordered_date': getattr(o, 'ordered_at').date().isoformat() if getattr(o, 'ordered_at', None) else '',
+                'insurance_covered': patient_amount < base_amount
             })
             total += patient_amount
 
@@ -793,17 +1154,19 @@ def finance_pharmacy_patient_payment(request, patient_id):
             'patient': patient,
             'items': items,
             'total': _quantize_money(total),
+            'insurance': active_insurance
         }
         return render(request, 'finance/payment/pharmacy.html', context)
 
-    # POST - process payment
+    # POST - process payment (existing logic remains the same)
     selected_ids = request.POST.getlist('selected_items[]') or request.POST.getlist('selected_items')
     if not selected_ids:
         return JsonResponse({'success': False, 'error': 'No items selected for payment.'}, status=400)
 
     try:
         # re-fetch the selected orders and compute final sum (server-side authority)
-        selected_orders = list(DrugOrderModel.objects.filter(id__in=selected_ids, patient=patient).select_related('drug'))
+        selected_orders = list(
+            DrugOrderModel.objects.filter(id__in=selected_ids, patient=patient).select_related('drug'))
         if not selected_orders:
             return JsonResponse({'success': False, 'error': 'Selected orders not found.'}, status=404)
 
@@ -813,12 +1176,18 @@ def finance_pharmacy_patient_payment(request, patient_id):
         try:
             policies_qs = patient.insurance_policies.all()
         except Exception:
-            policies_qs = patient.insurancepolicy_set.all()
-        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo', 'coverage_plan').first()
+            try:
+                policies_qs = patient.insurancepolicy_set.all()
+            except:
+                policies_qs = PatientInsuranceModel.objects.none()
+        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo',
+                                                                                                                  'coverage_plan').first()
 
         for o in selected_orders:
             if getattr(o, 'ordered_at', timezone.now()) < thirty_days_ago:
-                return JsonResponse({'success': False, 'error': 'One or more selected orders are older than 30 days and cannot be paid here.'}, status=400)
+                return JsonResponse({'success': False,
+                                     'error': 'One or more selected orders are older than 30 days and cannot be paid here.'},
+                                    status=400)
             base_amount = _to_decimal(o.drug.selling_price)
             patient_amount = base_amount
             if active_insurance and hasattr(active_insurance.coverage_plan, 'is_drug_covered'):
@@ -858,28 +1227,38 @@ def finance_pharmacy_patient_payment(request, patient_id):
                 o.status = 'paid'
                 o.save(update_fields=['status'])
 
-            # optionally create a wallet transaction record if you have such a model
-            # try:
-            #     WalletTransactionModel.objects.create(wallet=wallet, transaction_type='debit',
-            #                                           amount=total_amount, created_by=request.user,
-            #                                           description=f'Payment for drug orders: {",".join(selected_ids)}')
-            # except Exception:
-            #     pass
+            # Create transaction record
+            try:
+
+                payment = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='drug_payment',
+                    transaction_direction='out',
+                    amount=total_amount,
+                    old_balance=wallet.amount + total_amount,
+                    new_balance=wallet.amount,
+                    date=timezone.now().date(),
+                    received_by=request.user,
+                    payment_method='wallet',
+                    status='completed'
+                )
+            except Exception:
+                pass
 
         # success
         return JsonResponse({
             'success': True,
             'message': f'Payment successful. ₦{total_amount:,.2f} deducted from wallet.',
             'new_balance': float(wallet.amount),
-            'formatted_new_balance': f'₦{wallet.amount:,.2f}'
+            'formatted_new_balance': f'₦{wallet.amount:,.2f}',
+            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}),
         })
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'}, status=500)
 
 
-# Lab and Scan views are very similar — we create a generic handler to reduce duplication
-
+# Lab and Scan views remain the same as in your original code
 @login_required
 @require_http_methods(["GET", "POST"])
 def finance_generic_order_payment(request, patient_id, order_type):
@@ -895,11 +1274,13 @@ def finance_generic_order_payment(request, patient_id, order_type):
         template = 'finance/payment/lab.html'
         coverage_fn_name = 'is_lab_covered'
         coverage_pct_attr = 'lab_coverage_percentage'
+        transaction_type = 'lab_payment'
     elif order_type == 'scan':
         Model = ScanOrderModel
-        template = 'finance/scan_payment.html'
+        template = 'finance/payment/scan.html'
         coverage_fn_name = 'is_radiology_covered'
         coverage_pct_attr = 'radiology_coverage_percentage'
+        transaction_type = 'scan_payment'
     else:
         return HttpResponseBadRequest('Invalid order type')
 
@@ -914,8 +1295,12 @@ def finance_generic_order_payment(request, patient_id, order_type):
         try:
             policies_qs = patient.insurance_policies.all()
         except Exception:
-            policies_qs = patient.insurancepolicy_set.all()
-        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo', 'coverage_plan').first()
+            try:
+                policies_qs = patient.insurancepolicy_set.all()
+            except:
+                policies_qs = PatientInsuranceModel.objects.none()
+        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo',
+                                                                                                                  'coverage_plan').first()
 
         items = []
         total = Decimal('0.00')
@@ -940,7 +1325,8 @@ def finance_generic_order_payment(request, patient_id, order_type):
                 'patient_amount': float(patient_amount),
                 'formatted_patient_amount': f'₦{patient_amount:,.2f}',
                 'status': o.status,
-                'ordered_date': getattr(o, 'ordered_at').date().isoformat() if getattr(o, 'ordered_at', None) else ''
+                'ordered_date': getattr(o, 'ordered_at').date().isoformat() if getattr(o, 'ordered_at', None) else '',
+                'insurance_covered': patient_amount < base_amount
             })
             total += patient_amount
 
@@ -948,11 +1334,12 @@ def finance_generic_order_payment(request, patient_id, order_type):
             'patient': patient,
             'items': items,
             'total': _quantize_money(total),
-            'order_type': order_type
+            'order_type': order_type,
+            'insurance': active_insurance
         }
         return render(request, template, context)
 
-    # POST - process payment for lab/scan
+    # POST - process payment for lab/scan (existing logic with transaction record)
     selected_ids = request.POST.getlist('selected_items[]') or request.POST.getlist('selected_items')
     if not selected_ids:
         return JsonResponse({'success': False, 'error': 'No items selected for payment.'}, status=400)
@@ -965,15 +1352,20 @@ def finance_generic_order_payment(request, patient_id, order_type):
         total_amount = Decimal('0.00')
         for o in selected_orders:
             if getattr(o, 'ordered_at', timezone.now()) < thirty_days_ago:
-                return JsonResponse({'success': False, 'error': 'One or more selected orders are older than 30 days.'}, status=400)
+                return JsonResponse({'success': False, 'error': 'One or more selected orders are older than 30 days.'},
+                                    status=400)
             base_amount = _to_decimal(getattr(o, 'amount_charged', None) or getattr(o, 'template').price)
             patient_amount = base_amount
             # insurance
             try:
                 policies_qs = patient.insurance_policies.all()
             except Exception:
-                policies_qs = patient.insurancepolicy_set.all()
-            active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo', 'coverage_plan').first()
+                try:
+                    policies_qs = patient.insurancepolicy_set.all()
+                except:
+                    policies_qs = PatientInsuranceModel.objects.none()
+            active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related(
+                'hmo', 'coverage_plan').first()
             if active_insurance and hasattr(active_insurance.coverage_plan, coverage_fn_name):
                 try:
                     coverage_fn = getattr(active_insurance.coverage_plan, coverage_fn_name)
@@ -1009,11 +1401,30 @@ def finance_generic_order_payment(request, patient_id, order_type):
                 o.status = 'paid'
                 o.save(update_fields=['status'])
 
+            # Create transaction record
+            try:
+
+                payment = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type=transaction_type,
+                    transaction_direction='out',
+                    amount=total_amount,
+                    old_balance=wallet.amount + total_amount,
+                    new_balance=wallet.amount,
+                    date=timezone.now().date(),
+                    received_by=request.user,
+                    payment_method='wallet',
+                    status='completed',
+                )
+            except Exception:
+                pass
+
         return JsonResponse({
             'success': True,
             'message': 'Payment successful',
             'new_balance': float(wallet.amount),
-            'formatted_new_balance': f'₦{wallet.amount:,.2f}'
+            'formatted_new_balance': f'₦{wallet.amount:,.2f}',
+            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk})
         })
 
     except Exception as e:
@@ -1031,73 +1442,166 @@ def finance_scan_patient_payment(request, patient_id):
     return finance_generic_order_payment(request, patient_id, 'scan')
 
 
-@login_required
-@require_http_methods(["GET", "POST"])
-def finance_consultation_patient_payment(request, patient_id):
+class PatientTransactionListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = PatientTransactionModel
+    template_name = "finance/payment/index.html"  # Assumed template path
+    context_object_name = "transactions"
+    permission_required = "finance.view_patienttransactionmodel"  # Replace 'app_name'
+    paginate_by = 20  # Optional: Adds pagination
+
+    def get_queryset(self):
+        """
+        Filters the queryset based on GET parameters from the URL.
+        """
+        # Eager load related models to prevent N+1 query issues
+        qs = PatientTransactionModel.objects.select_related('patient', 'received_by')
+
+        # Get filter parameters from the request
+        start_date = self.request.GET.get("start_date")
+        end_date = self.request.GET.get("end_date")
+        search = self.request.GET.get("search")
+        transaction_type = self.request.GET.get("transaction_type")
+        transaction_direction = self.request.GET.get("transaction_direction")
+
+        # Default to today's transactions if no date range is provided
+        if not start_date and not end_date:
+            today = now().date()
+            qs = qs.filter(date=today)
+        elif start_date and end_date:
+            qs = qs.filter(date__range=[start_date, end_date])
+
+        # Apply search filter for patient name or transaction ID
+        if search:
+            qs = qs.filter(
+                Q(patient__full_name__icontains=search) |
+                Q(transaction_id__icontains=search)
+            )
+
+        # Apply choice filters
+        if transaction_type:
+            qs = qs.filter(transaction_type=transaction_type)
+        if transaction_direction:
+            qs = qs.filter(transaction_direction=transaction_direction)
+
+        return qs.order_by("-created_at")
+
+    def get_context_data(self, **kwargs):
+        """
+        Adds summary data and filter choices to the template context.
+        """
+        context = super().get_context_data(**kwargs)
+        queryset = context['object_list']  # Use the paginated queryset from the context
+
+        # Determine timeframe for the page title
+        start_date = self.request.GET.get("start_date")
+        end_date = self.request.GET.get("end_date")
+
+        if start_date and end_date:
+            context['timeframe'] = f"from {start_date} to {end_date}"
+        else:
+            context['timeframe'] = "for Today"
+
+        # Calculate total inflow and outflow using database aggregation for efficiency
+        totals = queryset.aggregate(
+            total_inflow=Sum('amount', filter=Q(transaction_direction='in')),
+            total_outflow=Sum('amount', filter=Q(transaction_direction='out'))
+        )
+        context['total_inflow'] = totals['total_inflow'] or Decimal('0.00')
+        context['total_outflow'] = totals['total_outflow'] or Decimal('0.00')
+
+        # Pass transaction type choices to the template for the filter dropdown
+        context['transaction_types'] = PatientTransactionModel.TRANSACTION_TYPE
+
+        return context
+
+
+class PatientTransactionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    # Specifies the model this view will operate on.
+    model = PatientTransactionModel
+
+    # Points to the template file that will render the data.
+    template_name = "finance/payment/detail.html"
+
+    # Sets the variable name to be used in the template (e.g., {{ transaction }}).
+    context_object_name = "transaction"
+
+    # Defines the permission required to access this view.
+    # Remember to replace 'app_name' with your actual Django app's name.
+    permission_required = "app_name.view_patienttransactionmodel"
+
+    def get_queryset(self):
+        """
+        Overrides the default queryset to optimize database queries.
+
+        By using `select_related`, we fetch the related 'patient' and 'received_by'
+        objects in the same database query as the transaction itself. This prevents
+        additional database hits when the template accesses `{{ transaction.patient }}`
+        or `{{ transaction.received_by }}`.
+        """
+        return super().get_queryset().select_related('patient', 'received_by')
+
+
+def get_finance_setting_instance():
     """
-    Consultation payment - this follows the consultation flow in create.html (consultation type -> fee -> pay).
-    GET: Render consultation payment page (reusing your existing create.html flow)
-    POST: Deduct wallet and mark fee/consultation as paid (server-side minimal handling)
+    Helper function to load the singleton FinanceSettingModel instance.
+    This uses the .load() classmethod defined on the model.
     """
-    patient = get_object_or_404(PatientModel, id=patient_id)
+    return FinanceSettingModel.objects.first()
 
-    if request.method == 'GET':
-        # pass specializations (if you have Specialization model), else empty list
-        try:
-            from human_resource.models import SpecializationModel  # adjust import path
-            specializations = SpecializationModel.objects.all()
-        except Exception:
-            specializations = []
 
-        return render(request, 'finance/consultation_payment.html', {
-            'patient': patient,
-            'specializations': specializations
-        })
+# -------------------------
+# Finance Setting Views
+# -------------------------
+class FinanceSettingCreateView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, CreateView):
+    model = FinanceSettingModel
+    form_class = FinanceSettingForm
+    permission_required = 'finance.change_financesettingmodel'
+    success_message = 'Finance Setting Created Successfully'
+    template_name = 'finance/setting/create.html'
 
-    # POST: process consultation payment
-    fee_id = request.POST.get('fee_structure') or request.POST.get('fee_structure_id')
-    amount_paid = _to_decimal(request.POST.get('amount_paid') or request.POST.get('amount_due') or '0')
+    def dispatch(self, request, *args, **kwargs):
+        """
+        If a setting object already exists, redirect to the edit page.
+        This enforces the singleton pattern.
+        """
+        setting = get_finance_setting_instance()
+        # The .load() method creates a default if none exists, so we check if its pk is not None.
+        # If it has a pk other than the default 1, or has been saved before, it exists.
+        # A simpler check might just be to see if we can find an object with pk=1.
+        if FinanceSettingModel.objects.filter(pk=1).exists():
+            return redirect('finance_setting_edit', pk=1)
+        return super().dispatch(request, *args, **kwargs)
 
-    if amount_paid <= 0:
-        return JsonResponse({'success': False, 'error': 'Invalid payment amount.'}, status=400)
+    def get_success_url(self):
+        return reverse('finance_setting_detail', kwargs={'pk': self.object.pk})
 
-    try:
-        with transaction.atomic():
-            wallet_qs = PatientWalletModel.objects.select_for_update().filter(patient=patient)
-            if wallet_qs.exists():
-                wallet = wallet_qs.first()
-            else:
-                return JsonResponse({'success': False, 'error': 'Patient wallet not found.'}, status=404)
 
-            if wallet.amount < amount_paid:
-                shortfall = _quantize_money(amount_paid - wallet.amount)
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Insufficient wallet balance.',
-                    'shortfall': float(shortfall),
-                    'formatted_shortfall': f'₦{shortfall:,.2f}'
-                }, status=400)
+class FinanceSettingDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = FinanceSettingModel
+    permission_required = 'finance.view_financesettingmodel'
+    template_name = 'finance/setting/detail.html'
+    context_object_name = "finance_setting"
 
-            wallet.amount = _quantize_money(wallet.amount - amount_paid)
-            wallet.save()
+    def get_object(self, queryset=None):
+        """
+        Always return the single, global instance of the finance settings.
+        """
+        return get_finance_setting_instance()
 
-            # here, mark fee/consultation as paid in your domain models (if you have a ConsultationAppointment model etc).
-            # We'll try to mark a ConsultationFeeModel if it exists:
-            try:
-                from consultation.models import ConsultationFeeModel
-                fee = ConsultationFeeModel.objects.get(id=fee_id)
-                fee.status = 'paid'
-                fee.save(update_fields=['status'])
-            except Exception:
-                # If there's no model or not found, we still consider the wallet deducted.
-                fee = None
 
-        return JsonResponse({
-            'success': True,
-            'message': 'Consultation payment successful.',
-            'new_balance': float(wallet.amount),
-            'formatted_new_balance': f'₦{wallet.amount:,.2f}'
-        })
+class FinanceSettingUpdateView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, UpdateView):
+    model = FinanceSettingModel
+    form_class = FinanceSettingForm
+    permission_required = 'finance.change_financesettingmodel'
+    success_message = 'Finance Setting Updated Successfully'
+    template_name = 'finance/setting/create.html' # Reuse the create template for editing
 
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'}, status=500)
+    def get_object(self, queryset=None):
+        """
+        Always return the single, global instance to be edited.
+        """
+        return get_finance_setting_instance()
+
+    def get_success_url(self):
+        return reverse('finance_setting_detail', kwargs={'pk': self.object.pk})
+

@@ -5,9 +5,9 @@
 <div class="col-lg-12 grid-margin stretch-card">
     <div class="card">
         <div class="card-body">
-            <h4 class="card-title">Process Payment</h4>
+            <h4 class="card-title">Process Consultation Payment</h4>
             <p class="card-description">
-                Select payment type and process patient payment.
+                Verify patient and process their consultation payment from their wallet.
             </p>
 
             <!-- Error Container -->
@@ -22,37 +22,13 @@
             <form class="forms-sample" method="post" action="{% url 'consultation_payment_create' %}" id="payment-form">
                 {% csrf_token %}
 
-                <!-- Payment Type Selection -->
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="mb-0">Payment Type</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-group mb-3">
-                                    <label for="payment-type-select">Select Payment Type <span style="color:red"><b>*</b></span></label>
-                                    <select id="payment-type-select" class="form-control" required>
-                                        <option value="">--- Select Payment Type ---</option>
-                                        <option value="registration">Registration</option>
-                                        <option value="consultation">Consultation</option>
-                                        <option value="laboratory">Laboratory</option>
-                                        <option value="scan">Scan</option>
-                                        <option value="pharmacy">Pharmacy</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Consultation Payment Section (Hidden initially) -->
-                <div id="consultation-payment-section" style="display: none;">
+                <!-- Consultation Payment Section -->
+                <div id="consultation-payment-section">
 
                     <!-- Step 1: Patient Verification -->
                     <div class="card mb-4">
                         <div class="card-header">
-                            <h5 class="mb-0">Step 1: Patient Verification</h5>
+                            <h5 class="mb-0">Step 1: Patient Verification {{ form.errors }}</h5>
                         </div>
                         <div class="card-body">
                             <div class="row">
@@ -136,7 +112,7 @@
                                     <button type="submit" id="process-payment-btn" class="btn btn-success me-2" disabled>
                                         <i class="mdi mdi-credit-card-check me-2"></i>Process Payment
                                     </button>
-                                    <a href="% url 'patient_queue_list' %}" class="btn btn-light">Cancel</a>
+                                    <a href="{% url 'patient_queue_index' %}" class="btn btn-light">Cancel</a>
                                 </div>
                             </div>
                         </div>
@@ -150,8 +126,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // DOM elements
-    const paymentTypeSelect = document.getElementById('payment-type-select');
-    const consultationPaymentSection = document.getElementById('consultation-payment-section');
     const cardNumberInput = document.getElementById('card-number-input');
     const verifyPatientBtn = document.getElementById('verify-patient-btn');
     const patientDetailsSection = document.getElementById('patient-details-section');
@@ -185,24 +159,6 @@ document.addEventListener('DOMContentLoaded', function () {
     window.hideError = function() {
         errorContainer.style.display = 'none';
     }
-
-    // Payment type selection
-    paymentTypeSelect.addEventListener('change', function() {
-        const selectedType = this.value;
-
-        if (selectedType === 'consultation') {
-            consultationPaymentSection.style.display = 'block';
-        } else {
-            consultationPaymentSection.style.display = 'none';
-            // Reset all fields
-            resetForm();
-        }
-
-        if (selectedType && selectedType !== 'consultation') {
-            // Handle other payment types
-            showError(`${selectedType.charAt(0).toUpperCase() + selectedType.slice(1)} payment processing is not yet implemented.`);
-        }
-    });
 
     function resetForm() {
         cardNumberInput.value = '';
@@ -371,12 +327,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Form submission
     document.getElementById('payment-form').addEventListener('submit', function(e) {
-        if (paymentTypeSelect.value !== 'consultation') {
-            e.preventDefault();
-            showError('Please select consultation payment type to proceed');
-            return;
-        }
-
         if (!currentPatient || !currentFee) {
             e.preventDefault();
             showError('Please complete all steps before processing payment');

@@ -1,13 +1,29 @@
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from admin_site.model_info import TEMPORAL_STATUS, RECEIPT_FORMAT
 
 
 class FinanceSettingModel(models.Model):
-    default_receipt_format = models.CharField(max_length=50, choices=RECEIPT_FORMAT, blank=True, null=True)
-    receipt_signature = models.FileField(upload_to='finance/setting/receipt', blank=True, null=True)
+    minimum_funding = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))]
+    )
+
+    maximum_funding = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('500000.00'),
+        help_text="The maximum amount a patient can fund their wallet with in one transaction."
+    )
+    allow_negative_balance = models.BooleanField(
+        default=False,
+        help_text="If True, patients can have a negative wallet balance (post-paid). If False, payments will fail if balance is insufficient."
+    )
+
 
 
 # -------------------- EXPENSE MANAGEMENT --------------------
@@ -72,6 +88,115 @@ class Quotation(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class PatientTransactionModel(models.Model):
+    patient = models.ForeignKey('patient.PatientModel', on_delete=models.SET_NULL, null=True)
+    TRANSACTION_TYPE = (
+        ('wallet_funding', 'WALLET FUNDING'),
+        ('consultation_payment', 'CONSULTATION PAYMENT'),
+        ('drug_payment', 'DRUG PAYMENT'),
+        ('lab_payment', 'LAB PAYMENT'),
+        ('scan_payment', 'SCAN PAYMENT'),
+        ('drug_refund', 'DRUG REFUND'),
+        ('lab_refund', 'LAB REFUND'),
+        ('scan_refund', 'SCAN REFUND'),
+        ('wallet_withdrawal', 'WALLET WITHDRAWAL'),
+    )
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPE)
+    transaction_direction = models.CharField(max_length=20, choices=(('in', 'IN'), ('out', 'OUT')))
+    fee_structure = models.ForeignKey('consultation.ConsultationFeeModel', on_delete=models.SET_NULL, null=True)
+    lab_structure = models.ForeignKey('laboratory.LabTestOrderModel', on_delete=models.SET_NULL, null=True)
+
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))]
+    )
+    old_balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))]
+    )
+    new_balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))]
+    )
+    date = models.DateField()
+    received_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    transaction_id = models.CharField(max_length=100, blank=True, db_index=True)
+    payment_method = models.CharField(max_length=50, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'PENDING'),
+            ('completed', 'COMPLETED'),
+            ('failed', 'FAILED'),
+            ('cancelled', 'CANCELLED')
+        ],
+        default='completed'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.transaction_id:
+            today_str = date.today().strftime('%Y%m%d')
+
+            # Use a lock or transaction to prevent race conditions
+            # in a production environment with multiple simultaneous requests.
+            # For simplicity, this example does not include that.
+
+            last_transaction = PatientTransactionModel.objects.filter(
+                transaction_id__startswith=f'trn-{today_str}'
+            ).order_by('-transaction_id').first()
+
+            if last_transaction:
+                # Extract the number part and increment
+                last_number = int(last_transaction.transaction_id[-4:])
+                new_number = last_number + 1
+            else:
+                new_number = 1
+
+            # Format the number with leading zeros
+            formatted_number = f"{new_number:04}"
+
+            self.transaction_id = f"trn-{today_str}{formatted_number}"
+
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Validate transaction direction based on type"""
+        funding_types = ['wallet_funding']
+        payment_types = ['consultation_payment', 'drug_payment', 'lab_payment', 'scan_payment']
+        refund_types = ['drug_refund', 'lab_refund', 'scan_refund']
+        withdrawal_types = ['wallet_withdrawal']
+
+        if self.transaction_type in funding_types and self.transaction_direction != 'in':
+            raise ValidationError('Funding transactions must be "in" direction')
+        elif self.transaction_type in (payment_types + withdrawal_types) and self.transaction_direction != 'out':
+            raise ValidationError('Payment/withdrawal transactions must be "out" direction')
+        elif self.transaction_type in refund_types and self.transaction_direction != 'in':
+            raise ValidationError('Refund transactions must be "in" direction')
+
+    def __str__(self):
+        return f"{self.get_transaction_type_display()}"
+
+    @property
+    def is_credit(self):
+        return self.transaction_direction == 'in'
+
+    @property
+    def is_debit(self):
+        return self.transaction_direction == 'out'
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['patient', 'transaction_type']),
+            models.Index(fields=['date']),
+            models.Index(fields=['status']),
+        ]
 
 
 class Expense(models.Model):

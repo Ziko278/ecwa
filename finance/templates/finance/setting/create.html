@@ -1,0 +1,49 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+
+<form action="" method="POST">
+    {% csrf_token %}
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card card-bx m-b30">
+                <div class="card-header">
+                    <h6 class="title"><b>Finance Settings</b></h6>
+                </div>
+
+                <div class="card-body">
+                    <div class="row pt-2">
+                        <div class="col-sm-6 m-b30 py-4">
+                            <label class="form-label">Minimum Wallet Funding (₦)</label>
+                            {{ form.minimum_funding }}
+                            <small class="form-text text-muted">{{ form.minimum_funding.help_text }}</small>
+                        </div>
+
+                        <div class="col-sm-6 m-b30 py-4">
+                            <label class="form-label">Maximum Wallet Funding (₦)</label>
+                            {{ form.maximum_funding }}
+                            <small class="form-text text-muted">{{ form.maximum_funding.help_text }}</small>
+                        </div>
+
+                        <div class="col-sm-6 m-b30 py-4">
+                            <label class="form-label">Allow Negative Wallet Balance</label>
+                            <div class="form-check">
+                                {{ form.allow_negative_balance }}
+                                <label class="form-check-label ms-2" for="{{ form.allow_negative_balance.id_for_label }}">
+                                    Enable
+                                </label>
+                            </div>
+                            <small class="form-text text-muted">{{ form.allow_negative_balance.help_text }}</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">SAVE SETTINGS</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}

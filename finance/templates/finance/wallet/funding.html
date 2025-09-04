@@ -1,5 +1,6 @@
 {% extends 'admin_site/layout.html' %}
 {% load static %}
+{% load humanize %}
 
 {% block 'main' %}
 <style>
@@ -106,6 +107,23 @@
         }
         .step:last-child::after {
             display: none;
+        }
+
+        /* --- Styles for the new Success Modal --- */
+        #success-modal .modal-header {
+            background-color: #28a745;
+            color: white;
+            border-bottom: none;
+        }
+        #success-modal .modal-title {
+            font-weight: bold;
+        }
+        #success-modal .success-icon {
+            font-size: 3rem;
+            color: #28a745;
+        }
+        #success-modal .modal-footer {
+            border-top: none;
         }
     </style>
 
@@ -227,14 +245,22 @@
 
                                 <!-- Funding Amount -->
                                 <div class="mb-4">
-                                    <label for="funding_amount" class="form-label">Funding Amount (₦)</label>
+                                    <label for="funding_amount" class="form-label">Funding Amount (₦) </label>
                                     <input type="number" class="form-control form-control-lg"
                                            id="funding_amount" name="funding_amount"
-                                           min="1" step="0.01" required>
+                                           min="{{finance_setting.minimum_funding}}" placeholder="Minimum Funding is ₦{{finance_setting.minimum_funding|intcomma}}" step="0.01" required>
                                     <div class="form-text">
                                         Suggested amount based on selected payments:
                                         <strong id="suggested-amount">₦0.00</strong>
                                     </div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label for="payment_method" class="form-label">Payment Method</label>
+                                    <select class="form-control" id="payment_method" required name="payment_method">
+                                        <option value="cash">CASH</option>
+                                        <option value="transfer">TRANSFER</option>
+                                    </select>
                                 </div>
 
                                 <!-- Action Type -->
@@ -296,6 +322,32 @@
 
 
     </div>
+
+    <!-- ======================================================= -->
+    <!-- START: NEW SUCCESS MODAL                                -->
+    <!-- ======================================================= -->
+    <div class="modal fade" id="success-modal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="successModalLabel"><i class="fas fa-check-circle"></i> Success</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <div class="success-icon mb-3">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <p class="lead" id="success-message-text"></p>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-primary" id="modal-ok-button">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ======================================================= -->
+    <!-- END: NEW SUCCESS MODAL                                  -->
+    <!-- ======================================================= -->
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -572,15 +624,12 @@
 
         function processFunding() {
             const formData = new FormData($('#funding-form')[0]);
-
-            // Add selected items
             Object.keys(selectedItems).forEach(type => {
-                selectedItems[type].forEach(id => {
-                    formData.append('selected_items[]', id);
-                });
+                selectedItems[type].forEach(id => formData.append('selected_items[]', id));
             });
 
-            showLoading();
+            // Consider showing a spinner on the submit button
+            $('#submit-funding').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...');
 
             $.ajax({
                 url: "{% url 'process_funding' %}",
@@ -589,21 +638,35 @@
                 processData: false,
                 contentType: false,
                 success: function(response) {
-                    hideLoading();
                     if (response.success) {
-                        alert(response.message);
-                        if (response.redirect_url) {
-                            window.location.href = response.redirect_url;
-                        } else {
-                            // Reset form or redirect to dashboard
-                            resetForm();
-                        }
+                        // 1. Populate the modal with the success message
+                        $('#success-message-text').text(response.message);
+
+                        // 2. Create and show the Bootstrap modal
+                        const successModal = new bootstrap.Modal(document.getElementById('success-modal'));
+                        successModal.show();
+
+                        // 3. Handle the redirect when the 'OK' button is clicked
+                        $('#modal-ok-button').off('click').on('click', function() {
+                            if (response.redirect_url) {
+                                window.location.href = response.redirect_url;
+                            } else {
+                                // If no redirect, just hide the modal and reset
+                                successModal.hide();
+                                resetForm();
+                            }
+                        });
+
                     }
                 },
                 error: function(xhr) {
-                    hideLoading();
                     const response = xhr.responseJSON;
+                    // You could use another modal for errors here
                     alert(response.error || 'Error processing funding');
+                },
+                complete: function() {
+                    // Re-enable the submit button
+                    $('#submit-funding').prop('disabled', false).html('<i class="fas fa-credit-card"></i> Process Funding');
                 }
             });
         }

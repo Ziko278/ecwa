@@ -178,35 +178,6 @@ class ScanImageModel(models.Model):
 
 
 # Example usage in your scan results model
-class ScanResultModel(models.Model):
-    """Actual scan execution results"""
-    template = models.ForeignKey(ScanTemplateModel, on_delete=models.CASCADE)
-    patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE)
-
-    # Results and findings
-    findings = models.TextField(blank=True)
-    impression = models.TextField(blank=True)
-
-    # Status
-    status = models.CharField(
-        max_length=20,
-        choices=[
-            ('pending', 'Pending'),
-            ('in_progress', 'In Progress'),
-            ('completed', 'Completed'),
-            ('reviewed', 'Reviewed'),
-        ],
-        default='pending'
-    )
-
-    performed_at = models.DateTimeField()
-    performed_by = models.ForeignKey('human_resource.StaffModel', on_delete=models.CASCADE)
-
-    # Images are handled by ScanImageModel with related_name='images'
-    # Access via: scan_result.images.all()
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
 
 # 3. SCAN ORDERS (When a scan is requested)
@@ -284,6 +255,37 @@ class ScanOrderModel(models.Model):
             self.amount_charged = self.template.price
 
         super().save(*args, **kwargs)
+
+
+class ScanResultModel(models.Model):
+    """Actual scan execution results"""
+    order = models.OneToOneField(ScanOrderModel, on_delete=models.CASCADE)
+    patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE)
+
+    # Results and findings
+    findings = models.TextField(blank=True)
+    impression = models.TextField(blank=True)
+
+    # Status
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('in_progress', 'In Progress'),
+            ('completed', 'Completed'),
+            ('reviewed', 'Reviewed'),
+        ],
+        default='pending'
+    )
+
+    performed_at = models.DateTimeField()
+    performed_by = models.ForeignKey('human_resource.StaffModel', on_delete=models.CASCADE)
+
+    # Images are handled by ScanImageModel with related_name='images'
+    # Access via: scan_result.images.all()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 # 5. SCAN EQUIPMENT (Equipment used for scans)

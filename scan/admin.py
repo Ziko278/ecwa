@@ -1,3 +1,7 @@
 from django.contrib import admin
+from scan.models import ScanCategoryModel, ScanTemplateModel, ScanOrderModel
 
-# Register your models here.
+
+admin.site.register(ScanCategoryModel)
+admin.site.register(ScanTemplateModel)
+admin.site.register(ScanOrderModel)

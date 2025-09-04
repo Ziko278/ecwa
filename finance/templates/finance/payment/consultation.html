@@ -1,0 +1,358 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Consultation Payment</h4>
+            <p class="card-description">
+                Process consultation payment for patient: <strong>{{ patient.first_name }} {{ patient.last_name }}</strong>
+            </p>
+
+            <!-- Error Container -->
+            <div id="error-container" style="display: none;">
+                <div class="alert alert-danger d-flex align-items-center" role="alert">
+                    <i class="mdi mdi-alert-circle me-2"></i>
+                    <span id="error-message"></span>
+                    <button type="button" class="btn-close ms-auto" onclick="hideError()"></button>
+                </div>
+            </div>
+
+            <!-- Success Container -->
+            <div id="success-container" style="display: none;">
+                <div class="alert alert-success d-flex align-items-center" role="alert">
+                    <i class="mdi mdi-check-circle me-2"></i>
+                    <span id="success-message"></span>
+                    <button type="button" class="btn-close ms-auto" onclick="hideSuccess()"></button>
+                </div>
+            </div>
+
+            <form class="forms-sample" method="post" id="consultation-payment-form">
+                {% csrf_token %}
+
+                <!-- Step 1: Patient Information -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Patient Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="patient-info-section">
+                            <div class="alert alert-info" role="alert">
+                                <h6><i class="mdi mdi-account me-2"></i>Patient Details</h6>
+                                <div>
+                                    <strong>{{ patient.first_name }} {{ patient.last_name }}</strong><br>
+                                    <small>Card Number: {{ patient.card_number }} | Phone: {{ patient.phone|default:'N/A' }}</small>
+                                </div>
+                                <br>
+                                <h6><i class="mdi mdi-wallet me-2"></i>Wallet Information</h6>
+                                <div id="wallet-info">
+                                    <span class="text-info">Loading wallet information...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Consultation Selection -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Select Consultation Type</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="specialization-select">Specialization <span style="color:red"><b>*</b></span></label>
+                                    <select id="specialization-select" class="form-control" required>
+                                        <option value="">--- Select Consultation Type ---</option>
+                                        {% for spec in specializations %}
+                                            <option value="{{ spec.id }}">{{ spec.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fee Information (Hidden initially) -->
+                        <div id="fee-info-section" class="mt-3" style="display: none;">
+                            <div class="alert alert-primary" role="alert">
+                                <h6><i class="mdi mdi-cash me-2"></i>Consultation Fee</h6>
+                                <div id="fee-details"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Payment Confirmation (Hidden initially) -->
+                <div class="card mb-4" id="payment-section" style="display: none;">
+                    <div class="card-header">
+                        <h5 class="mb-0">Payment Confirmation</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="payment-summary"></div>
+
+                        <!-- Hidden form fields -->
+                        <input type="hidden" id="patient-id-field" name="patient" value="{{ patient.id }}">
+                        <input type="hidden" id="fee-structure-field" name="fee_structure">
+                        <input type="hidden" id="amount-due-field" name="amount_due">
+                        <input type="hidden" id="amount-paid-field" name="amount_paid">
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <button type="button" id="fund-wallet-btn" class="btn btn-warning" style="display: none;">
+                                <i class="mdi mdi-wallet-plus me-2"></i>Fund Wallet First
+                            </button>
+                            <div>
+                                <button type="submit" id="process-payment-btn" class="btn btn-success me-2" disabled>
+                                    <i class="mdi mdi-credit-card-check me-2"></i>Process Payment
+                                </button>
+                                <a href="{% url 'finance_payment_select' %}" class="btn btn-light">Back</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // DOM elements
+    const specializationSelect = document.getElementById('specialization-select');
+    const feeInfoSection = document.getElementById('fee-info-section');
+    const paymentSection = document.getElementById('payment-section');
+    const processPaymentBtn = document.getElementById('process-payment-btn');
+    const fundWalletBtn = document.getElementById('fund-wallet-btn');
+    const errorContainer = document.getElementById('error-container');
+    const successContainer = document.getElementById('success-container');
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+
+    // Hidden form fields
+    const feeStructureField = document.getElementById('fee-structure-field');
+    const amountDueField = document.getElementById('amount-due-field');
+    const amountPaidField = document.getElementById('amount-paid-field');
+
+    // Global variables
+    let currentFee = null;
+    let walletBalance = 0;
+    let patientInsurance = null;
+
+    // Error handling functions
+    function showError(message) {
+        errorMessage.innerHTML = `<strong>${message}</strong>`;
+        errorContainer.style.display = 'block';
+        successContainer.style.display = 'none';
+        errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function showSuccess(message) {
+        successMessage.innerHTML = `<strong>${message}</strong>`;
+        successContainer.style.display = 'block';
+        errorContainer.style.display = 'none';
+        successContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    window.hideError = function() {
+        errorContainer.style.display = 'none';
+    }
+
+    window.hideSuccess = function() {
+        successContainer.style.display = 'none';
+    }
+
+    // Load patient wallet information on page load
+    function loadPatientWallet() {
+        fetch(`/portal/finance/verify-patient/?card_number={{ patient.card_number }}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    walletBalance = data.wallet.balance;
+                    patientInsurance = data.insurance;
+                    
+                    const walletClass = data.wallet.balance > 0 ? 'text-success' : 'text-warning';
+                    let walletInfo = `<span class="${walletClass}">Balance: ${data.wallet.formatted_balance}</span>`;
+                    
+                    if (data.insurance.has_insurance) {
+                        walletInfo += `<br><small class="text-info"><i class="mdi mdi-shield-alt me-1"></i>Insurance: ${data.insurance.hmo_name} - ${data.insurance.plan_name}</small>`;
+                    }
+                    
+                    document.getElementById('wallet-info').innerHTML = walletInfo;
+                } else {
+                    document.getElementById('wallet-info').innerHTML = '<span class="text-danger">Error loading wallet information</span>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading wallet:', error);
+                document.getElementById('wallet-info').innerHTML = '<span class="text-danger">Error loading wallet information</span>';
+            });
+    }
+
+    // Specialization Selection
+    specializationSelect.addEventListener('change', function() {
+        const specializationId = this.value;
+
+        if (!specializationId) {
+            feeInfoSection.style.display = 'none';
+            paymentSection.style.display = 'none';
+            return;
+        }
+
+        // Load consultation fee
+        fetch(`/portal/consultation/get-consultation-fees?specialization_id=${specializationId}&patient_id={{ patient.id }}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentFee = data.fee;
+
+                    // Display fee information
+                    let feeHtml = `<strong>Amount: ${data.fee.formatted_amount}</strong><br>`;
+                    feeHtml += `<small>Category: ${data.fee.patient_category}`;
+                    if (data.fee.coverage_applied) {
+                        feeHtml += ` | <span class="text-success">Insurance coverage applied</span>`;
+                    }
+                    feeHtml += `</small>`;
+
+                    document.getElementById('fee-details').innerHTML = feeHtml;
+
+                    // Set fee fields
+                    feeStructureField.value = data.fee.id;
+                    amountDueField.value = data.fee.amount;
+                    amountPaidField.value = data.fee.amount;
+
+                    feeInfoSection.style.display = 'block';
+                    updatePaymentSection();
+                } else {
+                    showError(data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showError('Error loading consultation fees. Please try again.');
+            });
+    });
+
+    function updatePaymentSection() {
+        if (!currentFee) return;
+
+        const feeAmount = currentFee.amount;
+        const canPay = walletBalance >= feeAmount;
+
+        let paymentHTML = `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Patient: {{ patient.first_name }} {{ patient.last_name }}</h6>
+                    <p class="mb-1">Card Number: {{ patient.card_number }}</p>
+                    <p class="mb-1">Specialization: ${specializationSelect.options[specializationSelect.selectedIndex].text}</p>
+                </div>
+                <div class="col-md-6">
+                    <h6>Payment Details</h6>
+                    <p class="mb-1">Consultation Fee: <strong>${currentFee.formatted_amount}</strong></p>
+                    <p class="mb-1">Payment Method: <strong>Wallet</strong></p>
+                    <p class="mb-1">Wallet Balance: <strong class="${walletBalance >= feeAmount ? 'text-success' : 'text-danger'}">₦${walletBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></p>
+                </div>
+            </div>
+        `;
+
+        if (!canPay) {
+            const shortfall = feeAmount - walletBalance;
+            paymentHTML += `
+                <div class="alert alert-warning mt-3" role="alert">
+                    <i class="mdi mdi-alert me-2"></i>
+                    Insufficient wallet balance. You need an additional ₦${shortfall.toLocaleString('en-US', {minimumFractionDigits: 2})} to complete this payment.
+                </div>
+            `;
+            fundWalletBtn.style.display = 'block';
+            processPaymentBtn.disabled = true;
+        } else {
+            paymentHTML += `
+                <div class="alert alert-success mt-3" role="alert">
+                    <i class="mdi mdi-check-circle me-2"></i>
+                    Wallet has sufficient balance. Ready to process payment.
+                </div>
+            `;
+            fundWalletBtn.style.display = 'none';
+            processPaymentBtn.disabled = false;
+        }
+
+        document.getElementById('payment-summary').innerHTML = paymentHTML;
+        paymentSection.style.display = 'block';
+    }
+
+    // Fund wallet button
+    fundWalletBtn.addEventListener('click', function() {
+        const shortfall = currentFee.amount - walletBalance;
+        // Redirect to wallet funding page - adjust URL as needed
+        window.open(`/patient/wallet/fund/?amount=${shortfall}&redirect=consultation_payment`, '_blank');
+    });
+
+    // Form submission
+    document.getElementById('consultation-payment-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        if (!currentFee) {
+            showError('Please select a consultation type first');
+            return;
+        }
+
+        if (walletBalance < currentFee.amount) {
+            showError('Insufficient wallet balance. Please fund your wallet first.');
+            return;
+        }
+
+        processPaymentBtn.disabled = true;
+        processPaymentBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-2"></i>Processing...';
+
+        // Submit form data via AJAX
+        const formData = new FormData(this);
+        
+        fetch(window.location.href, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSuccess(data.message);
+                walletBalance = data.new_balance;
+                
+                // Update wallet display
+                const walletClass = data.new_balance > 0 ? 'text-success' : 'text-warning';
+                document.getElementById('wallet-info').innerHTML = `<span class="${walletClass}">Balance: ${data.formatted_new_balance}</span>`;
+                
+                // Reset form
+                specializationSelect.value = '';
+                feeInfoSection.style.display = 'none';
+                paymentSection.style.display = 'none';
+                currentFee = null;
+                
+                // Redirect after success if URL provided
+                if (data.redirect_url) {
+                    setTimeout(() => {
+                        window.location.href = data.redirect_url;
+                    }, 2000);
+                }
+            } else {
+                showError(data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('Error processing payment. Please try again.');
+        })
+        .finally(() => {
+            processPaymentBtn.disabled = false;
+            processPaymentBtn.innerHTML = '<i class="mdi mdi-credit-card-check me-2"></i>Process Payment';
+        });
+    });
+
+    // Load wallet information on page load
+    loadPatientWallet();
+});
+</script>
+
+{% endblock %}

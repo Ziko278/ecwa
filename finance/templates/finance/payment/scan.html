@@ -17,14 +17,14 @@
 <div class="container-fluid mt-4">
   <div class="card">
     <div class="card-header bg-primary text-white">
-      <h4>Laboratory Payment - {{ patient }} (Wallet: ₦{{ patient.wallet.amount|default:0|intcomma }})</h4>
+      <h4>Radiology/Scan Payment - {{ patient }} (Wallet: ₦{{ patient.wallet.amount|default:0|intcomma }})</h4>
     </div>
     <div class="card-body">
       {% if items %}
-      <form id="lab-payment-form" method="post" action="{% url 'finance_laboratory_patient_payment' patient.id %}">
+      <form id="scan-payment-form" method="post" action="{% url 'finance_scan_patient_payment' patient.id %}">
         {% csrf_token %}
         <div class="mb-3">
-          <h5>Pending Laboratory Orders (last 30 days)</h5>
+          <h5>Pending Scan/Radiology Orders (last 30 days)</h5>
         </div>
 
         <div id="items-list">
@@ -59,7 +59,7 @@
         </div>
       </form>
       {% else %}
-      <div class="alert alert-info">No pending laboratory orders in the last 30 days.</div>
+      <div class="alert alert-info">No pending scan/radiology orders in the last 30 days.</div>
       {% endif %}
     </div>
   </div>
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const payBtn = document.getElementById('pay-btn');
   const fundBtn = document.getElementById('fund-now-btn');
   const totalEl = document.getElementById('selected-total');
-  const form = document.getElementById('lab-payment-form');
+  const form = document.getElementById('scan-payment-form');
   let walletBalance = 0; // Will be fetched from server
 
   const successModalEl = document.getElementById('success-modal');
@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
   fundBtn.addEventListener('click', () => {
     const total = computeTotal();
     const shortfall = Math.max(0, total - walletBalance);
-    const url = `{% url 'patient_funding' %}?amount=${shortfall.toFixed(2)}&redirect=lab_payment&patient_id={{ patient.id }}`;
+    const url = `{% url 'patient_funding' %}?amount=${shortfall.toFixed(2)}&redirect=scan_payment&patient_id={{ patient.id }}`;
     window.location.href = url;
   });
 

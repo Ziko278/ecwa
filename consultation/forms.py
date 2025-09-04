@@ -307,49 +307,6 @@ class ConsultationFeeForm(ModelForm):
         return cleaned_data
 
 
-class ConsultationPaymentForm(ModelForm):
-    """Form for consultation payments"""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for field in self.fields:
-            self.fields[field].widget.attrs.update({
-                'class': 'form-control',
-                'autocomplete': 'off'
-            })
-
-    class Meta:
-        model = ConsultationPaymentModel
-        fields = [
-            'patient', 'fee_structure', 'amount_due', 'amount_paid',
-            'insurance_coverage', 'payment_method'
-        ]
-        widgets = {
-            'amount_due': NumberInput(attrs={
-                'step': '0.01',
-                'min': '0',
-                'readonly': True
-            }),
-            'amount_paid': NumberInput(attrs={
-                'step': '0.01',
-                'min': '0',
-                'placeholder': '0.00'
-            }),
-            'insurance_coverage': NumberInput(attrs={
-                'step': '0.01',
-                'min': '0',
-                'placeholder': '0.00'
-            }),
-        }
-
-    def clean_amount_paid(self):
-        amount_paid = self.cleaned_data.get('amount_paid')
-        if amount_paid and amount_paid < 0:
-            raise ValidationError("Amount paid cannot be negative.")
-        return amount_paid
-
-
-
 class PatientQueueForm(ModelForm):
     """Form for patient queue management"""
 

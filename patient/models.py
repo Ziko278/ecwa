@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from admin_site.model_info import *
-from consultation.models import ConsultationPaymentModel, ConsultationFeeModel
+from consultation.models import ConsultationFeeModel
 
 REGISTRATION_STATUS = (
     ('pending', 'PENDING'), ('completed', 'COMPLETED'), ('cancelled', 'CANCELLED')

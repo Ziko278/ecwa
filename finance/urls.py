@@ -19,6 +19,11 @@ urlpatterns = [
     path('payment/pharmacy/<int:patient_id>/', finance_pharmacy_patient_payment, name='finance_pharmacy_patient_payment'),
     path('payment/laboratory/<int:patient_id>/', finance_laboratory_patient_payment, name='finance_laboratory_patient_payment'),
     path('payment/scan/<int:patient_id>/', finance_scan_patient_payment, name='finance_scan_patient_payment'),
+    path('payment/index/', PatientTransactionListView.as_view(), name='patient_transaction_index'),
+    path('transactions/<int:pk>/', PatientTransactionDetailView.as_view(), name='patient_transaction_detail'),
 
+    path('setting/create/', FinanceSettingCreateView.as_view(), name='finance_setting_create'),
+    path('setting/<int:pk>/detail/', FinanceSettingDetailView.as_view(), name='finance_setting_detail'),
+    path('setting/<int:pk>/edit/', FinanceSettingUpdateView.as_view(), name='finance_setting_edit'),
 
 ]

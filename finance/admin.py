@@ -1,3 +1,6 @@
 from django.contrib import admin
+from finance.models import PatientTransactionModel, FinanceSettingModel
 
-# Register your models here.
+
+admin.site.register(PatientTransactionModel)
+admin.site.register(FinanceSettingModel)

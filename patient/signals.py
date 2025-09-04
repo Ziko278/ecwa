@@ -1,14 +1,16 @@
+from decimal import Decimal
+
 from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from django.utils.html import escape
 from django.utils.timezone import now
 from django.db import transaction
-from datetime import datetime
+from datetime import datetime, date
 import logging
 from admin_site.models import ActivityLogModel
-from consultation.models import ConsultationPaymentModel, PatientQueueModel
-from patient.models import RegistrationFeeModel, PatientModel
-
+from consultation.models import PatientQueueModel
+from finance.models import PatientTransactionModel
+from patient.models import RegistrationFeeModel, PatientModel, PatientWalletModel
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +90,17 @@ def log_registration_fee_create(sender, instance, created, **kwargs):
         )
 
 
+@receiver(post_save, sender=PatientModel)
+def create_patient_wallet(sender, instance, created, **kwargs):
+    """
+    A signal to automatically create a PatientWalletModel whenever a new
+    PatientModel is created. This ensures every patient has a wallet.
+    """
+    if created:
+        # Use get_or_create to safely create the wallet, preventing duplicates.
+        PatientWalletModel.objects.get_or_create(patient=instance)
+
+
 # --- Delete log ---
 @receiver(post_delete, sender=RegistrationFeeModel)
 def log_registration_fee_delete(sender, instance, **kwargs):
@@ -129,20 +142,27 @@ def create_consultation_payment_and_queue(sender, instance: PatientModel, create
     if not getattr(payment, 'consultation_paid', False):
         return
 
+    patient_wallet = instance.wallet
+
     try:
         with transaction.atomic():
             # 1. Create ConsultationPaymentModel
-            consult_payment = ConsultationPaymentModel.objects.create(
+
+            patient_wallet = instance.wallet
+
+            consult_payment = PatientTransactionModel.objects.create(
                 patient=instance,
                 fee_structure=payment.consultation_fee,
-                amount_due=payment.consultation_fee.amount if payment.consultation_fee else 0,
-                amount_paid=payment.consultation_fee.amount if payment.consultation_fee else 0,
-                balance=0,
-                transaction_id=None,  # auto-generated in model save
+                transaction_type='consultation_payment',
+                transaction_direction='out',
+                amount=payment.consultation_fee.amount if payment.consultation_fee else 0,
+                date=date.today(),
                 payment_method=payment.payment_method or 'cash',
-                status='paid',
-                paid_at=datetime.now(),
-                processed_by=payment.created_by
+                status='completed',
+                received_by=payment.created_by,
+                old_balance=Decimal(patient_wallet.amount) + Decimal(
+                    payment.consultation_fee.amount) if payment.consultation_fee else 0,
+                new_balance=patient_wallet.amount
             )
 
             # 2. Add patient to PatientQueueModel

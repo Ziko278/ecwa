@@ -8,7 +8,7 @@ from django.contrib.messages.views import SuccessMessageMixin
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
+from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -22,6 +22,8 @@ from django.contrib.auth.models import User
 
 from consultation.models import *
 from consultation.forms import *
+from finance.forms import PatientTransactionForm
+from finance.models import PatientTransactionModel
 from laboratory.models import LabTestOrderModel, LabTestCategoryModel, LabTestTemplateModel
 from patient.models import PatientModel
 from human_resource.models import StaffModel
@@ -500,86 +502,88 @@ class ConsultationFeeDeleteView(
 # -------------------------
 # 6. CONSULTATION PAYMENTS (Multi-field)
 # -------------------------
-class ConsultationPaymentCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, ConsultationContextMixin,
-    SuccessMessageMixin, CreateView
-):
-    model = ConsultationPaymentModel
-    permission_required = 'consultation.add_consultationpaymentmodel'
-    form_class = ConsultationPaymentForm
+
+
+class ConsultationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = PatientTransactionModel
+    permission_required = 'finance.add_patienttransactionmodel'
+    form_class = PatientTransactionForm
     template_name = 'consultation/payment/create.html'
-    success_message = 'Payment Successfully Processed and Patient Added to Queue'
 
     def get_success_url(self):
+        # Redirect to the patient queue list upon successful payment
         return reverse('patient_queue_index')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.update({
-            'available_consultants': ConsultantModel.objects.filter(
-                is_available_for_consultation=True
-            ).select_related('staff', 'specialization').order_by('specialization__name', 'staff__first_name'),
-            'specializations': SpecializationModel.objects.all().order_by('name'),
-        })
+        # Provide the list of specializations for the JavaScript to fetch fees
+        context['specializations'] = SpecializationModel.objects.all()
         return context
 
     @transaction.atomic
     def form_valid(self, form):
+        """
+        This method is called when valid form data has been POSTed.
+        It handles the entire payment and queuing logic.
+        """
         try:
-            # Set processed_by and payment method
-            form.instance.processed_by = self.request.user
-            form.instance.payment_method = 'wallet'
+            patient = form.cleaned_data.get('patient')
+            fee_structure = form.cleaned_data.get('fee_structure')
 
-            # Get patient and validate wallet balance
-            patient = form.instance.patient
-            amount_to_pay = form.instance.amount_paid
+            # Securely get the amount from the database, not the request
+            amount_to_pay = fee_structure.amount
 
+            # 1. Validate patient's wallet balance
             if not hasattr(patient, 'wallet'):
-                messages.error(self.request, 'Patient does not have a wallet account')
-                return super().form_invalid(form)
+                messages.error(self.request, 'Patient does not have a wallet account.')
+                return self.form_invalid(form)
 
             if patient.wallet.amount < amount_to_pay:
                 messages.error(
                     self.request,
-                    f'Insufficient wallet balance. Available: ₦{patient.wallet.balance}, Required: ₦{amount_to_pay}'
+                    f'Insufficient wallet balance. Available: ₦{patient.wallet.amount}, Required: ₦{amount_to_pay}'
                 )
-                return super().form_invalid(form)
+                return self.form_invalid(form)
 
-            # Save payment first
-            response = super().form_valid(form)
+            # 2. Prepare the transaction record by populating fields not in the form
+            transaction_record = form.save(commit=False)
+            transaction_record.old_balance = patient.wallet.amount
+            transaction_record.new_balance = patient.wallet.amount - amount_to_pay
+            transaction_record.date = date.today()  # Set the transaction date
+            transaction_record.amount = amount_to_pay
+            transaction_record.received_by = self.request.user
+            transaction_record.payment_method = 'wallet'
+            transaction_record.transaction_type = 'consultation_payment'
+            transaction_record.transaction_direction = 'out'  # A payment FROM a wallet is a debit
+            transaction_record.status = 'completed'
+            # The model's save() method will handle generating the transaction_id
+            transaction_record.save()
 
+            self.object = transaction_record
+
+            # 3. Update the wallet balance
             patient.wallet.amount -= amount_to_pay
             patient.wallet.save()
 
-            # Create queue entry
-            is_emergency = form.cleaned_data.get('is_emergency', False)
-
+            # 4. Create the queue entry, linking it to the transaction
             queue_entry = PatientQueueModel.objects.create(
-                patient=self.object.patient,
+                patient=patient,
                 payment=self.object,
-                priority_level=2 if is_emergency else 0,
-                notes=form.cleaned_data.get('notes', ''),
-                is_emergency=is_emergency
+                priority_level=0,  # Or add logic for emergency cases
             )
 
             messages.success(
                 self.request,
-                f'Payment processed successfully! Queue number: {queue_entry.queue_number}. '
+                f'Payment of ₦{amount_to_pay} processed successfully! Patient added to queue with number {queue_entry.queue_number}.'
             )
-
-            return response
+            return redirect(self.get_success_url())
 
         except Exception as e:
-            logger.exception("Error processing consultation payment")
-            messages.error(self.request, f"Error processing payment: {str(e)}")
-            return super().form_invalid(form)
+            # It's good practice to log the full exception here
+            # logger.exception("Error processing consultation payment")
+            messages.error(self.request, f"An unexpected error occurred: {str(e)}")
+            return self.form_invalid(form)
 
-    def form_invalid(self, form):
-        for field, errors in form.errors.items():
-            label = form.fields.get(field).label if form.fields.get(field) else field
-            for error in errors:
-                messages.error(self.request, f"{label}: {error}")
-        return super().form_invalid(form)
 
 
 # AJAX endpoints for the wallet payment flow
@@ -753,18 +757,30 @@ def get_specialization_consultants_ajax(request):
         }, status=500)
 
 
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.views.generic import ListView
+from django.db.models import Sum
+from datetime import date
+from .models import PatientTransactionModel # Import your transaction model
+
 class ConsultationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
-    model = ConsultationPaymentModel
-    permission_required = 'consultation.view_consultationpaymentmodel'
+    # 1. Update the model to your transaction model
+    model = PatientTransactionModel
+    # 2. Update the permission to match the new model
+    permission_required = 'finance.view_patienttransactionmodel'
     template_name = 'consultation/payment/list.html'
     context_object_name = "payment_list"
     paginate_by = 50
 
     def get_queryset(self):
         today = date.today()
-        return ConsultationPaymentModel.objects.select_related(
+        # Query the transaction model and add an essential filter for transaction type
+        return PatientTransactionModel.objects.select_related(
             'patient', 'fee_structure__specialization'
-        ).filter(created_at__date=today).order_by('-created_at')
+        ).filter(
+            created_at__date=today,
+            transaction_type='consultation_payment' # <-- This is crucial
+        ).order_by('-created_at')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -772,30 +788,39 @@ class ConsultationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, L
 
         context.update({
             'today_stats': self.get_today_stats(),
-            'pending_payments': ConsultationPaymentModel.objects.filter(
-                created_at__date=today, status='pending'
+            # This query must also be updated
+            'pending_payments': PatientTransactionModel.objects.filter(
+                created_at__date=today,
+                status='pending',
+                transaction_type='consultation_payment'
             ).count(),
         })
         return context
 
     def get_today_stats(self):
-        """Get today's payment statistics"""
+        """Get today's payment statistics from the transaction model."""
         try:
             today = date.today()
-            payments_today = ConsultationPaymentModel.objects.filter(created_at__date=today)
+            # Create a base queryset for today's consultation payments for efficiency
+            payments_today = PatientTransactionModel.objects.filter(
+                created_at__date=today,
+                transaction_type='consultation_payment'
+            )
 
+            # 3. Update field names and status values for calculations
             return {
                 'total_payments': payments_today.count(),
-                'total_amount': payments_today.aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0,
+                'total_amount': payments_today.filter(status='completed').aggregate(
+                    total=Sum('amount')
+                )['total'] or 0,
                 'pending_count': payments_today.filter(status='pending').count(),
-                'completed_count': payments_today.filter(status='paid').count(),
+                'completed_count': payments_today.filter(status='completed').count(),
             }
         except Exception:
             return {'total_payments': 0, 'total_amount': 0, 'pending_count': 0, 'completed_count': 0}
 
-
 class ConsultationPaymentDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
-    model = ConsultationPaymentModel
+    model = PatientTransactionModel
     permission_required = 'consultation.view_consultationpaymentmodel'
     template_name = 'consultation/payment/detail.html'
     context_object_name = "payment"
@@ -1708,8 +1733,9 @@ class ConsultationDashboardView(LoginRequiredMixin, PermissionRequiredMixin, Tem
             'completed': queue_today.filter(status='consultation_completed').count(),
             'in_progress': queue_today.filter(status='with_doctor').count(),
             'waiting': queue_today.filter(status='vitals_done').count(),
-            'revenue': ConsultationPaymentModel.objects.filter(
+            'revenue': PatientTransactionModel.objects.filter(
                 created_at__date=today,
+                transaction_type='consultation_payment',
                 fee_structure__specialization=consultant.specialization,
                 status='paid'
             ).aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0
@@ -1747,9 +1773,11 @@ class ConsultationDashboardView(LoginRequiredMixin, PermissionRequiredMixin, Tem
                 'completed': PatientQueueModel.objects.filter(
                     joined_queue_at__date=today, status='consultation_completed'
                 ).count(),
-                'revenue': ConsultationPaymentModel.objects.filter(
-                    created_at__date=today, status='paid'
-                ).aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0
+                'revenue': PatientTransactionModel.objects.filter(
+                    created_at__date=today,
+                    status='completed',
+                    transaction_type='consultation_payment'
+                ).aggregate(total=Sum('amount'))['total'] or 0
             },
             'this_week': {
                 'total_patients': PatientQueueModel.objects.filter(joined_queue_at__date__gte=week_start).count(),
@@ -1779,15 +1807,23 @@ class ConsultationDashboardView(LoginRequiredMixin, PermissionRequiredMixin, Tem
         month_start = today - timedelta(days=30)
 
         return {
-            'today': ConsultationPaymentModel.objects.filter(
-                created_at__date=today, status='paid'
-            ).aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0,
-            'this_week': ConsultationPaymentModel.objects.filter(
-                created_at__date__gte=week_start, status='paid'
-            ).aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0,
-            'this_month': ConsultationPaymentModel.objects.filter(
-                created_at__date__gte=month_start, status='paid'
-            ).aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0,
+            'today': PatientTransactionModel.objects.filter(
+                created_at__date=today,
+                transaction_type='consultation_payment',
+                status='completed'  # Use 'completed' for successful transactions
+            ).aggregate(total=Sum('amount'))['total'] or 0,
+
+            'this_week': PatientTransactionModel.objects.filter(
+                created_at__date__gte=week_start,
+                transaction_type='consultation_payment',
+                status='completed'
+            ).aggregate(total=Sum('amount'))['total'] or 0,
+
+            'this_month': PatientTransactionModel.objects.filter(
+                created_at__date__gte=month_start,
+                transaction_type='consultation_payment',
+                status='completed'
+            ).aggregate(total=Sum('amount'))['total'] or 0,
         }
 
     def get_queue_overview(self):
@@ -1805,7 +1841,8 @@ class ConsultationDashboardView(LoginRequiredMixin, PermissionRequiredMixin, Tem
     def get_pending_payments_count(self):
         """Get pending payments count"""
         today = date.today()
-        return ConsultationPaymentModel.objects.filter(
+        return PatientTransactionModel.objects.filter(
+            transaction_type='consultation_payment',
             created_at__date=today,
             status__in=['pending', 'partial']
         ).count()
@@ -2039,9 +2076,10 @@ class ConsultationReportsView(LoginRequiredMixin, PermissionRequiredMixin, Templ
     def get_revenue_summary(self, date_from, date_to, specialization=None, consultant=None):
         """Get revenue summary for the period"""
         try:
-            queryset = ConsultationPaymentModel.objects.filter(
+            queryset = PatientTransactionModel.objects.filter(
                 created_at__date__range=[date_from, date_to],
-                status='paid'
+                status='completed',
+                transaction_type='consultation_payment'
             )
 
             if specialization:
@@ -2096,8 +2134,9 @@ class ConsultationReportsView(LoginRequiredMixin, PermissionRequiredMixin, Templ
                     status='completed'
                 ).count()
 
-                revenue = ConsultationPaymentModel.objects.filter(
+                revenue = PatientTransactionModel.objects.filter(
                     fee_structure__specialization=cons.specialization,
+                    transaction_type='consultation_payment',
                     created_at__date__range=[date_from, date_to],
                     status='paid'
                 ).aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0
@@ -2135,18 +2174,24 @@ class ConsultationReportsView(LoginRequiredMixin, PermissionRequiredMixin, Templ
                 if consultant:
                     consultations = consultations.filter(queue_entry__consultant_id=consultant)
 
-                revenue = ConsultationPaymentModel.objects.filter(
+                # Start with the base query on the transaction model.
+                revenue_query = PatientTransactionModel.objects.filter(
                     created_at__date=current_date,
-                    status='paid'
+                    status='completed',
+                    transaction_type='consultation_payment'
                 )
 
+                # If a specialization is provided, filter directly using the fee_structure link.
                 if specialization:
-                    revenue = revenue.filter(fee_structure__specialization_id=specialization)
+                    revenue_query = revenue_query.filter(fee_structure__specialization_id=specialization)
+
+                # Execute the aggregation on the final queryset.
+                total_revenue = revenue_query.aggregate(total=Sum('amount'))['total'] or 0
 
                 daily_stats.append({
                     'date': current_date,
                     'consultations': consultations.count(),
-                    'revenue': revenue.aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0,
+                    'revenue': total_revenue,
                 })
 
                 current_date += timedelta(days=1)
@@ -2307,12 +2352,13 @@ def export_payment_data_view(request):
             date_to = date.today().strftime('%Y-%m-%d')
 
         # Query payments
-        payments = ConsultationPaymentModel.objects.filter(
-            created_at__date__range=[date_from, date_to]
+        payments = PatientTransactionModel.objects.filter(
+            created_at__date__range=[date_from, date_to],
+            transaction_type='consultation_payment'  # <-- Essential filter added
         ).select_related(
             'patient',
             'fee_structure__specialization',
-            'processed_by'
+            'received_by'  # <-- Field name updated
         )
 
         # Create CSV response

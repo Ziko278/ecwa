@@ -37,7 +37,7 @@
               <label class="form-check-label" for="opt_consultation">
                 Consultation <small class="text-muted">(open consultation flow)</small>
               </label>
-              <div class="small text-muted ms-4" id="consultation-info"></div>
+              <div class="small text-muted ms-4" id="consultation-info">Open consultation payment flow (check available fee in next screen).</div>
             </div>
 
             <div class="form-check mt-2">
@@ -75,7 +75,7 @@
         </div>
 
         <div id="no-payments-alert" class="alert alert-info mt-3 hidden">
-          This patient has no pending payments (last 30 days).
+          This patient has no pending payments (last 30 days) for Pharmacy, Laboratory, or Scans. You can still process consultation payments.
         </div>
       </div>
     </div>
@@ -108,15 +108,28 @@
     $('#selected-summary').text('Select a payment type to proceed');
     $('#btn-proceed').prop('disabled', true);
     $('#no-payments-alert').addClass('hidden');
+    $('input.payment-option').prop('checked', false);
+    currentPatient = null;
+    pending = null;
   }
 
   function showOptionsFromResponse(resp) {
     currentPatient = resp.patient;
     pending = resp.pending_payments || {};
+
+    // Display patient information
+    let insuranceInfo = '';
+    if (resp.insurance && resp.insurance.has_insurance) {
+      insuranceInfo = `<div class="mt-1"><small class="text-info"><i class="fas fa-shield-alt"></i> ${resp.insurance.hmo_name} - ${resp.insurance.plan_name}</small></div>`;
+    }
+
     $('#patient-summary').html(`
-      <h5>${resp.patient.full_name}</h5>
-      <div class="small text-muted">Card: ${resp.patient.card_number} | Phone: ${resp.patient.phone || 'N/A'}</div>
-      <div class="mt-2"><strong>Wallet:</strong> ${resp.wallet.formatted_balance}</div>
+      <div class="alert alert-success">
+        <h5>${resp.patient.full_name}</h5>
+        <div class="small text-muted">Card: ${resp.patient.card_number} | Phone: ${resp.patient.phone || 'N/A'}</div>
+        ${insuranceInfo}
+        <div class="mt-2"><strong>Wallet:</strong> ${resp.wallet.formatted_balance}</div>
+      </div>
     `);
 
     // drugs/labs/scans totals and counts
@@ -126,18 +139,16 @@
     const grand = pending.grand_total || 0;
 
     $('#drug-count').text(drugs.count || 0);
-    $('#drug-info').text(drugs.count ? `Total: ₦${Number(drugs.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '');
+    $('#drug-info').text(drugs.count ? `Total: ₦${Number(drugs.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'No pending medication orders');
+
     $('#lab-count').text(labs.count || 0);
-    $('#lab-info').text(labs.count ? `Total: ₦${Number(labs.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '');
+    $('#lab-info').text(labs.count ? `Total: ₦${Number(labs.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'No pending lab tests');
+
     $('#scan-count').text(scans.count || 0);
-    $('#scan-info').text(scans.count ? `Total: ₦${Number(scans.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '');
+    $('#scan-info').text(scans.count ? `Total: ₦${Number(scans.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'No pending scans');
 
-    // consultation: we don't receive consultation pending via verify endpoint in current API;
-    // show a hint (if you have consultation data, include it server-side)
-    $('#consultation-info').text('Open consultation payment flow (check available fee in next screen).');
-
-    // If there is nothing at all
-    if (!(drugs.count || labs.count || scans.count || grand > 0)) {
+    // If there are no pending payments for pharmacy, lab, or scan
+    if (!(drugs.count || labs.count || scans.count)) {
       $('#no-payments-alert').removeClass('hidden');
     } else {
       $('#no-payments-alert').addClass('hidden');
@@ -145,10 +156,13 @@
 
     // show options section
     $('#options-section').removeClass('hidden');
-    // enable proceed only after a radio is chosen (and if chosen type has items or is consultation)
-    $('input.payment-option').on('change', function(){
-      const val = $(this).val();
-      handleOptionSelected(val);
+
+    // Set up event handlers for radio buttons
+    $('input.payment-option').off('change').on('change', function(){
+      if ($(this).is(':checked')) {
+        const val = $(this).val();
+        handleOptionSelected(val);
+      }
     });
   }
 
@@ -160,8 +174,7 @@
     const counts = {
       drug: (pending && pending.drugs && pending.drugs.count) || 0,
       lab: (pending && pending.labs && pending.labs.count) || 0,
-      scan: (pending && pending.scans && pending.scans.count) || 0,
-      consultation: 0
+      scan: (pending && pending.scans && pending.scans.count) || 0
     };
 
     if (type === 'consultation') {
@@ -177,7 +190,7 @@
       $('#selected-summary').text(`${counts[type]} item(s) selected — Total: ₦${Number(totals[type]).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`);
       $('#btn-proceed').prop('disabled', false);
     } else {
-      $('#selected-summary').text('No payable items for the selected type. Please choose another option or fund wallet via the funding page.');
+      $('#selected-summary').text('No payable items for the selected type. Please choose another option.');
       $('#btn-proceed').prop('disabled', true);
     }
   }
@@ -186,7 +199,10 @@
   $('#patient-verify-form').on('submit', function(e){
     e.preventDefault();
     const card = $('#card_number').val().trim();
-    if (!card) { alert('Please enter patient card number'); return; }
+    if (!card) {
+      alert('Please enter patient card number');
+      return;
+    }
 
     // show loading UI
     $('#btn-verify').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Verifying...');
@@ -199,35 +215,91 @@
           showOptionsFromResponse(data);
         } else {
           alert(data.error || 'Patient not found / no response');
+          $('#card_number').focus();
         }
       })
       .fail(function(xhr) {
         $('#btn-verify').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
         let err = 'Error verifying patient';
-        try { err = (xhr.responseJSON && xhr.responseJSON.error) || err; } catch(e){}
+        try {
+          err = (xhr.responseJSON && xhr.responseJSON.error) || err;
+        } catch(e){}
         alert(err);
+        $('#card_number').focus();
       });
   });
 
   // Back button
-  $('#btn-back').on('click', function(){ resetOptions(); $('#card_number').val(''); $('#options-section').addClass('hidden'); $('#verify-section').removeClass('hidden'); });
+  $('#btn-back').on('click', function(){
+    resetOptions();
+    $('#card_number').val('').focus();
+  });
 
   // Proceed button: replace the 0 patient id in url with real id
   $('#btn-proceed').on('click', function(){
     const selected = $('input.payment-option:checked').val();
-    if (!selected) { alert('Choose a payment type'); return; }
-    if (!currentPatient || !currentPatient.id) { alert('No patient selected'); return; }
+    if (!selected) {
+      alert('Choose a payment type');
+      return;
+    }
+    if (!currentPatient || !currentPatient.id) {
+      alert('No patient selected');
+      return;
+    }
 
     const templateUrl = targetUrls[selected];
-    if (!templateUrl) { alert('Invalid payment type'); return; }
+    if (!templateUrl) {
+      alert('Invalid payment type');
+      return;
+    }
 
     // replace '/0/' or '/0' occurrences with actual id
     const pid = String(currentPatient.id);
     const dest = templateUrl.replace(/\/0(\/|$)/, '/' + pid + '$1');
+
     // navigate
     window.location.href = dest;
   });
 
+  // Focus on card number input when page loads
+  $(document).ready(function(){
+    $('#card_number').focus();
+  });
+
 })(jQuery);
 </script>
+
+<style>
+.hidden {
+  display: none !important;
+}
+
+.badge {
+  font-size: 0.75em;
+}
+
+.form-check {
+  padding: 0.75rem;
+  border: 1px solid #e3e6f0;
+  border-radius: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.form-check:hover {
+  background-color: #f8f9fc;
+}
+
+.form-check-input:checked + .form-check-label {
+  font-weight: 500;
+  color: #5a5c69;
+}
+
+#selected-summary {
+  font-size: 0.9rem;
+}
+
+.alert-success {
+  border-left: 4px solid #1cc88a;
+}
+</style>
 {% endblock %}
