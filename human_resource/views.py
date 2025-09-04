@@ -2,6 +2,7 @@ import logging
 import random
 import string
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -11,6 +12,7 @@ from django.db import IntegrityError, transaction
 from django.db.models.functions import Lower
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.timezone import now
 from django.views.generic import (
@@ -37,25 +39,40 @@ def get_hr_setting_instance():
     return HRSettingModel.objects.first()
 
 
-def _send_credentials_email(email, username, password):
+def _send_credentials_email(staff, username, password):
     """
-    Send credentials email. This wrapper logs exceptions and returns bool status.
-    Adjust subject/body/from as necessary for your environment.
+    Renders an HTML template and sends credentials email.
+    Returns True on success, False on failure.
     """
     try:
-        subject = "Staff Portal Credentials"
-        body = (
-            f"Hello,\n\n"
-            f"Your staff portal account has been created/updated.\n\n"
-            f"Username: {username}\n"
-            f"Password: {password}\n\n"
-            f"Please login and change your password as soon as possible.\n\n"
-            f"Regards,\nAdmin Team"
+        # Prepare the context for rendering the email template
+        context = {
+            'staff_name': staff.__str__(),
+            'username': username,
+            'password': password,
+            'login_url': 'https://ecwa.name.ng/portal/sign-in',  # Your actual login URL
+        }
+
+        # Render the HTML version of the email from the template
+        html_content = render_to_string('human_resource/email/staff_credential_email.html', context)
+
+        # Create a simple plain text message as a fallback for email clients that don't support HTML
+        text_content = (f"Hello {staff.full_name},\n\nYour staff portal account has been created/updated.\n"
+                        f"Username: {username}\nPassword: {password}\n\n"
+                        f"Please login at {context['login_url']} and change your password immediately.")
+
+        # Send the email using send_mail with the html_message parameter
+        send_mail(
+            subject="Staff Portal Credentials Update",
+            message=text_content,  # Plain text fallback
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[staff.email],
+            fail_silently=False,
+            html_message=html_content  # The HTML version
         )
-        send_mail(subject, body, "no-reply@example.com", [email], fail_silently=False)
         return True
     except Exception:
-        logger.exception("Failed to send credentials email to %s", email)
+        logger.exception("Failed to send credentials email to %s", staff.email)
         return False
 
 
@@ -342,7 +359,7 @@ class PositionDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView
 # Staff Views
 # -------------------------
 class StaffCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    LoginRequiredMixin, PermissionRequiredMixin,
     StaffContextMixin, CreateView
 ):
     model = StaffModel

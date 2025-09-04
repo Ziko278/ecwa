@@ -25,7 +25,15 @@ SECRET_KEY = 'django-insecure-b!(ssa4p(0^il-wp4t-xx$+1#nzmd*%lny$w%gs)_*p#z=qvf3
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
+
+# In your settings.py file
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://ecwa.name.ng',
+    'https://www.ecwa.name.ng',
+]
+
 
 
 # Application definition
@@ -140,3 +148,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_URL = 'login'
 LOGOUT_URL = 'logout'
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'odekeziko@gmail.com'
+EMAIL_HOST_PASSWORD = 'nmrhuldmciclbtjm'
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
