@@ -703,7 +703,7 @@ def generate_staff_login(request, staff_id):
 
             StaffProfileModel.objects.create(user=user, staff=staff)
 
-        sent = _send_credentials_email(staff.email, username, password)
+        sent = _send_credentials_email(staff, username, password)
         if sent:
             messages.success(request, f"Login created and credentials emailed to {staff.email}.")
         else:
@@ -731,7 +731,7 @@ def update_staff_login(request, staff_id):
         user.set_password(new_password)
         user.save(update_fields=['password'])
 
-        sent = _send_credentials_email(staff.email, user.username, new_password)
+        sent = _send_credentials_email(staff, user.username, new_password)
         if sent:
             messages.success(request, f"New credentials sent to {staff.email}.")
         else:
