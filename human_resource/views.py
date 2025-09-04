@@ -57,7 +57,7 @@ def _send_credentials_email(staff, username, password):
         html_content = render_to_string('human_resource/email/staff_credential_email.html', context)
 
         # Create a simple plain text message as a fallback for email clients that don't support HTML
-        text_content = (f"Hello {staff.full_name},\n\nYour staff portal account has been created/updated.\n"
+        text_content = (f"Hello {staff.__str__()},\n\nYour staff portal account has been created/updated.\n"
                         f"Username: {username}\nPassword: {password}\n\n"
                         f"Please login at {context['login_url']} and change your password immediately.")
 

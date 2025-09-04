@@ -27,10 +27,8 @@ def create_staff_account(sender, instance, created, **kwargs):
 
             user_profile = StaffProfileModel.objects.create(user=user, staff=staff)
             user_profile.save()
-            print(1)
             # send the staff their login credential via email
             if email and staff.position.staff_login:
-                print(2)
                 # Prepare the context for rendering the email template
                 context = {
                     'staff_name': staff.__str__(),
