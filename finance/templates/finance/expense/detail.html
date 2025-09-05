@@ -3,6 +3,38 @@
 {% load humanize %}
 
 {% block 'main' %}
+<style>
+    .details-card .label {
+        font-weight: 600;
+        color: #555;
+    }
+    .summary-card ul li {
+        padding: 0.75rem 0;
+    }
+    .amount-display {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.5rem;
+        background-color: #f8f9fa;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .amount-display .icon-circle {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(220, 53, 69, 0.1);
+    }
+    .amount-display .icon-circle i {
+        font-size: 1.5rem;
+        color: #dc3545;
+    }
+</style>
+
 <div class="col-lg-12">
     <!-- Action Buttons Card -->
     <div class="card">
@@ -21,57 +53,72 @@
         </div>
     </div>
 
-    <!-- Main Content Card -->
-    <div class="card">
-        <div class="card-body pt-3">
-            <h5 class="card-title">Expense Details</h5>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Expense Number</div>
-                <div class="col-lg-9 col-md-8">{{ expense.expense_number }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Title</div>
-                <div class="col-lg-9 col-md-8">{{ expense.title }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Amount</div>
-                <div class="col-lg-9 col-md-8 h5 text-danger">₦{{ expense.amount|intcomma }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Category</div>
-                <div class="col-lg-9 col-md-8">{{ expense.category.name|title }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Department</div>
-                <div class="col-lg-9 col-md-8">{{ expense.department.name|title }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Date of Expense</div>
-                <div class="col-lg-9 col-md-8">{{ expense.date|date:"F d, Y" }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Paid By</div>
-                <div class="col-lg-9 col-md-8">{{ expense.paid_by.get_full_name|title|default:"N/A" }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Related Quotation</div>
-                <div class="col-lg-9 col-md-8">
-                    {% if expense.quotation %}
-                        <a href="{% url 'quotation_detail' expense.quotation.pk %}">{{ expense.quotation.quotation_number }} - {{ expense.quotation.title }}</a>
-                    {% else %}
-                        Not linked to a quotation.
-                    {% endif %}
+    <!-- Main Content Row -->
+    <div class="row">
+        <!-- Left Column: Primary Details -->
+        <div class="col-lg-8">
+            <div class="card details-card">
+                <div class="card-body">
+                    <h5 class="card-title">{{ expense.title }}</h5>
+
+                    <div class="amount-display">
+                        <div class="icon-circle">
+                            <i class="bi bi-arrow-up-short"></i>
+                        </div>
+                        <div>
+                            <h2 class="mb-0 text-danger">₦{{ expense.amount|intcomma }}</h2>
+                            <small class="text-muted">Amount Spent</small>
+                        </div>
+                    </div>
+
+                    <dl class="row">
+                        <dt class="col-sm-3 label">Expense Number:</dt>
+                        <dd class="col-sm-9">{{ expense.expense_number }}</dd>
+
+                        <dt class="col-sm-3 label">Category:</dt>
+                        <dd class="col-sm-9">{{ expense.category.name|title }}</dd>
+
+                        <dt class="col-sm-3 label">Department:</dt>
+                        <dd class="col-sm-9">{{ expense.department.name|title|default:"N/A" }}</dd>
+
+                        <dt class="col-sm-3 label">Description:</dt>
+                        <dd class="col-sm-9"><p class="mb-0">{{ expense.description|default:"No description provided." }}</p></dd>
+                    </dl>
                 </div>
             </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Description</div>
-                <div class="col-lg-9 col-md-8">{{ expense.description|default:"No description provided." }}</div>
-            </div>
-             <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Recorded At</div>
-                <div class="col-lg-9 col-md-8">{{ expense.created_at|date:"F d, Y, P" }}</div>
+        </div>
+
+        <!-- Right Column: Meta Details -->
+        <div class="col-lg-4">
+            <div class="card summary-card">
+                <div class="card-body">
+                    <h5 class="card-title">Record Details</h5>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Date of Expense:</strong>
+                            <span>{{ expense.date|date:"F d, Y" }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Payment Method:</strong>
+                            <span>{{ expense.payment_method|title|default:"N/A" }}</span>
+                        </li>
+                         <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Invoice Reference:</strong>
+                            <span>{{ expense.invoice_reference|default:"N/A" }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Paid By:</strong>
+                            <span>{{ expense.paid_by.get_full_name|title|default:"N/A" }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Recorded At:</strong>
+                            <span class="text-muted">{{ expense.created_at|date:"d M Y, P" }}</span>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
+

@@ -6,7 +6,9 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.models import User
 from django.contrib.messages.views import SuccessMessageMixin
 from django.db import transaction
-from django.forms import forms
+from django import forms
+from django.db.models.functions import TruncMonth
+from django.forms import modelformset_factory
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
@@ -14,18 +16,19 @@ from django.utils.timezone import now
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, ListView, DetailView, UpdateView, DeleteView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Avg, F, Count
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
-
+import openpyxl
+from openpyxl.styles import Font
 from admin_site.models import SiteInfoModel
 from consultation.models import ConsultationFeeModel, SpecializationModel, PatientQueueModel
 from finance.forms import FinanceSettingForm, ExpenseCategoryForm, QuotationReviewForm, QuotationItemForm, \
-    SalaryStructureForm, StaffBankDetailForm, SalaryRecordForm, IncomeForm, IncomeCategoryForm, QuotationForm, \
-    ExpenseForm
+    SalaryStructureForm, StaffBankDetailForm, IncomeForm, IncomeCategoryForm, QuotationForm, \
+    ExpenseForm, PaysheetRowForm, MoneyRemittanceForm
 from finance.models import PatientTransactionModel, FinanceSettingModel, ExpenseCategory, Quotation, SalaryStructure, \
-    StaffBankDetail, SalaryRecord, Income, IncomeCategory, QuotationItem, Expense
+    StaffBankDetail, SalaryRecord, Income, IncomeCategory, QuotationItem, Expense, MoneyRemittance
 from human_resource.models import DepartmentModel, StaffModel
 from human_resource.views import FlashFormErrorsMixin
 from insurance.models import PatientInsuranceModel
@@ -1731,7 +1734,7 @@ class QuotationCreateSelfView(LoginRequiredMixin, PermissionRequiredMixin, Creat
         if 'requested_by' in form.fields:
             form.fields['requested_by'].widget = forms.HiddenInput()
             try:
-                staff = self.request.user.staffmodel
+                staff = self.request.user.user_staff_profile.staff
                 form.fields['requested_by'].initial = staff
             except:
                 messages.error(self.request, 'Staff profile not found for current user')
@@ -1739,7 +1742,7 @@ class QuotationCreateSelfView(LoginRequiredMixin, PermissionRequiredMixin, Creat
 
     def form_valid(self, form):
         try:
-            form.instance.requested_by = self.request.user.staffmodel
+            form.instance.requested_by = self.request.user.user_staff_profile.staff
             form.instance.created_by = self.request.user  # Track who created it
         except:
             messages.error(self.request, 'Staff profile not found for current user')
@@ -1769,7 +1772,7 @@ class QuotationCreateOthersView(LoginRequiredMixin, PermissionRequiredMixin, Cre
         # Filter requested_by to staff in current user's department
         if 'requested_by' in form.fields:
             try:
-                user_dept = self.request.user.staffmodel.department
+                user_dept = self.request.user.user_staff_profile.staff.department
                 form.fields['requested_by'].queryset = StaffModel.objects.filter(
                     department=user_dept, is_active=True
                 )
@@ -1801,7 +1804,7 @@ class QuotationUpdateSelfView(LoginRequiredMixin, PermissionRequiredMixin, Updat
     def get_queryset(self):
         # Only allow editing own quotations
         try:
-            return Quotation.objects.filter(requested_by=self.request.user.staffmodel)
+            return Quotation.objects.filter(requested_by=self.request.user.user_staff_profile.staff)
         except:
             return Quotation.objects.none()
 
@@ -2045,7 +2048,7 @@ class ExpenseListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
     def get_queryset(self):
         queryset = Expense.objects.select_related(
-            'category', 'department', 'paid_by', 'quotation'
+            'category', 'department', 'paid_by'
         ).order_by('-date')
 
         # Filter functionality
@@ -2349,168 +2352,148 @@ class SalaryStructureDetailView(LoginRequiredMixin, PermissionRequiredMixin, Det
 # -------------------------
 # Salary Record Views
 # -------------------------
-class SalaryRecordListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
-    model = SalaryRecord
-    permission_required = 'finance.view_salaryrecord'
-    template_name = 'finance/salary_record/index.html'
-    context_object_name = "salary_record_list"
-    paginate_by = 20
-
-    def get_queryset(self):
-        queryset = SalaryRecord.objects.select_related('staff').order_by('-year', '-month')
-
-        # Filter by year/month
-        year = self.request.GET.get('year')
-        month = self.request.GET.get('month')
-        if year:
-            queryset = queryset.filter(year=year)
-        if month:
-            queryset = queryset.filter(month=month)
-
-        return queryset
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['years'] = range(2020, 2031)
-        context['months'] = [(i, f'{i:02d}') for i in range(1, 13)]
-        context['current_year'] = datetime.now().year
-        context['current_month'] = datetime.now().month
-        return context
-
-
-class SalaryRecordCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
-    model = SalaryRecord
-    permission_required = 'finance.add_salaryrecord'
-    form_class = SalaryRecordForm
-    template_name = 'finance/salary_record/create.html'
-    success_message = 'Salary Record Successfully Created'
-
-    def form_valid(self, form):
-        # Auto-populate from salary structure
-        staff = form.cleaned_data['staff']
-        try:
-            salary_structure = SalaryStructure.objects.get(staff=staff, is_active=True)
-            form.instance.basic_salary = salary_structure.basic_salary
-            form.instance.housing_allowance = salary_structure.housing_allowance
-            form.instance.transport_allowance = salary_structure.transport_allowance
-            form.instance.medical_allowance = salary_structure.medical_allowance
-            form.instance.other_allowances = salary_structure.other_allowances
-
-            # Calculate tax and pension if not provided
-            if not form.instance.tax_amount:
-                form.instance.tax_amount = salary_structure.tax_amount
-            if not form.instance.pension_amount:
-                form.instance.pension_amount = salary_structure.pension_amount
-
-        except SalaryStructure.DoesNotExist:
-            messages.error(self.request, 'No active salary structure found for this staff member')
-            return self.form_invalid(form)
-
-        return super().form_valid(form)
-
-    def get_success_url(self):
-        return reverse('salary_record_detail', kwargs={'pk': self.object.pk})
-
-
-class SalaryRecordUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
-    model = SalaryRecord
-    permission_required = 'finance.change_salaryrecord'
-    form_class = SalaryRecordForm
-    template_name = 'finance/salary_record/edit.html'
-    success_message = 'Salary Record Successfully Updated'
-
-    def get_success_url(self):
-        return reverse('salary_record_detail', kwargs={'pk': self.object.pk})
-
-
-class SalaryRecordDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
-    model = SalaryRecord
-    permission_required = 'finance.view_salaryrecord'
-    template_name = 'finance/salary_record/detail.html'
-    context_object_name = "salary_record"
-
-
-@login_required
-@permission_required('finance.change_salaryrecord')
-def salary_record_pay(request, pk):
-    """Mark a salary record as paid"""
-    salary_record = get_object_or_404(SalaryRecord, pk=pk)
-
-    if salary_record.is_paid:
-        messages.warning(request, 'This salary record is already marked as paid')
-        return redirect('salary_record_detail', pk=pk)
-
-    if request.method == 'POST':
-        salary_record.is_paid = True
-        salary_record.paid_date = date.today()
-        salary_record.paid_by = request.user
-        salary_record.save()
-
-        messages.success(request, f'Salary payment recorded for {salary_record.staff.get_full_name()}')
-        return redirect('salary_record_detail', pk=pk)
-
-    return render(request, 'finance/salary_record/pay.html', {'salary_record': salary_record})
-
-
 @login_required
 @permission_required('finance.add_salaryrecord')
-def bulk_salary_generation(request):
-    """Generate salary records for all staff for a specific month/year"""
+def process_payroll_view(request):
+    """
+    An interactive view to manage the payroll for a specific month and year.
+    Lists all staff with active salary structures and allows for inline editing.
+    """
+    # 1. Determine the period to process from GET parameters or use current month/year
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+
+    try:
+        year = int(request.GET.get('year', current_year))
+        month = int(request.GET.get('month', current_month))
+    except (ValueError, TypeError):
+        year = current_year
+        month = current_month
+
+    # 2. Get all staff who should be on the paysheet (i.e., have an active structure)
+    staff_with_structures = StaffModel.objects.filter(salary_structure__is_active=True).select_related(
+        'salary_structure')
+
+    # 3. For each staff member, ensure a SalaryRecord exists for the period.
+    # This automatically creates missing records, replacing the need for bulk generation.
+    for staff in staff_with_structures:
+        structure = staff.salary_structure
+        record, created = SalaryRecord.objects.get_or_create(
+            staff=staff,
+            year=year,
+            month=month,
+            # 'defaults' are only used if a new record is being created
+            defaults={
+                'basic_salary': structure.basic_salary,
+                'housing_allowance': structure.housing_allowance,
+                'transport_allowance': structure.transport_allowance,
+                'medical_allowance': structure.medical_allowance,
+                'other_allowances': structure.other_allowances,
+                'tax_amount': structure.tax_amount,
+                'pension_amount': structure.pension_amount,
+            }
+        )
+
+    # 4. Create a Formset. This is a collection of forms for our editable table.
+    queryset = SalaryRecord.objects.filter(year=year, month=month, staff__in=staff_with_structures).select_related(
+        'staff')
+    PaysheetFormSet = modelformset_factory(SalaryRecord, form=PaysheetRowForm, extra=0)
+
     if request.method == 'POST':
-        month = int(request.POST.get('month'))
-        year = int(request.POST.get('year'))
+        formset = PaysheetFormSet(request.POST, queryset=queryset)
+        if formset.is_valid():
+            # Save all the inline changes (bonus, deductions, notes, etc.)
+            formset.save()
 
-        # Get all staff with active salary structures
-        active_structures = SalaryStructure.objects.filter(is_active=True).select_related('staff')
+            # Handle the bulk "Mark as Paid" action
+            paid_ids = request.POST.getlist('mark_as_paid')
+            if paid_ids:
+                paid_records = SalaryRecord.objects.filter(id__in=paid_ids)
+                for record in paid_records:
+                    if not record.is_paid:  # Only update if not already paid
+                        record.is_paid = True
+                        # If amount_paid is still 0, assume full payment on bulk mark
+                        if record.amount_paid == 0:
+                            record.amount_paid = record.net_salary
+                        record.paid_date = date.today()
+                        record.paid_by = request.user
+                        record.save()
 
-        created_count = 0
-        errors = []
+            messages.success(request, 'Paysheet saved successfully!')
+            # Redirect back to the same page with the same filters
+            return redirect(reverse('process_payroll') + f'?year={year}&month={month}')
+        else:
+            messages.error(request, 'Please correct the errors below. Invalid data was submitted.')
 
-        with transaction.atomic():
-            for structure in active_structures:
-                # Check if salary record already exists
-                existing = SalaryRecord.objects.filter(
-                    staff=structure.staff, month=month, year=year
-                ).exists()
-
-                if existing:
-                    errors.append(f'Record already exists for {structure.staff.get_full_name()}')
-                    continue
-
-                # Create salary record
-                SalaryRecord.objects.create(
-                    staff=structure.staff,
-                    month=month,
-                    year=year,
-                    basic_salary=structure.basic_salary,
-                    housing_allowance=structure.housing_allowance,
-                    transport_allowance=structure.transport_allowance,
-                    medical_allowance=structure.medical_allowance,
-                    other_allowances=structure.other_allowances,
-                    tax_amount=structure.tax_amount,
-                    pension_amount=structure.pension_amount,
-                    gross_salary=structure.gross_salary,
-                    net_salary=structure.net_salary,
-                )
-                created_count += 1
-
-        if created_count > 0:
-            messages.success(request, f'Successfully generated {created_count} salary records')
-
-        for error in errors:
-            messages.warning(request, error)
-
-        return redirect('salary_record_index')
+    else:
+        # For a GET request, just display the formset with the current data
+        formset = PaysheetFormSet(queryset=queryset)
 
     context = {
-        'years': range(2020, 2031),
-        'months': [(i, f'{i:02d}') for i in range(1, 13)],
-        'current_year': datetime.now().year,
-        'current_month': datetime.now().month,
-        'staff_count': SalaryStructure.objects.filter(is_active=True).count()
+        'formset': formset,
+        'year': year,
+        'month': month,
+        'years': range(2020, datetime.now().year + 2),
+        'months': [(i, datetime(2000, i, 1).strftime('%B')) for i in range(1, 13)],
     }
+    return render(request, 'finance/salary_record/process_payroll.html', context)
 
-    return render(request, 'finance/salary_record/bulk_generate.html', context)
+
+@login_required
+@permission_required('finance.view_salaryrecord')
+def export_payroll_to_excel(request, year, month):
+    """
+    Generates an Excel file with a detailed breakdown of the payroll for a given month and year.
+    """
+    # 1. Fetch the relevant salary records
+    queryset = SalaryRecord.objects.filter(year=year, month=month).select_related('staff')
+
+    # 2. Create an in-memory Excel workbook
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    month_name = datetime(2000, month, 1).strftime('%B')
+    worksheet.title = f'Payroll_{year}_{month_name}'
+
+    # 3. Define the detailed header row
+    headers = [
+        'Staff ID', 'Full Name', 'Basic Salary', 'Housing', 'Transport', 'Medical',
+        'Other Allowances', 'Bonus', 'Gross Salary', 'Tax (PAYE)', 'Pension',
+        'Other Deductions', 'Total Deductions', 'Net Salary', 'Amount Paid', 'Status', 'Notes'
+    ]
+    for col_num, header_title in enumerate(headers, 1):
+        cell = worksheet.cell(row=1, column=col_num, value=header_title)
+        cell.font = Font(bold=True)
+
+    # 4. Write data rows for each salary record
+    for row_num, record in enumerate(queryset, 2):
+        worksheet.cell(row=row_num, column=1, value=record.staff.staff_id)
+        worksheet.cell(row=row_num, column=2, value=record.staff.__str__())
+        worksheet.cell(row=row_num, column=3, value=record.basic_salary)
+        worksheet.cell(row=row_num, column=4, value=record.housing_allowance)
+        worksheet.cell(row=row_num, column=5, value=record.transport_allowance)
+        worksheet.cell(row=row_num, column=6, value=record.medical_allowance)
+        worksheet.cell(row=row_num, column=7, value=record.other_allowances)
+        worksheet.cell(row=row_num, column=8, value=record.bonus)
+        worksheet.cell(row=row_num, column=9, value=record.gross_salary)
+        worksheet.cell(row=row_num, column=10, value=record.tax_amount)
+        worksheet.cell(row=row_num, column=11, value=record.pension_amount)
+        worksheet.cell(row=row_num, column=12, value=record.other_deductions)
+        worksheet.cell(row=row_num, column=13, value=record.total_deductions)
+        worksheet.cell(row=row_num, column=14, value=record.net_salary)
+        worksheet.cell(row=row_num, column=15, value=record.amount_paid)
+        worksheet.cell(row=row_num, column=16, value=record.payment_status)
+        worksheet.cell(row=row_num, column=17, value=record.notes)
+
+    # 5. Create the HttpResponse object with the correct headers
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="payroll_{year}_{month_name}.xlsx"'
+
+    # Save the workbook to the response
+    workbook.save(response)
+
+    return response
 
 
 # -------------------------
@@ -2542,3 +2525,567 @@ def get_staff_salary_structure_ajax(request, staff_id):
             'success': False,
             'error': 'No active salary structure found for this staff member'
         })
+
+
+@login_required
+@permission_required('finance.view_salaryrecord')
+def payroll_dashboard_view(request):
+    """
+    Provides data for a dashboard with payroll statistics and visualizations.
+    Calculates net salary at the database level to fix the FieldError.
+    """
+    # Define the net salary calculation using F() objects for database-level arithmetic
+    net_salary_expression = (
+            F('basic_salary') + F('housing_allowance') + F('transport_allowance') +
+            F('medical_allowance') + F('other_allowances') + F('bonus') -
+            (F('tax_amount') + F('pension_amount') + F('other_deductions'))
+    )
+
+    # Get the current period
+    today = datetime.now()
+    current_year = today.year
+    current_month = today.month
+
+    # Get last month's period for comparison
+    last_month_date = today.replace(day=1) - timedelta(days=1)
+    last_month = last_month_date.month
+    last_year = last_month_date.year
+
+    # --- 1. KPI Cards Data ---
+    current_month_payroll = SalaryRecord.objects.filter(year=current_year, month=current_month)
+    last_month_payroll = SalaryRecord.objects.filter(year=last_year, month=last_month)
+
+    total_payroll_current = current_month_payroll.aggregate(total=Sum(net_salary_expression))['total'] or 0
+    total_payroll_last = last_month_payroll.aggregate(total=Sum(net_salary_expression))['total'] or 0
+
+    staff_paid_count = current_month_payroll.count()
+    average_net_salary = current_month_payroll.aggregate(avg=Avg(net_salary_expression))['avg'] or 0
+
+    # Calculate percentage change
+    if total_payroll_last > 0:
+        percent_change = ((total_payroll_current - total_payroll_last) / total_payroll_last) * 100
+    else:
+        percent_change = 100 if total_payroll_current > 0 else 0
+
+    # --- 2. Charts Data ---
+
+    # Chart 1: Payroll Cost by Department (Bar Chart)
+    dept_payroll = SalaryRecord.objects.filter(year=current_year, month=current_month) \
+        .values('staff__department__name') \
+        .annotate(total_cost=Sum(net_salary_expression)) \
+        .order_by('-total_cost')
+
+    dept_payroll_data = [
+        {'name': item['staff__department__name'] or 'Unassigned', 'value': float(item['total_cost'])}
+        for item in dept_payroll if item['total_cost']
+    ]
+
+    # Chart 2: Salary Trend (Line Chart - Last 12 Months)
+    twelve_months_ago = today - timedelta(days=365)
+    salary_trend = SalaryRecord.objects.filter(paid_date__gte=twelve_months_ago) \
+        .annotate(month_year=TruncMonth('paid_date')) \
+        .values('month_year') \
+        .annotate(total_net=Sum(net_salary_expression)) \
+        .order_by('month_year')
+
+    salary_trend_data = [
+        {'month': item['month_year'].strftime('%b %Y'), 'total': float(item['total_net'])}
+        for item in salary_trend if item['month_year'] and item['total_net']
+    ]
+
+    # Chart 3: Average Salary by Position (Bar Chart)
+    position_payroll = SalaryRecord.objects.filter(year=current_year, month=current_month) \
+        .values('staff__position__name') \
+        .annotate(avg_salary=Avg(net_salary_expression)) \
+        .order_by('-avg_salary')
+
+    position_payroll_data = [
+        {'name': item['staff__position__name'] or 'Unassigned', 'value': float(item['avg_salary'])}
+        for item in position_payroll if item['avg_salary']
+    ]
+
+    context = {
+        # KPI Cards
+        'total_payroll_current': total_payroll_current,
+        'staff_paid_count': staff_paid_count,
+        'average_net_salary': average_net_salary,
+        'percent_change': percent_change,
+
+        # Chart Data (passed as JSON)
+        'dept_payroll_data': json.dumps(dept_payroll_data),
+        'salary_trend_data': json.dumps(salary_trend_data),
+        'position_payroll_data': json.dumps(position_payroll_data),
+    }
+
+    return render(request, 'finance/salary_record/dashboard.html', context)
+
+
+# =================================================================================
+# NEW & UPDATED MONEY REMITTANCE VIEWS
+# =================================================================================
+
+@login_required
+@permission_required('finance.view_moneyremittance')
+def remittance_dashboard_view(request):
+    """
+    Shows a dashboard of staff members and the total unremitted funds they are holding,
+    as well as overall statistics.
+    """
+    # Find all staff who have ever received wallet funding payments
+    staff_with_transactions = User.objects.filter(
+        patienttransactionmodel__transaction_type='wallet_funding'
+    ).distinct()
+
+    # Calculate individual balances
+    staff_balances = []
+    total_outstanding = Decimal('0.00')
+    for staff in staff_with_transactions:
+        unremitted_txns = PatientTransactionModel.objects.filter(
+            received_by=staff,
+            transaction_type='wallet_funding',
+            remittance__isnull=True
+        )
+        cash_total = unremitted_txns.filter(payment_method__iexact='cash').aggregate(total=Sum('amount'))['total'] or 0
+
+        if cash_total > 0:
+            total_outstanding += cash_total
+            staff_balances.append({
+                'staff': staff,
+                'cash_outstanding': cash_total,
+            })
+
+    # Calculate overall remitted totals
+    total_remitted = MoneyRemittance.objects.filter(status='APPROVED').aggregate(total=Sum('amount_remitted_cash'))[
+                         'total'] or 0
+
+    context = {
+        'staff_balances': sorted(staff_balances, key=lambda x: x['cash_outstanding'], reverse=True),
+        'total_outstanding': total_outstanding,
+        'total_remitted': total_remitted,
+    }
+    return render(request, 'finance/remittance/dashboard.html', context)
+
+
+@login_required
+@permission_required('finance.add_moneyremittance')
+def create_remittance_view(request):
+    """
+    Allows an admin/accountant to record a remittance from a staff member.
+    The staff dropdown only shows users with unremitted funds.
+    """
+    # Find users who have unremitted cash transactions to populate the dropdown
+    owing_staff_ids = PatientTransactionModel.objects.filter(
+        transaction_type='wallet_funding',
+        remittance__isnull=True,
+        payment_method__iexact='cash'
+    ).values_list('received_by_id', flat=True).distinct()
+
+    owing_staff = User.objects.filter(id__in=owing_staff_ids)
+
+    if request.method == 'POST':
+        form = MoneyRemittanceForm(request.POST)
+        # --- THIS IS THE FIX ---
+        # We must set the queryset for the field before validation runs.
+        # This ensures the submitted choice is considered valid.
+        form.fields['remitted_by'].queryset = owing_staff
+
+        if form.is_valid():
+            remitted_by_user = form.cleaned_data['remitted_by']
+
+            transactions_to_remit = PatientTransactionModel.objects.filter(
+                received_by=remitted_by_user,
+                transaction_type='wallet_funding',
+                remittance__isnull=True
+            )
+
+            with transaction.atomic():
+                if not transactions_to_remit.exists():
+                    messages.error(request, "This staff member has no pending funds to remit.")
+                    return redirect('remittance_create')
+
+                cash_expected = \
+                transactions_to_remit.filter(payment_method__iexact='cash').aggregate(total=Sum('amount'))['total'] or 0
+                transfer_expected = \
+                transactions_to_remit.filter(payment_method__iexact='transfer').aggregate(total=Sum('amount'))[
+                    'total'] or 0
+
+                remittance = form.save(commit=False)
+                remittance.total_cash_expected = cash_expected
+                remittance.total_transfer_expected = transfer_expected
+                remittance.save()
+
+                transactions_to_remit.update(remittance=remittance)
+
+                messages.success(request,
+                                 f"Remittance batch {remittance.remittance_id} created for {remitted_by_user.get_full_name()} and is awaiting approval.")
+                return redirect('remittance_list')
+    else:
+        form = MoneyRemittanceForm()
+        # Limit the 'remitted_by' dropdown to only staff who owe money
+        form.fields['remitted_by'].queryset = owing_staff
+
+    context = {
+        'form': form,
+    }
+    return render(request, 'finance/remittance/create.html', context)
+
+@login_required
+def get_staff_remittance_details_ajax(request):
+    """
+    AJAX endpoint to get the unremitted totals for a selected staff member.
+    """
+    staff_id = request.GET.get('staff_id')
+    if not staff_id:
+        return JsonResponse({'success': False, 'error': 'Staff ID is required.'})
+
+    try:
+        staff = User.objects.get(pk=staff_id)
+        unremitted_txns = PatientTransactionModel.objects.filter(
+            received_by=staff,
+            transaction_type='wallet_funding',
+            remittance__isnull=True
+        )
+        cash_expected = unremitted_txns.filter(payment_method__iexact='cash').aggregate(total=Sum('amount'))[
+                            'total'] or 0
+        transfer_expected = unremitted_txns.filter(payment_method__iexact='transfer').aggregate(total=Sum('amount'))[
+                                'total'] or 0
+
+        return JsonResponse({
+            'success': True,
+            'cash_expected': f'{cash_expected:,.2f}',
+            'transfer_expected': f'{transfer_expected:,.2f}',
+            'total_expected': f'{cash_expected + transfer_expected:,.2f}',
+        })
+    except User.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Staff not found.'})
+
+
+class RemittanceListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = MoneyRemittance
+    permission_required = 'finance.view_moneyremittance'
+    template_name = 'finance/remittance/list.html'
+    context_object_name = "remittance_list"
+    paginate_by = 20
+
+    def get_queryset(self):
+        queryset = MoneyRemittance.objects.select_related('remitted_by', 'approved_by')
+
+        start_date = self.request.GET.get('start_date')
+        end_date = self.request.GET.get('end_date')
+        staff_id = self.request.GET.get('staff_id')
+
+        if start_date and end_date:
+            queryset = queryset.filter(created_at__date__range=[start_date, end_date])
+
+        if staff_id:
+            queryset = queryset.filter(remitted_by_id=staff_id)
+
+        return queryset.order_by('-created_at')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Provide a list of staff who have ever received funds for the filter dropdown
+        staff_ids = PatientTransactionModel.objects.filter(transaction_type='wallet_funding').values_list(
+            'received_by_id', flat=True).distinct()
+        context['staff_list'] = User.objects.filter(id__in=staff_ids)
+        return context
+
+
+class RemittanceDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = MoneyRemittance
+    permission_required = 'finance.change_moneyremittance'  # Permission to approve
+    template_name = 'finance/remittance/detail.html'
+    context_object_name = "remittance"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['transactions'] = self.object.transactions.select_related('patient').order_by('-created_at')
+        return context
+
+    def post(self, request, *args, **kwargs):
+        remittance = self.get_object()
+        action = request.POST.get('action')
+
+        if action == 'approve' and remittance.status == 'PENDING':
+            remittance.status = 'APPROVED'
+            remittance.approved_by = request.user
+            remittance.approved_at = timezone.now()
+            remittance.save()
+            messages.success(request, f"Remittance {remittance.remittance_id} has been approved.")
+
+        elif action == 'query' and remittance.status == 'PENDING':
+            remittance.status = 'DISCREPANCY'
+            remittance.approved_by = request.user  # The user who noted the discrepancy
+            remittance.approved_at = timezone.now()
+            remittance.save()
+            messages.warning(request, f"Discrepancy noted for remittance {remittance.remittance_id}.")
+
+        return redirect('remittance_detail', pk=remittance.pk)
+
+
+@login_required
+def finance_dashboard(request):
+    """Main finance dashboard view with comprehensive statistics"""
+
+    # Get date ranges
+    today = timezone.now().date()
+    start_of_month = today.replace(day=1)
+    start_of_year = today.replace(month=1, day=1)
+    week_start = today - timedelta(days=today.weekday())
+    last_month = (start_of_month - timedelta(days=1)).replace(day=1)
+
+    # Transaction Statistics
+    total_transactions = PatientTransactionModel.objects.filter(status='completed')
+    transactions_today = total_transactions.filter(date=today)
+    transactions_week = total_transactions.filter(date__gte=week_start)
+    transactions_month = total_transactions.filter(date__gte=start_of_month)
+
+    # Revenue Statistics (all inbound transactions)
+    revenue_transactions = total_transactions.filter(transaction_direction='in')
+    total_revenue = revenue_transactions.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    revenue_today = transactions_today.filter(transaction_direction='in').aggregate(total=Sum('amount'))[
+                        'total'] or Decimal('0.00')
+    revenue_week = transactions_week.filter(transaction_direction='in').aggregate(total=Sum('amount'))[
+                       'total'] or Decimal('0.00')
+    revenue_month = transactions_month.filter(transaction_direction='in').aggregate(total=Sum('amount'))[
+                        'total'] or Decimal('0.00')
+
+    # Calculate previous month revenue for growth percentage
+    prev_month_revenue = revenue_transactions.filter(
+        date__gte=last_month,
+        date__lt=start_of_month
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    revenue_growth = 0
+    if prev_month_revenue > 0:
+        revenue_growth = float(((revenue_month - prev_month_revenue) / prev_month_revenue) * 100)
+
+    # Expense Statistics
+    expenses = Expense.objects.all()
+    total_expenses = expenses.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    expenses_today = expenses.filter(date=today).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    expenses_month = expenses.filter(date__gte=start_of_month).aggregate(total=Sum('amount'))['total'] or Decimal(
+        '0.00')
+
+    # Income Statistics (separate from patient transactions)
+    incomes = Income.objects.all()
+    total_income = incomes.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    income_today = incomes.filter(date=today).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    income_month = incomes.filter(date__gte=start_of_month).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    # Net Profit Calculation
+    total_inflow = total_revenue + total_income
+    net_profit = total_inflow - total_expenses
+    net_profit_month = (revenue_month + income_month) - expenses_month
+
+    # Pending Transactions and Remittances
+    pending_transactions = PatientTransactionModel.objects.filter(status='pending').count()
+    pending_remittances = MoneyRemittance.objects.filter(status='PENDING').count()
+    discrepancy_remittances = MoneyRemittance.objects.filter(status='DISCREPANCY').count()
+
+    # Top Transaction Types
+    transaction_types = PatientTransactionModel.objects.filter(
+        status='completed',
+        date__gte=start_of_month
+    ).values('transaction_type').annotate(
+        count=Count('id'),
+        total=Sum('amount')
+    ).order_by('-total')[:5]
+
+    # Daily Revenue Trend (Last 30 days)
+    thirty_days_ago = today - timedelta(days=30)
+    daily_revenue = []
+
+    for i in range(30):
+        date_check = thirty_days_ago + timedelta(days=i)
+        revenue = revenue_transactions.filter(date=date_check).aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0.00')
+        daily_revenue.append({
+            'date': date_check.strftime('%Y-%m-%d'),
+            'revenue': float(revenue)
+        })
+
+    # Monthly Revenue vs Expenses (Last 12 months)
+    monthly_comparison = []
+    for i in range(12):
+        month_date = (today.replace(day=1) - timedelta(days=32 * i)).replace(day=1)
+        month_end = (month_date.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+        month_revenue = revenue_transactions.filter(
+            date__gte=month_date,
+            date__lte=month_end
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        month_income = incomes.filter(
+            date__gte=month_date,
+            date__lte=month_end
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        month_expenses = expenses.filter(
+            date__gte=month_date,
+            date__lte=month_end
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        monthly_comparison.append({
+            'month': month_date.strftime('%b %Y'),
+            'revenue': float(month_revenue),
+            'income': float(month_income),
+            'expenses': float(month_expenses),
+            'profit': float((month_revenue + month_income) - month_expenses)
+        })
+
+    monthly_comparison.reverse()  # Show chronologically
+
+    # Expense Categories Distribution
+    expense_categories = ExpenseCategory.objects.annotate(
+        total_amount=Sum('expense__amount'),
+        count=Count('expense')
+    ).filter(total_amount__gt=0).order_by('-total_amount')
+
+    expense_category_data = [
+        {
+            'name': category.name,
+            'value': float(category.total_amount or 0)
+        }
+        for category in expense_categories
+    ]
+
+    # Payment Methods Distribution (for completed transactions)
+    payment_methods = PatientTransactionModel.objects.filter(
+        status='completed',
+        date__gte=start_of_month
+    ).exclude(payment_method='').values('payment_method').annotate(
+        count=Count('id'),
+        total=Sum('amount')
+    ).order_by('-total')
+
+    # Recent Large Transactions
+    recent_large_transactions = PatientTransactionModel.objects.filter(
+        status='completed',
+        amount__gte=10000  # Transactions above 10,000
+    ).select_related('patient').order_by('-created_at')[:10]
+
+    # Salary Payments Statistics
+    unpaid_salaries = SalaryRecord.objects.filter(is_paid=False).count()
+    partially_paid_salaries = SalaryRecord.objects.filter(
+        amount_paid__gt=0,
+        is_paid=False
+    ).count()
+
+    total_salary_debt = SalaryRecord.objects.filter(
+        is_paid=False
+    ).aggregate(
+        debt=Sum(F('basic_salary') + F('housing_allowance') + F('transport_allowance') +
+                 F('medical_allowance') + F('other_allowances') + F('bonus') -
+                 F('tax_amount') - F('pension_amount') - F('other_deductions') - F('amount_paid'))
+    )['debt'] or Decimal('0.00')
+
+    # Financial Settings
+    finance_settings = FinanceSettingModel.objects.first()
+
+    context = {
+        # Main Statistics
+        'total_transactions_count': total_transactions.count(),
+        'transactions_today_count': transactions_today.count(),
+        'transactions_month_count': transactions_month.count(),
+
+        # Revenue
+        'total_revenue': total_revenue,
+        'revenue_today': revenue_today,
+        'revenue_week': revenue_week,
+        'revenue_month': revenue_month,
+        'revenue_growth': round(revenue_growth, 1),
+
+        # Expenses
+        'total_expenses': total_expenses,
+        'expenses_today': expenses_today,
+        'expenses_month': expenses_month,
+
+        # Income
+        'total_income': total_income,
+        'income_today': income_today,
+        'income_month': income_month,
+
+        # Profit
+        'net_profit': net_profit,
+        'net_profit_month': net_profit_month,
+        'total_inflow': total_inflow,
+
+        # Pending Items
+        'pending_transactions': pending_transactions,
+        'pending_remittances': pending_remittances,
+        'discrepancy_remittances': discrepancy_remittances,
+
+        # Salary
+        'unpaid_salaries': unpaid_salaries,
+        'partially_paid_salaries': partially_paid_salaries,
+        'total_salary_debt': total_salary_debt,
+
+        # Charts Data
+        'daily_revenue_data': json.dumps(daily_revenue),
+        'monthly_comparison_data': json.dumps(monthly_comparison),
+        'expense_category_data': json.dumps(expense_category_data),
+        'transaction_types': transaction_types,
+        'payment_methods': payment_methods,
+        'recent_large_transactions': recent_large_transactions,
+
+        # Settings
+        'finance_settings': finance_settings,
+
+        # Current date
+        'current_date': today,
+    }
+
+    return render(request, 'finance/dashboard.html', context)
+
+
+@login_required
+def finance_dashboard_print(request):
+    """Printable version of the finance dashboard"""
+
+    # Get simplified data for printing
+    today = timezone.now().date()
+    start_of_month = today.replace(day=1)
+
+    # Basic statistics
+    total_transactions = PatientTransactionModel.objects.filter(status='completed')
+    revenue_transactions = total_transactions.filter(transaction_direction='in')
+
+    total_revenue = revenue_transactions.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    revenue_month = revenue_transactions.filter(date__gte=start_of_month).aggregate(total=Sum('amount'))[
+                        'total'] or Decimal('0.00')
+
+    total_expenses = Expense.objects.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    expenses_month = Expense.objects.filter(date__gte=start_of_month).aggregate(total=Sum('amount'))[
+                         'total'] or Decimal('0.00')
+
+    total_income = Income.objects.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    income_month = Income.objects.filter(date__gte=start_of_month).aggregate(total=Sum('amount'))['total'] or Decimal(
+        '0.00')
+
+    # Top categories
+    top_expense_categories = ExpenseCategory.objects.annotate(
+        total_amount=Sum('expense__amount')
+    ).filter(total_amount__gt=0).order_by('-total_amount')[:5]
+
+    top_income_categories = IncomeCategory.objects.annotate(
+        total_amount=Sum('income__amount')
+    ).filter(total_amount__gt=0).order_by('-total_amount')[:5]
+
+    context = {
+        'total_revenue': total_revenue,
+        'revenue_month': revenue_month,
+        'total_expenses': total_expenses,
+        'expenses_month': expenses_month,
+        'total_income': total_income,
+        'income_month': income_month,
+        'net_profit': (total_revenue + total_income) - total_expenses,
+        'net_profit_month': (revenue_month + income_month) - expenses_month,
+        'top_expense_categories': top_expense_categories,
+        'top_income_categories': top_income_categories,
+        'current_date': today,
+        'total_transactions_count': total_transactions.count(),
+    }
+
+    return render(request, 'finance/dashboard_print.html', context)

@@ -1,0 +1,115 @@
+{% extends 'admin_site/layout.html' %}
+{% load humanize %}
+{% block 'main' %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Actions" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Actions</h6>
+                </li>
+                <li><a class="dropdown-item" href="{% url 'remittance_create' %}">New Remittance</a></li>
+                <li><a class="dropdown-item" href="{% url 'remittance_dashboard' %}">View Dashboard</a></li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">Remittance History</h5>
+
+            <!-- Filter Form -->
+            <div class="card mb-4" style="background-color: #f8f9fa;">
+                <div class="card-body py-3">
+                    <form method="get" class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label small">Staff Member</label>
+                            <select name="staff_id" class="form-select">
+                                <option value="">All Staff</option>
+                                {% for staff in staff_list %}
+                                <option value="{{ staff.id }}" {% if request.GET.staff_id|add:"0" == staff.id %}selected{% endif %}>
+                                    {{ staff.get_full_name|title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Start Date</label>
+                            <input type="date" name="start_date" value="{{ request.GET.start_date|default:'' }}" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">End Date</label>
+                            <input type="date" name="end_date" value="{{ request.GET.end_date|default:'' }}" class="form-control">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-funnel"></i> Filter
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Remittance ID</th>
+                        <th>Remitted By</th>
+                        <th class="text-end">Cash Expected</th>
+                        <th class="text-end">Cash Remitted</th>
+                        <th class="text-end">Discrepancy</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for remit in remittance_list %}
+                    <tr>
+                        <td><strong>{{ remit.remittance_id }}</strong></td>
+                        <td>{{ remit.remitted_by.get_full_name|title }}</td>
+                        <td class="text-end">₦{{ remit.total_cash_expected|intcomma }}</td>
+                        <td class="text-end">₦{{ remit.amount_remitted_cash|intcomma }}</td>
+                        <td class="text-end {% if remit.cash_discrepancy != 0 %}text-danger fw-bold{% endif %}">
+                            ₦{{ remit.cash_discrepancy|intcomma }}
+                        </td>
+                        <td>
+                             <span class="badge {% if remit.status == 'APPROVED' %}bg-success{% elif remit.status == 'PENDING' %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ remit.get_status_display }}
+                            </span>
+                        </td>
+                        <td>{{ remit.created_at|date:"d M Y, P" }}</td>
+                        <td>
+                            <a href="{% url 'remittance_detail' remit.pk %}" class="btn btn-sm btn-outline-primary">
+                                View & Approve
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">No remittance records found for the selected filters.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            
+            <!-- Pagination -->
+            {% if is_paginated %}
+            <nav aria-label="Page navigation" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&{{ request.GET.urlencode }}">&laquo;</a></li>
+                    {% endif %}
+                    <li class="page-item active"><span class="page-link">{{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&{{ request.GET.urlencode }}">&raquo;</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+

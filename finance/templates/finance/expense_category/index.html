@@ -28,7 +28,7 @@
                 <tr>
                     <th scope="col">#</th>
                     <th scope="col">Category Name</th>
-                    <th scope="col">Description</th>
+                    <th scope="col">Code</th>
                     <th scope="col" class="text-center">Action</th>
                 </tr>
                 </thead>
@@ -37,7 +37,7 @@
                 <tr>
                     <th scope="row">{{ forloop.counter }}</th>
                     <td>{{ category.name|title }}</td>
-                    <td>{{ category.description|truncatewords:10|default:"N/A" }}</td>
+                    <td>{{ category.code|truncatewords:10|default:"N/A" }}</td>
                     <td class="text-center">
                         <button title="Edit Category" type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#editCategoryModal{{ category.id }}">
                             <i class="bi bi-pencil-square"></i>
@@ -73,8 +73,8 @@
                         <label for="{{ form.name.id_for_label }}">Category Name <span class="text-danger">*</span></label>
                     </div>
                     <div class="form-floating">
-                        {{ form.description }}
-                        <label for="{{ form.description.id_for_label }}">Description</label>
+                        {{ form.code }}
+                        <label for="{{ form.code.id_for_label }}">Code <span class="text-danger">*</span></label>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -103,8 +103,8 @@
                         <label for="id_name_{{ category.id }}">Category Name <span class="text-danger">*</span></label>
                     </div>
                     <div class="form-floating">
-                        <textarea name="description" class="form-control" id="id_description_{{ category.id }}" style="height: 100px;">{{ category.description|default:"" }}</textarea>
-                        <label for="id_description_{{ category.id }}">Description</label>
+                        <input name="code" class="form-control" id="id_code_{{ category.id }}" value="{{ category.code }}" />
+                        <label for="id_code_{{ category.id }}">Code</label>
                     </div>
                 </div>
                 <div class="modal-footer">

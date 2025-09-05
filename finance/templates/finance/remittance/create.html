@@ -1,0 +1,115 @@
+{% extends 'admin_site/layout.html' %}
+{% load humanize %}
+{% block 'main' %}
+
+<div class="col-lg-8 offset-lg-2">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="card-title mb-0">Record New Remittance</h4>
+                <a href="{% url 'remittance_dashboard' %}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+            
+            <p>Select a staff member to record the funds they are remitting to the finance department.</p>
+            {{ form.errors }}
+            <form method="POST">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <label for="{{ form.remitted_by.id_for_label }}" class="form-label">Select Staff Member <span class="text-danger">*</span></label>
+                        {{ form.remitted_by }}
+                        <small class="form-text text-muted">Only staff with unremitted funds are listed.</small>
+                    </div>
+                </div>
+
+                <!-- Details will be loaded here by JavaScript -->
+                <div id="remittance-details-card" class="card mb-4" style="display:none;">
+                    <div class="card-body">
+                        <h5 class="card-title">Summary of Funds to Remit</h5>
+                        <div id="remittance-details-content">
+                            <!-- AJAX content goes here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="remittance-form-fields" style="display:none;">
+                    <div class="mb-3">
+                        <label for="{{ form.amount_remitted_cash.id_for_label }}" class="form-label">Actual Cash Amount Being Remitted <span class="text-danger">*</span></label>
+                        {{ form.amount_remitted_cash }}
+                        <small class="form-text text-muted">Enter the exact amount of cash being handed over.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="{{ form.notes.id_for_label }}" class="form-label">Notes</label>
+                        {{ form.notes }}
+                        <small class="form-text text-muted">Please provide an explanation for any difference between the cash expected and the amount remitted.</small>
+                    </div>
+                    <hr>
+                    <button type="submit" class="btn btn-primary">Submit Remittance for Approval</button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const staffSelect = document.getElementById('{{ form.remitted_by.id_for_label }}');
+    const detailsCard = document.getElementById('remittance-details-card');
+    const detailsContent = document.getElementById('remittance-details-content');
+    const formFields = document.getElementById('remittance-form-fields');
+    const amountRemittedInput = document.getElementById('{{ form.amount_remitted_cash.id_for_label }}');
+
+    staffSelect.addEventListener('change', async function() {
+        const staffId = this.value;
+
+        if (!staffId) {
+            detailsCard.style.display = 'none';
+            formFields.style.display = 'none';
+            return;
+        }
+
+        // Show a loading state
+        detailsContent.innerHTML = '<p class="text-muted">Loading details...</p>';
+        detailsCard.style.display = 'block';
+
+        try {
+            const url = `{% url 'get_staff_remittance_details_ajax' %}?staff_id=${staffId}`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.success) {
+                detailsContent.innerHTML = `
+                    <dl class="row">
+                        <dt class="col-sm-6">Total Cash Expected:</dt>
+                        <dd class="col-sm-6 text-end fw-bold text-danger">₦${data.cash_expected}</dd>
+                        
+                        <dt class="col-sm-6">Total Transfers Recorded:</dt>
+                        <dd class="col-sm-6 text-end">₦${data.transfer_expected}</dd>
+                        
+                        <hr class="my-2">
+
+                        <dt class="col-sm-6 h5">Grand Total Expected:</dt>
+                        <dd class="col-sm-6 text-end h5">₦${data.total_expected}</dd>
+                    </dl>
+                `;
+                // Auto-fill the cash amount for convenience
+                amountRemittedInput.value = parseFloat(data.cash_expected.replace(/,/g, ''));
+                formFields.style.display = 'block';
+            } else {
+                detailsContent.innerHTML = `<p class="text-danger">Error: ${data.error}</p>`;
+                formFields.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Fetch Error:', error);
+            detailsContent.innerHTML = '<p class="text-danger">An unexpected error occurred. Please try again.</p>';
+            formFields.style.display = 'none';
+        }
+    });
+});
+</script>
+
+{% endblock %}
+

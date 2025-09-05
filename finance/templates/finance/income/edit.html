@@ -1,6 +1,6 @@
 {% extends 'admin_site/layout.html' %}
-{% load static %}
 {% block 'main' %}
+{% load static %}
 
 <div class="col-12">
     <div class="card">
@@ -10,9 +10,12 @@
                     <h4 class="card-title mb-0">Edit Income Record</h4>
                     <small class="text-muted">Number: {{ form.instance.income_number }}</small>
                 </div>
-                <a href="{% url 'income_detail' form.instance.pk %}" class="btn btn-secondary">
-                    <i class="bi bi-arrow-left"></i> Back to Detail
-                </a>
+                <div>
+                    <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#incomeHelperModal"><b>Helper</b></button>
+                    <a href="{% url 'income_detail' form.instance.pk %}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Detail
+                    </a>
+                </div>
             </div>
 
             {% include 'admin_site/partials/error.html' %}
@@ -36,7 +39,7 @@
                                         {{ form.category }}
                                     </div>
                                     <div class="col-md-6 mb-3">
-                                        <label for="{{ form.department.id_for_label }}" class="form-label">Department <span class="text-danger">*</span></label>
+                                        <label for="{{ form.department.id_for_label }}" class="form-label">Department</label>
                                         {{ form.department }}
                                     </div>
                                     <div class="col-md-6 mb-3">
@@ -47,10 +50,18 @@
                                         <label for="{{ form.date.id_for_label }}" class="form-label">Date <span class="text-danger">*</span></label>
                                         {{ form.date }}
                                     </div>
-                                     <div class="col-md-12 mb-3">
+                                    <div class="col-md-12 mb-3">
                                         <label for="{{ form.source.id_for_label }}" class="form-label">Source of Income</label>
                                         {{ form.source }}
                                         <small class="form-text text-muted">e.g., "Donation from XYZ Foundation", "Asset Sale", etc.</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="{{ form.receipt_number.id_for_label }}" class="form-label">External Receipt Number</label>
+                                        {{ form.receipt_number }}
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="{{ form.payment_method.id_for_label }}" class="form-label">Payment Method</label>
+                                        {{ form.payment_method }}
                                     </div>
                                     <div class="col-md-12">
                                         <label for="{{ form.description.id_for_label }}" class="form-label">Description</label>
@@ -81,4 +92,32 @@
     </div>
 </div>
 
+<!-- Income Helper Modal -->
+<div class="modal fade" id="incomeHelperModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Income Record Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>This form is used to record any money received by the hospital that is not a direct patient payment through the wallet system.</p>
+                <hr>
+                <h6>Field Explanations:</h6>
+                <ul>
+                    <li><strong>Source of Income:</strong> Describe where the money came from (e.g., a specific donor, an asset sale).</li>
+                    <li><strong>External Receipt Number:</strong> Use this field to record the number from a physical receipt or external transaction document. This is for your reference.</li>
+                </ul>
+                <div class="alert alert-info">
+                    <strong>Note:</strong> The unique internal <strong>Income Number</strong> (e.g., INC-20240905-001) is automatically generated and cannot be changed.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
+

@@ -3,6 +3,38 @@
 {% load humanize %}
 
 {% block 'main' %}
+<style>
+    .details-card .label {
+        font-weight: 600;
+        color: #555;
+    }
+    .summary-card ul li {
+        padding: 0.75rem 0;
+    }
+    .amount-display {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.5rem;
+        background-color: #f8f9fa;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .amount-display .icon-circle {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(40, 167, 69, 0.1);
+    }
+    .amount-display .icon-circle i {
+        font-size: 1.5rem;
+        color: #28a745;
+    }
+</style>
+
 <div class="col-lg-12">
     <!-- Action Buttons Card -->
     <div class="card">
@@ -21,51 +53,75 @@
         </div>
     </div>
 
-    <!-- Main Content Card -->
-    <div class="card">
-        <div class="card-body pt-3">
-            <h5 class="card-title">Income Details</h5>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Income Number</div>
-                <div class="col-lg-9 col-md-8">{{ income.income_number }}</div>
+    <!-- Main Content Row -->
+    <div class="row">
+        <!-- Left Column: Primary Details -->
+        <div class="col-lg-8">
+            <div class="card details-card">
+                <div class="card-body">
+                    <h5 class="card-title">{{ income.title }}</h5>
+
+                    <div class="amount-display">
+                        <div class="icon-circle">
+                            <i class="bi bi-arrow-down-short"></i>
+                        </div>
+                        <div>
+                            <h2 class="mb-0 text-success">₦{{ income.amount|intcomma }}</h2>
+                            <small class="text-muted">Amount Received</small>
+                        </div>
+                    </div>
+
+                    <dl class="row">
+                        <dt class="col-sm-3 label">Income Number:</dt>
+                        <dd class="col-sm-9">{{ income.income_number }}</dd>
+
+                        <dt class="col-sm-3 label">Category:</dt>
+                        <dd class="col-sm-9">{{ income.category.name|title }}</dd>
+
+                        <dt class="col-sm-3 label">Department:</dt>
+                        <dd class="col-sm-9">{{ income.department.name|title|default:"N/A" }}</dd>
+
+                        <dt class="col-sm-3 label">Source:</dt>
+                        <dd class="col-sm-9">{{ income.source|default:"Not specified." }}</dd>
+
+                        <dt class="col-sm-3 label">Description:</dt>
+                        <dd class="col-sm-9"><p class="mb-0">{{ income.description|default:"No description provided." }}</p></dd>
+                    </dl>
+                </div>
             </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Title</div>
-                <div class="col-lg-9 col-md-8">{{ income.title }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Amount</div>
-                <div class="col-lg-9 col-md-8 h5 text-success">₦{{ income.amount|intcomma }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Category</div>
-                <div class="col-lg-9 col-md-8">{{ income.category.name|title }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Department</div>
-                <div class="col-lg-9 col-md-8">{{ income.department.name|title }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Source of Income</div>
-                <div class="col-lg-9 col-md-8">{{ income.source|default:"Not specified." }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Date of Income</div>
-                <div class="col-lg-9 col-md-8">{{ income.date|date:"F d, Y" }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Received By</div>
-                <div class="col-lg-9 col-md-8">{{ income.received_by.get_full_name|title|default:"N/A" }}</div>
-            </div>
-            <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Description</div>
-                <div class="col-lg-9 col-md-8">{{ income.description|default:"No description provided." }}</div>
-            </div>
-             <div class="row">
-                <div class="col-lg-3 col-md-4 label fw-bold">Recorded At</div>
-                <div class="col-lg-9 col-md-8">{{ income.created_at|date:"F d, Y, P" }}</div>
+        </div>
+
+        <!-- Right Column: Meta Details -->
+        <div class="col-lg-4">
+            <div class="card summary-card">
+                <div class="card-body">
+                    <h5 class="card-title">Record Details</h5>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Date of Income:</strong>
+                            <span>{{ income.date|date:"F d, Y" }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Payment Method:</strong>
+                            <span>{{ income.payment_method|title|default:"N/A" }}</span>
+                        </li>
+                         <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Receipt Number:</strong>
+                            <span>{{ income.receipt_number|default:"N/A" }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Received By:</strong>
+                            <span>{{ income.received_by|title|default:"N/A" }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <strong>Recorded At:</strong>
+                            <span class="text-muted">{{ income.created_at|date:"d M Y, P" }}</span>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
+

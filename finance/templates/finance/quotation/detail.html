@@ -23,25 +23,24 @@
                 {% endif %}
 
                 <!-- Department Review Button -->
-                {% if can_dept_review %}
+
                 <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#deptReviewModal">
                     <i class="bi bi-building"></i> Department Review
                 </button>
-                {% endif %}
+
 
                 <!-- General Review Button -->
-                {% if can_general_review %}
+
                 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generalReviewModal">
                     <i class="bi bi-shield-check"></i> General Review
                 </button>
-                {% endif %}
+
 
                 <!-- Collect Money Button -->
-                {% if can_collect_money %}
                 <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#collectMoneyModal">
                     <i class="bi bi-cash-coin"></i> Collect Money
                 </button>
-                {% endif %}
+
                 
                 <a href="{% url 'quotation_index' %}" title="Go Back" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back</a>
             </div>
@@ -188,7 +187,7 @@
 </div>
 
 <!-- Department Review Modal -->
-{% if can_dept_review %}
+
 <div class="modal fade" id="deptReviewModal" tabindex="-1">
     <form method="POST" action="{% url 'quotation_dept_review' quotation.pk %}">
         {% csrf_token %}
@@ -217,10 +216,8 @@
         </div>
     </form>
 </div>
-{% endif %}
 
 <!-- General Review Modal -->
-{% if can_general_review %}
 <div class="modal fade" id="generalReviewModal" tabindex="-1">
     <form method="POST" action="{% url 'quotation_general_review' quotation.pk %}">
         {% csrf_token %}
@@ -249,10 +246,9 @@
         </div>
     </form>
 </div>
-{% endif %}
 
 <!-- Collect Money Modal -->
-{% if can_collect_money %}
+
 <div class="modal fade" id="collectMoneyModal" tabindex="-1">
     <form method="POST" action="{% url 'quotation_collect_money' quotation.pk %}">
         {% csrf_token %}
@@ -274,6 +270,6 @@
         </div>
     </form>
 </div>
-{% endif %}
+
 
 {% endblock %}

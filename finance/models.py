@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from admin_site.model_info import TEMPORAL_STATUS, RECEIPT_FORMAT
+from human_resource.models import StaffModel
 
 
 class FinanceSettingModel(models.Model):
@@ -58,7 +59,8 @@ class Quotation(models.Model):
     document = models.FileField(upload_to='quotations/%Y/%m/', blank=True, null=True)
     department = models.ForeignKey('human_resource.DepartmentModel', on_delete=models.SET_NULL, blank=True, null=True)
     requested_by = models.ForeignKey('human_resource.StaffModel', related_name='quotations', on_delete=models.CASCADE)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
 
     # Department approval
@@ -153,6 +155,13 @@ class PatientTransactionModel(models.Model):
         ],
         default='completed'
     )
+    remittance = models.ForeignKey(
+        'MoneyRemittance',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transactions'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
@@ -215,8 +224,63 @@ class PatientTransactionModel(models.Model):
         ]
 
 
+class MoneyRemittance(models.Model):
+    """
+    Represents a batch of funds remitted by a staff member to the finance department.
+    """
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Approval'),
+        ('APPROVED', 'Approved'),
+        ('DISCREPANCY', 'Discrepancy Noted'),
+    ]
+
+    remittance_id = models.CharField(max_length=50, unique=True, blank=True)
+    remitted_by = models.ForeignKey(User, related_name='remittances_made', on_delete=models.PROTECT)
+    approved_by = models.ForeignKey(User, related_name='remittances_approved', on_delete=models.SET_NULL, null=True,
+                                    blank=True)
+
+    total_cash_expected = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_transfer_expected = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    amount_remitted_cash = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text="The actual amount of cash being handed over."
+    )
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    notes = models.TextField(blank=True, help_text="Notes explaining any discrepancy or details about the remittance.")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.remittance_id:
+            today_str = self.created_at.strftime('%Y%m%d') if self.created_at else datetime.now().strftime('%Y%m%d')
+            prefix = f'REM-{today_str}'
+            last_remit = MoneyRemittance.objects.filter(remittance_id__startswith=prefix).order_by(
+                'remittance_id').last()
+
+            if last_remit:
+                last_num = int(last_remit.remittance_id[-3:])
+                new_num = last_num + 1
+            else:
+                new_num = 1
+
+            self.remittance_id = f'{prefix}-{new_num:03d}'
+        super().save(*args, **kwargs)
+
+    @property
+    def cash_discrepancy(self):
+        return self.total_cash_expected - self.amount_remitted_cash
+
+    def __str__(self):
+        return f"Remittance {self.remittance_id} by {self.remitted_by.username}"
+
+
 class Expense(models.Model):
-    expense_number = models.CharField(max_length=50, unique=True)
+    expense_number = models.CharField(max_length=50, unique=True, blank=True)  # Now optional at the form level
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     category = models.ForeignKey(ExpenseCategory, on_delete=models.CASCADE)
@@ -224,17 +288,31 @@ class Expense(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     date = models.DateField()
     paid_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    quotation = models.ForeignKey(Quotation, on_delete=models.SET_NULL, null=True, blank=True)  # Link if from quotation
     invoice_reference = models.CharField(max_length=200, blank=True)
-    payment_method = models.CharField(max_length=50, blank=True)  # Cash, Bank Transfer, etc.
+    payment_method = models.CharField(max_length=50, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.expense_number} - {self.title} - {self.amount}"
 
     class Meta:
         ordering = ['-date']
 
+    def save(self, *args, **kwargs):
+        if not self.expense_number:
+            # Generate a unique number based on the date and an incrementing count
+            today_str = now().strftime('%Y%m%d')
+            prefix = f'EXP-{today_str}'
+            last_expense = Expense.objects.filter(expense_number__startswith=prefix).order_by('expense_number').last()
+
+            if last_expense:
+                last_num = int(last_expense.expense_number[-3:])
+                new_num = last_num + 1
+            else:
+                new_num = 1
+
+            self.expense_number = f'{prefix}-{new_num:03d}'
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.expense_number} - {self.title} - {self.amount}"
 
 # -------------------- INCOME MANAGEMENT --------------------
 
@@ -249,31 +327,54 @@ class IncomeCategory(models.Model):
         verbose_name_plural = "Income Categories"
 
 
+from django.db import models
+from django.contrib.auth.models import User
+from django.utils.timezone import now
+
+
+# ... other imports from your models.py
+
 class Income(models.Model):
-    income_number = models.CharField(max_length=50, unique=True)
+    income_number = models.CharField(max_length=50, unique=True, blank=True)  # Allow it to be blank initially
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    category = models.ForeignKey(IncomeCategory, on_delete=models.CASCADE)
-    department = models.ForeignKey('human_resource.DepartmentModel', on_delete=models.CASCADE)
+    category = models.ForeignKey('IncomeCategory', on_delete=models.CASCADE)
+    department = models.ForeignKey('human_resource.DepartmentModel', on_delete=models.CASCADE, blank=True, null=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    date = models.DateField()
+    date = models.DateField(default=now)
     received_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    source = models.CharField(max_length=200, blank=True)  # Patient, Insurance, Government, etc.
+    source = models.CharField(max_length=200, blank=True)
     receipt_number = models.CharField(max_length=100, blank=True)
     payment_method = models.CharField(max_length=50, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.income_number} - {self.title} - {self.amount}"
-
     class Meta:
         ordering = ['-date']
+
+    def save(self, *args, **kwargs):
+        if not self.income_number:
+            # Generate a unique number based on the date and an incrementing count for that day
+            today_str = now().strftime('%Y%m%d')
+            prefix = f'INC-{today_str}'
+            last_income = Income.objects.filter(income_number__startswith=prefix).order_by('income_number').last()
+
+            if last_income:
+                last_num = int(last_income.income_number[-3:])
+                new_num = last_num + 1
+            else:
+                new_num = 1
+
+            self.income_number = f'{prefix}-{new_num:03d}'
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.income_number} - {self.title} - {self.amount}"
 
 
 # -------------------- SALARY MANAGEMENT --------------------
 
 class StaffBankDetail(models.Model):
-    staff = models.OneToOneField(User, related_name='bank_details', on_delete=models.CASCADE)
+    staff = models.OneToOneField(StaffModel, related_name='bank_details', on_delete=models.CASCADE)
     bank_name = models.CharField(max_length=100)
     account_number = models.CharField(max_length=20)
     account_name = models.CharField(max_length=200)
@@ -287,7 +388,7 @@ class StaffBankDetail(models.Model):
 
 
 class SalaryStructure(models.Model):
-    staff = models.OneToOneField(User, related_name='salary_structure', on_delete=models.CASCADE)
+    staff = models.OneToOneField(StaffModel, related_name='salary_structure', on_delete=models.CASCADE)
     basic_salary = models.DecimalField(max_digits=12, decimal_places=2)
     housing_allowance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     transport_allowance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
@@ -316,52 +417,73 @@ class SalaryStructure(models.Model):
     def net_salary(self):
         return self.gross_salary - self.tax_amount - self.pension_amount
 
+    @property
+    def total_deductions(self):
+        """Calculates the sum of all deductions."""
+        return self.tax_amount + self.pension_amount
+
     def __str__(self):
         return f"{self.staff.get_full_name()} - {self.basic_salary}"
 
 
 class SalaryRecord(models.Model):
-    staff = models.ForeignKey(User, related_name='salary_records', on_delete=models.CASCADE)
-    month = models.PositiveIntegerField()  # 1-12
+    staff = models.ForeignKey(StaffModel, on_delete=models.CASCADE)
+    month = models.PositiveIntegerField()
     year = models.PositiveIntegerField()
 
-    # Copy from salary structure for historical record
-    basic_salary = models.DecimalField(max_digits=12, decimal_places=2)
-    housing_allowance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    transport_allowance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    medical_allowance = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    other_allowances = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    # Fields populated from SalaryStructure
+    basic_salary = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    housing_allowance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    transport_allowance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    medical_allowance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    other_allowances = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    # Additional payments/deductions for this month
-    bonus = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    overtime = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    deductions = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    # --- NEW EDITABLE FIELDS ---
+    bonus = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+                                help_text="Any additional bonus for this month.")
+    other_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+                                           help_text="e.g., salary advance, loan repayment")
+    notes = models.CharField(max_length=255, blank=True, help_text="Optional notes for this payslip.")
 
-    # Calculated fields
-    gross_salary = models.DecimalField(max_digits=12, decimal_places=2)
-    tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    pension_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    net_salary = models.DecimalField(max_digits=12, decimal_places=2)
+    # Fields for deductions (can still be auto-populated)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    pension_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
+    # Payment Tracking
     is_paid = models.BooleanField(default=False)
     paid_date = models.DateField(null=True, blank=True)
-    paid_by = models.ForeignKey(User, related_name='processed_salaries',
-                                on_delete=models.SET_NULL, null=True, blank=True)
-    notes = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    paid_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
 
-    def save(self, *args, **kwargs):
-        # Auto-calculate totals
-        self.gross_salary = (self.basic_salary + self.housing_allowance +
-                             self.transport_allowance + self.medical_allowance +
-                             self.other_allowances + self.bonus + self.overtime)
-        self.net_salary = self.gross_salary - self.tax_amount - self.pension_amount - self.deductions
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.staff.get_full_name()} - {self.month}/{self.year}"
+    # --- NEW FIELD FOR PART-PAYMENT ---
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+                                      help_text="Tracks the actual amount paid.")
 
     class Meta:
-        unique_together = ['staff', 'month', 'year']
-        ordering = ['-year', '-month']
+        unique_together = ('staff', 'month', 'year')
+        ordering = ['-year', '-month', 'staff__first_name']
+
+    # --- UPDATED PROPERTIES ---
+    @property
+    def gross_salary(self):
+        return (self.basic_salary + self.housing_allowance + self.transport_allowance +
+                self.medical_allowance + self.other_allowances + self.bonus)
+
+    @property
+    def total_deductions(self):
+        return self.tax_amount + self.pension_amount + self.other_deductions
+
+    @property
+    def net_salary(self):
+        return self.gross_salary - self.total_deductions
+
+    @property
+    def payment_status(self):
+        if self.is_paid:
+            return "Paid"
+        if self.amount_paid > 0 and self.amount_paid < self.net_salary:
+            return "Partially Paid"
+        return "Pending"
+
+    def __str__(self):
+        return f"Salary for {self.staff} - {self.month}/{self.year}"
 

@@ -160,6 +160,11 @@
       </a>
     </li>
     <li>
+      <a href="{% url 'finance_dashboard' %}">
+        <i class="bi bi-circle"></i><span>Dashboard</span>
+      </a>
+    </li>
+    <li>
       <a href="{% url 'patient_transaction_index' %}">
         <i class="bi bi-circle"></i><span>All Payments</span>
       </a>
@@ -192,10 +197,26 @@
       </a>
     </li>
 
+    <li>
+      <a href="{% url 'remittance_dashboard' %}">
+        <i class="bi bi-circle"></i><span>Remittance Dashboard</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'remittance_list' %}">
+        <i class="bi bi-circle"></i><span>Remittance History</span>
+      </a>
+    </li>
+
     <!-- Payroll -->
     <li>
-      <a href="{% url 'salary_record_index' %}">
-        <i class="bi bi-circle"></i><span>Salary Records</span>
+      <a href="{% url 'process_payroll' %}">
+        <i class="bi bi-circle"></i><span>Process Salary</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'payroll_dashboard' %}">
+        <i class="bi bi-circle"></i><span>Salary Dashboard</span>
       </a>
     </li>
     <li>

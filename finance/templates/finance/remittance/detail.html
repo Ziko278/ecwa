@@ -1,0 +1,117 @@
+{% extends 'admin_site/layout.html' %}
+{% load humanize %}
+{% block 'main' %}
+<style>
+    .summary-card .label {
+        font-weight: 600;
+        color: #555;
+    }
+    .discrepancy-row {
+        border-top: 1px solid #dee2e6;
+        padding-top: 0.75rem;
+    }
+    .transaction-list {
+        max-height: 600px;
+        overflow-y: auto;
+    }
+</style>
+
+<div class="col-12">
+    <div class="card">
+        <div class="card-body">
+             <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="card-title mb-0">Remittance Detail</h4>
+                <a href="{% url 'remittance_list' %}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to List
+                </a>
+            </div>
+
+            <div class="row">
+                <!-- Left Column: Remittance Summary & Actions -->
+                <div class="col-lg-7">
+                    <div class="card summary-card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">{{ remittance.remittance_id }}</h5>
+                            <span class="badge {% if remittance.status == 'APPROVED' %}bg-success{% elif remittance.status == 'PENDING' %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ remittance.get_status_display }}
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            <dl class="row mt-3">
+                                <dt class="col-sm-4 label">Remitted By:</dt>
+                                <dd class="col-sm-8">{{ remittance.remitted_by.get_full_name|title }}</dd>
+                                
+                                <dt class="col-sm-4 label">Date Submitted:</dt>
+                                <dd class="col-sm-8">{{ remittance.created_at|date:"F d, Y, P" }}</dd>
+                                
+                                {% if remittance.approved_by %}
+                                <dt class="col-sm-4 label">Reviewed By:</dt>
+                                <dd class="col-sm-8">{{ remittance.approved_by.get_full_name|title }}</dd>
+                                
+                                <dt class="col-sm-4 label">Reviewed At:</dt>
+                                <dd class="col-sm-8">{{ remittance.approved_at|date:"F d, Y, P" }}</dd>
+                                {% endif %}
+                            </dl>
+                            <hr>
+                            <h6 class="card-title pb-0">Financial Breakdown</h6>
+                             <dl class="row">
+                                <dt class="col-sm-6">Total Cash Expected:</dt>
+                                <dd class="col-sm-6 text-end">₦{{ remittance.total_cash_expected|intcomma }}</dd>
+
+                                <dt class="col-sm-6">Actual Cash Remitted:</dt>
+                                <dd class="col-sm-6 text-end">₦{{ remittance.amount_remitted_cash|intcomma }}</dd>
+
+                                <dt class="col-sm-6 h5 text-danger discrepancy-row">Cash Discrepancy:</dt>
+                                <dd class="col-sm-6 text-end h5 text-danger discrepancy-row">₦{{ remittance.cash_discrepancy|intcomma }}</dd>
+                                
+                                <hr class="my-3">
+
+                                <dt class="col-sm-6">Total Transfers Recorded:</dt>
+                                <dd class="col-sm-6 text-end">₦{{ remittance.total_transfer_expected|intcomma }}</dd>
+                            </dl>
+                             <hr>
+                             <h6>Notes from Remitter:</h6>
+                             <p class="text-muted fst-italic">"{{ remittance.notes|default:"No notes provided." }}"</p>
+                        </div>
+                        {% if remittance.status == 'PENDING' %}
+                        <div class="card-footer text-end">
+                            <form method="POST" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" name="action" value="query" class="btn btn-danger me-2">
+                                    <i class="bi bi-flag"></i> Note Discrepancy
+                                </button>
+                                <button type="submit" name="action" value="approve" class="btn btn-success">
+                                    <i class="bi bi-check2-circle"></i> Approve Remittance
+                                </button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- Right Column: Included Transactions -->
+                <div class="col-lg-5">
+                    <div class="card">
+                        <div class="card-header"><h5 class="mb-0">Included Transactions ({{ transactions|length }})</h5></div>
+                        <div class="card-body transaction-list p-0">
+                            <ul class="list-group list-group-flush">
+                                {% for tx in transactions %}
+                                <li class="list-group-item">
+                                    <div class="d-flex justify-content-between">
+                                        <span>{{ tx.patient|title }}</span>
+                                        <strong>₦{{ tx.amount|intcomma }}</strong>
+                                    </div>
+                                    <small class="text-muted">{{ tx.transaction_id }} | {{ tx.get_payment_method_display }}</small>
+                                </li>
+                                {% empty %}
+                                <li class="list-group-item text-center text-muted">No transactions found for this batch.</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

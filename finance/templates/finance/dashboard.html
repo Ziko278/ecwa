@@ -1,0 +1,510 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Finance Dashboard</h1>
+    <nav>
+
+    </nav>
+</div>
+
+<section class="section dashboard">
+    <div class="row">
+        <!-- Print Button -->
+<!--        <div class="col-12 mb-3">-->
+<!--            <button class="btn btn-primary" onclick="printDashboard()">-->
+<!--                <i class="bi bi-printer"></i> Print Financial Report-->
+<!--            </button>-->
+<!--        </div>-->
+
+        <!-- Main Financial Metrics -->
+        <div class="col-md-6">
+            <div class="card info-card sales-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-currency-dollar"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_revenue|floatformat:2 }}</h6>
+                            <span class="text-muted small">All time</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card info-card revenue-card">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-graph-up"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ revenue_month|floatformat:2 }}</h6>
+                            {% if revenue_growth > 0 %}
+                                <span class="text-success small pt-2 ps-1">+{{ revenue_growth }}% growth</span>
+                            {% elif revenue_growth < 0 %}
+                                <span class="text-danger small pt-2 ps-1">{{ revenue_growth }}% decline</span>
+                            {% else %}
+                                <span class="text-muted small pt-2 ps-1">No change</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card info-card customers-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Expenses</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-arrow-down-circle"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_expenses|floatformat:2 }}</h6>
+                            <span class="text-muted small">All time</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Net Profit</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            {% if net_profit >= 0 %}
+                                <i class="bi bi-trophy text-success"></i>
+                            {% else %}
+                                <i class="bi bi-exclamation-triangle text-danger"></i>
+                            {% endif %}
+                        </div>
+                        <div class="ps-3">
+                            <h6 class="{% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                ₦{{ net_profit|floatformat:2 }}
+                            </h6>
+                            <span class="text-muted small">All time</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Statistics Row -->
+    <div class="row">
+        <div class="col-lg-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Today's Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-cash-coin text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ revenue_today|floatformat:2 }}</h6>
+                            <span class="text-muted small">{{ transactions_today_count }} transactions</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Today's Expenses</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-wallet text-warning"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ expenses_today|floatformat:2 }}</h6>
+                            <span class="text-muted small">Today</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Other Income</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-plus-circle text-success"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_income|floatformat:2 }}</h6>
+                            <span class="text-muted small">Non-patient income</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts Row -->
+    {% if pending_transactions > 0 or pending_remittances > 0 or discrepancy_remittances > 0 or unpaid_salaries > 0 %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Actions</h5>
+                    <div class="row">
+                        {% if pending_transactions > 0 %}
+                        <div class="col-lg-3 col-md-6">
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <strong>{{ pending_transactions }}</strong> pending transactions
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if pending_remittances > 0 %}
+                        <div class="col-lg-3 col-md-6">
+                            <div class="alert alert-info">
+                                <i class="bi bi-clock"></i>
+                                <strong>{{ pending_remittances }}</strong> pending remittances
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if discrepancy_remittances > 0 %}
+                        <div class="col-lg-3 col-md-6">
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-octagon"></i>
+                                <strong>{{ discrepancy_remittances }}</strong> discrepancy remittances
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if unpaid_salaries > 0 %}
+                        <div class="col-lg-3 col-md-6">
+                            <div class="alert alert-warning">
+                                <i class="bi bi-people"></i>
+                                <strong>{{ unpaid_salaries }}</strong> unpaid salaries
+                                {% if total_salary_debt > 0 %}
+                                    <br><small>₦{{ total_salary_debt|floatformat:2 }} total debt</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Charts Row 1 -->
+    <div class="row">
+        <!-- Daily Revenue Trend -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Revenue Trend <span>/Last 30 Days</span></h5>
+                    <div id="revenueChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expense Categories -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Expense Categories</h5>
+                    <div id="expenseCategoryChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 2 -->
+    <div class="row">
+        <!-- Monthly Comparison -->
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Revenue vs Expenses <span>/Last 12 Months</span></h5>
+                    <div id="monthlyComparisonChart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaction Analytics -->
+    <div class="row">
+        <!-- Top Transaction Types -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Top Transaction Types <span>/This Month</span></h5>
+                    <div class="activity">
+                        {% for transaction_type in transaction_types %}
+                        <div class="activity-item d-flex">
+                            <div class="activite-label">{{ transaction_type.count }}x</div>
+                            <i class='bi bi-circle-fill activity-badge text-primary align-self-start'></i>
+                            <div class="activity-content">
+                                {% with transaction_type.transaction_type|title as display_name %}
+                                    {{ display_name|cut:"_" }}
+                                {% endwith %}
+                                <span class="fw-bold text-dark">₦{{ transaction_type.total|floatformat:2 }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment Methods -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Payment Methods <span>/This Month</span></h5>
+                    <div class="activity">
+                        {% for method in payment_methods %}
+                        <div class="activity-item d-flex">
+                            <div class="activite-label">{{ method.count }}x</div>
+                            <i class='bi bi-circle-fill activity-badge text-success align-self-start'></i>
+                            <div class="activity-content">
+                                {{ method.payment_method|default:"Not Specified"|title }}
+                                <span class="fw-bold text-dark">₦{{ method.total|floatformat:2 }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Large Transactions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card recent-sales overflow-auto">
+                <div class="card-body">
+                    <h5 class="card-title">Recent Large Transactions <span>| ≥ ₦10,000</span></h5>
+                    <table class="table table-borderless datatable">
+                        <thead>
+                            <tr>
+                                <th scope="col">ID</th>
+                                <th scope="col">Patient</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Amount</th>
+                                <th scope="col">Method</th>
+                                <th scope="col">Date</th>
+                                <th scope="col">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for transaction in recent_large_transactions %}
+                            <tr>
+                                <th scope="row">{{ transaction.transaction_id }}</th>
+                                <td>
+                                    {% if transaction.patient %}
+                                        {{ transaction.patient.get_full_name }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">
+                                        {{ transaction.get_transaction_type_display }}
+                                    </span>
+                                </td>
+                                <td class="{% if transaction.is_credit %}text-success{% else %}text-danger{% endif %}">
+                                    {% if transaction.is_credit %}+{% else %}-{% endif %}₦{{ transaction.amount|floatformat:2 }}
+                                </td>
+                                <td>{{ transaction.payment_method|default:"N/A" }}</td>
+                                <td>{{ transaction.date|date:"M d, Y" }}</td>
+                                <td>
+                                    {% if transaction.status == 'completed' %}
+                                        <span class="badge bg-success">{{ transaction.get_status_display }}</span>
+                                    {% elif transaction.status == 'pending' %}
+                                        <span class="badge bg-warning">{{ transaction.get_status_display }}</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">{{ transaction.get_status_display }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center">No large transactions found</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<!-- Chart Scripts -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    
+    // Daily Revenue Chart
+    const revenueData = {{ daily_revenue_data|safe }};
+    
+    new ApexCharts(document.querySelector("#revenueChart"), {
+        series: [{
+            name: 'Revenue',
+            data: revenueData.map(d => d.revenue)
+        }],
+        chart: {
+            height: 350,
+            type: 'area',
+            toolbar: { show: false }
+        },
+        markers: { size: 4 },
+        colors: ['#2eca6a'],
+        fill: {
+            type: "gradient",
+            gradient: {
+                shadeIntensity: 1,
+                opacityFrom: 0.3,
+                opacityTo: 0.4,
+                stops: [0, 90, 100]
+            }
+        },
+        dataLabels: { enabled: false },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            categories: revenueData.map(d => d.date),
+            type: 'datetime'
+        },
+        tooltip: {
+            x: { format: 'dd/MM/yyyy' },
+            y: {
+                formatter: function(val) {
+                    return "₦" + val.toLocaleString();
+                }
+            }
+        }
+    }).render();
+
+    // Expense Categories Pie Chart
+    const expenseCategoryData = {{ expense_category_data|safe }};
+    
+    if (expenseCategoryData.length > 0) {
+        echarts.init(document.querySelector("#expenseCategoryChart")).setOption({
+            tooltip: {
+                trigger: 'item',
+                formatter: '{a} <br/>{b}: ₦{c} ({d}%)'
+            },
+            legend: {
+                top: '5%',
+                left: 'center'
+            },
+            series: [{
+                name: 'Expenses',
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: false,
+                label: {
+                    show: false,
+                    position: 'center'
+                },
+                emphasis: {
+                    label: {
+                        show: true,
+                        fontSize: '18',
+                        fontWeight: 'bold'
+                    }
+                },
+                labelLine: { show: false },
+                data: expenseCategoryData
+            }]
+        });
+    }
+
+    // Monthly Comparison Chart
+    const monthlyData = {{ monthly_comparison_data|safe }};
+    
+    new ApexCharts(document.querySelector("#monthlyComparisonChart"), {
+        series: [
+            {
+                name: 'Revenue',
+                type: 'column',
+                data: monthlyData.map(d => d.revenue)
+            },
+            {
+                name: 'Other Income',
+                type: 'column',
+                data: monthlyData.map(d => d.income)
+            },
+            {
+                name: 'Expenses',
+                type: 'column',
+                data: monthlyData.map(d => d.expenses)
+            },
+            {
+                name: 'Net Profit',
+                type: 'line',
+                data: monthlyData.map(d => d.profit)
+            }
+        ],
+        chart: {
+            height: 350,
+            type: 'line',
+            toolbar: { show: false }
+        },
+        stroke: {
+            width: [0, 0, 0, 4],
+            curve: 'smooth'
+        },
+        plotOptions: {
+            bar: {
+                horizontal: false,
+                columnWidth: '55%',
+                endingShape: 'rounded'
+            },
+        },
+        colors: ['#2eca6a', '#4154f1', '#ff771d', '#e83e8c'],
+        dataLabels: { enabled: false },
+        xaxis: {
+            categories: monthlyData.map(d => d.month)
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return "₦" + val.toLocaleString();
+                }
+            }
+        },
+        tooltip: {
+            shared: true,
+            intersect: false,
+            y: {
+                formatter: function(val) {
+                    return "₦" + val.toLocaleString();
+                }
+            }
+        }
+    }).render();
+
+});
+
+function printDashboard() {
+    window.open('{% url "finance_dashboard_print" %}', '_blank');
+}
+</script>
+
+{% endblock %}
