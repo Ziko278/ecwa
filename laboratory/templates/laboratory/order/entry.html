@@ -51,7 +51,7 @@
                         <i class="mdi mdi-check-circle me-2"></i>Patient Verified
                     </h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body pt-3">
                     <div class="row">
                         <div class="col-md-8">
                             <div id="patient-info"></div>
@@ -66,9 +66,11 @@
                         <button type="button" id="view-tests-btn" class="btn btn-info">
                             <i class="mdi mdi-flask me-2"></i>View Lab Tests
                         </button>
+                        {% if lab_setting.allow_direct_lab_order %}
                         <button type="button" id="new-test-btn" class="btn btn-success">
                             <i class="mdi mdi-plus-circle me-2"></i>Order New Test
                         </button>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -147,7 +149,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="row">
                 <div class="col-md-6">
                     <p class="mb-1"><strong>Card Number:</strong> ${patient.patient_id}</p>
-                    <p class="mb-1"><strong>Phone:</strong> ${patient.phone}</p>
+                    <p class="mb-1"><strong>Phone:</strong> ${patient.mobile}</p>
                     <p class="mb-1"><strong>Age:</strong> ${patient.age || 'Not specified'}</p>
                 </div>
                 <div class="col-md-6">
@@ -193,9 +195,11 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.href = `{% url 'patient_lab_tests' patient_id=0 %}`.replace('0', currentPatient.id);
         };
 
+        {% if lab_setting.allow_direct_lab_order %}
         newTestBtn.onclick = function() {
             window.location.href = `{% url 'lab_order_create' patient_id=0 %}`.replace('0', currentPatient.id);
         };
+        {% endif %}
     }
 
     // Auto focus on card number input

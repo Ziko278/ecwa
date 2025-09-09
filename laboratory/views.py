@@ -1,6 +1,6 @@
 import logging
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 
 from django.contrib import messages
@@ -8,7 +8,8 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Q, Count, Sum
+from django.db.models import Q, Count, Sum, Value
+from django.db.models.functions import Concat
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -174,6 +175,7 @@ class LabTestTemplateDetailView(LoginRequiredMixin, PermissionRequiredMixin, Det
             'equipment_list': equipment,
             'reagent_list': reagents,
             'total_orders': LabTestOrderModel.objects.filter(template=template).count(),
+            'lab_setting': LabSettingModel.objects.first()
         })
         return context
 
@@ -219,6 +221,7 @@ class LabEntryView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['page_title'] = 'Laboratory - Patient Verification'
+        context['lab_setting'] = LabSettingModel.objects.first()
         return context
 
 
@@ -232,7 +235,7 @@ def verify_lab_patient_ajax(request):
         return JsonResponse({'success': False, 'error': 'Please enter a card number'})
 
     try:
-        patient = PatientModel.objects.get(card_number=card_number, status='active')
+        patient = PatientModel.objects.get(card_number__iexact=card_number, status='active')
 
         # Get test counts
         test_counts = {
@@ -737,63 +740,346 @@ class LabTestOrderUpdateView(
 # -------------------------
 # Lab Test Result Views
 # -------------------------
-class LabResultDashboardView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
-    """Main dashboard for lab results - shows orders ready for result entry"""
-    model = LabTestOrderModel
-    permission_required = 'laboratory.view_labtestordermodel'
-    template_name = 'laboratory/result/dashboard.html'
-    context_object_name = 'orders'
-    paginate_by = 20
 
-    def get_queryset(self):
-        status_filter = self.request.GET.get('status', '')
-        search_query = self.request.GET.get('search', '')
+@login_required
+def laboratory_dashboard(request):
+    """Main laboratory dashboard with comprehensive statistics"""
 
-        # Base queryset - orders that can have results entered
-        queryset = LabTestOrderModel.objects.filter(
-            status__in=['collected', 'processing', 'completed']
-        ).select_related('patient', 'template', 'sample_collected_by').order_by('-sample_collected_at')
+    # Get current date and time ranges
+    today = timezone.now().date()
+    this_week_start = today - timedelta(days=today.weekday())
+    this_month_start = today.replace(day=1)
+    last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+    last_month_end = this_month_start - timedelta(days=1)
 
-        # Apply filters
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
+    # === BASIC STATISTICS ===
 
-        if search_query:
-            queryset = queryset.filter(
-                Q(patient__first_name__icontains=search_query) |
-                Q(patient__last_name__icontains=search_query) |
-                Q(order_number__icontains=search_query) |
-                Q(template__name__icontains=search_query) |
-                Q(sample_label__icontains=search_query)
+    # Total counts
+    total_orders = LabTestOrderModel.objects.count()
+    total_templates = LabTestTemplateModel.objects.filter(is_active=True).count()
+    total_categories = LabTestCategoryModel.objects.count()
+    completed_tests = LabTestOrderModel.objects.filter(status='completed').count()
+
+    # Today's statistics
+    orders_today = LabTestOrderModel.objects.filter(ordered_at__date=today).count()
+    completed_today = LabTestOrderModel.objects.filter(
+        status='completed',
+        processed_at__date=today
+    ).count()
+    pending_today = LabTestOrderModel.objects.filter(
+        ordered_at__date=today,
+        status__in=['pending', 'paid', 'collected', 'processing']
+    ).count()
+
+    # This week's statistics
+    orders_week = LabTestOrderModel.objects.filter(ordered_at__date__gte=this_week_start).count()
+    completed_week = LabTestOrderModel.objects.filter(
+        status='completed',
+        processed_at__date__gte=this_week_start
+    ).count()
+
+    # This month's statistics
+    orders_month = LabTestOrderModel.objects.filter(ordered_at__date__gte=this_month_start).count()
+    completed_month = LabTestOrderModel.objects.filter(
+        status='completed',
+        processed_at__date__gte=this_month_start
+    ).count()
+
+    # Last month's statistics for growth calculation
+    orders_last_month = LabTestOrderModel.objects.filter(
+        ordered_at__date__gte=last_month_start,
+        ordered_at__date__lte=last_month_end
+    ).count()
+    completed_last_month = LabTestOrderModel.objects.filter(
+        status='completed',
+        processed_at__date__gte=last_month_start,
+        processed_at__date__lte=last_month_end
+    ).count()
+
+    # Calculate growth percentages
+    orders_growth = 0
+    completed_growth = 0
+    if orders_last_month > 0:
+        orders_growth = round(((orders_month - orders_last_month) / orders_last_month) * 100, 1)
+    if completed_last_month > 0:
+        completed_growth = round(((completed_month - completed_last_month) / completed_last_month) * 100, 1)
+
+    # === STATUS DISTRIBUTION ===
+    status_distribution = LabTestOrderModel.objects.values('status').annotate(
+        count=Count('id')
+    ).order_by('status')
+
+    # Convert to format suitable for charts
+    status_chart_data = [
+        {'name': status['status'].title(), 'value': status['count']}
+        for status in status_distribution
+    ]
+
+    # === REVENUE STATISTICS ===
+
+    # Total revenue
+    total_revenue = LabTestOrderModel.objects.filter(
+        payment_status=True
+    ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # Today's revenue
+    revenue_today = LabTestOrderModel.objects.filter(
+        payment_status=True,
+        payment_date__date=today
+    ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # This week's revenue
+    revenue_week = LabTestOrderModel.objects.filter(
+        payment_status=True,
+        payment_date__date__gte=this_week_start
+    ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # This month's revenue
+    revenue_month = LabTestOrderModel.objects.filter(
+        payment_status=True,
+        payment_date__date__gte=this_month_start
+    ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # === CATEGORY WISE STATISTICS ===
+    category_stats = LabTestCategoryModel.objects.annotate(
+        total_orders=Count('templates__orders'),
+        completed_orders=Count('templates__orders', filter=Q(templates__orders__status='completed')),
+        revenue=Sum('templates__orders__amount_charged', filter=Q(templates__orders__payment_status=True))
+    ).order_by('-total_orders')
+
+    # Format for chart
+    category_chart_data = [
+        {
+            'name': cat.name,
+            'value': cat.total_orders,
+            'revenue': float(cat.revenue or 0)
+        }
+        for cat in category_stats[:10]  # Top 10 categories
+    ]
+
+    # === POPULAR TESTS ===
+    popular_tests = LabTestTemplateModel.objects.annotate(
+        order_count=Count('orders')
+    ).filter(order_count__gt=0).order_by('-order_count')[:10]
+
+    popular_tests_data = [
+        {
+            'name': test.name,
+            'orders': test.order_count,
+            'revenue': float(
+                LabTestOrderModel.objects.filter(
+                    template=test,
+                    payment_status=True
+                ).aggregate(total=Sum('amount_charged'))['total'] or 0
             )
+        }
+        for test in popular_tests
+    ]
 
-        return queryset
+    # === DAILY TRENDS (LAST 7 DAYS) ===
+    daily_trends = []
+    for i in range(7):
+        date = today - timedelta(days=6 - i)
+        orders_count = LabTestOrderModel.objects.filter(ordered_at__date=date).count()
+        completed_count = LabTestOrderModel.objects.filter(
+            status='completed',
+            processed_at__date=date
+        ).count()
+        revenue = LabTestOrderModel.objects.filter(
+            payment_status=True,
+            payment_date__date=date
+        ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        # Status counts for dashboard
-        status_counts = LabTestOrderModel.objects.filter(
-            status__in=['collected', 'processing', 'completed']
-        ).aggregate(
-            collected=Count(Case(When(status='collected', then=1), output_field=IntegerField())),
-            processing=Count(Case(When(status='processing', then=1), output_field=IntegerField())),
-            completed=Count(Case(When(status='completed', then=1), output_field=IntegerField())),
-        )
-
-        # Results needing verification
-        unverified_count = LabTestResultModel.objects.filter(is_verified=False).count()
-
-        context.update({
-            'status_counts': status_counts,
-            'unverified_count': unverified_count,
-            'status_choices': LabTestOrderModel.STATUS_CHOICES,
-            'current_status': self.request.GET.get('status', ''),
-            'search_query': self.request.GET.get('search', ''),
+        daily_trends.append({
+            'date': date.strftime('%Y-%m-%d'),
+            'orders': orders_count,
+            'completed': completed_count,
+            'revenue': float(revenue)
         })
 
-        return context
+    # === MONTHLY TRENDS (LAST 12 MONTHS) ===
+    monthly_trends = []
+    for i in range(12):
+        month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+        for _ in range(i):
+            month_start = (month_start - timedelta(days=1)).replace(day=1)
 
+        month_end = (month_start.replace(month=month_start.month + 1)
+                     if month_start.month < 12
+                     else month_start.replace(year=month_start.year + 1, month=1)) - timedelta(days=1)
+
+        orders_count = LabTestOrderModel.objects.filter(
+            ordered_at__date__gte=month_start,
+            ordered_at__date__lte=month_end
+        ).count()
+
+        completed_count = LabTestOrderModel.objects.filter(
+            status='completed',
+            processed_at__date__gte=month_start,
+            processed_at__date__lte=month_end
+        ).count()
+
+        revenue = LabTestOrderModel.objects.filter(
+            payment_status=True,
+            payment_date__date__gte=month_start,
+            payment_date__date__lte=month_end
+        ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+        monthly_trends.insert(0, {
+            'month': month_start.strftime('%b %Y'),
+            'orders': orders_count,
+            'completed': completed_count,
+            'revenue': float(revenue)
+        })
+
+    # === SOURCE DISTRIBUTION ===
+    source_distribution = LabTestOrderModel.objects.values('source').annotate(
+        count=Count('id')
+    )
+
+    source_chart_data = [
+        {
+            'name': 'Doctor Prescribed' if source['source'] == 'doctor' else 'Lab Direct',
+            'value': source['count']
+        }
+        for source in source_distribution
+    ]
+
+    # === RECENT ACTIVITY ===
+    recent_orders = LabTestOrderModel.objects.select_related(
+        'patient', 'template', 'ordered_by'
+    ).order_by('-ordered_at')[:10]
+
+    # === AVERAGE PROCESSING TIME ===
+    completed_orders = LabTestOrderModel.objects.filter(
+        status='completed',
+        processed_at__isnull=False
+    )
+
+    avg_processing_hours = 0
+    if completed_orders.exists():
+        total_processing_time = sum([
+            (order.processed_at - order.ordered_at).total_seconds() / 3600
+            for order in completed_orders
+            if order.processed_at and order.ordered_at
+        ])
+        avg_processing_hours = round(total_processing_time / completed_orders.count(), 1)
+
+    # === PENDING TASKS ===
+    pending_collection = LabTestOrderModel.objects.filter(status='paid').count()
+    pending_processing = LabTestOrderModel.objects.filter(status='collected').count()
+    pending_verification = LabTestResultModel.objects.filter(is_verified=False).count()
+
+    context = {
+        # Basic stats
+        'total_orders': total_orders,
+        'total_templates': total_templates,
+        'total_categories': total_categories,
+        'completed_tests': completed_tests,
+
+        # Daily stats
+        'orders_today': orders_today,
+        'completed_today': completed_today,
+        'pending_today': pending_today,
+
+        # Weekly stats
+        'orders_week': orders_week,
+        'completed_week': completed_week,
+
+        # Monthly stats
+        'orders_month': orders_month,
+        'completed_month': completed_month,
+        'orders_growth': orders_growth,
+        'completed_growth': completed_growth,
+
+        # Revenue
+        'total_revenue': total_revenue,
+        'revenue_today': revenue_today,
+        'revenue_week': revenue_week,
+        'revenue_month': revenue_month,
+
+        # Charts data
+        'status_distribution': json.dumps(status_chart_data),
+        'category_distribution': json.dumps(category_chart_data),
+        'popular_tests': popular_tests_data,
+        'daily_trends': json.dumps(daily_trends),
+        'monthly_trends': json.dumps(monthly_trends),
+        'source_distribution': json.dumps(source_chart_data),
+
+        # Other stats
+        'avg_processing_hours': avg_processing_hours,
+        'recent_orders': recent_orders,
+
+        # Pending tasks
+        'pending_collection': pending_collection,
+        'pending_processing': pending_processing,
+        'pending_verification': pending_verification,
+    }
+
+    return render(request, 'laboratory/dashboard.html', context)
+
+
+@login_required
+def laboratory_dashboard_print(request):
+    """Printable version of laboratory dashboard"""
+    # Get the same context as main dashboard but simplified for printing
+    context = laboratory_dashboard(request).context_data
+    return render(request, 'laboratory/dashboard_print.html', context)
+
+
+@login_required
+def laboratory_analytics_api(request):
+    """API endpoint for dynamic chart updates"""
+    chart_type = request.GET.get('type')
+
+    if chart_type == 'daily_revenue':
+        # Last 30 days revenue
+        data = []
+        today = timezone.now().date()
+        for i in range(30):
+            date = today - timedelta(days=29 - i)
+            revenue = LabTestOrderModel.objects.filter(
+                payment_status=True,
+                payment_date__date=date
+            ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+            data.append({
+                'date': date.strftime('%Y-%m-%d'),
+                'revenue': float(revenue)
+            })
+
+        return JsonResponse({'data': data})
+
+    elif chart_type == 'category_performance':
+        # Category wise performance this month
+        this_month_start = timezone.now().date().replace(day=1)
+
+        categories = LabTestCategoryModel.objects.annotate(
+            orders_this_month=Count(
+                'templates__orders',
+                filter=Q(templates__orders__ordered_at__date__gte=this_month_start)
+            ),
+            revenue_this_month=Sum(
+                'templates__orders__amount_charged',
+                filter=Q(
+                    templates__orders__payment_status=True,
+                    templates__orders__payment_date__date__gte=this_month_start
+                )
+            )
+        ).order_by('-orders_this_month')[:10]
+
+        data = [
+            {
+                'name': cat.name,
+                'orders': cat.orders_this_month,
+                'revenue': float(cat.revenue_this_month or 0)
+            }
+            for cat in categories
+        ]
+
+        return JsonResponse({'data': data})
+
+    return JsonResponse({'error': 'Invalid chart type'}, status=400)
 
 class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """Create lab test results"""
@@ -905,6 +1191,7 @@ class LabTestResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
             'can_edit': not result.is_verified and self.request.user.has_perm('laboratory.change_labtestresultmodel'),
             'order': result.order,
             'patient': result.order.patient,
+            'lab_setting': LabSettingModel.objects.first(),
             'template': result.order.template,
             'parameters': result.order.template.test_parameters.get('parameters', []),
             'results': result.results_data.get('results', [])
@@ -922,47 +1209,88 @@ class LabTestResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListVie
     paginate_by = 20
 
     def get_queryset(self):
+        # Get all filter values from the request
         verified_filter = self.request.GET.get('verified', '')
         search_query = self.request.GET.get('search', '')
+        # NEW: Get start and end date strings
+        start_date_str = self.request.GET.get('start_date')
+        end_date_str = self.request.GET.get('end_date')
 
         queryset = LabTestResultModel.objects.select_related(
             'order__patient', 'order__template', 'verified_by'
         ).order_by('-created_at')
 
+        # Apply verified filter
         if verified_filter == 'verified':
             queryset = queryset.filter(is_verified=True)
         elif verified_filter == 'unverified':
             queryset = queryset.filter(is_verified=False)
 
+        # NEW: Apply date range filter
+        if start_date_str and end_date_str:
+            try:
+                # Convert string dates to date objects for filtering
+                start_date = date.fromisoformat(start_date_str)
+                end_date = date.fromisoformat(end_date_str)
+                # Use '__date__range' to filter the DateTimeField by date
+                queryset = queryset.filter(created_at__date__range=[start_date, end_date])
+            except (ValueError, TypeError):
+                # Ignore invalid date formats gracefully
+                pass
+
+        # Apply search query filter
         if search_query:
-            queryset = queryset.filter(
-                Q(order__patient__first_name__icontains=search_query) |
-                Q(order__patient__last_name__icontains=search_query) |
+            # Annotate the queryset to create a temporary 'full_name' field in the database
+            queryset = queryset.annotate(
+                search_full_name=Concat(
+                    'order__patient__first_name', Value(' '), 'order__patient__last_name'
+                )
+            ).filter(
+                # Now, filter using the new annotated field and your other existing fields
+                Q(search_full_name__icontains=search_query) |
                 Q(order__order_number__icontains=search_query) |
-                Q(order__template__name__icontains=search_query)
+                Q(order__template__name__icontains=search_query) |
+                Q(order__patient__card_number__icontains=search_query)
             )
 
         return queryset
 
+    # your_app/views.py
+    from datetime import date
+
+    # ... inside your LabTestResultListView class
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        # Summary stats
-        context['pending_verification'] = LabTestResultModel.objects.filter(is_verified=False).count()
-        context['total_results'] = LabTestResultModel.objects.count()
-        context['verified_results'] = LabTestResultModel.objects.filter(is_verified=True).count()
+        # MODIFIED: Get the filtered queryset first to make stats dynamic
+        # This re-uses the logic from your get_queryset() method
+        filtered_queryset = self.get_queryset()
 
-        # Filter options
-        context['verified_choices'] = [
-            ('', 'All Results'),
-            ('verified', 'Verified Only'),
-            ('unverified', 'Unverified Only')
-        ]
+        # MODIFIED: Calculate stats based on the filtered queryset
+        context['total_results'] = filtered_queryset.count()
+        context['verified_results'] = filtered_queryset.filter(is_verified=True).count()
+        context['pending_verification'] = filtered_queryset.filter(is_verified=False).count()
+
+        # --- The rest of the method remains the same ---
+
+        # Get current filter values to maintain state in the template
         context['current_verified'] = self.request.GET.get('verified', '')
         context['search_query'] = self.request.GET.get('search', '')
 
-        return context
+        # Set default dates and maintain state for date filters
+        today_str = date.today().isoformat()
+        context['start_date'] = self.request.GET.get('start_date', today_str)
+        context['end_date'] = self.request.GET.get('end_date', today_str)
 
+        # Filter choices
+        context['verified_choices'] = [
+            ('', 'All Statuses'),
+            ('verified', 'Verified Only'),
+            ('unverified', 'Unverified Only')
+        ]
+
+        return context
 
 @login_required
 @permission_required('laboratory.change_labtestresultmodel', raise_exception=True)
@@ -1063,7 +1391,7 @@ class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, Creat
 
     def dispatch(self, request, *args, **kwargs):
         # Get the order from URL
-        order_id = kwargs.get('order_id')
+        order_id = request.GET.get('order_id')
         if order_id:
             self.order = get_object_or_404(LabTestOrderModel, pk=order_id)
             # Check if result already exists
@@ -1491,23 +1819,41 @@ class LabSettingUpdateView(
 @login_required
 @permission_required('laboratory.change_labtestresultmodel', raise_exception=True)
 def verify_result(request, pk):
-    result = get_object_or_404(LabTestResultModel, pk=pk)
-    try:
-        if result.is_verified:
-            messages.info(request, "Result is already verified.")
-            return redirect(reverse('lab_result_detail', kwargs={'pk': pk}))
+    # 1. We must check that this is a POST request
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
 
+    result = get_object_or_404(LabTestResultModel, pk=pk)
+
+    # 2. Check if already verified and return a JSON error
+    if result.is_verified:
+        return JsonResponse({'success': False, 'error': 'This result has already been verified.'})
+
+    try:
+        # The core logic remains inside a transaction
         with transaction.atomic():
             result.is_verified = True
             result.verified_by = request.user
             result.verified_at = now()
-            result.save(update_fields=['is_verified', 'verified_by', 'verified_at'])
 
-        messages.success(request, f"Result verified for order {result.order.order_number}")
-    except Exception:
-        logger.exception("Error verifying result id=%s", pk)
-        messages.error(request, "An error occurred while verifying result. Contact admin.")
-    return redirect(reverse('lab_result_detail', kwargs={'pk': pk}))
+            # 3. Get pathologist comments from the AJAX request
+            pathologist_comments = request.POST.get('pathologist_comments', '')
+            if pathologist_comments:
+                result.pathologist_comments = pathologist_comments
+
+            result.save()
+
+        # 4. Return a success JSON response
+        message = f"Result verified for order {result.order.order_number}"
+        return JsonResponse({'success': True, 'message': message})
+
+    except Exception as e:
+        # 5. Catch any errors and return a server error JSON response
+        logger.exception("Error verifying result id=%s: %s", pk, e)
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected error occurred. Please contact support.'
+        }, status=500)
 
 
 @login_required

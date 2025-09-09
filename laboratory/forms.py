@@ -203,10 +203,30 @@ class LabTestTemplateBuilderForm(forms.ModelForm):
 
 
 class LabSettingForm(forms.ModelForm):
+    """
+    Form for updating the global Laboratory Settings.
+    """
     class Meta:
         model = LabSettingModel
-        fields = ['lab_name', 'lab_license']
+        fields = [
+            'lab_name', 'mobile', 'email',
+            'allow_direct_lab_order',
+            'allow_result_print_in_lab',
+            'allow_result_printing_by_consultant',
+        ]
         widgets = {
-            'lab_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'lab_license': forms.TextInput(attrs={'class': 'form-control'}),
+            'lab_name': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Official name of the laboratory'
+            }),
+            'mobile': forms.TextInput(attrs={
+                'class': 'form-control',
+            }),
+            'email': forms.TextInput(attrs={
+                'class': 'form-control',
+            }),
+            'allow_direct_lab_order': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'allow_result_print_in_lab': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'allow_result_printing_by_consultant': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+

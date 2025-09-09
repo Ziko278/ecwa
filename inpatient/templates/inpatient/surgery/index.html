@@ -1,0 +1,128 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Surgeries List</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item active">Surgeries</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="card-title">All Surgeries</h5>
+                        <a href="{% url 'surgery_search_patient' %}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-calendar-plus"></i> Schedule New Surgery
+                        </a>
+                    </div>
+                    <p>Browse, search, and manage all scheduled surgical procedures.</p>
+
+                    <!-- Search and Filter Form -->
+                    <form method="get" class="row g-3 mb-4">
+                        <div class="col-md-5">
+                            <input type="text" name="search" class="form-control" placeholder="Search patient, procedure, or surgery no..." value="{{ search_query }}">
+                        </div>
+                        <div class="col-md-3">
+                             <select name="status" class="form-select">
+                                <option value="">All Statuses</option>
+                                {% for value, text in status_choices %}
+                                <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ text }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                             <select name="date_filter" class="form-select">
+                                <option value="">Any Date</option>
+                                <option value="today" {% if selected_date_filter == 'today' %}selected{% endif %}>Today</option>
+                                <option value="week" {% if selected_date_filter == 'week' %}selected{% endif %}>This Week</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">Filter</button>
+                        </div>
+                    </form>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col">#SUR No.</th>
+                                    <th scope="col">Patient</th>
+                                    <th scope="col">Procedure</th>
+                                    <th scope="col">Scheduled Date</th>
+                                    <th scope="col">Surgeon</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col" class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for surgery in surgery_list %}
+                                <tr>
+                                    <th scope="row"><a href="{% url 'surgery_detail' surgery.pk %}">{{ surgery.surgery_number }}</a></th>
+                                    <td>{{ surgery.patient|title }}</td>
+                                    <td>{{ surgery.surgery_type.name }}</td>
+                                    <td>{{ surgery.scheduled_date|date:"d M, Y P" }}</td>
+                                    <td>{{ surgery.surgeon_name|default:"N/A" }}</td>
+                                    <td>
+                                        {% if surgery.status == 'scheduled' %}
+                                            <span class="badge bg-primary">Scheduled</span>
+                                        {% elif surgery.status == 'completed' %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% elif surgery.status == 'in_progress' %}
+                                             <span class="badge bg-info">In Progress</span>
+                                        {% elif surgery.status == 'cancelled' %}
+                                            <span class="badge bg-danger">Cancelled</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ surgery.get_status_display }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="{% url 'surgery_detail' surgery.pk %}" class="btn btn-info btn-sm" title="View Details"><i class="bi bi-eye"></i></a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center">No surgeries found matching your criteria.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if is_paginated %}
+                    <nav aria-label="Page navigation" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item"><a class="page-link" href="?page=1&search={{ search_query }}&status={{ selected_status }}&date_filter={{ selected_date_filter }}">&laquo; First</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&search={{ search_query }}&status={{ selected_status }}&date_filter={{ selected_date_filter }}">Previous</a></li>
+                            {% endif %}
+
+                            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&search={{ search_query }}&status={{ selected_status }}&date_filter={{ selected_date_filter }}">Next</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&search={{ search_query }}&status={{ selected_status }}&date_filter={{ selected_date_filter }}">Last &raquo;</a></li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

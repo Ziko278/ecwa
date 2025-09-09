@@ -486,6 +486,30 @@ class DrugOrderModel(models.Model):
         blank=True,
         help_text="Any additional notes about the order or dispensing."
     )
+    admission = models.ForeignKey(
+        'inpatient.Admission',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='drug_orders',
+        help_text="Link to an admission record if applicable"
+    )
+    surgery = models.ForeignKey(
+        'inpatient.Surgery',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='drug_orders',
+        help_text="Link to a surgery record if applicable"
+    )
+
+    consultation = models.ForeignKey(
+        'consultation.ConsultationSessionModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='drug_consultation_order',
+    )
 
     class Meta:
         db_table = 'drug_orders'

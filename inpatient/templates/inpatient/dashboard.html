@@ -1,0 +1,172 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Inpatient Dashboard</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item active">Inpatient</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section dashboard">
+    <div class="row">
+
+        <!-- Top Row Summary Cards -->
+        <div class="col-lg-8">
+            <div class="row">
+                <!-- Active Admissions -->
+                <div class="col-xxl-4 col-md-6">
+                    <div class="card info-card sales-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Active Admissions</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                                    <i class="bi bi-person-check-fill"></i>
+                                </div>
+                                <div class="ps-3">
+                                    <h6>{{ stats.active_admissions }}</h6>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Surgeries Today -->
+                <div class="col-xxl-4 col-md-6">
+                    <div class="card info-card revenue-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Surgeries Today</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                                    <i class="bi bi-calendar2-event"></i>
+                                </div>
+                                <div class="ps-3">
+                                    <h6>{{ stats.surgeries_today }}</h6>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Occupied Beds -->
+                <div class="col-xxl-4 col-xl-12">
+                    <div class="card info-card customers-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Occupied Beds</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                                    <i class="bi bi-building"></i>
+                                </div>
+                                <div class="ps-3">
+                                    <h6>{{ stats.occupied_beds }} / {{ stats.total_beds }}</h6>
+                                    <span class="text-danger small pt-1 fw-bold">{{ stats.occupancy_rate }}%</span> <span class="text-muted small pt-2 ps-1">Occupancy</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Admissions Table -->
+                <div class="col-12">
+                    <div class="card recent-sales overflow-auto">
+                        <div class="card-body">
+                            <h5 class="card-title">Recent Admissions <span>| Last 7 Days</span></h5>
+                            <table class="table table-borderless table-hover">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">#ADM No.</th>
+                                        <th scope="col">Patient</th>
+                                        <th scope="col">Ward</th>
+                                        <th scope="col">Date</th>
+                                        <th scope="col">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for admission in recent_admissions %}
+                                    <tr>
+                                        <th scope="row"><a href="{% url 'admission_detail' admission.pk %}">{{ admission.admission_number }}</a></th>
+                                        <td>{{ admission.patientModel.get_full_name }}</td>
+                                        <td>{{ admission.ward_name|default:"N/A" }}</td>
+                                        <td>{{ admission.admission_date|date:"d M, Y" }}</td>
+                                        <td><span class="badge bg-success">{{ admission.get_status_display }}</span></td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center">No recent admissions found.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upcoming Surgeries -->
+                <div class="col-12">
+                    <div class="card top-selling overflow-auto">
+                        <div class="card-body pb-0">
+                            <h5 class="card-title">Upcoming Surgeries</h5>
+                            <table class="table table-borderless table-hover">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Patient</th>
+                                        <th scope="col">Procedure</th>
+                                        <th scope="col">Date & Time</th>
+                                        <th scope="col">Surgeon</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for surgery in upcoming_surgeries %}
+                                    <tr>
+                                        <td><a href="{% url 'surgery_detail' surgery.pk %}" class="text-primary fw-bold">{{ surgery.patientModel.get_full_name }}</a></td>
+                                        <td>{{ surgery.surgery_type.name }}</td>
+                                        <td class="fw-bold">{{ surgery.scheduled_date|date:"d M, Y P" }}</td>
+                                        <td>{{ surgery.surgeon_name|default:"N/A" }}</td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center">No upcoming surgeries scheduled.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Right Side Column for Ward Occupancy -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Ward Occupancy</h5>
+                    <div class="activity">
+                        {% for ward in ward_occupancy %}
+                        <div class="activity-item d-flex">
+                            <div class="activite-label">{{ ward.occupied_beds }}/{{ ward.total_beds }}</div>
+                            <i class='bi bi-circle-fill activity-badge {% if ward.occupancy_rate > 80 %}text-danger{% elif ward.occupancy_rate > 50 %}text-warning{% else %}text-success{% endif %} align-self-start'></i>
+                            <div class="activity-content">
+                                <strong>{{ ward.name }}</strong> ({{ ward.occupancy_rate }}% Full)
+                                <div class="progress mt-2" style="height: 10px;">
+                                  <div class="progress-bar {% if ward.occupancy_rate > 80 %}bg-danger{% elif ward.occupancy_rate > 50 %}bg-warning{% else %}bg-success{% endif %}" role="progressbar" style="width: {{ ward.occupancy_rate }}%" aria-valuenow="{{ ward.occupancy_rate }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="text-center">No active wards found.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+{% endblock %}

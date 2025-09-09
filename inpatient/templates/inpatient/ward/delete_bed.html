@@ -1,0 +1,41 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Confirm Bed Deletion</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'ward_index' %}">Wards</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'ward_detail' bed.ward.pk %}">{{ bed.ward.name }}</a></li>
+            <li class="breadcrumb-item active">Delete Bed</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card border-danger border-top border-4">
+                <div class="card-body">
+                    <h5 class="card-title text-danger">Confirm Deletion</h5>
+                    <p>Are you sure you want to permanently delete <strong>Bed {{ bed.bed_number }}</strong> from the ward <strong>"{{ bed.ward.name }}"</strong>?</p>
+                    
+                    <div class="alert alert-warning">
+                        <strong>Note:</strong> This action cannot be undone. Historical records will no longer be linked to this specific bed.
+                    </div>
+
+                    <form method="post" class="text-end">
+                        {% csrf_token %}
+                        <a href="{% url 'ward_detail' bed.ward.pk %}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-danger">Yes, Delete Bed</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

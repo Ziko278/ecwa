@@ -1,0 +1,267 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Admission Details</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'admission_index' %}">Admissions</a></li>
+            <li class="breadcrumb-item active">{{ admission.admission_number }}</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section profile">
+    <div class="row">
+        <!-- Left column for patient details -->
+        <div class="col-xl-4">
+            <div class="card">
+                <div class="card-body profile-card pt-4 d-flex flex-column align-items-center">
+                    <img src="{% static 'assets/img/profile-img.jpg' %}" alt="Profile" class="rounded-circle">
+                    <h2>{{ admission.patientModel.get_full_name }}</h2>
+                    <h3>Card No: {{ admission.patientModel.card_number }}</h3>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Admission Info</h5>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Admission No.</strong>
+                            <span>{{ admission.admission_number }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Admitted On</strong>
+                            <span>{{ admission.admission_date|date:"d M, Y P" }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Length of Stay</strong>
+                            <span>{{ admission.length_of_stay }} day(s)</span>
+                        </li>
+                         <li class="list-group-item d-flex justify-content-between">
+                            <strong>Ward / Bed</strong>
+                            <span>{{ admission.ward_name|default:'N/A' }} / {{ admission.bed.bed_number|default:'N/A' }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Attending Doctor</strong>
+                            <span>{{ admission.attending_doctor|default:"N/A" }}</span>
+                        </li>
+                         <li class="list-group-item d-flex justify-content-between">
+                            <strong>Status</strong>
+                            <span class="badge {% if admission.is_active %}bg-success{% else %}bg-secondary{% endif %}">{{ admission.get_status_display }}</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right column for tabs -->
+        <div class="col-xl-8">
+            <div class="card">
+                <div class="card-body pt-3">
+                    <!-- Bordered Tabs -->
+                    <ul class="nav nav-tabs nav-tabs-bordered">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#overview-tab">Overview & Update</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#services-drug-tab">Drugs</button>
+                        </li>
+                         <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#services-lab-tab">Lab Tests</button>
+                        </li>
+                         <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#services-scan-tab">Scans</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#billing-tab">Billing</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#surgeries-tab">Surgeries</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content pt-2">
+
+                        <!-- Overview & Update Tab -->
+                        <div class="tab-pane fade show active" id="overview-tab">
+                            {% include './partials/detail_overview.html' %}
+                        </div>
+
+                        <!-- Services Tabs -->
+                        <div class="tab-pane fade" id="services-drug-tab">
+                           {% include './partials/detail_drug.html' %}
+                        </div>
+                         <div class="tab-pane fade" id="services-lab-tab">
+                           {% include './partials/detail_lab.html' %}
+                        </div>
+                         <div class="tab-pane fade" id="services-scan-tab">
+                           {% include './partials/detail_scan.html' %}
+                        </div>
+
+                        <!-- Billing Tab -->
+                        <div class="tab-pane fade" id="billing-tab">
+                             <h5 class="card-title">Billing Summary</h5>
+                             <p>This is a summary of charges associated with this admission. (This is a placeholder and should be integrated with your finance module).</p>
+                              <table class="table">
+                                <tbody>
+                                  <tr><th scope="row">Admission Fee</th><td>₦{{ billing_summary.admission_fee|floatformat:2 }}</td></tr>
+                                  <tr><th scope="row">Bed Charges</th><td>₦{{ billing_summary.bed_charges|floatformat:2 }}</td></tr>
+                                  <tr><th scope="row">Drug Charges</th><td>₦{{ billing_summary.drug_charges|floatformat:2 }}</td></tr>
+                                  <tr><th scope="row">Lab Charges</th><td>₦{{ billing_summary.lab_charges|floatformat:2 }}</td></tr>
+                                  <tr><th scope="row">Scan Charges</th><td>₦{{ billing_summary.scan_charges|floatformat:2 }}</td></tr>
+                                  <tr><th scope="row">Surgery Charges</th><td>₦{{ billing_summary.surgery_charges|floatformat:2 }}</td></tr>
+                                  <tr class="table-info"><th scope="row">Total Charges</th><td><strong>₦{{ billing_summary.total_charges|floatformat:2 }}</strong></td></tr>
+                                  <tr class="table-success"><th scope="row">Total Paid</th><td><strong>₦{{ billing_summary.total_paid|floatformat:2 }}</strong></td></tr>
+                                  <tr class="table-danger"><th scope="row">Balance Due</th><td><strong>₦{{ billing_summary.balance|floatformat:2 }}</strong></td></tr>
+                                </tbody>
+                              </table>
+                        </div>
+
+                        <!-- Surgeries Tab -->
+                        <div class="tab-pane fade" id="surgeries-tab">
+                             <h5 class="card-title">Associated Surgeries</h5>
+                             <div class="list-group">
+                                {% for surgery in surgeries %}
+                                <a href="{% url 'surgery_detail' surgery.pk %}" class="list-group-item list-group-item-action">
+                                    <div class="d-flex w-100 justify-content-between">
+                                    <h5 class="mb-1">{{ surgery.surgery_type.name }}</h5>
+                                    <small>{{ surgery.scheduled_date|date:"d M, Y" }}</small>
+                                    </div>
+                                    <p class="mb-1">No: {{ surgery.surgery_number }} | Status: <span class="fw-bold">{{ surgery.get_status_display }}</span></p>
+                                    <small>Surgeon: {{ surgery.surgeon_name|default:"N/A" }}</small>
+                                </a>
+                                {% empty %}
+                                <div class="list-group-item">No surgeries are associated with this admission.</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                    </div><!-- End Bordered Tabs -->
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Include jQuery for AJAX -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<!-- FULLY FUNCTIONAL JAVASCRIPT FOR SERVICE ORDERING -->
+<script>
+$(document).ready(function() {
+    const csrfToken = "{{ csrf_token }}";
+
+    // Generic function to handle ordering a service (drug, lab, scan)
+    function orderService(formId, tableBodyId, emptyRowId, type) {
+        $('#' + formId).on('submit', function(e) {
+            e.preventDefault();
+            const form = $(this);
+            const url = form.attr('action');
+            const data = form.serialize() + '&csrfmiddlewaretoken=' + csrfToken;
+            const hiddenIdInput = form.find('input[type=hidden]');
+
+            if (!hiddenIdInput.val()) {
+                alert(`Please search and select a ${type}.`);
+                return;
+            }
+
+            $.post(url, data)
+                .done(function(response) {
+                    if (response.success) {
+                        const order = response[type + '_order']; // e.g., response.drug_order
+                        const newRow = `
+                            <tr>
+                                <td>${order.name}</td>
+                                ${type === 'drug' ? '<td>' + order.quantity + '</td>' : ''}
+                                <td><span class="badge bg-warning">${order.status}</span></td>
+                                <td>{{ request.user.get_full_name|default:request.user.username }}</td>
+                                <td>Just now</td>
+                            </tr>`;
+                        $('#' + tableBodyId).append(newRow);
+                        $('#' + emptyRowId).hide();
+                        form.closest('.modal').modal('hide');
+                        form[0].reset();
+                        // You can replace this with a more sophisticated notification library
+                        alert(response.message);
+                    } else {
+                        alert('Error: ' + response.error);
+                    }
+                })
+                .fail(function() {
+                    alert('An unexpected server error occurred.');
+                });
+        });
+    }
+
+    // Generic search functionality
+    function setupSearch(inputId, resultsId, url) {
+        const searchInput = $('#' + inputId);
+        const resultsContainer = $('#' + resultsId);
+        const hiddenIdInput = $('#' + inputId + '-id');
+
+        searchInput.on('keyup', function() {
+            const query = $(this).val();
+            if (query.length < 2) {
+                resultsContainer.hide();
+                return;
+            }
+            $.get(url, { q: query }, function(data) {
+                resultsContainer.empty().show();
+                if (data.results && data.results.length > 0) {
+                    data.results.forEach(function(item) {
+                        resultsContainer.append(`<a href="#" class="list-group-item list-group-item-action" data-id="${item.id}" data-name="${item.name}">${item.name}</a>`);
+                    });
+                } else {
+                    resultsContainer.append('<span class="list-group-item">No results found</span>');
+                }
+            });
+        });
+
+        resultsContainer.on('click', 'a', function(e) {
+            e.preventDefault();
+            const selectedId = $(this).data('id');
+            const selectedName = $(this).data('name');
+            searchInput.val(selectedName);
+            hiddenIdInput.val(selectedId);
+            resultsContainer.hide();
+        });
+    }
+
+    // Initialize all service order forms and searches
+    orderService('order-drug-form', 'drugs-order-table-body', 'no-drugs-order-row', 'drug');
+    orderService('order-lab-form', 'labs-order-table-body', 'no-labs-order-row', 'lab');
+    orderService('order-scan-form', 'scans-order-table-body', 'no-scans-order-row', 'scan');
+
+    setupSearch('admission-drug-search', 'admission-drug-search-results', "{% url 'search_drugs_for_surgery' %}");
+    setupSearch('admission-lab-search', 'admission-lab-search-results', "{% url 'search_lab_tests_for_surgery' %}");
+    setupSearch('admission-scan-search', 'admission-scan-search-results', "{% url 'search_scans_for_surgery' %}");
+
+    // Hide search results when clicking outside
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('.search-wrapper').length) {
+            $('.search-results').hide();
+        }
+    });
+});
+</script>
+
+<style>
+.search-wrapper { position: relative; }
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1050; /* Higher than modal z-index */
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+</style>
+{% endblock %}
+

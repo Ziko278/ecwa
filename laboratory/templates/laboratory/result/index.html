@@ -1,4 +1,3 @@
-<!-- laboratory/result/index.html -->
 {% extends 'admin_site/layout.html' %}
 {% load static %}
 {% load humanize %}
@@ -8,21 +7,12 @@
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <div>
-                <h4 class="card-title mb-0">All Lab Results</h4>
-                <p class="card-description mb-0">Complete list of lab test results</p>
-            </div>
-            <div>
-                <a href="{% url 'lab_result_dashboard' %}" class="btn btn-warning">
-                    <i class="mdi mdi-view-dashboard me-2"></i>Dashboard
-                </a>
-                <a href="{% url 'lab_result_create' %}" class="btn btn-success ms-2">
-                    <i class="mdi mdi-plus-circle me-2"></i>New Result
-                </a>
+                <h4 class="card-title mb-0">Lab Results</h4>
+                <p class="card-description mb-0">List of lab test results</p>
             </div>
         </div>
 
-        <div class="card-body">
-            <!-- Summary Cards -->
+        <div class="card-body pt-3">
             <div class="row mb-4">
                 <div class="col-4">
                     <div class="card bg-info text-white h-100">
@@ -50,10 +40,10 @@
                 </div>
             </div>
 
-            <!-- Filter and Search -->
-            <div class="row mb-3">
-                <div class="col-md-3">
-                    <select id="verified-filter" class="form-control">
+            <div class="row mb-3 g-2 align-items-center">
+                <div class="col-md-2">
+                    <label for="verified-filter" class="form-label visually-hidden">Status</label>
+                    <select id="verified-filter" class="form-select">
                         {% for value, label in verified_choices %}
                             <option value="{{ value }}" {% if current_verified == value %}selected{% endif %}>
                                 {{ label }}
@@ -61,23 +51,31 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div class="col-md-2">
+                    <label for="start-date-filter" class="form-label visually-hidden">Start Date</label>
+                    <input type="date" id="start-date-filter" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-2">
+                    <label for="end-date-filter" class="form-label visually-hidden">End Date</label>
+                    <input type="date" id="end-date-filter" class="form-control" value="{{ end_date }}">
+                </div>
                 <div class="col-md-4">
+                    <label for="search-input" class="form-label visually-hidden">Search</label>
                     <div class="input-group">
                         <input type="text" id="search-input" class="form-control"
                                placeholder="Search patient, order, test..." value="{{ search_query }}">
                         <button class="btn btn-outline-secondary" type="button" id="search-btn">
-                            <i class="mdi mdi-magnify"></i>
+                            <i class="mdi mdi-magnify"></i> Search
                         </button>
                     </div>
                 </div>
-                <div class="col-md-5 text-end">
-                    <button type="button" class="btn btn-outline-primary" onclick="location.reload()">
-                        <i class="mdi mdi-refresh"></i> Refresh
+                <div class="col-md-2 text-end">
+                    <button type="button" class="btn btn-outline-primary" onclick="window.location.href='{% url 'lab_result_index' %}'">
+                        <i class="mdi mdi-refresh"></i> Clear
                     </button>
                 </div>
             </div>
 
-            <!-- Results List -->
             {% if not results %}
                 <div class="text-center py-5">
                     <i class="mdi mdi-clipboard-text-outline" style="font-size: 4rem; color: #ccc;"></i>
@@ -102,7 +100,7 @@
                             {% for result in results %}
                             <tr>
                                 <td>
-                                    <strong>{{ result.order.patient.full_name }}</strong>
+                                    <strong>{{ result.order.patient|title }}</strong>
                                     <br><small class="text-muted">{{ result.order.patient.card_number }}</small>
                                 </td>
                                 <td>
@@ -110,7 +108,7 @@
                                     <br><small class="text-muted">{{ result.order.template.category.name }}</small>
                                 </td>
                                 <td>
-                                    <span class="badge badge-secondary">{{ result.order.order_number }}</span>
+                                    <span class="text-muted">{{ result.order.order_number }}</span>
                                 </td>
                                 <td>
                                     {{ result.created_at|date:"M d, Y" }}
@@ -118,18 +116,18 @@
                                 </td>
                                 <td>
                                     {% if result.is_verified %}
-                                        <span class="badge badge-success">
-                                            <i class="mdi mdi-check-circle me-1"></i>Verified
+                                        <span class="text-success">
+                                           Verified
                                         </span>
                                     {% else %}
-                                        <span class="badge badge-warning">
-                                            <i class="mdi mdi-clock me-1"></i>Unverified
+                                        <span class="text-warning">
+                                            Unverified
                                         </span>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if result.is_verified %}
-                                        {{ result.verified_by.get_full_name|default:result.verified_by.username }}
+                                        {{ result.verified_by.user_staff_profile.staff|title|default:result.verified_by.username }}
                                         <br><small class="text-muted">{{ result.verified_at|date:"M d, H:i" }}</small>
                                     {% else %}
                                         <small class="text-muted">-</small>
@@ -139,20 +137,9 @@
                                     <div class="btn-group btn-group-sm" role="group">
                                         <a href="{% url 'lab_result_detail' pk=result.pk %}"
                                            class="btn btn-outline-primary" title="View Details">
-                                            <i class="mdi mdi-eye"></i>
+                                            <i class="bi bi-eye"></i>
                                         </a>
-                                        {% if not result.is_verified %}
-                                            <a href="{% url 'lab_result_edit' pk=result.pk %}"
-                                               class="btn btn-outline-warning" title="Edit Results">
-                                                <i class="mdi mdi-pencil"></i>
-                                            </a>
-                                            <button type="button" class="btn btn-outline-success verify-btn"
-                                                    data-result-id="{{ result.id }}"
-                                                    data-test-name="{{ result.order.template.name }}"
-                                                    title="Verify Results">
-                                                <i class="mdi mdi-check-circle"></i>
-                                            </button>
-                                        {% endif %}
+
                                     </div>
                                 </td>
                             </tr>
@@ -161,16 +148,15 @@
                     </table>
                 </div>
 
-                <!-- Pagination -->
                 {% if is_paginated %}
                     <nav aria-label="Results pagination">
                         <ul class="pagination justify-content-center mt-4">
                             {% if page_obj.has_previous %}
                                 <li class="page-item">
-                                    <a class="page-link" href="?page=1{% if current_verified %}&verified={{ current_verified }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">First</a>
+                                    <a class="page-link" href="?page=1&verified={{ current_verified }}&start_date={{ start_date }}&end_date={{ end_date }}&search={{ search_query }}">First</a>
                                 </li>
                                 <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if current_verified %}&verified={{ current_verified }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">Previous</a>
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}&verified={{ current_verified }}&start_date={{ start_date }}&end_date={{ end_date }}&search={{ search_query }}">Previous</a>
                                 </li>
                             {% endif %}
 
@@ -182,10 +168,10 @@
 
                             {% if page_obj.has_next %}
                                 <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if current_verified %}&verified={{ current_verified }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">Next</a>
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}&verified={{ current_verified }}&start_date={{ start_date }}&end_date={{ end_date }}&search={{ search_query }}">Next</a>
                                 </li>
                                 <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if current_verified %}&verified={{ current_verified }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">Last</a>
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&verified={{ current_verified }}&start_date={{ start_date }}&end_date={{ end_date }}&search={{ search_query }}">Last</a>
                                 </li>
                             {% endif %}
                         </ul>
@@ -196,7 +182,6 @@
     </div>
 </div>
 
-<!-- Verification Modal -->
 <div class="modal fade" id="verificationModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -246,47 +231,42 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Get all filter elements
     const verifiedFilter = document.getElementById('verified-filter');
     const searchInput = document.getElementById('search-input');
     const searchBtn = document.getElementById('search-btn');
+    const startDateFilter = document.getElementById('start-date-filter');
+    const endDateFilter = document.getElementById('end-date-filter');
+
+    // Verify button logic
     const verifyBtns = document.querySelectorAll('.verify-btn');
     const verificationModal = new bootstrap.Modal(document.getElementById('verificationModal'));
     const verificationForm = document.getElementById('verification-form');
-
     let currentResultId = null;
 
-    // Filter and search functionality
+    // Central function to apply all filters
     function applyFilters() {
-        const verified = verifiedFilter.value;
-        const search = searchInput.value;
-        const url = new URL(window.location);
+        const url = new URL(window.location.pathname, window.location.origin);
 
-        if (verified) {
-            url.searchParams.set('verified', verified);
-        } else {
-            url.searchParams.delete('verified');
-        }
-
-        if (search) {
-            url.searchParams.set('search', search);
-        } else {
-            url.searchParams.delete('search');
-        }
+        // Append each filter to the URL if it has a value
+        if (verifiedFilter.value) url.searchParams.set('verified', verifiedFilter.value);
+        if (startDateFilter.value) url.searchParams.set('start_date', startDateFilter.value);
+        if (endDateFilter.value) url.searchParams.set('end_date', endDateFilter.value);
+        if (searchInput.value) url.searchParams.set('search', searchInput.value);
 
         window.location.href = url.toString();
     }
 
-    if (verifiedFilter) {
-        verifiedFilter.addEventListener('change', applyFilters);
-    }
-
-    if (searchBtn) {
-        searchBtn.addEventListener('click', applyFilters);
-    }
+    // Attach event listeners to all filter controls
+    if (searchBtn) searchBtn.addEventListener('click', applyFilters);
+    if (verifiedFilter) verifiedFilter.addEventListener('change', applyFilters);
+    if (startDateFilter) startDateFilter.addEventListener('change', applyFilters);
+    if (endDateFilter) endDateFilter.addEventListener('change', applyFilters);
 
     if (searchInput) {
         searchInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
+                e.preventDefault(); // Prevent form submission
                 applyFilters();
             }
         });
@@ -317,14 +297,23 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-2"></i>Verifying...';
 
             const formData = new FormData();
-            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
             formData.append('pathologist_comments', pathologistComments);
 
-            fetch(`/laboratory/results/${currentResultId}/verify/`, {
+            const verifyUrlTemplate = "{% url 'verify_result' pk=0 %}";
+            const finalVerifyUrl = verifyUrlTemplate.replace('0', currentResultId);
+
+            fetch(finalVerifyUrl, {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    // Handle non-2xx responses by trying to parse the error
+                    return response.json().then(err => { throw err; });
+                }
+                return response.json();
+            })
             .then(data => {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="mdi mdi-check-circle me-2"></i>Verify Result';
@@ -333,14 +322,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     verificationModal.hide();
                     location.reload(); // Refresh to show updated status
                 } else {
+                    // This else block might not be reached if using the throw pattern above,
+                    // but it's good for handling logical errors from the server.
                     alert('Error: ' + (data.error || 'Verification failed'));
                 }
             })
-            .catch(error => {
+            .catch(errorData => {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="mdi mdi-check-circle me-2"></i>Verify Result';
-                console.error('Error:', error);
-                alert('An error occurred while verifying result');
+                console.error('Error:', errorData);
+                // Display the specific error message from the server if available
+                alert('An error occurred: ' + (errorData.error || 'Please check the console for details.'));
             });
         });
     }

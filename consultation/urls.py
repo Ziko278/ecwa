@@ -36,6 +36,8 @@ urlpatterns = [
     path('consultant/<int:pk>/detail', ConsultantDetailView.as_view(), name='consultant_detail'),
     path('consultant/<int:pk>/edit', ConsultantUpdateView.as_view(), name='consultant_edit'),
     path('consultant/<int:pk>/delete', ConsultantDeleteView.as_view(), name='consultant_delete'),
+    path('consultant/<int:pk>/toggle-availability/', toggle_consultant_availability, name='consultant_toggle_availability'),
+
 
     # -------------------------
     # 5. CONSULTATION FEES URLS
@@ -115,13 +117,21 @@ urlpatterns = [
     # -------------------------
     # 15. AJAX/API ENDPOINTS
     # -------------------------
+
+    # -------------------------
+    # 15. AJAX/API ENDPOINTS (UPDATED)
+    # -------------------------
     path('ajax/consultant-schedule/', get_consultant_schedule_ajax, name='get_consultant_schedule_ajax'),
     path('ajax/patient-vitals/<int:queue_pk>/', get_patient_vitals_ajax, name='get_patient_vitals_ajax'),
     path('ajax/patient-vitals/<int:queue_pk>/create', create_vitals_view, name='create_patient_vitals_ajax'),
+    path('ajax/patient-vitals/<int:queue_pk>/update', update_patient_vitals_ajax, name='update_patient_vitals_ajax'),  # NEW
     path('ajax/queue-status/', queue_status_ajax, name='queue_status_ajax'),
     path('ajax/specialization-fee/', get_specialization_fee_ajax, name='get_specialization_fee_ajax'),
     path('ajax/search-patients/', search_patients_ajax, name='search_patients_ajax'),
     path('ajax/assign-consultant/<int:queue_pk>/', assign_consultant_ajax, name='assign_consultant_ajax'),
+    path('ajax/change-doctor/<int:queue_pk>/', change_patient_doctor_ajax, name='change_patient_doctor_ajax'),  # NEW
+    path('ajax/queue-data/', get_patient_queue_data_ajax, name='get_patient_queue_data_ajax'),  # NEW
+    path('ajax/specialization-consultants/', get_specialization_consultants_ajax, name='get_specialization_consultants_ajax'),  # ENHANCED
 
     path('doctor-dashboard', doctor_dashboard, name='doctor_dashboard'),
 

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+
+</body>
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Create Admission</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'admission_search_patient' %}">Admit Patient</a></li>
+            <li class="breadcrumb-item active">Create</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <!-- Patient Information Card -->
+        <div class="col-lg-12">
+             <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <h4 class="alert-heading">Admitting Patient: {{ patient.get_full_name }}</h4>
+                <p>
+                    <strong>Card Number:</strong> {{ patient.card_number }} |
+                    <strong>Phone:</strong> {{ patient.phone|default:"N/A" }} |
+                    <strong>Gender:</strong> {{ patient.get_gender_display }} |
+                    <strong>Age:</strong> {{ patient.age }} years
+                </p>
+                <hr>
+                <p class="mb-0">You are creating a new admission record for this patient. Please fill in the details below.</p>
+             </div>
+        </div>
+
+        <!-- Admission Form -->
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Step 2: Admission Details</h5>
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+                        <!-- This field is set by the view, so we don't need to show it -->
+                        {{ form.patientModel.as_hidden }}
+
+                        <!-- Admission Details Section -->
+                        <div class="col-12">
+                            <h6 class="card-subtitle mb-2 text-muted">Admission Details</h6>
+                            <hr>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.admission_type }}
+                                <label for="{{ form.admission_type.id_for_label }}">Admission Type <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.chief_complaint }}
+                                <label for="{{ form.chief_complaint.id_for_label }}">Chief Complaint <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.admission_diagnosis }}
+                                <label for="{{ form.admission_diagnosis.id_for_label }}">Admission Diagnosis <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+
+                         <!-- Bed Assignment Section -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Bed Assignment</h6>
+                            <hr>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.bed }}
+                                <label for="{{ form.bed.id_for_label }}">Assign Bed</label>
+                            </div>
+                        </div>
+
+                        <!-- Staff & Scheduling Section -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Staff & Scheduling</h6>
+                            <hr>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.attending_doctor }}
+                                <label for="{{ form.attending_doctor.id_for_label }}">Attending Doctor</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                             <label for="{{ form.expected_discharge_date.id_for_label }}">Expected Discharge Date</label>
+                             {{ form.expected_discharge_date }}
+                        </div>
+
+                        <!-- Notes Section -->
+                        <div class="col-12 mt-4">
+                            <div class="form-floating">
+                                {{ form.admission_notes }}
+                                <label for="{{ form.admission_notes.id_for_label }}">Admission Notes</label>
+                            </div>
+                        </div>
+
+
+                        <div class="text-end mt-4">
+                            <a href="{% url 'admission_search_patient' %}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Create Admission</button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,225 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Schedule New Surgery</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'surgery_search_patient' %}">Schedule Surgery</a></li>
+            <li class="breadcrumb-item active">Create</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <!-- Patient Information Card -->
+        <div class="col-lg-12">
+             <div class="alert alert-success" role="alert">
+                <h4 class="alert-heading">Scheduling Surgery for: {{ patient|title }}</h4>
+                <p>
+                    <strong>Card Number:</strong> {{ patient.card_number }} |
+                    <strong>Phone:</strong> {{ patient.phone|default:"N/A" }} |
+                    <strong>Gender:</strong> {{ patient.get_gender_display }} |
+                    <strong>Age:</strong> {{ patient.age }} years
+                </p>
+                <hr>
+                <p class="mb-0">Please fill in the details below to schedule the surgical procedure.</p>
+             </div>
+        </div>
+
+        <!-- Surgery Form -->
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Step 2: Surgery Details</h5>
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+                        {{ form.patient.as_hidden }}
+                        {{ form.surgery_type }} <!-- This is the hidden input -->
+
+                        <!-- Procedure Details Section -->
+                        <div class="col-12">
+                            <h6 class="card-subtitle mb-2 text-muted">Procedure Details</h6>
+                            <hr>
+                        </div>
+                        <div class="col-md-12">
+                            <label for="{{ form.surgery_type_search.id_for_label }}" class="form-label">Type of Surgery <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                {{ form.surgery_type_search }}
+                                <button class="btn btn-outline-secondary" type="button" id="change-surgery-type-btn" style="display: none;">Change</button>
+                            </div>
+                            <div class="search-wrapper">
+                                <div id="surgery-type-search-results" class="list-group search-results" style="display: none;"></div>
+                            </div>
+                        </div>
+                         <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.pre_op_diagnosis }}
+                                <label for="{{ form.pre_op_diagnosis.id_for_label }}">Pre-Operative Diagnosis <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+
+                        <!-- Staff & Scheduling Section -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Staff & Scheduling</h6>
+                            <hr>
+                        </div>
+                         <div class="col-md-12">
+                            <label for="{{ form.scheduled_date.id_for_label }}" class="form-label">Scheduled Date & Time <span class="text-danger">*</span></label>
+                            {{ form.scheduled_date }}
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                {{ form.primary_surgeon }}
+                                <label for="{{ form.primary_surgeon.id_for_label }}">Primary Surgeon</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                {{ form.assistant_surgeon }}
+                                <label for="{{ form.assistant_surgeon.id_for_label }}">Assistant Surgeon</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                {{ form.anesthesiologist }}
+                                <label for="{{ form.anesthesiologist.id_for_label }}">Anesthesiologist</label>
+                            </div>
+                        </div>
+
+                        <!-- Fees Section -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Default Fees</h6>
+                            <p class="small">These fees are automatically populated from the selected surgery type. They are not editable here.</p>
+                            <hr>
+                        </div>
+                        <div class="col-md-4">
+                             <div class="form-floating">
+                                {{ form.custom_surgeon_fee }}
+                                <label for="{{ form.custom_surgeon_fee.id_for_label }}">Surgeon Fee (₦)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                             <div class="form-floating">
+                                {{ form.custom_anesthesia_fee }}
+                                <label for="{{ form.custom_anesthesia_fee.id_for_label }}">Anesthesia Fee (₦)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                             <div class="form-floating">
+                                {{ form.custom_facility_fee }}
+                                <label for="{{ form.custom_facility_fee.id_for_label }}">Facility Fee (₦)</label>
+                            </div>
+                        </div>
+
+                        <div class="text-end mt-4">
+                            <a href="{% url 'surgery_search_patient' %}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Schedule Surgery</button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Include jQuery for AJAX -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    const searchInput = $('#{{ form.surgery_type_search.id_for_label }}');
+    const hiddenInput = $('#{{ form.surgery_type.id_for_label }}');
+    const resultsContainer = $('#surgery-type-search-results');
+    const changeBtn = $('#change-surgery-type-btn');
+    const searchUrl = "{% url 'search_surgery_types_ajax' %}";
+
+    // --- Search Functionality ---
+    searchInput.on('keyup', function() {
+        const query = $(this).val();
+        if (query.length < 2) {
+            resultsContainer.hide();
+            return;
+        }
+        $.get(searchUrl, { q: query }, function(data) {
+            resultsContainer.empty().show();
+            if (data.results && data.results.length > 0) {
+                data.results.forEach(function(item) {
+                    resultsContainer.append(`<a href="#" class="list-group-item list-group-item-action" data-id="${item.id}" data-name="${item.name}">${item.name}</a>`);
+                });
+            } else {
+                resultsContainer.append('<span class="list-group-item">No results found</span>');
+            }
+        });
+    });
+
+    // --- Handle Selection & Fetch Fees ---
+    resultsContainer.on('click', 'a', function(e) {
+        e.preventDefault();
+        const selectedId = $(this).data('id');
+        const selectedName = $(this).data('name');
+
+        // Set the input values and state
+        searchInput.val(selectedName).prop('readonly', true);
+        hiddenInput.val(selectedId);
+        resultsContainer.hide();
+        changeBtn.show();
+
+        // Use a placeholder URL and replace the PK to fetch fees
+        const feesUrl = `{% url 'get_surgery_type_details_ajax' 0 %}`.replace('0', selectedId);
+        $.get(feesUrl, function(data) {
+            if (data.success) {
+                $('#{{ form.custom_surgeon_fee.id_for_label }}').val(data.fees.surgeon_fee);
+                $('#{{ form.custom_anesthesia_fee.id_for_label }}').val(data.fees.anesthesia_fee);
+                $('#{{ form.custom_facility_fee.id_for_label }}').val(data.fees.facility_fee);
+            } else {
+                console.error('Could not fetch fees:', data.error);
+            }
+        });
+    });
+
+    // --- Handle Change Button Click ---
+    changeBtn.on('click', function() {
+        searchInput.val('').prop('readonly', false).focus();
+        hiddenInput.val('');
+        changeBtn.hide();
+        // Clear fee fields
+        $('#{{ form.custom_surgeon_fee.id_for_label }}').val('');
+        $('#{{ form.custom_anesthesia_fee.id_for_label }}').val('');
+        $('#{{ form.custom_facility_fee.id_for_label }}').val('');
+    });
+
+
+    // --- Hide results when clicking outside ---
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('.search-wrapper, .input-group').length) {
+            resultsContainer.hide();
+        }
+    });
+});
+</script>
+
+<style>
+.search-wrapper { position: relative; }
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    background-color: #fff;
+}
+</style>
+
+{% endblock %}
+

@@ -59,7 +59,7 @@
                                     </thead>
                                     <tbody>
                                         {% for param in parameters %}
-                                        {% with existing_results|default_if_none:dict as existing %}
+                                        {% with existing_results as existing %}
                                         {% with existing|get_item:param.code as current_result %}
                                         <tr>
                                             <td>

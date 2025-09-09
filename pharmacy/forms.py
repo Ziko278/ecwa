@@ -11,7 +11,6 @@ from pharmacy.models import *
 
 class DrugCategoryForm(ModelForm):
     """Form for drug categories"""
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields:
@@ -249,7 +248,6 @@ class DrugOrderForm(ModelForm):
         if 'status' in self.fields:
             self.fields['status'].widget.attrs['readonly'] = True
 
-
     class Meta:
         model = DrugOrderModel
         fields = [
@@ -257,13 +255,13 @@ class DrugOrderForm(ModelForm):
             'drug',
             'quantity_ordered',
             'dosage_instructions',
+            'consultation',
             'duration',
             'ordered_by', # Assuming this is manually assigned from a list of users
             'notes',
         ]
         # Exclude fields that are auto-generated or updated in separate steps
         # 'order_number', 'ordered_at', 'quantity_dispensed', 'dispensed_by', 'dispensed_at', 'status'
-
 
     def clean_quantity_ordered(self):
         quantity = self.cleaned_data.get('quantity_ordered')

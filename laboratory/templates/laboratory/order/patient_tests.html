@@ -1,15 +1,14 @@
-<!-- laboratory/patient_tests.html -->
 {% extends 'admin_site/layout.html' %}
 {% load static %}
 {% load humanize %}
 
 {% block 'main' %}
-<div class="col-lg-12 grid-margin stretch-card">
+<div class="col-lg-12 grid-margin stretch-card" id="patient-info-container" data-wallet-balance="{{ patient.wallet.amount }}">
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <div>
                 <h4 class="card-title mb-0">Lab Tests - {{ patient|title }}</h4>
-                <h4 class="card-title mb-0" style="margin-top:-20px">Wallet Balance: ₦{{ patient.wallet.amount|intcomma }}</h4>
+                <h4 class="card-title mb-0" style="margin-top:-20px">Wallet Balance: <span id="wallet-balance-display">₦{{ patient.wallet.amount|intcomma }}</span></h4>
                 <p class="card-description mb-0">Card Number: {{ patient.card_number|upper }}</p>
             </div>
             <div>
@@ -23,21 +22,6 @@
         </div>
 
         <div class="card-body">
-            <!-- Notification Toast -->
-            <div id="notification-toast" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055; display: none;">
-                <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-                    <div class="toast-header">
-                        <i id="toast-icon" class="mdi me-2"></i>
-                        <strong id="toast-title" class="me-auto">Notification</strong>
-                        <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-                    </div>
-                    <div class="toast-body bg-dark text-white" id="toast-body">
-                        <!-- Message content -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Test Summary Cards - Fixed width distribution -->
             <div class="row mb-4">
                 <div class="col-3">
                     <div class="card bg-primary text-white h-70">
@@ -73,7 +57,6 @@
                 </div>
             </div>
 
-            <!-- Filter Options -->
             <div class="row mb-3">
                 <div class="col-md-4">
                     <select id="status-filter" class="form-control">
@@ -94,7 +77,6 @@
                 </div>
             </div>
 
-            <!-- Tests List -->
             {% if not orders_by_date %}
                 <div class="text-center py-5">
                     <i class="mdi mdi-flask-outline" style="font-size: 4rem; color: #ccc;"></i>
@@ -108,7 +90,6 @@
                 <form id="payment-form" method="post">
                     {% csrf_token %}
                     {% for date, date_orders in orders_by_date.items %}
-                        <!-- Date Header -->
                         <div class="row mb-2">
                             <div class="col-12">
                                 <div class="bg-light p-2 rounded">
@@ -120,7 +101,6 @@
                             </div>
                         </div>
 
-                        <!-- Tests for this date -->
                         {% for order in date_orders %}
                             <div class="row mb-2">
                                 <div class="col-12">
@@ -131,7 +111,8 @@
                                                     {% if order.status == 'pending' %}
                                                         <div class="form-check">
                                                             <input class="form-check-input payment-checkbox" type="checkbox"
-                                                                   value="{{ order.id }}" id="order_{{ order.id }}">
+                                                                   value="{{ order.id }}" id="order_{{ order.id }}"
+                                                                   data-amount="{{ order.amount_charged|default:order.template.price }}">
                                                         </div>
                                                     {% endif %}
                                                 </div>
@@ -151,7 +132,7 @@
                                                 </div>
 
                                                 <div class="col-md-2">
-                                                    <strong>₦{{ order.amount_charged|default:order.template.price|floatformat:2 }}</strong>
+                                                    <strong>₦{{ order.amount_charged|default:order.template.price|intcomma }}</strong>
                                                 </div>
 
                                                 <div class="col-md-3">
@@ -166,15 +147,15 @@
                                                         {% if order.sample_label %}
                                                             <small class="text-muted">Sample: {{ order.sample_label }}</small><br>
                                                         {% endif %}
-                                                        <a href="{% url 'lab_result_create' %}" class="btn btn-sm btn-secondary">
+                                                        <a href="{% url 'lab_result_create' %}?order_id={{order.id}}" class="btn btn-sm btn-secondary">
                                                             <i class="mdi mdi-clipboard-text me-1"></i>Input Results
                                                         </a>
                                                     {% elif order.status == 'processing' %}
                                                         <small class="text-success">In progress...</small>
                                                     {% elif order.status == 'completed' %}
-                                                        <button type="button" class="btn btn-sm btn-success">
+                                                        <a href="{% url 'lab_result_detail' order.result.id %}" class="btn btn-sm btn-success">
                                                             <i class="mdi mdi-eye me-1"></i>View Results
-                                                        </button>
+                                                        </a>
                                                     {% endif %}
                                                 </div>
                                             </div>
@@ -196,7 +177,6 @@
                     {% endfor %}
                 </form>
 
-                <!-- Pagination -->
                 {% if is_paginated %}
                     <nav aria-label="Test pagination">
                         <ul class="pagination justify-content-center mt-4">
@@ -231,7 +211,22 @@
     </div>
 </div>
 
-<!-- Sample Collection Modal -->
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="infoModalLabel">Notification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="infoModalBody">
+                </div>
+            <div class="modal-footer" id="infoModalFooter">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="sampleCollectionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -266,24 +261,7 @@
 </div>
 
 <style>
-/* Custom styles for better aesthetics */
-.toast-container {
-    z-index: 1055;
-}
-
-.toast {
-    min-width: 300px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.toast.success {
-    border-left: 4px solid #28a745;
-}
-
-.toast.error {
-    border-left: 4px solid #dc3545;
-}
-
+/* Custom styles for better aesthetics (Unchanged) */
 .card .border-left-warning {
     border-left: 4px solid #ffc107 !important;
 }
@@ -328,6 +306,8 @@
 /* Loading spinner for buttons */
 .btn-loading {
     position: relative;
+    color: transparent !important;
+    pointer-events: none;
 }
 
 .btn-loading::after {
@@ -335,15 +315,15 @@
     position: absolute;
     width: 16px;
     height: 16px;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     margin: auto;
     border: 2px solid transparent;
     border-top-color: #ffffff;
     border-radius: 50%;
     animation: button-loading-spinner 1s ease infinite;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    right: 0;
 }
 
 @keyframes button-loading-spinner {
@@ -358,63 +338,87 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // DOM elements
+    // ================================== DOM ELEMENTS ==================================
     const statusFilter = document.getElementById('status-filter');
     const paySelectedBtn = document.getElementById('pay-selected-btn');
     const paymentCheckboxes = document.querySelectorAll('.payment-checkbox');
     const collectSampleBtns = document.querySelectorAll('.collect-sample-btn');
+
+    // Modals
     const sampleCollectionModal = new bootstrap.Modal(document.getElementById('sampleCollectionModal'));
+    const infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
     const sampleCollectionForm = document.getElementById('sample-collection-form');
 
     let currentOrderId = null;
 
-    // Notification system
-    function showNotification(message, type = 'info', autoReload = false) {
-        const toastContainer = document.getElementById('notification-toast');
-        const toast = toastContainer.querySelector('.toast');
-        const toastTitle = document.getElementById('toast-title');
-        const toastBody = document.getElementById('toast-body');
-        const toastIcon = document.getElementById('toast-icon');
+    // ================================== NEW MODAL SYSTEM ==================================
+    /**
+     * Shows a central modal for information, errors, or confirmation.
+     * @param {string} title - The title of the modal.
+     * @param {string} message - The body content (HTML is allowed).
+     * @param {string} type - 'success', 'error', 'warning', or 'info'. Affects header color.
+     * @param {Array} buttons - Array of button objects, e.g., [{text: 'OK', class: 'btn-primary', action: callbackFn}]
+     * @param {boolean} autoReload - If true, reloads the page when the modal is hidden after a success.
+     */
+    function showModal(title, message, type = 'info', buttons = [], autoReload = false) {
+        const modalTitle = document.getElementById('infoModalLabel');
+        const modalBody = document.getElementById('infoModalBody');
+        const modalFooter = document.getElementById('infoModalFooter');
+        const modalHeader = document.querySelector('#infoModal .modal-header');
 
-        // Set content
-        toastBody.textContent = message;
+        modalTitle.textContent = title;
+        modalBody.innerHTML = message;
 
-        // Set type-specific styling
-        toast.className = 'toast ' + type;
-        if (type === 'success') {
-            toastTitle.textContent = 'Success';
-            toastIcon.className = 'mdi mdi-check-circle me-2 text-success';
-        } else if (type === 'error') {
-            toastTitle.textContent = 'Error';
-            toastIcon.className = 'mdi mdi-alert-circle me-2 text-danger';
-        } else {
-            toastTitle.textContent = 'Info';
-            toastIcon.className = 'mdi mdi-information me-2 text-info';
+        // Clear previous buttons and styling
+        modalFooter.innerHTML = '';
+        modalHeader.className = 'modal-header';
+
+        // Set header color based on type
+        const typeClasses = {
+            success: 'bg-success text-white',
+            error: 'bg-danger text-white',
+            warning: 'bg-warning text-dark',
+            info: 'bg-info text-white'
+        };
+        if (typeClasses[type]) {
+            modalHeader.classList.add(...typeClasses[type].split(' '));
         }
 
-        // Show toast
-        toastContainer.style.display = 'block';
-        const bsToast = new bootstrap.Toast(toast, {
-            autohide: true,
-            delay: 5000
+        // Add buttons
+        if (buttons.length === 0) {
+            buttons.push({ text: 'Close', class: 'btn-secondary', action: () => infoModal.hide() });
+        }
+
+        buttons.forEach(btnInfo => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = btnInfo.text;
+            button.className = `btn ${btnInfo.class}`;
+            button.addEventListener('click', () => {
+                if (btnInfo.action) {
+                    btnInfo.action();
+                } else {
+                    infoModal.hide();
+                }
+            });
+            modalFooter.appendChild(button);
         });
-        bsToast.show();
 
-        // Auto reload for success messages
-        if (autoReload && type === 'success') {
-            setTimeout(() => {
-                location.reload();
-            }, 5000);
-        }
-
-        // Handle manual close with reload for success
-        toast.addEventListener('hidden.bs.toast', function() {
+        // Handle auto-reload on hide
+        const modalElement = document.getElementById('infoModal');
+        const onHideHandler = () => {
             if (autoReload && type === 'success') {
                 location.reload();
             }
-            toastContainer.style.display = 'none';
-        });
+            modalElement.removeEventListener('hidden.bs.modal', onHideHandler);
+        };
+        modalElement.addEventListener('hidden.bs.modal', onHideHandler);
+
+        infoModal.show();
     }
+
+
+    // ================================== EVENT LISTENERS ==================================
 
     // Status filter
     if (statusFilter) {
@@ -436,7 +440,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (paySelectedBtn) {
             paySelectedBtn.disabled = checkedBoxes.length === 0;
             if (checkedBoxes.length > 0) {
-                paySelectedBtn.innerHTML = `<i class="mdi mdi-credit-card me-2"></i>Pay Selected Tests (${checkedBoxes.length})`;
+                paySelectedBtn.innerHTML = `<i class="mdi mdi-credit-card me-2"></i>Pay Selected (${checkedBoxes.length})`;
             } else {
                 paySelectedBtn.innerHTML = '<i class="mdi mdi-credit-card me-2"></i>Pay Selected Tests';
             }
@@ -447,56 +451,80 @@ document.addEventListener('DOMContentLoaded', function() {
         checkbox.addEventListener('change', updatePayButton);
     });
 
-    // Process payments
+    // Process payments button click
     if (paySelectedBtn) {
         paySelectedBtn.addEventListener('click', function() {
-            const selectedOrders = Array.from(document.querySelectorAll('.payment-checkbox:checked'))
-                .map(cb => cb.value);
+            const checkedBoxes = document.querySelectorAll('.payment-checkbox:checked');
+            const patientWallet = parseFloat(document.getElementById('patient-info-container').dataset.walletBalance);
 
-            if (selectedOrders.length === 0) {
-                showNotification('Please select tests to pay for', 'error');
+            if (checkedBoxes.length === 0) {
+                showModal('No Tests Selected', 'Please select at least one test to pay for.', 'error');
                 return;
             }
 
-            if (!confirm(`Process payment for ${selectedOrders.length} test(s)?`)) {
+            // --- Front-end validation ---
+            let totalCost = 0;
+            const selectedOrders = [];
+            checkedBoxes.forEach(cb => {
+                totalCost += parseFloat(cb.dataset.amount);
+                selectedOrders.push(cb.value);
+            });
+
+            if (totalCost > patientWallet) {
+                const message = `The total cost of selected tests (<b>₦${totalCost.toLocaleString()}</b>) exceeds the patient's wallet balance (<b>₦${patientWallet.toLocaleString()}</b>).<br><br>Please fund the wallet before proceeding.`;
+                showModal('Insufficient Funds', message, 'error');
                 return;
             }
 
-            // Add loading state
-            this.classList.add('btn-loading');
-            this.disabled = true;
-
-            const formData = new FormData();
-            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
-            selectedOrders.forEach(orderId => {
-                formData.append('selected_orders', orderId);
-            });
-
-            fetch('{% url "process_lab_payments" %}', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                this.classList.remove('btn-loading');
-                this.disabled = false;
-
-                if (data.success) {
-                    showNotification(data.message, 'success', true);
-                } else {
-                    showNotification(data.error || 'Payment processing failed', 'error');
-                }
-            })
-            .catch(error => {
-                this.classList.remove('btn-loading');
-                this.disabled = false;
-                console.error('Error:', error);
-                showNotification('An error occurred while processing payment', 'error');
-            });
+            // --- Confirmation using new modal ---
+            const confirmationMessage = `You are about to process payment for <b>${selectedOrders.length} test(s)</b>, totaling <b>₦${totalCost.toLocaleString()}</b>.<br><br>Do you want to proceed?`;
+            showModal('Confirm Payment', confirmationMessage, 'warning', [
+                { text: 'Cancel', class: 'btn-secondary', action: () => infoModal.hide() },
+                { text: 'Confirm Payment', class: 'btn-primary', action: () => processPayment(selectedOrders) }
+            ]);
         });
     }
 
-    // Sample collection
+    // ================================== ASYNC FUNCTIONS ==================================
+
+    // Function to handle the actual payment fetch request
+    function processPayment(selectedOrders) {
+        infoModal.hide(); // Hide confirmation modal first
+
+        paySelectedBtn.classList.add('btn-loading');
+        paySelectedBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        selectedOrders.forEach(orderId => {
+            formData.append('selected_orders', orderId);
+        });
+
+        fetch('{% url "process_lab_payments" %}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            paySelectedBtn.classList.remove('btn-loading');
+            paySelectedBtn.disabled = false;
+            updatePayButton();
+
+            if (data.success) {
+                showModal('Payment Successful', data.message, 'success', [], true);
+            } else {
+                showModal('Payment Failed', data.error || 'An unexpected error occurred.', 'error');
+            }
+        })
+        .catch(error => {
+            paySelectedBtn.classList.remove('btn-loading');
+            paySelectedBtn.disabled = false;
+            console.error('Error:', error);
+            showModal('Request Error', 'An error occurred while communicating with the server.', 'error');
+        });
+    }
+
+    // Sample collection button clicks
     collectSampleBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             currentOrderId = this.dataset.orderId;
@@ -519,7 +547,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const expectedCompletion = document.getElementById('expected-completion').value;
 
             if (!sampleLabel) {
-                showNotification('Please enter a sample label', 'error');
+                showModal('Validation Error', 'Please enter a sample label.', 'error');
                 return;
             }
 
@@ -530,9 +558,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const formData = new FormData();
             formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
             formData.append('sample_label', sampleLabel);
-            formData.append('expected_completion', expectedCompletion);
+            if (expectedCompletion) {
+                formData.append('expected_completion', expectedCompletion);
+            }
 
-            fetch(`{% url "collect_sample" order_id=0 %}`.replace('0', currentOrderId), {
+            fetch(`{% url "collect_sample" 0 %}`.replace('0', currentOrderId), {
                 method: 'POST',
                 body: formData
             })
@@ -543,16 +573,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (data.success) {
                     sampleCollectionModal.hide();
-                    showNotification(data.message, 'success', true);
+                    showModal('Sample Collected', data.message, 'success', [], true);
                 } else {
-                    showNotification(data.error || 'Sample collection failed', 'error');
+                    showModal('Collection Failed', data.error || 'An unexpected error occurred.', 'error');
                 }
             })
             .catch(error => {
                 submitBtn.classList.remove('btn-loading');
                 submitBtn.disabled = false;
                 console.error('Error:', error);
-                showNotification('An error occurred while collecting sample', 'error');
+                showModal('Request Error', 'An error occurred while collecting the sample.', 'error');
             });
         });
     }

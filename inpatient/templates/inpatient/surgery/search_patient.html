@@ -1,0 +1,50 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>New Surgery</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item active">Schedule Surgery</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Step 1: Find Patient Record</h5>
+                    <p>To schedule a new surgery, please enter the patient's card number below to retrieve their file.</p>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" class="row g-3 mt-2">
+                        {% csrf_token %}
+                        <div class="col-md-9">
+                            <div class="form-floating">
+                                <input type="text" name="card_number" class="form-control form-control-lg" id="card_number" placeholder="Patient Card Number" required autofocus>
+                                <label for="card_number">Patient Card Number</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-stretch">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-search"></i> Find Patient
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>Note:</strong> You will be able to link this surgery to an active admission in the next step if one exists for the patient.
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

@@ -13,19 +13,21 @@
             <form method="post" id="templateForm">
                 {% csrf_token %}
 
-                <div class="form-floating mb-3">
-                    {{ form.name }}
-                    <label for="id_name">Template Name<span class="text-danger">*</span></label>
-                </div>
+                <div class="row">
+                    <div class="form-floating col-md-12 mb-3">
+                        {{ form.name }}
+                        <label for="id_name">Template Name<span class="text-danger">*</span></label>
+                    </div>
 
-                <div class="form-floating mb-3">
-                    {{ form.code }}
-                    <label for="id_code">Template Code</label>
-                </div>
+                    <div class="form-floating col-md-6 mb-3">
+                        {{ form.code }}
+                        <label for="id_code">Template Code</label>
+                    </div>
 
-                <div class="form-floating mb-3">
-                    {{ form.category }}
-                    <label for="id_category">Category</label>
+                    <div class="form-floating col-md-6 mb-3">
+                        {{ form.category }}
+                        <label for="id_category">Category</label>
+                    </div>
                 </div>
 
                 <!-- User-friendly Test Parameters Section -->
@@ -38,7 +40,7 @@
                             </div>
 
                             <button type="button" class="btn btn-success btn-sm" id="addParameterBtn">
-                                <i class="mdi mdi-plus"></i> Add Parameter
+                                <i class="bi bi-plus"></i> Add Parameter
                             </button>
                         </div>
                     </div>
@@ -74,6 +76,26 @@
     </div>
 </div>
 
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="errorModalLabel">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Validation Error
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="errorModalMessage" class="mb-0"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Parameter Template (Hidden) -->
 <template id="parameterTemplate">
     <div class="parameter-item border rounded p-3 mb-3" style="background-color: #f8f9fa;">
@@ -103,7 +125,7 @@
             </div>
             <div class="col-md-2">
                 <button type="button" class="btn btn-danger btn-sm remove-parameter-btn mt-3">
-                    <i class="mdi mdi-delete"></i>
+                    <i class="bi bi-x"></i>
                 </button>
             </div>
         </div>
@@ -182,7 +204,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const addParameterBtn = document.getElementById('addParameterBtn');
     const parameterTemplate = document.getElementById('parameterTemplate');
     const hiddenInput = document.getElementById('id_test_parameters');
+    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+    const errorModalMessage = document.getElementById('errorModalMessage');
     let parameterCounter = 0;
+
+    // Function to show error modal
+    function showErrorModal(message) {
+        errorModalMessage.textContent = message;
+        errorModal.show();
+    }
 
     // Add parameter function
     function addParameter() {
@@ -337,7 +367,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const parameters = JSON.parse(hiddenInput.value).parameters;
         if (parameters.length === 0) {
             e.preventDefault();
-            alert('Please add at least one test parameter.');
+            showErrorModal('Please add at least one test parameter.');
             return false;
         }
 
@@ -345,7 +375,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const emptyNames = parameters.filter(p => !p.name.trim());
         if (emptyNames.length > 0) {
             e.preventDefault();
-            alert('Please fill in names for all parameters.');
+            showErrorModal('Please fill in names for all parameters.');
             return false;
         }
     });

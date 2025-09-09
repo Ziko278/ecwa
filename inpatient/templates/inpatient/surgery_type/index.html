@@ -1,0 +1,114 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Surgery Types</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item active">Surgery Types</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="card-title">Surgery Catalogue</h5>
+                        <a href="{% url 'surgery_type_create' %}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-plus-circle"></i> Add New Surgery Type
+                        </a>
+                    </div>
+                    <p>Browse, search, and manage all surgical procedures offered.</p>
+
+                    <!-- Search and Filter Form -->
+                    <form method="get" class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <input type="text" name="search" class="form-control" placeholder="Search by name, description..." value="{{ search_query }}">
+                        </div>
+                        <div class="col-md-4">
+                             <select name="category" class="form-select">
+                                <option value="">All Categories</option>
+                                {% for value, text in categories %}
+                                <option value="{{ value }}" {% if selected_category == value %}selected{% endif %}>{{ text }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">Filter</button>
+                        </div>
+                    </form>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col">#</th>
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Category</th>
+                                    <th scope="col" class="text-end">Base Fee (₦)</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col" class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for surgery_type in surgery_type_list %}
+                                <tr>
+                                    <th scope="row">{{ page_obj.start_index|add:forloop.counter0 }}</th>
+                                    <td><a href="{% url 'surgery_type_detail' surgery_type.pk %}">{{ surgery_type.name }}</a></td>
+                                    <td>{{ surgery_type.get_category_display }}</td>
+                                    <td class="text-end">{{ surgery_type.total_base_fee|floatformat:2 }}</td>
+                                    <td>
+                                        {% if surgery_type.is_active %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="{% url 'surgery_type_detail' surgery_type.pk %}" class="btn btn-info btn-sm" title="View Details"><i class="bi bi-eye"></i></a>
+                                        <a href="{% url 'surgery_type_edit' surgery_type.pk %}" class="btn btn-warning btn-sm" title="Edit"><i class="bi bi-pencil"></i></a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center">No surgery types found matching your criteria.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if is_paginated %}
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item"><a class="page-link" href="?page=1&search={{ search_query }}&category={{ selected_category }}">&laquo; First</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&search={{ search_query }}&category={{ selected_category }}">Previous</a></li>
+                            {% endif %}
+
+                            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&search={{ search_query }}&category={{ selected_category }}">Next</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&search={{ search_query }}&category={{ selected_category }}">Last &raquo;</a></li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Update Admission</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'admission_index' %}">Admissions</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'admission_detail' admission.pk %}">{{ admission.admission_number }}</a></li>
+            <li class="breadcrumb-item active">Update</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Update Admission for: {{ admission.patientModel.get_full_name }}</h5>
+                    <p>Use this form to update the patient's admission status, for example, to discharge them.</p>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" action="{% url 'admission_edit' admission.pk %}" class="row g-3">
+                        {% csrf_token %}
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.status }}
+                                <label for="{{ form.status.id_for_label }}">Admission Status</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.attending_doctor }}
+                                <label for="{{ form.attending_doctor.id_for_label }}">Attending Doctor</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <label for="{{ form.actual_discharge_date.id_for_label }}" class="col-form-label">Actual Discharge Date & Time</label>
+                            {{ form.actual_discharge_date }}
+                            <small class="text-muted">Required when status is 'Discharged'.</small>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.discharge_notes }}
+                                <label for="{{ form.discharge_notes.id_for_label }}">Discharge Notes</label>
+                            </div>
+                        </div>
+
+                         <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.admission_notes }}
+                                <label for="{{ form.admission_notes.id_for_label }}">Update/Add Admission Notes</label>
+                            </div>
+                        </div>
+
+                        <div class="text-end mt-4">
+                            <a href="{% url 'admission_detail' admission.pk %}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

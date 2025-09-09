@@ -113,50 +113,42 @@
                     <table class="table table-hover">
                         <thead class="table-light">
                             <tr>
-                                <th width="12%">Queue #</th>
-                                <th width="20%">Patient</th>
-                                <th width="15%">Status</th>
-                                <th width="15%">Time</th>
-                                <th width="15%">Chief Complaint</th>
-                                <th width="23%">Actions</th>
+                                <th>Patient</th>
+                                <th>Status</th>
+                                <th>Chief Complaint</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for queue in my_queue %}
                             <tr data-queue-id="{{ queue.id }}" class="queue-row">
-                                <td>
-                                    <strong class="text-primary">{{ queue.queue_number }}</strong>
-                                    {% if queue.is_emergency %}
-                                        <span class="badge bg-danger ms-1">EMERGENCY</span>
-                                    {% endif %}
-                                </td>
+
                                 <td>
                                     <div>
                                         <strong>{{ queue.patient|title }}</strong>
-                                        <small class="text-muted d-block">ID: {{ queue.patient.patient_id }}</small>
+                                        <small class="text-muted d-block">ID: {{ queue.patient.card_number|upper }}</small>
                                         <small class="text-muted d-block">{{ queue.patient.age }} yrs, {{ queue.patient.gender|title }}</small>
                                     </div>
                                 </td>
                                 <td>
                                     {% if queue.status == 'vitals_done' %}
-                                        <span class="badge bg-success">Ready</span>
+                                        <span class="badge bg-primary">Ready</span>
                                     {% elif queue.status == 'with_doctor' %}
                                         <span class="badge bg-info">In Progress</span>
                                     {% elif queue.status == 'consultation_paused' %}
                                         <span class="badge bg-warning">Paused</span>
+                                    {% elif queue.status == 'consultation_completed' %}
+                                        <span class="badge bg-success">Completed</span>
+                                    {% else %}
+                                        {{ queue.status }}
                                     {% endif %}
                                 </td>
-                                <td>
-                                    <small>{{ queue.joined_queue_at|date:"H:i" }}</small>
-                                    {% if queue.vitals_completed_at %}
-                                        <small class="text-success d-block">V: {{ queue.vitals_completed_at|date:"H:i" }}</small>
-                                    {% endif %}
-                                </td>
+
                                 <td>
                                     {% if queue.vitals %}
                                         <small>{{ queue.vitals.chief_complaint|truncatechars:50 }}</small>
                                     {% else %}
-                                        <small class="text-muted">Not recorded</small>
+                                        <small class="">Not recorded</small>
                                     {% endif %}
                                 </td>
                                 <td>
@@ -178,9 +170,7 @@
                                             </button>
                                         {% endif %}
 
-                                        <button class="btn btn-sm btn-outline-info" onclick="viewPatientProfile({{ queue.patient.id }})">
-                                            <i class="bi bi-person"></i>
-                                        </button>
+
                                     </div>
                                 </td>
                             </tr>

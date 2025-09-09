@@ -1,0 +1,113 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Inventory & Service Items</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item">Services</li>
+            <li class="breadcrumb-item active">Inventory</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">All Service Items</h5>
+                    <p>Manage all physical products, drugs, and supplies. Items marked in <span class="text-danger">red</span> are low on stock.</p>
+
+                    <div class="d-flex justify-content-end mb-3">
+                        <a href="{% url 'service_item_create' %}" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Add New Item
+                        </a>
+                    </div>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <table class="table table-hover datatable">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">Name</th>
+                                <th scope="col">Category</th>
+                                <th scope="col">Price</th>
+                                <th scope="col">Cost Price</th>
+                                <th scope="col">Stock Qty</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in service_item_list %}
+                            <tr class="{% if item.is_low_stock %}table-danger{% endif %}">
+                                <th scope="row">{{ forloop.counter }}</th>
+                                <td>
+                                    <a href="{% url 'service_item_detail' item.pk %}">{{ item.name }}</a>
+                                    {% if item.is_low_stock %}
+                                        <span class="badge bg-danger">Low Stock</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ item.category.name }}</td>
+                                <td>{{ item.price }}</td>
+                                <td>{{ item.cost_price|default:"N/A" }}</td>
+                                <td><strong>{{ item.stock_quantity }}</strong> {{ item.unit_of_measure }}s</td>
+                                <td>
+                                    {% if item.is_active %}
+                                        <span class="badge bg-primary">Active</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Inactive</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group">
+                                        <a href="{% url 'service_item_detail' item.pk %}" class="btn btn-sm btn-outline-info" title="View Details"><i class="bi bi-eye"></i></a>
+                                        <a href="{% url 'service_item_edit' item.pk %}" class="btn btn-sm btn-outline-primary" title="Edit"><i class="bi bi-pencil"></i></a>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteItemModal_{{ item.pk }}" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="8" class="text-center">No service items found. <a href="{% url 'service_item_create' %}">Add the first one</a>.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Delete Modals -->
+{% for item in service_item_list %}
+<div class="modal fade" id="deleteItemModal_{{ item.pk }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to delete the item: <strong>{{ item.name }}</strong>? This will also remove its stock history and cannot be undone.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{% url 'service_item_delete' item.pk %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Delete Item</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{% endblock %}

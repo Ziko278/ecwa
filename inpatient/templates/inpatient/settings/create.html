@@ -1,0 +1,122 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Edit Inpatient Settings</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_settings_detail' %}">Settings</a></li>
+            <li class="breadcrumb-item active">Edit</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Update Inpatient Configuration</h5>
+                    <p>Modify the settings below and click save. These changes will affect all future inpatient transactions.</p>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+
+                        <!-- Billing Settings Section -->
+                        <div class="col-12">
+                            <h6 class="card-subtitle mb-2 text-muted">Billing Settings</h6>
+                            <hr>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.admission_billing_type }}
+                                <label for="{{ form.admission_billing_type.id_for_label }}">Admission Billing Type</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.admission_amount }}
+                                <label for="{{ form.admission_amount.id_for_label }}">Admission Amount (₦)</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.surgery_billing_type }}
+                                <label for="{{ form.surgery_billing_type.id_for_label }}">Surgery Facility Billing Type</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.surgery_amount }}
+                                <label for="{{ form.surgery_amount.id_for_label }}">Surgery Facility Amount (₦)</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.bed_billing_for_admission }}
+                                <label for="{{ form.bed_billing_for_admission.id_for_label }}">Bed Billing (Regular Admission)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.bed_billing_for_surgery }}
+                                <label for="{{ form.bed_billing_for_surgery.id_for_label }}">Bed Billing (Surgery Admission)</label>
+                            </div>
+                        </div>
+
+                         <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.bed_daily_cost }}
+                                <label for="{{ form.bed_daily_cost.id_for_label }}">Default Daily Bed Cost (₦)</label>
+                            </div>
+                        </div>
+
+
+                        <!-- Auto Compilation Settings Section -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Auto-Compilation for Surgery Packages</h6>
+                             <p class="small">Automatically include pre-defined items from a surgery package in the patient's bill.</p>
+                            <hr>
+                        </div>
+
+                        <div class="col-md-4">
+                             <div class="form-check form-switch">
+                                {{ form.compile_surgery_drugs }}
+                                <label class="form-check-label" for="{{ form.compile_surgery_drugs.id_for_label }}">Compile Surgery Drugs</label>
+                            </div>
+                        </div>
+                         <div class="col-md-4">
+                             <div class="form-check form-switch">
+                                {{ form.compile_surgery_labs }}
+                                <label class="form-check-label" for="{{ form.compile_surgery_labs.id_for_label }}">Compile Surgery Lab Tests</label>
+                            </div>
+                        </div>
+                         <div class="col-md-4">
+                             <div class="form-check form-switch">
+                                {{ form.compile_surgery_scans }}
+                                <label class="form-check-label" for="{{ form.compile_surgery_scans.id_for_label }}">Compile Surgery Scans</label>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="text-end mt-4">
+                            <a href="{% url 'inpatient_settings_detail' %}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

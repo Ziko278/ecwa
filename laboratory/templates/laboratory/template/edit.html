@@ -12,10 +12,10 @@
                 </div>
                 <div>
                     <a href="{% url 'lab_template_detail' template.pk %}" class="btn btn-info btn-sm me-2">
-                        <i class="mdi mdi-eye"></i> View Details
+                        <i class="bi bi-eye"></i> View Details
                     </a>
                     <a href="{% url 'lab_template_index' %}" class="btn btn-secondary btn-sm">
-                        <i class="mdi mdi-arrow-left"></i> Back to List
+                        <i class="bi bi-arrow-left"></i> Back to List
                     </a>
                 </div>
             </div>
@@ -93,24 +93,24 @@
                             <span id="parameterCount">0</span> parameters
                         </div>
                     </div>
-                    
+
                     <div class="card border-light">
                         <div class="card-body">
                             <div id="parametersContainer">
                                 <!-- Parameters will be loaded here -->
                             </div>
-                            
+
                             <div class="d-flex justify-content-between align-items-center mt-3">
                                 <button type="button" class="btn btn-success btn-sm" id="addParameterBtn">
-                                    <i class="mdi mdi-plus"></i> Add Parameter
+                                    <i class="bi bi-plus"></i> Add Parameter
                                 </button>
-                                
+
                                 <div class="btn-group btn-group-sm" role="group">
                                     <button type="button" class="btn btn-outline-primary" onclick="reorderParameters('up')" title="Move Up">
-                                        <i class="mdi mdi-arrow-up"></i>
+                                        <i class="bi bi-arrow-up"></i>
                                     </button>
                                     <button type="button" class="btn btn-outline-primary" onclick="reorderParameters('down')" title="Move Down">
-                                        <i class="mdi mdi-arrow-down"></i>
+                                        <i class="bi bi-arrow-down"></i>
                                     </button>
                                 </div>
                             </div>
@@ -148,19 +148,19 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <button type="submit" class="btn btn-primary me-2">
-                            <i class="mdi mdi-content-save"></i> Update Template
+                            <i class="bi bi-save"></i> Update Template
                         </button>
                         <button type="button" class="btn btn-success me-2" onclick="previewChanges()">
-                            <i class="mdi mdi-eye"></i> Preview Changes
+                            <i class="bi bi-eye"></i> Preview Changes
                         </button>
                     </div>
                     <div>
                         <a href="{% url 'lab_template_detail' template.pk %}" class="btn btn-secondary me-2">
-                            <i class="mdi mdi-close"></i> Cancel
+                            <i class="bi bi-x"></i> Cancel
                         </a>
                         {% if template.is_active and total_orders > 0 %}
                         <button type="button" class="btn btn-warning" onclick="showWarning()">
-                            <i class="mdi mdi-alert"></i> Has Active Orders
+                            <i class="bi bi-exclamation-triangle"></i> Has Active Orders
                         </button>
                         {% endif %}
                     </div>
@@ -180,10 +180,10 @@
             </div>
             <div class="btn-group btn-group-sm">
                 <button type="button" class="btn btn-outline-primary btn-sm duplicate-parameter" title="Duplicate">
-                    <i class="mdi mdi-content-copy"></i>
+                    <i class="bi bi-copy"></i>
                 </button>
                 <button type="button" class="btn btn-danger btn-sm remove-parameter-btn" title="Remove">
-                    <i class="mdi mdi-delete"></i>
+                    <i class="bi bi-x"></i>
                 </button>
             </div>
         </div>
@@ -303,6 +303,24 @@
     </div>
 </div>
 
+<!-- Alert Modal -->
+<div class="modal fade" id="alertModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div id="alertIcon" class="mb-3">
+                    <i class="bi bi-info-circle-fill text-primary" style="font-size: 3rem;"></i>
+                </div>
+                <h5 id="alertTitle" class="mb-3">Information</h5>
+                <p id="alertMessage" class="mb-4"></p>
+                <div id="alertButtons">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
 .parameter-item {
     position: relative;
@@ -349,9 +367,70 @@
     background-color: #6f42c1;
     color: white;
 }
+
+#alertModal .modal-dialog {
+    max-width: 400px;
+}
+
+#alertModal .modal-content {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
 </style>
 
 <script>
+// Alert Modal Function
+function showAlert(message, title = 'Information', type = 'info') {
+    const alertModal = document.getElementById('alertModal');
+    const alertIcon = document.getElementById('alertIcon');
+    const alertTitle = document.getElementById('alertTitle');
+    const alertMessage = document.getElementById('alertMessage');
+
+    // Set icon based on type
+    let iconClass = 'bi-info-circle-fill text-primary';
+    if (type === 'warning') iconClass = 'bi-exclamation-triangle-fill text-warning';
+    else if (type === 'danger') iconClass = 'bi-x-circle-fill text-danger';
+    else if (type === 'success') iconClass = 'bi-check-circle-fill text-success';
+
+    alertIcon.innerHTML = `<i class="bi ${iconClass}" style="font-size: 3rem;"></i>`;
+    alertTitle.textContent = title;
+    alertMessage.textContent = message;
+
+    new bootstrap.Modal(alertModal).show();
+}
+
+// Confirm Modal Function
+function showConfirm(message, title = 'Confirm', onConfirm) {
+    const alertModal = document.getElementById('alertModal');
+    const alertIcon = document.getElementById('alertIcon');
+    const alertTitle = document.getElementById('alertTitle');
+    const alertMessage = document.getElementById('alertMessage');
+    const alertButtons = document.getElementById('alertButtons');
+
+    alertIcon.innerHTML = '<i class="bi bi-question-circle-fill text-warning" style="font-size: 3rem;"></i>';
+    alertTitle.textContent = title;
+    alertMessage.textContent = message;
+
+    alertButtons.innerHTML = `
+        <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmBtn">Confirm</button>
+    `;
+
+    const modal = new bootstrap.Modal(alertModal);
+    modal.show();
+
+    document.getElementById('confirmBtn').onclick = function() {
+        modal.hide();
+        if (onConfirm) onConfirm();
+    };
+
+    // Reset buttons when modal is hidden
+    alertModal.addEventListener('hidden.bs.modal', function() {
+        alertButtons.innerHTML = '<button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>';
+    }, { once: true });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const parametersContainer = document.getElementById('parametersContainer');
     const addParameterBtn = document.getElementById('addParameterBtn');
@@ -364,21 +443,21 @@ document.addEventListener('DOMContentLoaded', function() {
     function addParameter(paramData = null) {
         parameterCounter++;
         const clone = parameterTemplate.content.cloneNode(true);
-        
+
         // Add unique identifiers
         const parameterItem = clone.querySelector('.parameter-item');
         parameterItem.dataset.parameterId = parameterCounter;
-        
+
         parametersContainer.appendChild(clone);
-        
+
         // Attach event listeners to the new parameter
         attachParameterEvents(parameterItem);
-        
+
         // Fill with existing data if provided
         if (paramData) {
             fillParameterData(parameterItem, paramData);
         }
-        
+
         // Update JSON and count
         updateJSON();
         updateParameterCount();
@@ -389,17 +468,17 @@ document.addEventListener('DOMContentLoaded', function() {
         parameterItem.querySelector('.parameter-name').value = paramData.name || '';
         parameterItem.querySelector('.parameter-code').value = paramData.code || '';
         parameterItem.querySelector('.parameter-type').value = paramData.type || 'numeric';
-        
+
         // Handle required field
         if (paramData.required !== undefined) {
             parameterItem.querySelector('.parameter-required').checked = paramData.required;
         }
-        
+
         // Handle notes
         if (paramData.notes) {
             parameterItem.querySelector('.parameter-notes').value = paramData.notes;
         }
-        
+
         if (paramData.type === 'numeric') {
             if (paramData.unit) parameterItem.querySelector('.parameter-unit').value = paramData.unit;
             if (paramData.normal_range) {
@@ -421,7 +500,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 parameterItem.querySelector('.parameter-multiple').checked = paramData.multiple;
             }
         }
-        
+
         // Trigger type change to show correct fields
         parameterItem.querySelector('.parameter-type').dispatchEvent(new Event('change'));
     }
@@ -438,21 +517,21 @@ document.addEventListener('DOMContentLoaded', function() {
         // Type change handler
         typeSelect.addEventListener('change', function() {
             const type = this.value;
-            
+
             // Show/hide relevant fields
             numericFields.style.display = type === 'numeric' ? 'block' : 'none';
             selectFields.style.display = type === 'select' ? 'block' : 'none';
-            
+
             updateJSON();
         });
 
         // Remove parameter handler
         removeBtn.addEventListener('click', function() {
-            if (confirm('Are you sure you want to remove this parameter?')) {
+            showConfirm('Are you sure you want to remove this parameter?', 'Remove Parameter', function() {
                 parameterItem.remove();
                 updateJSON();
                 updateParameterCount();
-            }
+            });
         });
 
         // Duplicate parameter handler
@@ -490,25 +569,25 @@ document.addEventListener('DOMContentLoaded', function() {
         const type = parameterItem.querySelector('.parameter-type').value;
         const required = parameterItem.querySelector('.parameter-required').checked;
         const notes = parameterItem.querySelector('.parameter-notes').value.trim();
-        
+
         const parameter = {
             name: name,
             code: code || name.toUpperCase().replace(/\s+/g, '_'),
             type: type,
             required: required
         };
-        
+
         if (notes) parameter.notes = notes;
-        
+
         // Add type-specific fields
         if (type === 'numeric') {
             const unit = parameterItem.querySelector('.parameter-unit').value.trim();
             const min = parseFloat(parameterItem.querySelector('.parameter-min').value);
             const max = parseFloat(parameterItem.querySelector('.parameter-max').value);
             const genderSpecific = parameterItem.querySelector('.parameter-gender-specific').checked;
-            
+
             if (unit) parameter.unit = unit;
-            
+
             if (!isNaN(min) || !isNaN(max)) {
                 parameter.normal_range = {};
                 if (!isNaN(min)) parameter.normal_range.min = min;
@@ -518,7 +597,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (type === 'select') {
             const optionsText = parameterItem.querySelector('.parameter-options').value.trim();
             const multiple = parameterItem.querySelector('.parameter-multiple').checked;
-            
+
             if (optionsText) {
                 parameter.options = optionsText.split('\n')
                     .map(opt => opt.trim())
@@ -526,7 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (multiple) parameter.multiple = multiple;
         }
-        
+
         return parameter;
     }
 
@@ -534,14 +613,14 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateJSON() {
         const parameters = [];
         const parameterItems = parametersContainer.querySelectorAll('.parameter-item');
-        
+
         parameterItems.forEach(item => {
             const paramData = getParameterData(item);
             if (paramData.name) {
                 parameters.push(paramData);
             }
         });
-        
+
         const jsonData = { parameters: parameters };
         hiddenInput.value = JSON.stringify(jsonData, null, 2);
     }
@@ -570,10 +649,10 @@ document.addEventListener('DOMContentLoaded', function() {
     window.reorderParameters = function(direction) {
         const selected = parametersContainer.querySelectorAll('.parameter-item.selected');
         if (selected.length === 0) {
-            alert('Please select parameters to reorder');
+            showAlert('Please select parameters to reorder', 'No Selection', 'warning');
             return;
         }
-        
+
         selected.forEach(item => {
             if (direction === 'up' && item.previousElementSibling) {
                 item.parentNode.insertBefore(item, item.previousElementSibling);
@@ -581,7 +660,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 item.parentNode.insertBefore(item.nextElementSibling, item);
             }
         });
-        
+
         updateJSON();
     };
 
@@ -589,60 +668,62 @@ document.addEventListener('DOMContentLoaded', function() {
     window.previewChanges = function() {
         updateJSON();
         const parameters = JSON.parse(hiddenInput.value).parameters;
-        
+
         let previewHTML = '<h6>Parameters (' + parameters.length + '):</h6><div class="table-responsive"><table class="table table-sm table-bordered">';
         previewHTML += '<thead><tr><th>Name</th><th>Code</th><th>Type</th><th>Details</th></tr></thead><tbody>';
-        
+
         parameters.forEach(param => {
             let details = '';
+
             if (param.type === 'numeric' && param.unit) details += 'Unit: ' + param.unit + ' ';
             if (param.normal_range) {
                 details += 'Range: ' + (param.normal_range.min || '') + '-' + (param.normal_range.max || '') + ' ';
             }
             if (param.options) details += 'Options: ' + param.options.slice(0, 3).join(', ') + '... ';
-            
-            previewHTML += `<tr>
-                <td><strong>${param.name}</strong></td>
-                <td><span class="badge badge-secondary">${param.code}</span></td>
-                <td><span class="badge badge-primary">${param.type}</span></td>
-                <td><small>${details || '-'}</small></td>
-            </tr>`;
+
+            previewHTML += '<tr>' +
+                '<td><strong>' + (param.name || 'Unnamed') + '</strong></td>' +
+                '<td><strong>' + (param.code || '') + '</strong></td>' +
+                '<td><strong>' + (param.type || '') + '</strong></td>' +
+
+                '<td><small>' + (details || '-') + '</small></td>' +
+            '</tr>';
         });
-        
+
         previewHTML += '</tbody></table></div>';
         document.getElementById('previewContent').innerHTML = previewHTML;
-        
+
         // Show modal (assuming Bootstrap is available)
         new bootstrap.Modal(document.getElementById('previewModal')).show();
     };
 
     // Show warning for active templates
     window.showWarning = function() {
-        alert('This template has active orders. Changes may affect existing test results. Please proceed with caution.');
+        showAlert('This template has active orders. Changes may affect existing test results. Please proceed with caution.', 'Active Template Warning', 'warning');
     };
 
     // Event listeners
     addParameterBtn.addEventListener('click', () => addParameter());
-    
+
     // Form submission handler
     document.getElementById('templateForm').addEventListener('submit', function(e) {
         updateJSON();
-        
+
         const parameters = JSON.parse(hiddenInput.value).parameters;
         if (parameters.length === 0) {
             e.preventDefault();
-            alert('Please add at least one test parameter.');
+            showAlert('Please add at least one test parameter.', 'Validation Error', 'warning');
             return false;
         }
-        
+
         const emptyNames = parameters.filter(p => !p.name.trim());
         if (emptyNames.length > 0) {
             e.preventDefault();
-            alert('Please fill in names for all parameters.');
+            showAlert('Please fill in names for all parameters.', 'Validation Error', 'warning');
             return false;
         }
     });
-    
+
     // Load existing data on page load
     loadExistingData();
     updateParameterCount();

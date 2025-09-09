@@ -49,12 +49,14 @@ INSTALLED_APPS = [
     'admin_site',
     'consultation',
     'human_resource',
+    'inpatient',
     'finance',
     'insurance',
     'laboratory',
     'patient',
     'pharmacy',
     'scan',
+    'service',
     'website',
 ]
 

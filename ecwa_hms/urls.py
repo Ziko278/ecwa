@@ -9,10 +9,12 @@ urlpatterns = [
     path('portal/finance/', include('finance.urls')),
     path('portal/human-resource/', include('human_resource.urls')),
     path('portal/insurance/', include('insurance.urls')),
+    path('portal/inpatient/', include('inpatient.urls')),
     path('portal/laboratory/', include('laboratory.urls')),
     path('portal/patient/', include('patient.urls')),
     path('portal/pharmacy/', include('pharmacy.urls')),
     path('portal/scan/', include('scan.urls')),
+    path('portal/service/', include('service.urls')),
     path('', include('website.urls')),
     path('django-admin/', admin.site.urls),
 ]

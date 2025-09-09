@@ -31,23 +31,6 @@ from .views import (
     ExpenseCategoryUpdateView,
     ExpenseCategoryDeleteView,
 
-    # Quotations
-    QuotationListView,
-    QuotationCreateSelfView,
-    QuotationCreateOthersView,
-    QuotationDetailView,
-    QuotationUpdateSelfView,
-    QuotationUpdateOthersView,
-
-    # Quotation Approval & AJAX
-    QuotationDeptReviewView,
-    QuotationGeneralReviewView,
-    quotation_collect_money,
-    quotation_item_create_ajax,
-    quotation_item_update_ajax,
-    quotation_item_delete_ajax,
-    quotation_items_get_ajax,
-
     # Expenses
     ExpenseListView,
     ExpenseCreateView,
@@ -116,20 +99,6 @@ urlpatterns = [
     path('expense-categories/<int:pk>/update/', ExpenseCategoryUpdateView.as_view(), name='expense_category_update'),
     path('expense-categories/<int:pk>/delete/', ExpenseCategoryDeleteView.as_view(), name='expense_category_delete'),
 
-    # Quotations
-    path('quotations/', QuotationListView.as_view(), name='quotation_index'),
-    path('quotations/create-self/', QuotationCreateSelfView.as_view(), name='quotation_create_self'),
-    path('quotations/create-others/', QuotationCreateOthersView.as_view(), name='quotation_create_others'),
-    path('quotations/<int:pk>/', QuotationDetailView.as_view(), name='quotation_detail'),
-    path('quotations/<int:pk>/edit-self/', QuotationUpdateSelfView.as_view(), name='quotation_edit_self'),
-    path('quotations/<int:pk>/edit-others/', QuotationUpdateOthersView.as_view(), name='quotation_edit_others'),
-    path('quotations/<int:pk>/dept-review/', QuotationDeptReviewView.as_view(), name='quotation_dept_review'),
-    path('quotations/<int:pk>/general-review/', QuotationGeneralReviewView.as_view(), name='quotation_general_review'),
-    path('quotations/<int:pk>/collect-money/', quotation_collect_money, name='quotation_collect_money'),
-    path('quotations/<int:quotation_pk>/items/create/', quotation_item_create_ajax, name='quotation_item_create_ajax'),
-    path('quotation-items/<int:item_pk>/update/', quotation_item_update_ajax, name='quotation_item_update_ajax'),
-    path('quotation-items/<int:item_pk>/delete/', quotation_item_delete_ajax, name='quotation_item_delete_ajax'),
-    path('quotations/<int:quotation_pk>/items/', quotation_items_get_ajax, name='quotation_items_get_ajax'),
 
     # Expenses
     path('expenses/', ExpenseListView.as_view(), name='expense_index'),

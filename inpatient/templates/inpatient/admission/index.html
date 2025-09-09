@@ -1,0 +1,119 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Admissions List</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item active">Admissions</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="card-title">All Admissions</h5>
+                        <a href="{% url 'admission_search_patient' %}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-person-plus-fill"></i> Admit New Patient
+                        </a>
+                    </div>
+                    <p>Browse, search, and manage all patient admission records.</p>
+
+                    <!-- Search and Filter Form -->
+                    <form method="get" class="row g-3 mb-4">
+                        <div class="col-md-7">
+                            <input type="text" name="search" class="form-control" placeholder="Search by patient name, card no, or admission no..." value="{{ search_query }}">
+                        </div>
+                        <div class="col-md-3">
+                             <select name="status" class="form-select">
+                                <option value="">All Statuses</option>
+                                {% for value, text in status_choices %}
+                                <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ text }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">Filter</button>
+                        </div>
+                    </form>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col">#ADM No.</th>
+                                    <th scope="col">Patient</th>
+                                    <th scope="col">Ward & Bed</th>
+                                    <th scope="col">Admission Date</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Attending Doctor</th>
+                                    <th scope="col" class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for admission in admission_list %}
+                                <tr>
+                                    <th scope="row"><a href="{% url 'admission_detail' admission.pk %}">{{ admission.admission_number }}</a></th>
+                                    <td>{{ admission.patientModel.get_full_name }}</td>
+                                    <td>{{ admission.ward_name|default:'N/A' }} / {{ admission.bed.bed_number|default:'N/A' }}</td>
+                                    <td>{{ admission.admission_date|date:"d M, Y P" }}</td>
+                                    <td>
+                                        {% if admission.status == 'active' %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% elif admission.status == 'discharged' %}
+                                            <span class="badge bg-secondary">Discharged</span>
+                                        {% elif admission.status == 'transferred' %}
+                                             <span class="badge bg-info">Transferred</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">{{ admission.get_status_display }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ admission.attending_doctor|default:"N/A" }}</td>
+                                    <td class="text-center">
+                                        <a href="{% url 'admission_detail' admission.pk %}" class="btn btn-info btn-sm" title="View Details"><i class="bi bi-eye"></i></a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center">No admission records found matching your criteria.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if is_paginated %}
+                    <nav aria-label="Page navigation" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item"><a class="page-link" href="?page=1&search={{ search_query }}&status={{ selected_status }}">&laquo; First</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&search={{ search_query }}&status={{ selected_status }}">Previous</a></li>
+                            {% endif %}
+
+                            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&search={{ search_query }}&status={{ selected_status }}">Next</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&search={{ search_query }}&status={{ selected_status }}">Last &raquo;</a></li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

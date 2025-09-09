@@ -1,0 +1,222 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Ward Management</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item active">Wards</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card recent-sales overflow-auto">
+                <div class="filter">
+                    <a class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                        <li class="dropdown-header text-start"><h6>Actions</h6></li>
+                        <li>
+                            <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#addWardModal">
+                                <i class="bi bi-plus-circle"></i> Add New Ward
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="card-body">
+                    <h5 class="card-title">All Wards</h5>
+                    <p>Manage hospital wards and view their occupancy rates.</p>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <table class="table table-hover datatable">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">Ward Name</th>
+                                <th scope="col">Type</th>
+                                <th scope="col" class="text-center">Capacity</th>
+                                <th scope="col">Occupancy</th>
+                                <th scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ward in ward_list %}
+                            <tr>
+                                <th scope="row">{{ forloop.counter }}</th>
+                                <td><a href="{% url 'ward_detail' ward.pk %}">{{ ward.name }}</a></td>
+                                <td>{{ ward.get_ward_type_display }}</td>
+                                <td class="text-center">{{ ward.capacity }}</td>
+                                <td>
+                                    <span>{{ ward.occupied_beds_count }} / {{ ward.capacity }} Occupied</span>
+                                    <div class="progress mt-1" style="height: 10px;">
+                                        <div class="progress-bar {% if ward.occupancy_rate > 80 %}bg-danger{% elif ward.occupancy_rate > 50 %}bg-warning{% else %}bg-success{% endif %}" role="progressbar" style="width: {{ ward.occupancy_rate }}%;" aria-valuenow="{{ ward.occupancy_rate }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <a href="{% url 'ward_detail' ward.pk %}" class="btn btn-info btn-sm" title="View Details"><i class="bi bi-eye"></i></a>
+                                    <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editWardModal-{{ ward.pk }}" title="Edit Ward"><i class="bi bi-pencil"></i></button>
+                                    <a href="{% url 'ward_delete' ward.pk %}" class="btn btn-danger btn-sm" title="Delete Ward"><i class="bi bi-trash"></i></a>
+
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center">No wards have been created yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Add Ward Modal -->
+<div class="modal fade" id="addWardModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{% url 'ward_create' %}" class="row g-3">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Ward</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="form-floating">
+                                {{ form.name }}
+                                <label for="{{ form.name.id_for_label }}">Ward Name <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-floating">
+                                {{ form.ward_type }}
+                                <label for="{{ form.ward_type.id_for_label }}">Ward Type</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-floating">
+                                {{ form.capacity }}
+                                <label for="{{ form.capacity.id_for_label }}">Capacity (Total Beds) <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-floating">
+                                {{ form.location }}
+                                <label for="{{ form.location.id_for_label }}">Location</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-floating">
+                                {{ form.floor }}
+                                <label for="{{ form.floor.id_for_label }}">Floor</label>
+                            </div>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                             <div class="form-floating">
+                                {{ form.description }}
+                                <label for="{{ form.description.id_for_label }}">Description</label>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-check">
+                                {{ form.is_active }}
+                                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                                    Ward is Active
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Save Ward</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Ward Modals -->
+{% for ward in ward_list %}
+<div class="modal fade" id="editWardModal-{{ ward.pk }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{% url 'ward_edit' ward.pk %}" class="row g-3">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Ward: {{ ward.name }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                     <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="form-floating">
+                                <input type="text" name="name" value="{{ ward.name }}" class="form-control" id="id_name_{{ ward.pk }}" required>
+                                <label for="id_name_{{ ward.pk }}">Ward Name <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-floating">
+                                <select name="ward_type" class="form-control" id="id_ward_type_{{ ward.pk }}">
+                                    {% for value, text in form.fields.ward_type.choices %}
+                                        <option value="{{ value }}" {% if ward.ward_type == value %}selected{% endif %}>{{ text }}</option>
+                                    {% endfor %}
+                                </select>
+                                <label for="id_ward_type_{{ ward.pk }}">Ward Type</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-floating">
+                                <input type="number" name="capacity" value="{{ ward.capacity }}" class="form-control" id="id_capacity_{{ ward.pk }}" required min="1">
+                                <label for="id_capacity_{{ ward.pk }}">Capacity (Total Beds) <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-floating">
+                                <input type="text" name="location" value="{{ ward.location|default:'' }}" class="form-control" id="id_location_{{ ward.pk }}">
+                                <label for="id_location_{{ ward.pk }}">Location</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-floating">
+                               <input type="text" name="floor" value="{{ ward.floor|default:'' }}" class="form-control" id="id_floor_{{ ward.pk }}">
+                                <label for="id_floor_{{ ward.pk }}">Floor</label>
+                            </div>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                             <div class="form-floating">
+                                <textarea name="description" class="form-control" id="id_description_{{ ward.pk }}" rows="3">{{ ward.description|default:'' }}</textarea>
+                                <label for="id_description_{{ ward.pk }}">Description</label>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-check">
+                                <input type="checkbox" name="is_active" class="form-check-input" id="id_is_active_{{ ward.pk }}" {% if ward.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="id_is_active_{{ ward.pk }}">
+                                    Ward is Active
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{% endblock %}

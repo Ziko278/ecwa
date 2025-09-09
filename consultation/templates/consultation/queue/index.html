@@ -3,138 +3,141 @@
 {% load static %}
 {% load humanize %}
 
-<div class="row">
-    <div class="col-lg-12 grid-margin stretch-card">
-        <div class="card">
-            <div class="card-body">
-                <h4 class="card-title">Patient Queue Management
-                    <a title="Refresh Queue" href="{% url 'patient_queue_index' %}" class="btn btn-sm btn-info text-white float-end"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
-                </h4>
-                <p class="card-description">
-                    Comprehensive pre-consultation management - vitals, doctor assignment, and queue tracking.
-                </p>
-                {% include 'admin_site/partials/error.html' %}
+<!-- Collapsible Statistics Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="accordion" id="statsAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="statsHeading">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#statsCollapse" aria-expanded="false" aria-controls="statsCollapse">
+                        <i class="bi bi-bar-chart-line me-2"></i> Queue Statistics & Available Consultants
+                    </button>
+                </h2>
+                <div id="statsCollapse" class="accordion-collapse collapse" aria-labelledby="statsHeading" data-bs-parent="#statsAccordion">
+                    <div class="accordion-body">
+                        <div class="row">
+                            <!-- Today's Statistics -->
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-3">Today's Statistics</h6>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <div class="card text-center bg-light">
+                                            <div class="card-body py-2">
+                                                <h6 class="text-primary">{{ queue_stats.total|default:0 }}</h6>
+                                                <small>Total</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="card text-center bg-warning">
+                                            <div class="card-body py-2">
+                                                <h6 class="text-white">{{ queue_stats.waiting_vitals|default:0 }}</h6>
+                                                <small class="text-white">Awaiting Vitals</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <div class="card text-center bg-info">
+                                            <div class="card-body py-2">
+                                                <h6 class="text-white">{{ queue_stats.vitals_done|default:0 }}</h6>
+                                                <small class="text-white">Need Doctor</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="card text-center bg-success">
+                                            <div class="card-body py-2">
+                                                <h6 class="text-white">{{ queue_stats.completed|default:0 }}</h6>
+                                                <small class="text-white">Completed</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Available Consultants -->
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-3">Available Consultants</h6>
+                                {% if consultants_status %}
+                                    <div class="list-group">
+                                        {% for consultant in consultants_status %}
+                                          <div class="list-group-item d-flex justify-content-between align-items-center"
+                                               data-consultant-id="{{ consultant.id }}"
+                                               data-specialization-id="{{ consultant.specialization.id }}"
+                                               data-consultant-name="{{ consultant.staff|escapejs }}"
+                                               data-queue-count="{{ consultant.queue_count }}">
+                                            <div>
+                                              <strong>Dr. {{ consultant.staff|title }}</strong>
+                                              <small class="text-muted d-block">{{ consultant.specialization.name|title }}</small>
+                                              <small class="text-muted">Room: {{ consultant.assigned_room|default:"Not Assigned" }}</small>
+                                            </div>
+                                            <div class="text-end">
+                                              <span class="badge {% if consultant.queue_count > 5 %}bg-danger{% elif consultant.queue_count > 2 %}bg-warning{% else %}bg-success{% endif %} rounded-pill">
+                                                {{ consultant.queue_count }}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <p class="text-muted">No active consultants available.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Main Queue Management -->
 <div class="row">
-    <!-- Left Column: Statistics & Quick Actions -->
-    <div class="col-lg-4 grid-margin stretch-card">
+    <div class="col-12 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Today's Statistics</h5>
-                <div class="row">
-                    <div class="col-6">
-                        <div class="card text-center bg-light">
-                            <div class="card-body py-2">
-                                <h6 class="text-primary">{{ queue_stats.total|default:0 }}</h6>
-                                <small>Total</small>
-                            </div>
-                        </div>
+                <h4 class="card-title">Patient Queue Management
+                    <div class="float-end">
+                        <button class="btn btn-sm btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#quickActionsModal">
+                            <i class="bi bi-lightning"></i> Quick Actions
+                        </button>
+                        <a title="Refresh Queue" href="{% url 'patient_queue_index' %}" class="btn btn-sm btn-info text-white">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </a>
                     </div>
-                    <div class="col-6">
-                        <div class="card text-center bg-warning">
-                            <div class="card-body py-2">
-                                <h6 class="text-white">{{ queue_stats.waiting_vitals|default:0 }}</h6>
-                                <small class="text-white">Awaiting Vitals</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="row mt-2">
-                    <div class="col-6">
-                        <div class="card text-center bg-info">
-                            <div class="card-body py-2">
-                                <h6 class="text-white">{{ queue_stats.vitals_done|default:0 }}</h6>
-                                <small class="text-white">Need Doctor</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="card text-center bg-success">
-                            <div class="card-body py-2">
-                                <h6 class="text-white">{{ queue_stats.completed|default:0 }}</h6>
-                                <small class="text-white">Completed</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                </h4>
 
-                <hr class="my-4">
+                {% include 'admin_site/partials/error.html' %}
 
-                <h5 class="card-title">Available Consultants</h5>
-                {% if consultants_status %}
-                    <div class="list-group">
-                        {% for consultant in consultants_status %}
-                          <div class="list-group-item d-flex justify-content-between align-items-center"
-                               data-consultant-id="{{ consultant.id }}"
-                               data-specialization-id="{{ consultant.specialization.id }}"
-                               data-consultant-name="{{ consultant.staff|escapejs }}"
-                               data-queue-count="{{ consultant.queue_count }}">
-                            <div>
-                              <strong>Dr. {{ consultant.staff|title }}</strong>
-                              <small class="text-muted d-block">{{ consultant.specialization.name|title }}</small>
-                              <small class="text-muted">Room: {{ consultant.assigned_room|default:"Not Assigned" }}</small>
-                            </div>
-                            <div class="text-end">
-                              <span class="badge {% if consultant.queue_count > 5 %}bg-danger{% elif consultant.queue_count > 2 %}bg-warning{% else %}bg-success{% endif %} rounded-pill">
-                                {{ consultant.queue_count }}
-                              </span>
-                            </div>
-                          </div>
-                        {% endfor %}
-
-                    </div>
-                {% else %}
-                    <p class="text-muted">No active consultants available.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <!-- Right Column: Main Queue Management -->
-    <div class="col-lg-8 grid-margin stretch-card">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Active Patient Queue
-                    <button class="btn btn-sm btn-outline-primary float-end" data-bs-toggle="modal" data-bs-target="#bulkActionsModal">
-                        <i class="bi bi-lightning"></i> Bulk Actions
-                    </button>
-                </h5>
-
-                <div class="table-responsive">
+                <div class="table-responsive mt-3">
                     <table class="table table-hover">
                         <thead class="table-light">
                             <tr>
-                                <th width="5%">
+                                <th>
                                     <input type="checkbox" id="selectAll" class="form-check-input">
                                 </th>
-                                <th width="10%">Queue #</th>
-                                <th width="15%">Patient</th>
-                                <th width="15%">Consultant</th>
-                                <th width="10%">Status</th>
-                                <th width="10%">Time</th>
-                                <th width="35%">Actions</th>
+                                <th>Patient</th>
+                                <th>Consultant</th>
+                                <th>Status</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for queue in queue_list %}
-                            <tr data-queue-id="{{ queue.id }}" class="queue-row">
+                            <tr data-queue-id="{{ queue.id }}" class="queue-row {% if queue.priority_level > 0 %}table-warning{% endif %}">
                                 <td>
                                     <input type="checkbox" class="form-check-input queue-checkbox" value="{{ queue.id }}">
                                 </td>
-                                <td>
-                                    <strong class="text-primary">{{ queue.queue_number }}</strong>
-                                    {% if queue.is_emergency %}
-                                        <span class="badge bg-danger ms-1">EMERGENCY</span>
-                                    {% endif %}
-                                </td>
+
                                 <td>
                                     <div>
                                         <strong>{{ queue.patient|title }}</strong>
-                                        <small class="text-muted d-block">ID: {{ queue.patient.patient_id }}</small>
+                                        <small class="text-muted d-block">ID: {{ queue.patient.card_number }}</small>
+                                        {% if queue.priority_level > 0 %}
+                                            <span class="badge bg-warning text-dark">HIGH PRIORITY</span>
+                                        {% endif %}
                                     </div>
                                 </td>
                                 <td>
@@ -159,44 +162,22 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <small>{{ queue.joined_queue_at|date:"H:i" }}</small>
-                                    {% if queue.vitals_started_at %}
-                                        <small class="text-muted d-block">V: {{ queue.vitals_started_at|date:"H:i" }}</small>
-                                    {% endif %}
-                                </td>
-                                <td>
                                     <div class="btn-group-sm" role="group">
                                         {% if queue.status == 'waiting_vitals' %}
                                             <button class="btn btn-sm btn-success" onclick="startVitals({{ queue.id }})">
                                                 <i class="bi bi-heart-pulse"></i> Start Vitals
                                             </button>
-                                        {% elif queue.status == 'vitals_done' %}
-                                            {% if not queue.consultant %}
-                                                <button class="btn btn-sm btn-primary" onclick="assignDoctor({{ queue.id }}, '{{ queue.payment.fee_structure.specialization.id }}')">
-                                                    <i class="bi bi-person-plus"></i> Assign Doctor
-                                                </button>
-                                            {% else %}
-                                                <span class="text-success small">Ready for Dr. {{ queue.consultant.staff|title }}</span>
-                                            {% endif %}
-                                        {% elif queue.status == 'with_doctor' %}
-                                            <span class="text-secondary small">
-                                                <i class="bi bi-clock"></i> In consultation
-                                            </span>
+                                        {% elif queue.status == 'vitals_done' and not queue.consultant %}
+                                            <button class="btn btn-sm btn-primary" onclick="assignDoctor({{ queue.id }}, '{{ queue.payment.fee_structure.specialization.id }}')">
+                                                <i class="bi bi-person-plus"></i> Assign Doctor
+                                            </button>
                                         {% endif %}
-
-                                        <!-- Always available actions -->
-                                        <button class="btn btn-sm btn-outline-info ms-1" onclick="viewPatientDetails({{ queue.patient.id }})">
-                                            <i class="bi bi-eye"></i>
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-danger ms-1" onclick="cancelQueue({{ queue.id }})">
-                                            <i class="bi bi-x"></i>
-                                        </button>
                                     </div>
                                 </td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="7" class="text-center py-4">
+                                <td colspan="5" class="text-center py-4">
                                     <h5 class="text-muted">No Patients in Queue Today</h5>
                                     <p class="text-muted">The queue is empty. New patients will appear here once they join.</p>
                                 </td>
@@ -205,6 +186,54 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions Modal -->
+<div class="modal fade" id="quickActionsModal" tabindex="-1" style="font-family: sans-serif;">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Quick Actions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Select Patient</label>
+                    <select class="form-control" id="quickActionPatient" onchange="loadQuickActions()">
+                        <option value="">Select a patient...</option>
+                        {% for queue in queue_list %}
+                            <option value="{{ queue.id }}" data-status="{{ queue.status }}" data-specialization="{{ queue.payment.fee_structure.specialization.id }}">
+                                {{ queue.patient|title }} - {{ queue.get_status_display }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="quickActionsContainer" style="display: none;">
+                    <div class="mb-3">
+                        <label class="form-label">Action</label>
+                        <select class="form-control" id="quickAction" onchange="toggleActionInputs()">
+                            <option value="">Select Action...</option>
+                            <option value="update_vitals">Update Vitals</option>
+                            <option value="change_doctor">Change Doctor</option>
+                        </select>
+                    </div>
+
+                    <!-- Change Doctor Section -->
+                    <div id="changeDoctorSection" style="display: none;" class="mb-3">
+                        <label class="form-label">New Doctor</label>
+                        <select class="form-control" id="newDoctorSelect">
+                            <option value="">Select new doctor...</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="executeQuickAction()">Execute Action</button>
             </div>
         </div>
     </div>
@@ -325,107 +354,15 @@
     </div>
 </div>
 
-<!-- Bulk Actions Modal -->
-<div class="modal fade" id="bulkActionsModal" tabindex="-1" style="font-family: sans-serif;">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Bulk Actions</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Action</label>
-                    <select class="form-control" id="bulkAction">
-                        <option value="">Select Action...</option>
-                        <option value="complete_vitals">Complete Vitals (Bulk)</option>
-                        <option value="assign_doctor">Assign Same Doctor</option>
-                        <option value="update_priority">Update Priority</option>
-                    </select>
-                </div>
-                <div id="bulkDoctorSelect" style="display: none;" class="mb-3">
-                    <label class="form-label">Select Doctor</label>
-                    <select class="form-control" id="bulkDoctorId">
-                        <!-- Will be populated dynamically -->
-                    </select>
-                </div>
-                <div id="bulkPrioritySelect" style="display: none;" class="mb-3">
-                    <label class="form-label">Priority Level</label>
-                    <select class="form-control" id="bulkPriority">
-                        <option value="0">Normal</option>
-                        <option value="1">High</option>
-                        <option value="2">Emergency</option>
-                    </select>
-                </div>
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> Select patients from the queue first, then choose an action.
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="executeBulkAction()">Execute Action</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Queue Helper Modal -->
-<div class="modal fade" id="queueHelperModal" tabindex="-1" style="font-family: sans-serif">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><b>Patient Queue Workflow</b></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6 class="text-primary">Queue Statuses</h6>
-                        <ul class="list-unstyled">
-                            <li class="mb-2"><span class="badge bg-warning">Awaiting Vitals</span> - Patient needs vital signs recorded</li>
-                            <li class="mb-2"><span class="badge bg-info">Ready for Doctor</span> - Vitals complete, needs doctor assignment</li>
-                            <li class="mb-2"><span class="badge bg-secondary">With Doctor</span> - Currently in consultation</li>
-                            <li class="mb-2"><span class="badge bg-dark">Paused</span> - Consultation temporarily paused</li>
-                            <li class="mb-2"><span class="badge bg-success">Completed</span> - Consultation finished</li>
-                            <li class="mb-2"><span class="badge bg-danger">Cancelled</span> - Queue entry cancelled</li>
-                        </ul>
-                    </div>
-                    <div class="col-md-6">
-                        <h6 class="text-primary">Workflow Steps</h6>
-                        <ol>
-                            <li>Patient joins queue after payment</li>
-                            <li>Nurse records vital signs</li>
-                            <li>Doctor is assigned (same specialization)</li>
-                            <li>Doctor sees patient when ready</li>
-                            <li>Consultation completed</li>
-                        </ol>
-
-                        <h6 class="text-primary mt-3">Quick Actions</h6>
-                        <ul class="list-unstyled">
-                            <li><i class="bi bi-heart-pulse text-success"></i> Start/Complete vitals</li>
-                            <li><i class="bi bi-person-plus text-primary"></i> Assign doctor</li>
-                            <li><i class="bi bi-lightning text-warning"></i> Bulk operations</li>
-                            <li><i class="bi bi-x text-danger"></i> Cancel queue entry</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
 // Global variables
 let currentQueueId = null;
 let currentSpecializationId = null;
+let hasVital = false;
 
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     initializeCheckboxes();
-    setupBulkActionHandler();
 });
 
 // Checkbox handling
@@ -447,50 +384,197 @@ function initializeCheckboxes() {
     });
 }
 
+// Quick Actions Functions
+function loadQuickActions() {
+    const patientSelect = document.getElementById('quickActionPatient');
+    const selectedOption = patientSelect.options[patientSelect.selectedIndex];
+    const container = document.getElementById('quickActionsContainer');
+    const actionSelect = document.getElementById('quickAction');
+
+    if (patientSelect.value) {
+        const status = selectedOption.getAttribute('data-status');
+        container.style.display = 'block';
+
+        // Clear previous options
+        actionSelect.innerHTML = '<option value="">Select Action...</option>';
+
+        // Add available actions based on status
+        if (status === 'waiting_vitals' || status === 'vitals_done') {
+            actionSelect.innerHTML += '<option value="update_vitals">Update Vitals</option>';
+        }
+        if (status === 'vitals_done' || status === 'consultation_paused') {
+            actionSelect.innerHTML += '<option value="change_doctor">Change Doctor</option>';
+        }
+    } else {
+        container.style.display = 'none';
+    }
+}
+
+function toggleActionInputs() {
+    const action = document.getElementById('quickAction').value;
+    const changeDoctorSection = document.getElementById('changeDoctorSection');
+
+    if (action === 'change_doctor') {
+        changeDoctorSection.style.display = 'block';
+        loadDoctorsForChange();
+    } else {
+        changeDoctorSection.style.display = 'none';
+    }
+}
+
+function loadDoctorsForChange() {
+    const patientSelect = document.getElementById('quickActionPatient');
+    const selectedOption = patientSelect.options[patientSelect.selectedIndex];
+    const specializationId = selectedOption.getAttribute('data-specialization');
+
+    const doctorSelect = document.getElementById('newDoctorSelect');
+    doctorSelect.innerHTML = '<option value="">Select new doctor...</option>';
+
+    // Load available doctors for this specialization
+    const listItems = document.querySelectorAll('.list-group .list-group-item[data-specialization-id]');
+
+    listItems.forEach(item => {
+        const specId = item.getAttribute('data-specialization-id');
+        if (String(specId) === String(specializationId)) {
+            const id = item.getAttribute('data-consultant-id');
+            const name = item.getAttribute('data-consultant-name') || item.querySelector('strong')?.textContent || 'Unknown';
+            const queueCount = parseInt(item.getAttribute('data-queue-count') || '0', 10);
+
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = `Dr. ${name} (Queue: ${queueCount || 0})`;
+            if (queueCount >= 10) {
+                option.disabled = true;
+                option.textContent += ' - BUSY';
+            }
+            doctorSelect.appendChild(option);
+        }
+    });
+}
+
+function executeQuickAction() {
+    const patientId = document.getElementById('quickActionPatient').value;
+    const action = document.getElementById('quickAction').value;
+
+    if (!patientId || !action) {
+        showAlert('Please select a patient and action', 'warning');
+        return;
+    }
+
+    if (action === 'update_vitals') {
+        // Close quick actions modal and open vitals modal
+        bootstrap.Modal.getInstance(document.getElementById('quickActionsModal')).hide();
+        startVitals(patientId);
+    } else if (action === 'change_doctor') {
+        const newDoctorId = document.getElementById('newDoctorSelect').value;
+        if (!newDoctorId) {
+            showAlert('Please select a new doctor', 'warning');
+            return;
+        }
+        changeDoctorForPatient(patientId, newDoctorId);
+    }
+}
+
+function changeDoctorForPatient(queueId, newDoctorId) {
+    const formData = new FormData();
+    formData.append('consultant_id', newDoctorId);
+
+    fetch(`/portal/consultation/ajax/assign-consultant/${queueId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('quickActionsModal')).hide();
+            showAlert('Doctor changed successfully!', 'success');
+            location.reload();
+        } else {
+            showAlert('Error: ' + (data.error || 'Failed to change doctor'), 'danger');
+        }
+    })
+    .catch(error => {
+        showAlert('Error: ' + error.message, 'danger');
+    });
+}
+
 // Start Vitals Function
 function startVitals(queueId) {
     currentQueueId = queueId;
-    const modal = new bootstrap.Modal(document.getElementById('vitalsModal'));
 
-    // Reset form
-    document.getElementById('vitalsForm').reset();
-
-    modal.show();
+    // If vitals exist, load them first
+    fetch(`/portal/consultation/ajax/patient-vitals/${queueId}/`)
+    .then(response => response.json())
+    .then(data => {
+        const form = document.getElementById('vitalsForm');
+        if (data.has_vitals) {
+            // Populate form with existing vitals
+            hasVital = true
+            form.querySelector('[name="temperature"]').value = data.temperature || '';
+            form.querySelector('[name="blood_pressure_systolic"]').value = data.blood_pressure ? data.blood_pressure.split('/')[0] : '';
+            form.querySelector('[name="blood_pressure_diastolic"]').value = data.blood_pressure ? data.blood_pressure.split('/')[1] : '';
+            form.querySelector('[name="pulse_rate"]').value = data.pulse_rate || '';
+            form.querySelector('[name="respiratory_rate"]').value = data.respiratory_rate || '';
+            form.querySelector('[name="oxygen_saturation"]').value = data.oxygen_saturation || '';
+            form.querySelector('[name="height"]').value = data.height || '';
+            form.querySelector('[name="weight"]').value = data.weight || '';
+            form.querySelector('[name="general_appearance"]').value = data.general_appearance || '';
+            form.querySelector('[name="chief_complaint"]').value = data.chief_complaint || '';
+            form.querySelector('[name="notes"]').value = data.notes || '';
+        } else {
+            form.reset();
+        }
+    })
+    .catch(error => {
+        console.log('No existing vitals found, starting fresh');
+        document.getElementById('vitalsForm').reset();
+    })
+    .finally(() => {
+        const modal = new bootstrap.Modal(document.getElementById('vitalsModal'));
+        modal.show();
+    });
 }
 
 // Handle vitals form submission
 document.getElementById('vitalsForm').addEventListener('submit', function(e) {
     e.preventDefault();
 
-    const formData = new FormData(this); // keep FormData
-
-    // Show loading
+    const formData = new FormData(this);
     const submitBtn = this.querySelector('button[type="submit"]');
     const originalText = submitBtn.textContent;
     submitBtn.textContent = 'Saving...';
     submitBtn.disabled = true;
 
+    // Determine if this is an update or create operation
+    const isUpdate = window.isVitalsUpdate || false;
+    let url;
 
+    if (hasVital) {
+        // Use update URL
+        const updateUrlBase = "{% url 'update_patient_vitals_ajax' 0 %}";
+        url = updateUrlBase.replace('0', currentQueueId);
+    } else {
+        // Use create URL
+        const createUrlBase = "{% url 'create_patient_vitals_ajax' 0 %}";
+        url = createUrlBase.replace('0', currentQueueId);
+    }
 
-
-    // Use a placeholder value, like '0', that will be replaced later
-    const vitalsUrlBase = "{% url 'create_patient_vitals_ajax' 0 %}";
-
-
-    fetch(vitalsUrlBase.replace('0', currentQueueId), {
-    method: 'POST',
-    headers: {
-        'X-CSRFToken': getCookie('csrftoken') // keep CSRF header if you like
-        // DO NOT set Content-Type — let browser set multipart/form-data with boundary
-    },
-    body: formData // send FormData directly
-})
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
             bootstrap.Modal.getInstance(document.getElementById('vitalsModal')).hide();
-            showAlert('Vitals recorded successfully!', 'success');
-            // Refresh the specific row or entire page
+            const message = isUpdate ? 'Vitals updated successfully!' : 'Vitals recorded successfully!';
+            showAlert(message, 'success');
             location.reload();
         } else {
             showAlert('Error: ' + (data.error || 'Failed to save vitals'), 'danger');
@@ -507,13 +591,9 @@ document.getElementById('vitalsForm').addEventListener('submit', function(e) {
 
 // Assign Doctor Function
 function assignDoctor(queueId, specializationId) {
-
-
     currentQueueId = queueId;
     currentSpecializationId = specializationId;
 
-
-    // Load available doctors for this specialization
     loadAvailableDoctors(specializationId);
 
     const modal = new bootstrap.Modal(document.getElementById('doctorAssignModal'));
@@ -521,7 +601,6 @@ function assignDoctor(queueId, specializationId) {
 }
 
 function loadAvailableDoctors(specializationId) {
-    // Try to read from server-rendered DOM first
     const listItems = document.querySelectorAll('.list-group .list-group-item[data-specialization-id]');
     const select = document.getElementById('consultantSelect');
     select.innerHTML = '<option value="">Select a Doctor...</option>';
@@ -545,38 +624,14 @@ function loadAvailableDoctors(specializationId) {
             select.appendChild(option);
         }
     });
-
-    // Fallback: if not found in DOM, use the AJAX endpoint (backwards-compatible)
-    if (!found) {
-        fetch(`/consultation/ajax/specialization-consultants/?specialization_id=${specializationId}`)
-        .then(response => response.json())
-        .then(data => {
-            data.consultants.forEach(consultant => {
-                const option = document.createElement('option');
-                option.value = consultant.id;
-                option.textContent = `Dr. ${consultant.name} (Queue: ${consultant.current_queue || 0})`;
-                if (consultant.current_queue >= 10) {
-                    option.disabled = true;
-                    option.textContent += ' - BUSY';
-                }
-                select.appendChild(option);
-            });
-        })
-        .catch(error => {
-            showAlert('Error loading doctors: ' + error.message, 'danger');
-        });
-    }
 }
-
 
 // Handle doctor assignment
 document.getElementById('doctorAssignForm').addEventListener('submit', function(e) {
     e.preventDefault();
 
-    // keep the FormData (do NOT convert to JSON)
     const formData = new FormData(this);
 
-    // small safety: ensure we have a queue id
     if (!currentQueueId) {
         showAlert('Missing queue id. Re-open the assign modal and try again.', 'danger');
         return;
@@ -587,21 +642,18 @@ document.getElementById('doctorAssignForm').addEventListener('submit', function(
     submitBtn.textContent = 'Assigning...';
     submitBtn.disabled = true;
 
-    // build URL (your correct path)
     const url = `/portal/consultation/ajax/assign-consultant/${currentQueueId}/`;
 
-    // fetch sending FormData. IMPORTANT: do NOT set 'Content-Type' manually.
     fetch(url, {
         method: 'POST',
         headers: {
-            'X-CSRFToken': getCookie('csrftoken') // ok to include CSRF header
+            'X-CSRFToken': getCookie('csrftoken')
         },
         body: formData
     })
     .then(response => response.json().catch(() => ({ success: false, error: 'Invalid JSON response from server' })))
     .then(data => {
         if (data.success) {
-            // hide modal (will work if instance exists)
             const modalEl = document.getElementById('doctorAssignModal');
             const modalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
             modalInstance.hide();
@@ -620,93 +672,6 @@ document.getElementById('doctorAssignForm').addEventListener('submit', function(
         submitBtn.disabled = false;
     });
 });
-
-
-// Bulk actions
-function setupBulkActionHandler() {
-    document.getElementById('bulkAction').addEventListener('change', function() {
-        const action = this.value;
-        document.getElementById('bulkDoctorSelect').style.display = action === 'assign_doctor' ? 'block' : 'none';
-        document.getElementById('bulkPrioritySelect').style.display = action === 'update_priority' ? 'block' : 'none';
-    });
-}
-
-function executeBulkAction() {
-    const selectedQueues = Array.from(document.querySelectorAll('.queue-checkbox:checked')).map(cb => cb.value);
-
-    if (selectedQueues.length === 0) {
-        showAlert('Please select at least one patient', 'warning');
-        return;
-    }
-
-    const action = document.getElementById('bulkAction').value;
-    if (!action) {
-        showAlert('Please select an action', 'warning');
-        return;
-    }
-
-    const data = {
-        action: action,
-        queue_ids: selectedQueues
-    };
-
-    if (action === 'assign_doctor') {
-        data.consultant_id = document.getElementById('bulkDoctorId').value;
-    } else if (action === 'update_priority') {
-        data.priority_level = document.getElementById('bulkPriority').value;
-    }
-
-    fetch('/consultation/queue/bulk-actions/', {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken'),
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            bootstrap.Modal.getInstance(document.getElementById('bulkActionsModal')).hide();
-            showAlert(`Bulk action completed successfully! Updated ${data.updated_count} patients.`, 'success');
-            location.reload();
-        } else {
-            showAlert('Error: ' + (data.error || 'Bulk action failed'), 'danger');
-        }
-    })
-    .catch(error => {
-        showAlert('Error: ' + error.message, 'danger');
-    });
-}
-
-// Cancel queue entry
-function cancelQueue(queueId) {
-    if (confirm('Are you sure you want to cancel this queue entry?')) {
-        fetch(`/consultation/queue/${queueId}/cancel/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showAlert('Queue entry cancelled', 'success');
-                location.reload();
-            } else {
-                showAlert('Error: ' + (data.error || 'Failed to cancel'), 'danger');
-            }
-        })
-        .catch(error => {
-            showAlert('Error: ' + error.message, 'danger');
-        });
-    }
-}
-
-// View patient details
-function viewPatientDetails(patientId) {
-    window.open(`/patient/${patientId}/detail/`, '_blank');
-}
 
 // Utility functions
 function getCookie(name) {
@@ -732,11 +697,9 @@ function showAlert(message, type) {
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
 
-    // Insert at top of main content
-    const main = document.querySelector('.col-lg-12.grid-margin .card-body');
+    const main = document.querySelector('.card-body');
     main.insertBefore(alertDiv, main.firstChild);
 
-    // Auto-dismiss after 5 seconds
     setTimeout(() => {
         if (alertDiv.parentNode) {
             alertDiv.remove();
@@ -746,7 +709,7 @@ function showAlert(message, type) {
 
 // Auto-refresh every 30 seconds
 setInterval(() => {
-    if (!document.querySelector('.modal.show')) { // Don't refresh if modal is open
+    if (!document.querySelector('.modal.show')) {
         location.reload();
     }
 }, 30000);

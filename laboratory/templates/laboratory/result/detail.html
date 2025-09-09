@@ -4,13 +4,13 @@
 
 {% block 'main' %}
 <div class="row">
-    <div class="col-lg-8">
+    <div class="col-lg-812">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div>
                     <h4 class="card-title mb-0">Lab Result - {{ template.name }}</h4>
                     <p class="card-description mb-0">
-                        Patient: {{ patient.full_name }} | Order: {{ order.order_number }}
+                        Patient: {{ patient|title }} | Order: {{ order.order_number }}
                         {% if result.is_verified %}
                             <span class="badge badge-success ms-2">
                                 <i class="mdi mdi-check-circle me-1"></i>Verified
@@ -57,10 +57,16 @@
                 <div id="printableReport" class="border rounded p-4" style="background-color: #fdfdfd;">
                     <!-- Lab Header -->
                     <div class="text-center mb-4 border-bottom pb-3">
-                        <h3 class="text-primary mb-1">MEDILAB DIAGNOSTIC CENTER</h3>
-                        <p class="mb-1">123 Health Street, Medical District, Lagos, Nigeria</p>
-                        <p class="mb-1">Tel: +234-xxx-xxx-xxxx | Email: info@medilab.com</p>
-                        <p class="mb-0"><strong>LABORATORY REPORT</strong></p>
+                        <h3 class="text-primary mb-1">{% if lab_setting.lab_name %}
+                                {{ lab_setting.lab_name|upper }}
+                                {% else %}
+                                {{ site_info.name|upper }}
+                            {% endif %}</h3>
+                        <p class="mb-1">{{ site_info.address }}</p>
+                            <p class="mb-1">Tel:{% if lab_setting.mobile %} {{ lab_setting.mobile }} {% else %} {{ site_info.mobile_1 }} {% endif %}|
+                                Email: {% if lab_setting.email %} {{ lab_setting.email|lower }} {% else %} {{ site_info.email|lower }} {% endif %}
+                            </p>
+                            <p class="mb-0"><strong>LABORATORY REPORT</strong></p>
                     </div>
 
                     <!-- Patient & Test Information -->
@@ -69,11 +75,11 @@
                             <table class="table table-borderless table-sm">
                                 <tr>
                                     <td><strong>Patient Name:</strong></td>
-                                    <td>{{ patient.full_name }}</td>
+                                    <td>{{ patient|title }}</td>
                                 </tr>
                                 <tr>
                                     <td><strong>Patient ID:</strong></td>
-                                    <td>{{ patient.card_number }}</td>
+                                    <td>{{ patient.card_number|upper }}</td>
                                 </tr>
                                 <tr>
                                     <td><strong>Age/Sex:</strong></td>
@@ -81,7 +87,17 @@
                                 </tr>
                                 <tr>
                                     <td><strong>Referring Doctor:</strong></td>
-                                    <td>{{ order.ordered_by.get_full_name|default:"Self Requested" }}</td>
+
+                                    <td>{% if order.source == 'lab' %}
+                                        Self Requested
+                                        {% else %}
+                                            {% if order.ordered_by.user_staff_profile %}
+                                                {{ order.ordered_by.user_staff_profile.staff|title }}
+                                            {% else %}
+                                                {{ order.ordered_by|title }}
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
                                 </tr>
                             </table>
                         </div>
@@ -89,7 +105,7 @@
                             <table class="table table-borderless table-sm">
                                 <tr>
                                     <td><strong>Test:</strong></td>
-                                    <td><span class="badge badge-primary">{{ template.name }}</span></td>
+                                    <td><span class="">{{ template }}</span></td>
                                 </tr>
                                 <tr>
                                     <td><strong>Order Number:</strong></td>
@@ -142,8 +158,8 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <span class="badge badge-{% if result_item.status == 'normal' %}success{% elif result_item.status == 'high' %}danger{% elif result_item.status == 'low' %}warning{% else %}secondary{% endif %}">
-                                            {{ result_item.status|default:"normal"|capfirst }}
+                                        <span class="text-{% if result_item.status == 'normal' %}success{% elif result_item.status == 'high' %}danger{% elif result_item.status == 'low' %}warning{% else %}secondary{% endif %}">
+                                            {{ result_item.status|capfirst }}
                                         </span>
                                     </td>
                                 </tr>
@@ -185,7 +201,7 @@
                             <div class="border-top pt-3">
                                 <p><strong>Lab Technician:</strong></p>
                                 <p>_______________________</p>
-                                <p class="small">{{ order.processed_by.get_full_name|default:"Lab Technician" }}</p>
+                                <p class="small">{{ order.processed_by }}</p>
                                 <p class="small">Date: {{ result.created_at|date:"d-M-Y" }}</p>
                             </div>
                         </div>
@@ -194,7 +210,7 @@
                                 <p><strong>{% if result.is_verified %}Verified by:{% else %}Pathologist:{% endif %}</strong></p>
                                 <p>_______________________</p>
                                 {% if result.is_verified %}
-                                    <p class="small">{{ result.verified_by.get_full_name }}</p>
+                                    <p class="small">{{ result.verified_by.user_staff_profile }}</p>
                                     <p class="small">Date: {{ result.verified_at|date:"d-M-Y" }}</p>
                                 {% else %}
                                     <p class="small">Awaiting Verification</p>
@@ -215,88 +231,7 @@
         </div>
     </div>
 
-    <!-- Side Panel -->
-    <div class="col-lg-4">
-        <!-- Result Status -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">Result Status</h5>
-                <div class="mb-3">
-                    <p><strong>Status:</strong>
-                        {% if result.is_verified %}
-                            <span class="badge badge-success">Verified</span>
-                        {% else %}
-                            <span class="badge badge-warning">Unverified</span>
-                        {% endif %}
-                    </p>
-                    <p><strong>Created:</strong> {{ result.created_at|date:"M d, Y H:i" }}</p>
-                    {% if result.is_verified %}
-                        <p><strong>Verified by:</strong> {{ result.verified_by.get_full_name }}</p>
-                        <p><strong>Verified at:</strong> {{ result.verified_at|date:"M d, Y H:i" }}</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
 
-        <!-- Quick Actions -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">Actions</h5>
-                <div class="d-grid gap-2">
-                    {% if can_edit %}
-                        <a href="{% url 'lab_result_edit' pk=result.pk %}" class="btn btn-warning">
-                            <i class="mdi mdi-pencil"></i> Edit Results
-                        </a>
-                    {% endif %}
-                    {% if can_verify %}
-                        <button type="button" class="btn btn-success" id="verify-btn-side"
-                                data-result-id="{{ result.id }}" data-test-name="{{ template.name }}">
-                            <i class="mdi mdi-check-circle"></i> Verify Results
-                        </button>
-                    {% endif %}
-                    <button class="btn btn-info" onclick="printResult()">
-                        <i class="mdi mdi-printer"></i> Print Report
-                    </button>
-                    <a href="{ url 'lab_patient_tests' patient_id=patient.id %}" class="btn btn-outline-primary">
-                        <i class="mdi mdi-account"></i> Patient Tests
-                    </a>
-                    <a href="{% url 'lab_result_dashboard' %}" class="btn btn-outline-secondary">
-                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Summary Stats -->
-        {% if results %}
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Result Summary</h5>
-                {% with normal_count=0 abnormal_count=0 %}
-                    {% for res in results %}
-                        {% if res.status == 'normal' %}
-                            {% with normal_count=normal_count|add:1 %}{% endwith %}
-                        {% else %}
-                            {% with abnormal_count=abnormal_count|add:1 %}{% endwith %}
-                        {% endif %}
-                    {% endfor %}
-                    <div class="row text-center">
-                        <div class="col-6">
-                            <h5 class="text-success">{{ results|length }}</h5>
-                            <small>Total Parameters</small>
-                        </div>
-                        <div class="col-6">
-                            <h5 class="text-{% if abnormal_count > 0 %}danger{% else %}success{% endif %}">
-                                {% if abnormal_count > 0 %}{{ abnormal_count }}{% else %}0{% endif %}
-                            </h5>
-                            <small>Abnormal Values</small>
-                        </div>
-                    </div>
-                {% endwith %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
 </div>
 
 <!-- Verification Modal -->
@@ -468,10 +403,10 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
 
             const formData = new FormData();
-            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
-            formData.append('pathologist_comments', pathologistComments);
+             formData.append('pathologist_comments', pathologistComments);
+             formData.append('csrfmiddlewaretoken', '{{csrf_token}}');
 
-            fetch(`/laboratory/results/${currentResultId}/verify/`, {
+            fetch(`/portal/laboratory/results/${currentResultId}/verify/`, {
                 method: 'POST',
                 body: formData
             })

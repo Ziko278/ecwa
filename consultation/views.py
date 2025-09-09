@@ -24,7 +24,7 @@ from consultation.models import *
 from consultation.forms import *
 from finance.forms import PatientTransactionForm
 from finance.models import PatientTransactionModel
-from laboratory.models import LabTestOrderModel, LabTestCategoryModel, LabTestTemplateModel
+from laboratory.models import LabTestOrderModel, LabTestCategoryModel, LabTestTemplateModel, LabSettingModel
 from patient.models import PatientModel
 from human_resource.models import StaffModel
 from pharmacy.models import DrugOrderModel, DrugModel
@@ -257,6 +257,7 @@ class ConsultationRoomListView(LoginRequiredMixin, PermissionRequiredMixin, List
         context = super().get_context_data(**kwargs)
         context['form'] = ConsultationRoomForm()
         context['block_list'] = ConsultationBlockModel.objects.all().order_by('name')
+        context['specialization_list'] = SpecializationModel.objects.all().order_by('name')
         return context
 
 
@@ -428,6 +429,31 @@ class ConsultantDeleteView(
         return reverse('consultant_list')
 
 
+@login_required
+@permission_required('consultation.change_consultantmodel', raise_exception=True)
+def toggle_consultant_availability(request, pk):
+    """
+    Toggles the is_available_for_consultation status for a consultant.
+    """
+    # This action should only be performed via POST request for security
+    if request.method == 'POST':
+        consultant = get_object_or_404(ConsultantModel, pk=pk)
+        try:
+            # Toggle the boolean field
+            consultant.is_available_for_consultation = not consultant.is_available_for_consultation
+            consultant.save(update_fields=['is_available_for_consultation'])
+
+            # Prepare success message
+            status = "available" if consultant.is_available_for_consultation else "unavailable"
+            messages.success(request, f"Dr. {consultant.staff}'s status has been updated to {status}.")
+
+        except Exception as e:
+            messages.error(request, f"An error occurred while updating the consultant's status: {e}")
+
+    # Redirect back to the consultant list page
+    return redirect('consultant_list')
+
+
 # -------------------------
 # 5. CONSULTATION FEES (Simple - index pattern)
 # -------------------------
@@ -597,7 +623,7 @@ def verify_patient_ajax(request):
 
     try:
         # Look up patient by patient_id (card number)
-        patient = PatientModel.objects.get(card_number=card_number)
+        patient = PatientModel.objects.get(card_number__iexact=card_number)
 
         # Get wallet balance
         wallet_balance = 0
@@ -839,6 +865,236 @@ class ConsultationPaymentDetailView(LoginRequiredMixin, PermissionRequiredMixin,
             context['queue_entry'] = None
 
         return context
+
+
+# Add these views to your existing views.py file
+
+@require_POST
+@login_required
+@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+def update_patient_vitals_ajax(request, queue_pk):
+    """
+    AJAX view to update existing patient vitals
+    """
+    try:
+        queue_entry = get_object_or_404(PatientQueueModel, pk=queue_pk)
+
+        # Check if patient has vitals and is in appropriate status
+        if not hasattr(queue_entry, 'vitals'):
+            return JsonResponse({'success': False, 'error': 'No existing vitals found for this patient'}, status=400)
+
+        if queue_entry.status not in ['waiting_vitals', 'vitals_done', 'consultation_paused']:
+            return JsonResponse({'success': False, 'error': 'Cannot update vitals at this stage'}, status=400)
+
+        # Update the existing vitals record
+        vitals = queue_entry.vitals
+        form = PatientVitalsForm(request.POST, instance=vitals)
+
+        if form.is_valid():
+            vitals = form.save(commit=False)
+            vitals.recorded_by = request.user
+            vitals.save()
+
+            # Update queue status if needed
+            if queue_entry.status == 'waiting_vitals':
+                queue_entry.complete_vitals()
+            messages.success(request, 'Vitals Update Succesfully')
+            return JsonResponse({
+                'success': True,
+                'message': 'Patient vitals successfully updated.'
+            }, status=200)
+
+        else:
+            first_field = next(iter(form.errors))
+            first_error_message = form.errors[first_field][0]
+            return JsonResponse({
+                'success': False,
+                'error': f"{first_field}: {first_error_message}"
+            }, status=400)
+
+    except PatientQueueModel.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Queue entry not found.'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f"An unexpected error occurred: {str(e)}"}, status=500)
+
+
+@require_POST
+@login_required
+@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+def change_patient_doctor_ajax(request, queue_pk):
+    """
+    AJAX view to change the assigned doctor for a patient
+    """
+    try:
+        queue_entry = get_object_or_404(PatientQueueModel, pk=queue_pk)
+
+        # Check if patient is in appropriate status for doctor change
+        if queue_entry.status not in ['vitals_done', 'consultation_paused']:
+            return JsonResponse({
+                'success': False,
+                'error': 'Cannot change doctor at this stage. Patient must be ready for consultation or have paused consultation.'
+            }, status=400)
+
+        new_consultant_id = request.POST.get('consultant_id')
+        if not new_consultant_id:
+            return JsonResponse({'success': False, 'error': 'Missing consultant_id.'}, status=400)
+
+        new_consultant = get_object_or_404(ConsultantModel, pk=new_consultant_id)
+
+        # Verify the new consultant is from the same specialization as paid for
+        patient_specialization = queue_entry.payment.fee_structure.specialization
+        if new_consultant.specialization != patient_specialization:
+            return JsonResponse({
+                'success': False,
+                'error': f'Doctor must be from {patient_specialization.name} specialization as per payment.'
+            }, status=400)
+
+        # Check consultant availability
+        if not new_consultant.is_available_for_consultation:
+            return JsonResponse({'success': False, 'error': 'Selected consultant is not available.'}, status=400)
+
+        with transaction.atomic():
+            old_consultant = queue_entry.consultant
+            queue_entry.consultant = new_consultant
+            queue_entry.save()
+
+            # Update schedule counts if needed
+            today = timezone.localdate()
+
+            # Decrease old consultant's count
+            if old_consultant:
+                old_schedule = DoctorScheduleModel.objects.filter(
+                    consultant=old_consultant, date=today
+                ).first()
+                if old_schedule and old_schedule.current_bookings > 0:
+                    old_schedule.current_bookings -= 1
+                    old_schedule.save()
+
+            # Increase new consultant's count
+            new_schedule = DoctorScheduleModel.objects.filter(
+                consultant=new_consultant, date=today
+            ).first()
+            if new_schedule and new_schedule.current_bookings < new_schedule.max_patients:
+                new_schedule.current_bookings += 1
+                new_schedule.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Doctor changed successfully from {old_consultant or "None"} to Dr. {new_consultant.staff}',
+            'new_consultant': {
+                'id': new_consultant.id,
+                'name': str(new_consultant.staff),
+                'specialization': new_consultant.specialization.name
+            }
+        }, status=200)
+
+    except ConsultantModel.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Selected consultant not found.'}, status=404)
+    except PatientQueueModel.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Queue entry not found.'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Unexpected error: {str(e)}'}, status=500)
+
+
+@login_required
+@permission_required('consultation.view_patientqueuemodel')
+def get_patient_queue_data_ajax(request):
+    """
+    AJAX endpoint to get current queue data for quick actions
+    """
+    try:
+        today = date.today()
+        queue_entries = PatientQueueModel.objects.select_related(
+            'patient', 'consultant__staff', 'consultant__specialization', 'payment__fee_structure__specialization'
+        ).filter(
+            joined_queue_at__date=today
+        ).exclude(
+            status__in=['consultation_completed', 'cancelled']
+        ).order_by('priority_level', 'joined_queue_at')
+
+        queue_data = []
+        for queue in queue_entries:
+            queue_data.append({
+                'id': queue.id,
+                'patient_name': str(queue.patient),
+                'patient_id': queue.patient.card_number,
+                'status': queue.status,
+                'status_display': queue.get_status_display(),
+                'specialization_id': queue.payment.fee_structure.specialization.id,
+                'specialization_name': queue.payment.fee_structure.specialization.name,
+                'consultant': {
+                    'id': queue.consultant.id if queue.consultant else None,
+                    'name': str(queue.consultant.staff) if queue.consultant else None,
+                } if queue.consultant else None,
+                'priority_level': queue.priority_level,
+                'has_vitals': hasattr(queue, 'vitals'),
+                'can_update_vitals': queue.status in ['waiting_vitals', 'vitals_done', 'consultation_paused'],
+                'can_change_doctor': queue.status in ['vitals_done', 'consultation_paused']
+            })
+
+        return JsonResponse({
+            'success': True,
+            'queue_data': queue_data
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@permission_required('consultation.view_consultantmodel')
+def get_specialization_consultants_ajax(request):
+    """
+    AJAX endpoint to get available consultants for a specific specialization
+    Enhanced version that includes current queue count and availability
+    """
+    specialization_id = request.GET.get('specialization_id')
+
+    if not specialization_id:
+        return JsonResponse({'error': 'Missing specialization_id'}, status=400)
+
+    try:
+        today = date.today()
+        consultants = ConsultantModel.objects.filter(
+            specialization_id=specialization_id,
+            is_available_for_consultation=True
+        ).select_related('staff', 'specialization')
+
+        consultant_data = []
+        for consultant in consultants:
+            # Get current queue count for today
+            current_queue = PatientQueueModel.objects.filter(
+                consultant=consultant,
+                joined_queue_at__date=today,
+                status__in=['waiting_vitals', 'vitals_done', 'with_doctor', 'consultation_paused']
+            ).count()
+
+            # Get schedule info
+            schedule = DoctorScheduleModel.objects.filter(
+                consultant=consultant,
+                date=today
+            ).first()
+
+            max_patients = schedule.max_patients if schedule else 10
+            is_available = current_queue < max_patients
+
+            consultant_data.append({
+                'id': consultant.id,
+                'name': str(consultant.staff),
+                'specialization': consultant.specialization.name,
+                'current_queue': current_queue,
+                'max_patients': max_patients,
+                'is_available': is_available,
+                'room': consultant.assigned_room.name if consultant.assigned_room else None
+            })
+
+        return JsonResponse({
+            'success': True,
+            'consultants': consultant_data
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 # -------------------------
@@ -1444,7 +1700,7 @@ def complete_consultation_session_view(request, pk):
             messages.error(request, 'Please fill in Chief Complaint and Assessment before completing')
             return redirect('consultation_session_update', pk=pk)
 
-        session.complete_session()
+        session.complete_consultation()
         messages.success(request, f'Consultation completed for {session.queue_entry.patient}')
         return redirect('doctor_queue_list')
 
@@ -2458,23 +2714,32 @@ def search_patients_ajax(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+# consultation/views.py
+
 @login_required
 def doctor_dashboard(request):
     """Doctor's main dashboard view"""
+
     try:
         # Get the consultant profile for the logged-in user
         consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user)
-    except ConsultantModel.DoesNotExist:
+    except Exception:
         messages.error(request, "You are not authorized to access the doctor dashboard.")
-        return redirect('admin_home')
+        fallback_url = reverse('admin_dashboard')
+        redirect_url = request.META.get('HTTP_REFERER', fallback_url)
+        return redirect(redirect_url)
 
     # Get today's statistics
     today = date.today()
+
+    # MODIFIED QUERY: Added prefetch_related for the consultation
     my_queue = PatientQueueModel.objects.filter(
         consultant=consultant,
         joined_queue_at__date=today
     ).exclude(status='cancelled').select_related(
-        'patient', 'vitals', 'consultation'
+        'patient', 'vitals', 'consultant'
+    ).prefetch_related(
+        'consultation'  # <-- THIS IS THE FIX
     ).order_by('priority_level', 'joined_queue_at')
 
     today_stats = {
@@ -2488,7 +2753,7 @@ def doctor_dashboard(request):
     current_consultation = ConsultationSessionModel.objects.filter(
         queue_entry__consultant=consultant,
         status='in_progress'
-    ).first()
+    ).select_related('queue_entry__patient').first() # Added select_related for efficiency
 
     # Recent consultations (last 7 days)
     week_ago = today - timedelta(days=7)
@@ -2524,19 +2789,20 @@ def consultation_page(request, consultation_id):
 
     # Get related data
     patient = consultation.queue_entry.patient
+
+    # MODIFIED: Filter directly by the consultation object
     prescriptions = DrugOrderModel.objects.filter(
-        patient=patient,
-        ordered_at__date=consultation.created_at.date()
+        consultation=consultation
     ).select_related('drug')
 
+    # MODIFIED: Filter directly by the consultation object
     lab_tests = LabTestOrderModel.objects.filter(
-        patient=patient,
-        ordered_at__date=consultation.created_at.date()
+        consultation=consultation
     ).select_related('template')
 
+    # MODIFIED: Filter directly by the consultation object
     scans = ScanOrderModel.objects.filter(
-        patient=patient,
-        ordered_at__date=consultation.created_at.date()
+        consultation=consultation
     ).select_related('template')
 
     # Get patient's recent consultation history (last 6 months)
@@ -2758,7 +3024,7 @@ def ajax_call_next_patient(request):
 def ajax_start_consultation(request, queue_id):
     """Start consultation for specific queue entry"""
     try:
-        consultant = get_object_or_404(ConsultantModel, staff__user=request.user)
+        consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user)
         queue_entry = get_object_or_404(
             PatientQueueModel,
             id=queue_id,
@@ -2889,7 +3155,7 @@ def ajax_complete_consultation(request, consultation_id):
         )
 
         with transaction.atomic():
-            consultation.complete_session()
+            consultation.complete_consultation()
 
         return JsonResponse({
             'success': True,
@@ -2908,7 +3174,7 @@ def ajax_complete_consultation(request, consultation_id):
 def ajax_save_consultation(request, consultation_id):
     """Save consultation notes"""
     try:
-        consultant = get_object_or_404(ConsultantModel, staff__user=request.user)
+        consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user)
         consultation = get_object_or_404(
             ConsultationSessionModel,
             id=consultation_id,
@@ -2976,31 +3242,35 @@ def ajax_search_drugs(request):
             'error': f'Drug search failed: {str(e)}'
         })
 
+
 @login_required
 @require_POST
 def ajax_prescribe_drug(request):
     """Prescribe a drug to patient"""
     try:
         patient_id = request.POST.get('patient_id')
+        consultation_id = request.POST.get('consultation_id') # NEW: Get the consultation ID
         drug_id = request.POST.get('drug_id')
         quantity = request.POST.get('quantity_ordered')
         dosage_instructions = request.POST.get('dosage_instructions', '')
         duration = request.POST.get('duration', '')
         notes = request.POST.get('notes', '')
 
-        # Validate required fields
-        if not all([patient_id, drug_id, quantity]):
+        # NEW: Add consultation_id to the validation
+        if not all([patient_id, drug_id, quantity, consultation_id]):
             return JsonResponse({
                 'success': False,
-                'error': 'Missing required fields'
+                'error': 'Missing required fields (patient, drug, quantity, or consultation)'
             })
 
         patient = get_object_or_404(PatientModel, id=patient_id)
         drug = get_object_or_404(DrugModel, id=drug_id)
+        consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id) # NEW: Get the consultation object
 
         # Create drug order
         drug_order = DrugOrderModel.objects.create(
             patient=patient,
+            consultation=consultation, # NEW: Link the consultation to the order
             drug=drug,
             quantity_ordered=float(quantity),
             dosage_instructions=dosage_instructions,
@@ -3058,24 +3328,28 @@ def ajax_lab_templates(request):
 @login_required
 @require_POST
 def ajax_order_lab_test(request):
-    """Order a lab test for patient"""
+    """Order a lab test for a patient during a consultation"""
     try:
         patient_id = request.POST.get('patient_id')
+        consultation_id = request.POST.get('consultation_id') # NEW: Get the consultation ID
         template_id = request.POST.get('template_id')
         special_instructions = request.POST.get('special_instructions', '')
 
-        if not all([patient_id, template_id]):
+        # NEW: Add consultation_id to validation
+        if not all([patient_id, template_id, consultation_id]):
             return JsonResponse({
                 'success': False,
-                'error': 'Missing required fields'
+                'error': 'Missing required fields (patient, test, or consultation).'
             })
 
         patient = get_object_or_404(PatientModel, id=patient_id)
         template = get_object_or_404(LabTestTemplateModel, id=template_id)
+        consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id) # NEW: Get the consultation object
 
         # Create lab test order
         lab_order = LabTestOrderModel.objects.create(
             patient=patient,
+            consultation=consultation, # NEW: Link the consultation to the order
             template=template,
             ordered_by=request.user,
             special_instructions=special_instructions,
@@ -3368,11 +3642,19 @@ def prescription_detail(request, prescription_id):
 def lab_test_result(request, test_id):
     """View lab test result"""
     try:
-        lab_test = get_object_or_404(LabTestOrderModel, id=test_id)
+        order = get_object_or_404(LabTestOrderModel, id=test_id)
+        result = order.result
         context = {
-            'lab_test': lab_test,
+            'order': order,
+            'result': result,
+            'patient': result.order.patient,
+            'lab_setting': LabSettingModel.objects.first(),
+            'template': result.order.template,
+            'parameters': result.order.template.test_parameters.get('parameters', []),
+            'results': result.results_data.get('results', [])
         }
-        return render(request, 'doctor/lab_test_result.html', context)
+
+        return render(request, 'consultation/doctor/lab_test_result.html', context)
 
     except Exception as e:
         messages.error(request, f"Error loading test result: {str(e)}")
@@ -3421,7 +3703,7 @@ def print_consultation(request, consultation_id):
 def view_consultation_detail(request, consultation_id):
     """View detailed consultation (read-only)"""
     try:
-        consultant = get_object_or_404(ConsultantModel, staff__user=request.user)
+        consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user)
         consultation = get_object_or_404(
             ConsultationSessionModel,
             id=consultation_id,
@@ -3453,7 +3735,7 @@ def view_consultation_detail(request, consultation_id):
             'read_only': True,
         }
 
-        return render(request, 'doctor/consultation_detail.html', context)
+        return render(request, 'consultation/doctor/consultation_detail.html', context)
 
     except Exception as e:
         messages.error(request, f"Error loading consultation: {str(e)}")

@@ -1,0 +1,295 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Ward Details: {{ ward.name }}</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'ward_index' %}">Wards</a></li>
+            <li class="breadcrumb-item active">{{ ward.name }}</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <!-- Ward Info & Stats -->
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="card-title">{{ ward.name }}</h5>
+                        <a href="{% url 'ward_index' %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Back to All Wards</a>
+                    </div>
+                    <p>{{ ward.description|default:"No description provided." }}</p>
+
+                    <div class="row">
+                        <div class="col-md-3 col-sm-6 mb-2"><strong>Type:</strong> {{ ward.get_ward_type_display }}</div>
+                        <div class="col-md-3 col-sm-6 mb-2"><strong>Location:</strong> {{ ward.location|default:"N/A" }}</div>
+                        <div class="col-md-3 col-sm-6 mb-2"><strong>Floor:</strong> {{ ward.floor|default:"N/A" }}</div>
+                        <div class="col-md-3 col-sm-6 mb-2"><strong>Capacity:</strong> {{ ward.capacity }} Beds</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bed Stats Cards -->
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card info-card sales-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Available</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center bg-success-light">
+                                    <i class="bi bi-check-circle text-success"></i>
+                                </div>
+                                <div class="ps-3"><h6>{{ stats.available }}</h6></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col-md-3">
+                    <div class="card info-card revenue-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Occupied</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center bg-danger-light">
+                                    <i class="bi bi-person-fill text-danger"></i>
+                                </div>
+                                <div class="ps-3"><h6>{{ stats.occupied }}</h6></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col-md-3">
+                    <div class="card info-card customers-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Maintenance</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center bg-warning-light">
+                                    <i class="bi bi-tools text-warning"></i>
+                                </div>
+                                <div class="ps-3"><h6>{{ stats.maintenance }}</h6></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col-md-3">
+                    <div class="card info-card">
+                         <div class="card-body">
+                            <h5 class="card-title">Reserved</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center bg-info-light">
+                                    <i class="bi bi-bookmark-star text-info"></i>
+                                </div>
+                                <div class="ps-3"><h6>{{ stats.reserved }}</h6></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bed Management Section -->
+        <div class="col-lg-12">
+             <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="card-title">Beds in {{ ward.name }}</h5>
+                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addBedModal">
+                            <i class="bi bi-plus-lg"></i> Add New Bed
+                        </button>
+                    </div>
+
+                    <div class="row">
+                        {% for bed in beds %}
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card bed-card border-start
+                                {% if bed.status == 'available' %}border-success
+                                {% elif bed.status == 'occupied' %}border-danger
+                                {% elif bed.status == 'maintenance' %}border-warning
+                                {% else %}border-secondary{% endif %}">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between">
+                                        <h5 class="card-title pt-3 pb-0">{{ bed.bed_number }}</h5>
+                                        <span class="badge rounded-pill mt-2
+                                            {% if bed.status == 'available' %}bg-success
+                                            {% elif bed.status == 'occupied' %}bg-danger
+                                            {% elif bed.status == 'maintenance' %}bg-warning
+                                            {% else %}bg-secondary{% endif %}">{{ bed.get_status_display }}</span>
+                                    </div>
+                                    <p class="small text-muted mb-2">{{ bed.get_bed_type_display }}</p>
+
+                                    {% if bed.status == 'occupied' and bed.current_patient %}
+                                        <div class="patient-info small">
+                                            <i class="bi bi-person-fill"></i>
+                                            <a href="{% url 'admission_detail' bed.current_patient.admissions.first.pk %}">
+                                                {{ bed.current_patient.get_full_name }}
+                                            </a>
+                                        </div>
+                                    {% else %}
+                                        <div class="patient-info small text-muted">&nbsp;</div>
+                                    {% endif %}
+
+                                    <div class="text-end mt-2">
+                                        <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editBedModal-{{ bed.pk }}">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                         <a href="{% url 'bed_delete' bed.pk %}" class="btn btn-danger btn-sm" title="Delete Bed">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="col-12">
+                            <div class="alert alert-info text-center">No beds have been added to this ward yet.</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Add Bed Modal -->
+<div class="modal fade" id="addBedModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{% url 'bed_create' %}">
+                {% csrf_token %}
+                <input type="hidden" name="ward" value="{{ ward.pk }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Bed to {{ ward.name }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="form-floating">
+                                {{ bed_form.bed_number }}
+                                <label for="{{ bed_form.bed_number.id_for_label }}">Bed Number / ID <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-floating">
+                                {{ bed_form.bed_type }}
+                                <label for="{{ bed_form.bed_type.id_for_label }}">Bed Type</label>
+                            </div>
+                        </div>
+                         <div class="col-12">
+                            <div class="form-floating">
+                                {{ bed_form.daily_rate }}
+                                <label for="{{ bed_form.daily_rate.id_for_label }}">Custom Daily Rate (₦)</label>
+                                <small class="form-text text-muted">Leave blank to use the default inpatient rate.</small>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                             <div class="form-check">
+                                {{ bed_form.is_active }}
+                                <label class="form-check-label" for="{{ bed_form.is_active.id_for_label }}">
+                                    Bed is Active
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Save Bed</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Bed Modals -->
+{% for bed in beds %}
+<div class="modal fade" id="editBedModal-{{ bed.pk }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{% url 'bed_edit' bed.pk %}">
+                {% csrf_token %}
+                 <input type="hidden" name="ward" value="{{ ward.pk }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Bed: {{ bed.bed_number }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                     <div class="row g-3">
+                        <div class="col-12">
+                            <div class="form-floating">
+                                <input type="text" name="bed_number" value="{{ bed.bed_number }}" class="form-control" id="id_bed_number_{{ bed.pk }}" required>
+                                <label for="id_bed_number_{{ bed.pk }}">Bed Number / ID <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-floating">
+                                <select name="bed_type" class="form-control" id="id_bed_type_{{ bed.pk }}">
+                                     {% for value, text in bed_form.fields.bed_type.choices %}
+                                        <option value="{{ value }}" {% if bed.bed_type == value %}selected{% endif %}>{{ text }}</option>
+                                    {% endfor %}
+                                </select>
+                                <label for="id_bed_type_{{ bed.pk }}">Bed Type</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-floating">
+                                 <select name="status" class="form-control" id="id_status_{{ bed.pk }}">
+                                     {% for value, text in bed_form.fields.status.choices %}
+                                        <option value="{{ value }}" {% if bed.status == value %}selected{% endif %}>{{ text }}</option>
+                                    {% endfor %}
+                                </select>
+                                <label for="id_status_{{ bed.pk }}">Status</label>
+                            </div>
+                        </div>
+                         <div class="col-12">
+                            <div class="form-floating">
+                                <input type="number" step="0.01" name="daily_rate" value="{{ bed.daily_rate|default_if_none:'' }}" class="form-control" id="id_daily_rate_{{ bed.pk }}">
+                                <label for="id_daily_rate_{{ bed.pk }}">Custom Daily Rate (₦)</label>
+                                <small class="form-text text-muted">Leave blank to use the default inpatient rate.</small>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                             <div class="form-check">
+                                <input type="checkbox" name="is_active" class="form-check-input" id="id_is_active_{{ bed.pk }}" {% if bed.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="id_is_active_{{ bed.pk }}">
+                                    Bed is Active
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<style>
+    .bed-card {
+        transition: all 0.2s ease-in-out;
+        border-width: 4px !important;
+    }
+    .bed-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .patient-info a {
+        text-decoration: none;
+        font-weight: 500;
+    }
+    .patient-info a:hover {
+        text-decoration: underline;
+    }
+</style>
+
+{% endblock %}

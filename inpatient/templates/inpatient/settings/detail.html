@@ -1,0 +1,121 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Inpatient Settings</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item active">Settings</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section profile">
+    <div class="row">
+        <div class="col-12">
+
+            <div class="card">
+                <div class="card-body pt-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="card-title">Current Inpatient Configuration</h5>
+                        <a href="{% url 'inpatient_settings_edit' %}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-pencil-square"></i> Edit Settings
+                        </a>
+                    </div>
+                    <p>These settings control the default billing and operational rules for all inpatient services.</p>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <!-- Billing Settings -->
+                    <h5 class="card-title mt-4">Billing Settings</h5>
+
+                    <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Admission Billing</div>
+                        <div class="col-lg-8 col-md-7">
+                            <span class="badge bg-info">{{ settings.get_admission_billing_type_display }}</span>
+                            {% if settings.admission_billing_type != 'none' %}
+                                at <strong class="text-dark">₦{{ settings.admission_amount|floatformat:2 }}</strong>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Surgery Facility Billing</div>
+                        <div class="col-lg-8 col-md-7">
+                             <span class="badge bg-info">{{ settings.get_surgery_billing_type_display }}</span>
+                             {% if settings.surgery_billing_type != 'none' %}
+                                at <strong class="text-dark">₦{{ settings.surgery_amount|floatformat:2 }}</strong>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Bed Billing (Admission)</div>
+                        <div class="col-lg-8 col-md-7">
+                            <span class="badge bg-secondary">{{ settings.get_bed_billing_for_admission_display }}</span>
+                        </div>
+                    </div>
+
+                     <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Bed Billing (Surgery)</div>
+                        <div class="col-lg-8 col-md-7">
+                            <span class="badge bg-secondary">{{ settings.get_bed_billing_for_surgery_display }}</span>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Default Daily Bed Cost</div>
+                        <div class="col-lg-8 col-md-7">
+                            <strong class="text-dark">₦{{ settings.bed_daily_cost|floatformat:2 }}</strong>
+                             <small class="text-muted">(applies when bed billing is 'Daily Charge')</small>
+                        </div>
+                    </div>
+
+                    <!-- Auto Compilation Settings -->
+                    <h5 class="card-title mt-4">Auto-Compilation Settings (for Surgery Packages)</h5>
+
+                    <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Compile Surgery Drugs</div>
+                        <div class="col-lg-8 col-md-7">
+                            {% if settings.compile_surgery_drugs %}
+                                <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                                <span class="badge bg-danger">Disabled</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Compile Surgery Lab Tests</div>
+                        <div class="col-lg-8 col-md-7">
+                            {% if settings.compile_surgery_labs %}
+                                <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                                <span class="badge bg-danger">Disabled</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                     <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Compile Surgery Scans</div>
+                        <div class="col-lg-8 col-md-7">
+                             {% if settings.compile_surgery_scans %}
+                                <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                                <span class="badge bg-danger">Disabled</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                     <hr>
+                     <small class="text-muted">Last updated by {{ settings.updated_by|default:'System' }} on {{ settings.updated_at|date:"d M, Y P" }}</small>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+{% endblock %}

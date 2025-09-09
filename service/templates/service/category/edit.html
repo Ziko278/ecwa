@@ -1,0 +1,66 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Edit Service Category</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item">Services</li>
+            <li class="breadcrumb-item"><a href="{% url 'service_category_list' %}">Categories</a></li>
+            <li class="breadcrumb-item active">Edit</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Editing: {{ form.instance.name }}</h5>
+
+                    <!-- Display form errors and messages -->
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="form-floating mb-3">
+                            {{ form.name }}
+                            <label for="{{ form.name.id_for_label }}">Category Name <span class="text-danger">*</span></label>
+                        </div>
+
+                        <div class="form-floating mb-3">
+                            {{ form.category_type }}
+                            <label for="{{ form.category_type.id_for_label }}">Category Type</label>
+                        </div>
+
+                        <div class="form-floating mb-3">
+                            {{ form.description }}
+                            <label for="{{ form.description.id_for_label }}">Description</label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            {{ form.show_as_record_column }}
+                            <label class="form-check-label" for="{{ form.show_as_record_column.id_for_label }}">Show in Daily Reports?</label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active?</label>
+                        </div>
+
+                        <div class="text-start">
+                            <button type="submit" class="btn btn-primary">Update Category</button>
+                            <a href="{% url 'service_category_list' %}" class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

@@ -38,11 +38,30 @@
                         <td><a href="{% url 'consultant_detail' consultant.id %}">Dr. {{ consultant.staff|title }}</a></td>
                         <td>{{ consultant.specialization.name|title }}</td>
                         <td>{% if consultant.assigned_room %}{{ consultant.assigned_room }}{% else %}Not Assigned{% endif %}</td>
-                        <td class="text-center">{% if consultant.is_available_for_consultation %} <i class="fs-2 bi bi-check text-success"></i> {% else %} <i class="fs-2 bi bi-x text-danger"></i> {% endif %}</td>
+                        <td class="text-center">{% if consultant.is_available_for_consultation %} <i class="fs-2 bi bi-check-circle-fill text-success"></i> {% else %} <i class="fs-2 bi bi-x-circle-fill text-danger"></i> {% endif %}</td>
                         <td class="text-center">
-                            <a title="Consultant Detail" href="{% url 'consultant_detail' consultant.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
-                            <a title="Edit Consultant" href="{% url 'consultant_edit' consultant.id %}" class="btn btn-warning"><i class="bi bi-pencil-square"></i></a>
-                            <a title="Delete Consultant" href="{% url 'consultant_delete' consultant.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                            <a title="Consultant Detail" href="{% url 'consultant_detail' consultant.id %}" class="btn btn-sm btn-primary"><i class="bi bi-eye"></i></a>
+                            <a title="Edit Consultant" href="{% url 'consultant_edit' consultant.id %}" class="btn btn-sm btn-warning"><i class="bi bi-pencil-square"></i></a>
+                            {% if consultant.is_available_for_consultation %}
+                                <button type="button" class="btn btn-sm btn-secondary" title="Make Unavailable"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#confirmationModal"
+                                        data-url="{% url 'consultant_toggle_availability' consultant.pk %}"
+                                        data-name="Dr. {{ consultant.staff|title }}"
+                                        data-action="make unavailable">
+                                    <i class="bi bi-power"></i>
+                                </button>
+                            {% else %}
+                                <button type="button" class="btn btn-sm btn-success" title="Make Available"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#confirmationModal"
+                                        data-url="{% url 'consultant_toggle_availability' consultant.pk %}"
+                                        data-name="Dr. {{ consultant.staff|title }}"
+                                        data-action="make available">
+                                    <i class="bi bi-check-circle"></i>
+                                </button>
+                            {% endif %}
+                            <a title="Delete Consultant" href="{% url 'consultant_delete' consultant.id %}" class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -55,4 +74,51 @@
     </div>
 </div>
 
+<div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to <strong id="action-text"></strong> <strong id="consultant-name"></strong>?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="modal-confirm-form" method="POST" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary">Confirm</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const confirmationModal = document.getElementById('confirmationModal');
+    if (confirmationModal) {
+        confirmationModal.addEventListener('show.bs.modal', function (event) {
+            // Button that triggered the modal
+            const button = event.relatedTarget;
+
+            // Extract info from data-* attributes
+            const url = button.getAttribute('data-url');
+            const name = button.getAttribute('data-name');
+            const action = button.getAttribute('data-action');
+
+            // Update the modal's content
+            const modalForm = confirmationModal.querySelector('#modal-confirm-form');
+            const consultantNameSpan = confirmationModal.querySelector('#consultant-name');
+            const actionTextSpan = confirmationModal.querySelector('#action-text');
+
+            modalForm.action = url;
+            consultantNameSpan.textContent = name;
+            actionTextSpan.textContent = action;
+        });
+    }
+});
+</script>
 {% endblock %}

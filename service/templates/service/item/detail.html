@@ -1,0 +1,250 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Item Details: {{ service_item.name }}</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item">Services</li>
+            <li class="breadcrumb-item"><a href="{% url 'service_item_list' %}">Inventory</a></li>
+            <li class="breadcrumb-item active">Details</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section profile">
+    <div class="row">
+        <div class="col-xl-4">
+
+            <div class="card">
+                <div class="card-body profile-card pt-4 d-flex flex-column align-items-center">
+                    <i class="bi bi-box-seam" style="font-size: 64px; color: #012970;"></i>
+                    <h2 class="mt-2">{{ service_item.name }}</h2>
+                    <h3>{{ service_item.category.name }}</h3>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#manageStockModal">
+                            <i class="bi bi-gear"></i> Manage Stock
+                        </button>
+                        <a href="{% url 'service_item_edit' service_item.pk %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-pencil"></i> Edit Item
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Stock Summary</h5>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Current Stock
+                            <span class="badge {% if service_item.is_low_stock %}bg-danger{% else %}bg-success{% endif %} rounded-pill">{{ service_item.stock_quantity }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Reorder Point
+                            <span class="badge bg-secondary rounded-pill">{{ service_item.minimum_stock_level }}</span>
+                        </li>
+                         <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Unit
+                            <span class="text-muted">{{ service_item.get_unit_of_measure_display }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Status
+                            <span class="text-muted">{% if service_item.is_active %}Active{% else %}Inactive{% endif %}</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-xl-8">
+
+            <div class="card">
+                <div class="card-body pt-3">
+                    <!-- Bordered Tabs -->
+                    <ul class="nav nav-tabs nav-tabs-bordered">
+
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#item-overview">Overview</button>
+                        </li>
+
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stock-history">Stock History</button>
+                        </li>
+
+                    </ul>
+                    <div class="tab-content pt-2">
+
+                        <div class="tab-pane fade show active profile-overview" id="item-overview">
+
+                            <h5 class="card-title">Item Details</h5>
+
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label ">Full Name</div>
+                                <div class="col-lg-9 col-md-8">{{ service_item.name }}</div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Category</div>
+                                <div class="col-lg-9 col-md-8">{{ service_item.category.name }}</div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Model / Brand</div>
+                                <div class="col-lg-9 col-md-8">{{ service_item.model_number|default:"N/A" }}</div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Description</div>
+                                <div class="col-lg-9 col-md-8">{{ service_item.description|default:"No description provided." }}</div>
+                            </div>
+
+                             <h5 class="card-title mt-3">Pricing</h5>
+
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Selling Price</div>
+                                <div class="col-lg-9 col-md-8">{{ service_item.price }}</div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Cost Price</div>
+                                <div class="col-lg-9 col-md-8">{{ service_item.cost_price|default:"N/A" }}</div>
+                            </div>
+
+                            <h5 class="card-title mt-3">Additional Info</h5>
+                             <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Expiry Date</div>
+                                <div class="col-lg-9 col-md-8">{{ service_item.expiry_date|date:"d M Y"|default:"N/A" }}</div>
+                            </div>
+                             <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Prescription</div>
+                                <div class="col-lg-9 col-md-8">{% if service_item.is_prescription_required %}Required{% else %}Not Required{% endif %}</div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade pt-3" id="stock-history">
+                            <h5 class="card-title">Stock Movement History</h5>
+                            <p>A log of all additions, sales, and adjustments for this item.</p>
+
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Date</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Qty</th>
+                                        <th scope="col">Prev. Stock</th>
+                                        <th scope="col">New Stock</th>
+                                        <th scope="col">User</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for movement in stock_movements %}
+                                    <tr>
+                                        <td>{{ movement.created_at|date:"d M Y, H:i" }}</td>
+                                        <td>
+                                            {% if movement.movement_type == 'stock_in' %}
+                                                <span class="badge bg-success">{{ movement.get_movement_type_display }}</span>
+                                            {% elif movement.movement_type == 'sale' %}
+                                                <span class="badge bg-warning text-dark">{{ movement.get_movement_type_display }}</span>
+                                            {% elif movement.movement_type == 'return' %}
+                                                <span class="badge bg-info text-dark">{{ movement.get_movement_type_display }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ movement.get_movement_type_display }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td><strong>{{ movement.quantity }}</strong></td>
+                                        <td>{{ movement.previous_stock }}</td>
+                                        <td>{{ movement.new_stock }}</td>
+                                        <td>{{ movement.created_by.username|default:"System" }}</td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="6" class="text-center">No stock movement history found.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+
+                        </div>
+
+                    </div><!-- End Bordered Tabs -->
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Manage Stock Modal -->
+<div class="modal fade" id="manageStockModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Manage Stock for {{ service_item.name }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{% url 'manage_stock' service_item.pk %}" method="post">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="form-floating">
+                                {{ stock_form.movement_type }}
+                                <label for="{{ stock_form.movement_type.id_for_label }}">Action Type</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-floating">
+                                {{ stock_form.quantity }}
+                                <label for="{{ stock_form.quantity.id_for_label }}">Quantity</label>
+                            </div>
+                            <div class="form-text">Enter a positive number for 'Stock In' or 'Return'. Enter a negative number for other adjustments.</div>
+                        </div>
+                        <div class="col-12" id="unitCostContainer" style="display: none;">
+                            <div class="form-floating">
+                                {{ stock_form.unit_cost }}
+                                <label for="{{ stock_form.unit_cost.id_for_label }}">Unit Cost Price</label>
+                            </div>
+                             <div class="form-text">Required for 'Stock In' to update the item's cost price.</div>
+                        </div>
+                        <div class="col-12">
+                             <div class="form-floating">
+                                {{ stock_form.notes }}
+                                <label for="{{ stock_form.notes.id_for_label }}">Notes / Reason</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const movementTypeSelect = document.getElementById('{{ stock_form.movement_type.id_for_label }}');
+    const unitCostContainer = document.getElementById('unitCostContainer');
+
+    function toggleUnitCostField() {
+        if (movementTypeSelect.value === 'stock_in') {
+            unitCostContainer.style.display = 'block';
+        } else {
+            unitCostContainer.style.display = 'none';
+        }
+    }
+
+    // Initial check
+    toggleUnitCostField();
+
+    // Add event listener
+    movementTypeSelect.addEventListener('change', toggleUnitCostField);
+});
+</script>
+
+{% endblock %}

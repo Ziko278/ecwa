@@ -1,0 +1,79 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Update Surgery</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'surgery_index' %}">Surgeries</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'surgery_detail' surgery.pk %}">{{ surgery.surgery_number }}</a></li>
+            <li class="breadcrumb-item active">Update</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Update Surgery Records for: {{ surgery.patientModel.get_full_name }}</h5>
+                    <p>Procedure: <strong>{{ surgery.surgery_type.name }}</strong></p>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" action="{% url 'surgery_edit' surgery.pk %}" class="row g-3">
+                        {% csrf_token %}
+
+                        <div class="col-md-12">
+                             <div class="form-floating">
+                                {{ form.status }}
+                                <label for="{{ form.status.id_for_label }}">Surgery Status</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="{{ form.actual_start_time.id_for_label }}" class="form-label">Actual Start Time</label>
+                            {{ form.actual_start_time }}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ form.actual_end_time.id_for_label }}" class="form-label">Actual End Time</label>
+                            {{ form.actual_end_time }}
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.post_op_diagnosis }}
+                                <label for="{{ form.post_op_diagnosis.id_for_label }}">Post-Operative Diagnosis</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.procedure_notes }}
+                                <label for="{{ form.procedure_notes.id_for_label }}">Procedure Notes</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.complications }}
+                                <label for="{{ form.complications.id_for_label }}">Complications</label>
+                            </div>
+                        </div>
+
+                        <div class="text-end mt-4">
+                            <a href="{% url 'surgery_detail' surgery.pk %}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

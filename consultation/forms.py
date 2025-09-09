@@ -1,7 +1,7 @@
 import re
 
 from django.forms import ModelForm, Select, TextInput, DateInput, TimeInput, NumberInput, Textarea, CheckboxInput, \
-    CheckboxSelectMultiple
+    CheckboxSelectMultiple, ClearableFileInput, HiddenInput
 from django.core.exceptions import ValidationError
 from consultation.models import *
 from django import forms
@@ -462,61 +462,79 @@ class ConsultationSessionForm(ModelForm):
                 'autocomplete': 'off'
             })
 
+        # Show diagnosis fields only for NEW consultations
+        if self.instance and self.instance.consultation_type == 'follow_up':
+            self.fields['primary_diagnosis'].widget = HiddenInput()
+            self.fields['other_diagnosis_text'].widget = HiddenInput()
+
     class Meta:
         model = ConsultationSessionModel
         fields = [
-            'chief_complaint', 'history_of_present_illness', 'past_medical_history',
-            'physical_examination', 'assessment', 'diagnosis', 'treatment_plan',
-            'medications_prescribed', 'investigations_ordered', 'follow_up_instructions'
+            'assessment', 'chief_complaint', 'diagnosis',
+            'primary_diagnosis',
+            'other_diagnosis_text',
+            'case_status',
+            'voice_recording'
         ]
         widgets = {
-            'chief_complaint': Textarea(attrs={
-                'rows': 2,
-                'placeholder': 'Main reason for visit...'
+            'consultation_notes': Textarea(attrs={
+                'rows': 8,
+                'placeholder': 'Comprehensive consultation notes (chief complaint, examination, assessment, treatment plan, etc.)...',
+                'class': 'tinymce-editor'  # If using TinyMCE
             }),
-            'history_of_present_illness': Textarea(attrs={
-                'rows': 3,
-                'placeholder': 'History of present illness...'
+            'primary_diagnosis': Select(attrs={
+                'placeholder': 'Select primary diagnosis...'
             }),
-            'past_medical_history': Textarea(attrs={
-                'rows': 3,
-                'placeholder': 'Past medical history...'
+            'other_diagnosis_text': TextInput(attrs={
+                'placeholder': 'Specify other diagnosis if not in list above...',
+                'maxlength': 500
             }),
-            'physical_examination': Textarea(attrs={
-                'rows': 4,
-                'placeholder': 'Physical examination findings...'
+            'case_status': Select(attrs={
+                'help_text': 'Mark as completed to make next visit a NEW consultation'
             }),
-            'assessment': Textarea(attrs={
-                'rows': 3,
-                'placeholder': 'Clinical assessment/impression...'
-            }),
-            'diagnosis': Textarea(attrs={
-                'rows': 2,
-                'placeholder': 'Diagnosis...'
-            }),
-            'treatment_plan': Textarea(attrs={
-                'rows': 3,
-                'placeholder': 'Treatment plan...'
-            }),
-            'medications_prescribed': Textarea(attrs={
-                'rows': 3,
-                'placeholder': 'Medications prescribed...'
-            }),
-            'investigations_ordered': Textarea(attrs={
-                'rows': 2,
-                'placeholder': 'Laboratory tests, imaging, etc...'
-            }),
-            'follow_up_instructions': Textarea(attrs={
-                'rows': 2,
-                'placeholder': 'Follow-up instructions...'
+            'voice_recording': ClearableFileInput(attrs={
+                'accept': 'audio/*',
+                'help_text': 'Optional voice note (max 5 minutes)'
             }),
         }
 
-    def clean_chief_complaint(self):
-        complaint = self.cleaned_data.get('chief_complaint')
-        if not complaint or len(complaint.strip()) < 5:
-            raise ValidationError("Chief complaint must be at least 5 characters long.")
-        return complaint
+    def clean_consultation_notes(self):
+        notes = self.cleaned_data.get('consultation_notes')
+        if not notes or len(notes.strip()) < 10:
+            raise ValidationError("Consultation notes must be at least 10 characters long.")
+        return notes
+
+    def clean_primary_diagnosis(self):
+        """Validate primary diagnosis for NEW consultations"""
+        primary_diagnosis = self.cleaned_data.get('primary_diagnosis')
+        other_diagnosis_text = self.cleaned_data.get('other_diagnosis_text')
+
+        # Only validate for NEW consultations
+        if (self.instance and self.instance.consultation_type == 'new' and
+                not primary_diagnosis and not other_diagnosis_text):
+            raise ValidationError("Primary diagnosis is required for new consultations.")
+
+        return primary_diagnosis
+
+    def clean_other_diagnosis_text(self):
+        other_diagnosis = self.cleaned_data.get('other_diagnosis_text')
+        if other_diagnosis and len(other_diagnosis.strip()) < 3:
+            raise ValidationError("Other diagnosis must be at least 3 characters long.")
+        return other_diagnosis
+
+    def clean_voice_recording(self):
+        """Validate voice recording file"""
+        voice_file = self.cleaned_data.get('voice_recording')
+        if voice_file:
+            # Check file size (max 10MB)
+            if voice_file.size > 10 * 1024 * 1024:
+                raise ValidationError("Voice recording must be less than 10MB.")
+
+            # Check file type
+            if not voice_file.name.lower().endswith(('.mp3', '.wav', '.m4a', '.ogg')):
+                raise ValidationError("Voice recording must be an audio file (mp3, wav, m4a, ogg).")
+
+        return voice_file
 
 
 class DoctorScheduleForm(ModelForm):

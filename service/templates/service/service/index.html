@@ -1,0 +1,317 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Service Management</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item">Services</li>
+            <li class="breadcrumb-item active">Services & Procedures</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+
+        <!-- Service List -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Available Services & Procedures</h5>
+                    <p>Below is a list of all services offered. Use the form on the right to add a new one.</p>
+
+                    <table class="table table-hover datatable">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">Name</th>
+                                <th scope="col">Category</th>
+                                <th scope="col">Price</th>
+                                <th scope="col">Has Results</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for service in service_list %}
+                            <tr>
+                                <th scope="row">{{ forloop.counter }}</th>
+                                <td>{{ service.name }}</td>
+                                <td>{{ service.category.name }}</td>
+                                <td>{{ service.price }}</td>
+                                <td>
+                                    {% if service.has_results %}
+                                        <span class="badge bg-success">Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">No</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if service.is_active %}
+                                        <span class="badge bg-primary">Active</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Inactive</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{% url 'service_edit' service.pk %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteServiceModal_{{ service.pk }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center">No services found.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Service Form -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Add New Service</h5>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" id="serviceForm">
+                        {% csrf_token %}
+
+                        <div class="form-floating mb-3">
+                            {{ form.name }}
+                            <label for="{{ form.name.id_for_label }}">Service Name <span class="text-danger">*</span></label>
+                        </div>
+
+                        <div class="form-floating mb-3">
+                            {{ form.category }}
+                            <label for="{{ form.category.id_for_label }}">Category <span class="text-danger">*</span></label>
+                        </div>
+
+                        <div class="form-floating mb-3">
+                            {{ form.price }}
+                            <label for="{{ form.price.id_for_label }}">Default Price</label>
+                        </div>
+
+                        <div class="form-floating mb-3">
+                            {{ form.description }}
+                            <label for="{{ form.description.id_for_label }}">Description</label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            {{ form.has_results }}
+                            <label class="form-check-label" for="{{ form.has_results.id_for_label }}">Does this service produce results?</label>
+                        </div>
+
+                        <!-- Result Template Builder (Dynamic) -->
+                        <div class="mb-4" id="resultTemplateBuilder" style="display: none;">
+                            <h6 class="mb-3">Result Template Fields</h6>
+                            <div class="card border-light">
+                                <div class="card-body pt-3">
+                                    <div id="fieldsContainer">
+                                        <!-- Fields will be added here dynamically -->
+                                    </div>
+                                    <button type="button" class="btn btn-success btn-sm" id="addFieldBtn">
+                                        <i class="bi bi-plus"></i> Add Field
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Hidden input for the actual JSON data -->
+                        <input type="hidden" id="id_result_template" name="result_template" value='{"fields": []}'>
+
+                        <div class="form-check form-switch mb-3">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active?</label>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Save Service</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Delete Modals -->
+{% for service in service_list %}
+<div class="modal fade" id="deleteServiceModal_{{ service.pk }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to delete the service: <strong>{{ service.name }}</strong>? This action cannot be undone.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{% url 'service_delete' service.pk %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- Field Template for JSON Builder (Hidden) -->
+<template id="fieldTemplate">
+    <div class="field-item border rounded p-3 mb-3 bg-light">
+        <div class="row align-items-center">
+            <div class="col-md-5">
+                <div class="form-floating mb-2">
+                    <input type="text" class="form-control field-name" placeholder="Field Name">
+                    <label>Field Name *</label>
+                </div>
+            </div>
+            <div class="col-md-5">
+                <div class="form-floating mb-2">
+                    <select class="form-control field-type">
+                        <option value="text">Text</option>
+                        <option value="number">Number</option>
+                        <option value="options">Options (Select)</option>
+                    </select>
+                    <label>Field Type</label>
+                </div>
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-danger btn-sm remove-field-btn">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+        <!-- Options textarea -->
+        <div class="options-field" style="display: none;">
+            <div class="form-floating mt-2">
+                <textarea class="form-control field-options" rows="3" placeholder="Enter each option on a new line"></textarea>
+                <label>Options (one per line)</label>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const hasResultsCheckbox = document.getElementById('{{ form.has_results.id_for_label }}');
+    const resultTemplateBuilder = document.getElementById('resultTemplateBuilder');
+    const fieldsContainer = document.getElementById('fieldsContainer');
+    const addFieldBtn = document.getElementById('addFieldBtn');
+    const fieldTemplate = document.getElementById('fieldTemplate');
+    const hiddenInput = document.getElementById('id_result_template');
+
+    // Toggle builder visibility based on checkbox
+    hasResultsCheckbox.addEventListener('change', function() {
+        resultTemplateBuilder.style.display = this.checked ? 'block' : 'none';
+        if (this.checked && fieldsContainer.children.length === 0) {
+            addField(); // Add one field by default when shown
+        }
+    });
+
+    // Add field function
+    function addField() {
+        const clone = fieldTemplate.content.cloneNode(true);
+        fieldsContainer.appendChild(clone);
+        const newField = fieldsContainer.lastElementChild;
+        attachFieldEvents(newField);
+        updateJSON();
+    }
+
+    // Attach events to a field item
+    function attachFieldEvents(fieldItem) {
+        fieldItem.querySelector('.remove-field-btn').addEventListener('click', () => {
+            fieldItem.remove();
+            updateJSON();
+        });
+
+        const typeSelect = fieldItem.querySelector('.field-type');
+        const optionsField = fieldItem.querySelector('.options-field');
+        typeSelect.addEventListener('change', () => {
+            optionsField.style.display = typeSelect.value === 'options' ? 'block' : 'none';
+            updateJSON();
+        });
+
+        const inputs = fieldItem.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('input', updateJSON);
+            input.addEventListener('change', updateJSON);
+        });
+    }
+
+    // Update hidden JSON input
+    function updateJSON() {
+        const fields = [];
+        const fieldItems = fieldsContainer.querySelectorAll('.field-item');
+
+        fieldItems.forEach(item => {
+            const name = item.querySelector('.field-name').value.trim();
+            const type = item.querySelector('.field-type').value;
+
+            if (!name) return; // Skip if no name
+
+            const field = {
+                name: name,
+                type: type,
+            };
+
+            if (type === 'options') {
+                const optionsText = item.querySelector('.field-options').value.trim();
+                if (optionsText) {
+                    field.options = optionsText.split('\\n').map(opt => opt.trim()).filter(Boolean);
+                }
+            }
+            fields.push(field);
+        });
+
+        hiddenInput.value = JSON.stringify({ fields: fields }, null, 2);
+    }
+
+    // Load existing data if editing (for edit page)
+    function loadExistingData() {
+        try {
+            const data = JSON.parse(hiddenInput.value || '{"fields":[]}');
+            if (data.fields && data.fields.length > 0) {
+                hasResultsCheckbox.checked = true;
+                resultTemplateBuilder.style.display = 'block';
+
+                data.fields.forEach(field => {
+                    addField();
+                    const newItem = fieldsContainer.lastElementChild;
+                    newItem.querySelector('.field-name').value = field.name || '';
+                    newItem.querySelector('.field-type').value = field.type || 'text';
+                    if (field.type === 'options' && field.options) {
+                        newItem.querySelector('.field-options').value = field.options.join('\\n');
+                        newItem.querySelector('.options-field').style.display = 'block';
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Could not load existing result template JSON.", e);
+        }
+    }
+
+    // --- Init ---
+    addFieldBtn.addEventListener('click', addField);
+    loadExistingData(); // Run on page load for the edit form case
+
+    // Initial check for create form
+    if (hasResultsCheckbox.checked) {
+       resultTemplateBuilder.style.display = 'block';
+    }
+
+});
+</script>
+
+{% endblock %}

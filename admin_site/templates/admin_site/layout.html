@@ -181,11 +181,7 @@
     </li>
 
     <!-- Operational Finance -->
-    <li>
-      <a href="{% url 'quotation_index' %}">
-        <i class="bi bi-circle"></i><span>Quotations</span>
-      </a>
-    </li>
+
     <li>
       <a href="{% url 'income_index' %}">
         <i class="bi bi-circle"></i><span>Income Records</span>
@@ -258,7 +254,7 @@
 
           <li>
             <a href="{% url 'consultation_payment_create' %}">
-              <i class="bi bi-circle"></i><span>Make Payment</span>
+              <i class="bi bi-circle"></i><span>New Consultation</span>
             </a>
           </li>
           <li>
@@ -345,6 +341,46 @@
 
         </ul>
       </li>
+
+
+      <li class="nav-item">
+  <a class="nav-link collapsed" data-bs-target="#inpatient-nav" data-bs-toggle="collapse" href="#">
+    <i class="bi bi-clipboard2-pulse"></i><span>Inpatient</span><i class="bi bi-chevron-down ms-auto"></i>
+  </a>
+  <ul id="inpatient-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+    <li>
+      <a href="{% url 'inpatient_dashboard' %}">
+        <i class="bi bi-circle"></i><span>Dashboard</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'admission_index' %}">
+        <i class="bi bi-circle"></i><span>Admissions</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'surgery_index' %}">
+        <i class="bi bi-circle"></i><span>Surgeries</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'ward_index' %}">
+        <i class="bi bi-circle"></i><span>Wards & Beds</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'surgery_type_index' %}">
+        <i class="bi bi-circle"></i><span>Surgery Types</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'inpatient_settings_detail' %}">
+        <i class="bi bi-circle"></i><span>Settings</span>
+      </a>
+    </li>
+  </ul>
+</li>
+
 
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#lnote" data-bs-toggle="collapse" href="#">
@@ -453,7 +489,17 @@
 
           <li>
             <a href="{% url 'lab_entry' %}">
-              <i class="bi bi-circle"></i><span>Patient Test</span>
+              <i class="bi bi-circle"></i><span>Order New Test</span>
+            </a>
+          </li>
+          <li>
+            <a href="{% url 'lab_result_index' %}">
+              <i class="bi bi-circle"></i><span>View Lab Tests</span>
+            </a>
+          </li>
+          <li>
+            <a href="{% url 'laboratory_dashboard' %}">
+              <i class="bi bi-circle"></i><span>Lab Dashboard</span>
             </a>
           </li>
           <li>
@@ -465,6 +511,12 @@
           <li>
             <a href="{% url 'lab_category_index' %}">
               <i class="bi bi-circle"></i><span>Test Category</span>
+            </a>
+          </li>
+
+          <li>
+            <a href="{% url 'lab_setting_detail' 1 %}">
+              <i class="bi bi-circle"></i><span>Lab Setting</span>
             </a>
           </li>
 
@@ -500,6 +552,30 @@
 
         </ul>
       </li>
+
+      <li class="nav-item">
+  <a class="nav-link collapsed" data-bs-target="#services-nav" data-bs-toggle="collapse" href="#">
+    <i class="bi bi-card-checklist"></i><span>Services & Inventory</span><i class="bi bi-chevron-down ms-auto"></i>
+  </a>
+  <ul id="services-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+    <li>
+      <a href="{% url 'service_category_list' %}">
+        <i class="bi bi-circle"></i><span>Categories</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'service_list' %}">
+        <i class="bi bi-circle"></i><span>Services</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'service_item_list' %}">
+        <i class="bi bi-circle"></i><span>Inventory Items</span>
+      </a>
+    </li>
+  </ul>
+</li>
+
 
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#hr" data-bs-toggle="collapse" href="#">

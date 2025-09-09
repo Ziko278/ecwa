@@ -38,15 +38,18 @@ urlpatterns = [
     path('collect-sample/<int:order_id>/', collect_sample, name='collect_sample'),
 
     # Results
-    path('results/', LabResultDashboardView.as_view(), name='lab_result_dashboard'),
-    path('results/all/', LabTestResultListView.as_view(), name='lab_result_index'),
+    path('dashboard/', laboratory_dashboard, name='laboratory_dashboard'),
+    path('dashboard/print/', laboratory_dashboard_print, name='laboratory_dashboard_print'),
+    path('dashboard/analytics/', laboratory_analytics_api, name='laboratory_analytics_api'),
+
+    path('results/', LabTestResultListView.as_view(), name='lab_result_index'),
     path('results/create/', LabTestResultCreateView.as_view(), name='lab_result_create'),
     path('results/create/<int:order_id>/', LabTestResultCreateView.as_view(), name='lab_result_create_for_order'),
     path('results/<int:pk>/', LabTestResultDetailView.as_view(), name='lab_result_detail'),
     path('results/<int:pk>/edit/', LabTestResultUpdateView.as_view(), name='lab_result_edit'),
 
     # AJAX endpoints
-    path('results/<int:result_id>/verify/', verify_result, name='verify_result'),
+    path('results/<int:pk>/verify/', verify_result, name='verify_result'),
     path('orders/<int:order_id>/process-for-results/', process_to_result_entry, name='process_to_result_entry'),
 
     # Equipment

@@ -16,7 +16,7 @@
                 </h4>
                 {% if order %}
                     <p class="card-description mb-0">
-                        Patient: {{ patient.full_name }} | Order: {{ order.order_number }}
+                        Patient: {{ patient|title }} | Order: {{ order.order_number }}
                     </p>
                 {% endif %}
             </div>
@@ -42,7 +42,7 @@
                                     <tbody>
                                         {% for available_order in available_orders %}
                                         <tr>
-                                            <td>{{ available_order.patient.full_name }}</td>
+                                            <td>{{ available_order.patient|title }}</td>
                                             <td>{{ available_order.template.name }}</td>
                                             <td>{{ available_order.order_number }}</td>
                                             <td>{{ available_order.sample_label|default:"-" }}</td>
@@ -85,8 +85,8 @@
                                 <div class="card bg-light">
                                     <div class="card-body p-3">
                                         <h6>Patient Information</h6>
-                                        <p class="mb-1"><strong>Name:</strong> {{ patient.full_name }}</p>
-                                        <p class="mb-1"><strong>Card Number:</strong> {{ patient.card_number }}</p>
+                                        <p class="mb-1"><strong>Name:</strong> {{ patient|title }}</p>
+                                        <p class="mb-1"><strong>Card Number:</strong> {{ patient.card_number|upper }}</p>
                                         <p class="mb-0"><strong>Age/Sex:</strong> {{ patient.age|default:"N/A" }} / {{ patient.get_gender_display|default:"N/A" }}</p>
                                     </div>
                                 </div>
@@ -197,7 +197,7 @@
 
                         <!-- Form Actions -->
                         <div class="d-flex justify-content-between">
-                            <a href="{% url 'lab_result_dashboard' %}" class="btn btn-secondary">
+                            <a href="{% url 'laboratory_dashboard' %}" class="btn btn-secondary">
                                 <i class="mdi mdi-arrow-left me-2"></i>Back to Dashboard
                             </a>
                             <div>

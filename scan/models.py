@@ -201,7 +201,29 @@ class ScanOrderModel(models.Model):
         ('cancelled', 'Cancelled'),
     ]
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-
+    admission = models.ForeignKey(
+        'inpatient.Admission',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scan_orders',
+        help_text="Link to an admission record if applicable"
+    )
+    surgery = models.ForeignKey(
+        'inpatient.Surgery',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scan_orders',
+        help_text="Link to a surgery record if applicable"
+    )
+    consultation = models.ForeignKey(
+        'consultation.ConsultationSessionModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scan_consultation_order',
+    )
     # Payment
     amount_charged = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     payment_status = models.BooleanField(default=False)

@@ -37,94 +37,77 @@ class ExpenseCategory(models.Model):
         verbose_name_plural = "Expense Categories"
 
 
-class Quotation(models.Model):
-    STATUS_CHOICES = [
-        ('DRAFT', 'Draft'),
-        ('DEPT_PENDING', 'Department Pending'),
-        ('DEPT_APPROVED', 'Department Approved'),
-        ('DEPT_REJECTED', 'Department Rejected'),
-        ('DEPT_QUERY', 'Department Query'),
-        ('GENERAL_PENDING', 'General Pending'),
-        ('GENERAL_APPROVED', 'General Approved'),
-        ('GENERAL_REJECTED', 'General Rejected'),
-        ('GENERAL_QUERY', 'General Query'),
-        ('MONEY_COLLECTED', 'Money Collected'),
-        ('CANCELLED', 'Cancelled'),
-    ]
+class OtherPaymentService(models.Model):
+    """Services not covered by main modules that patients can pay for"""
+    name = models.CharField(max_length=200, unique=True)
+    description = models.TextField(blank=True, null=True)
+    category = models.CharField(
+        max_length=50,
+        choices=[
+            ('medical_services', 'Medical Services'),
+            ('diagnostic_services', 'Diagnostic Services'),
+            ('documents', 'Medical Documents'),
+            ('equipment_rental', 'Equipment Rental'),
+            ('facility_services', 'Facility Services'),
+            ('professional_fees', 'Professional Fees'),
+            ('other', 'Other'),
+        ]
+    )
+    default_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text="Default amount (can be overridden during payment)"
+    )
+    is_fixed_amount = models.BooleanField(
+        default=False,
+        help_text="If true, amount cannot be changed during payment"
+    )
 
-    quotation_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
-    title = models.CharField(max_length=200)
-    description = models.TextField()
-    category = models.ForeignKey(ExpenseCategory, on_delete=models.CASCADE)
-    document = models.FileField(upload_to='quotations/%Y/%m/', blank=True, null=True)
-    department = models.ForeignKey('human_resource.DepartmentModel', on_delete=models.SET_NULL, blank=True, null=True)
-    requested_by = models.ForeignKey('human_resource.StaffModel', related_name='quotations', on_delete=models.CASCADE)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
-
-    # Department approval
-    dept_reviewed_by = models.ForeignKey(User, related_name='dept_reviewed_quotations',
-                                         on_delete=models.SET_NULL, null=True, blank=True)
-    dept_reviewed_at = models.DateTimeField(null=True, blank=True)
-    dept_comments = models.TextField(blank=True)
-
-    # General approval
-    general_reviewed_by = models.ForeignKey(User, related_name='general_reviewed_quotations',
-                                            on_delete=models.SET_NULL, null=True, blank=True)
-    general_reviewed_at = models.DateTimeField(null=True, blank=True)
-    general_comments = models.TextField(blank=True)
-
-    # Money collection
-    collected_by = models.ForeignKey(User, related_name='collected_quotations',
-                                     on_delete=models.SET_NULL, null=True, blank=True)
-    collected_at = models.DateTimeField(null=True, blank=True)
-
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def save(self, *args, **kwargs):
-        # Auto-populate department from staff if not provided
-        if not self.department and self.requested_by and hasattr(self.requested_by, 'department'):
-            self.department = self.requested_by.department
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.quotation_number} - {self.title}"
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['category', 'name']
 
-
-class QuotationItem(models.Model):
-    quotation = models.ForeignKey(Quotation, related_name='items', on_delete=models.CASCADE)
-    description = models.CharField(max_length=200)
-    quantity = models.PositiveIntegerField(default=1)
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
-    total_price = models.DecimalField(max_digits=10, decimal_places=2)
-
-    def save(self, *args, **kwargs):
-        self.total_price = self.quantity * self.unit_price
-        super().save(*args, **kwargs)
+    def __str__(self):
+        return self.name
 
 
 class PatientTransactionModel(models.Model):
     patient = models.ForeignKey('patient.PatientModel', on_delete=models.SET_NULL, null=True)
+
     TRANSACTION_TYPE = (
         ('wallet_funding', 'WALLET FUNDING'),
         ('consultation_payment', 'CONSULTATION PAYMENT'),
         ('drug_payment', 'DRUG PAYMENT'),
         ('lab_payment', 'LAB PAYMENT'),
         ('scan_payment', 'SCAN PAYMENT'),
+        ('admission_payment', 'ADMISSION PAYMENT'),
+        ('surgery_payment', 'SURGERY PAYMENT'),
+        ('other_payment', 'OTHER PAYMENT'),
         ('drug_refund', 'DRUG REFUND'),
         ('lab_refund', 'LAB REFUND'),
         ('scan_refund', 'SCAN REFUND'),
+        ('admission_refund', 'ADMISSION REFUND'),
+        ('surgery_refund', 'SURGERY REFUND'),
+        ('other_refund', 'OTHER REFUND'),
         ('wallet_withdrawal', 'WALLET WITHDRAWAL'),
     )
+
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPE)
     transaction_direction = models.CharField(max_length=20, choices=(('in', 'IN'), ('out', 'OUT')))
-    fee_structure = models.ForeignKey('consultation.ConsultationFeeModel', on_delete=models.SET_NULL, null=True)
-    lab_structure = models.ForeignKey('laboratory.LabTestOrderModel', on_delete=models.SET_NULL, null=True)
+
+    # Related service records
+    fee_structure = models.ForeignKey('consultation.ConsultationFeeModel', on_delete=models.SET_NULL, null=True,
+                                      blank=True)
+    lab_structure = models.ForeignKey('laboratory.LabTestOrderModel', on_delete=models.SET_NULL, null=True, blank=True)
+    admission = models.ForeignKey('inpatient.Admission', on_delete=models.SET_NULL, null=True, blank=True)
+    surgery = models.ForeignKey('inpatient.Surgery', on_delete=models.SET_NULL, null=True, blank=True)
+    other_service = models.ForeignKey(OtherPaymentService, on_delete=models.SET_NULL, null=True, blank=True)
 
     amount = models.DecimalField(
         max_digits=12,
@@ -141,10 +124,12 @@ class PatientTransactionModel(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0.01'))]
     )
+
     date = models.DateField()
     received_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     transaction_id = models.CharField(max_length=100, blank=True, db_index=True)
     payment_method = models.CharField(max_length=50, blank=True)
+
     status = models.CharField(
         max_length=20,
         choices=[
@@ -155,6 +140,7 @@ class PatientTransactionModel(models.Model):
         ],
         default='completed'
     )
+
     remittance = models.ForeignKey(
         'MoneyRemittance',
         on_delete=models.SET_NULL,
@@ -162,39 +148,84 @@ class PatientTransactionModel(models.Model):
         blank=True,
         related_name='transactions'
     )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
         if not self.transaction_id:
+            from django.db import transaction
+            from django.db.models import Max
+            from django.db.models.functions import Cast, Right
+            from django.db.models import IntegerField
+            import time
+            import random
+
             today_str = date.today().strftime('%Y%m%d')
+            max_retries = 5
+            retry_count = 0
 
-            # Use a lock or transaction to prevent race conditions
-            # in a production environment with multiple simultaneous requests.
-            # For simplicity, this example does not include that.
+            while retry_count < max_retries:
+                try:
+                    with transaction.atomic():
+                        # Use select_for_update to lock the query and prevent race conditions
+                        # Alternative approach using Max aggregation for better performance
+                        last_transaction_data = PatientTransactionModel.objects.filter(
+                            transaction_id__startswith=f'trn-{today_str}'
+                        ).aggregate(
+                            max_id=Max(
+                                Cast(
+                                    Right('transaction_id', 4),
+                                    IntegerField()
+                                )
+                            )
+                        )
 
-            last_transaction = PatientTransactionModel.objects.filter(
-                transaction_id__startswith=f'trn-{today_str}'
-            ).order_by('-transaction_id').first()
+                        last_number = last_transaction_data['max_id'] or 0
+                        new_number = last_number + 1
 
-            if last_transaction:
-                # Extract the number part and increment
-                last_number = int(last_transaction.transaction_id[-4:])
-                new_number = last_number + 1
-            else:
-                new_number = 1
+                        # Format the number with leading zeros
+                        formatted_number = f"{new_number:04}"
+                        potential_transaction_id = f"trn-{today_str}{formatted_number}"
 
-            # Format the number with leading zeros
-            formatted_number = f"{new_number:04}"
+                        # Double-check uniqueness (extra safety)
+                        if PatientTransactionModel.objects.filter(
+                                transaction_id=potential_transaction_id
+                        ).exists():
+                            # If somehow this ID exists, increment and try again
+                            new_number += 1
+                            formatted_number = f"{new_number:04}"
+                            potential_transaction_id = f"trn-{today_str}{formatted_number}"
 
-            self.transaction_id = f"trn-{today_str}{formatted_number}"
+                        self.transaction_id = potential_transaction_id
+                        break
+
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        # Fallback: use timestamp with random suffix if all retries fail
+                        import uuid
+                        timestamp = int(time.time() * 1000)  # milliseconds
+                        random_suffix = str(uuid.uuid4())[:4]
+                        self.transaction_id = f"trn-{today_str}{timestamp}{random_suffix}"
+                        break
+                    else:
+                        # Wait briefly before retry with some jitter
+                        time.sleep(0.01 + random.uniform(0, 0.02))
+                        continue
 
         super().save(*args, **kwargs)
 
     def clean(self):
         """Validate transaction direction based on type"""
         funding_types = ['wallet_funding']
-        payment_types = ['consultation_payment', 'drug_payment', 'lab_payment', 'scan_payment']
-        refund_types = ['drug_refund', 'lab_refund', 'scan_refund']
+        payment_types = [
+            'consultation_payment', 'drug_payment', 'lab_payment',
+            'scan_payment', 'admission_payment', 'surgery_payment', 'other_payment'
+        ]
+        refund_types = [
+            'drug_refund', 'lab_refund', 'scan_refund',
+            'admission_refund', 'surgery_refund', 'other_refund'
+        ]
         withdrawal_types = ['wallet_withdrawal']
 
         if self.transaction_type in funding_types and self.transaction_direction != 'in':
@@ -222,7 +253,6 @@ class PatientTransactionModel(models.Model):
             models.Index(fields=['date']),
             models.Index(fields=['status']),
         ]
-
 
 class MoneyRemittance(models.Model):
     """

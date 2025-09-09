@@ -1,0 +1,50 @@
+<form method="post" action="{% url 'surgery_edit' surgery.pk %}">
+    {% csrf_token %}
+    <h5 class="card-title">Clinical Overview</h5>
+    <div class="row mb-3">
+        <div class="col-lg-4 col-md-5 label fw-bold">Pre-Op Diagnosis</div>
+        <div class="col-lg-8 col-md-7">{{ surgery.pre_op_diagnosis }}</div>
+    </div>
+    <hr>
+    <h5 class="card-title">Update Surgery Records</h5>
+    <p>Update the status and record the details of the procedure once it begins or is completed.</p>
+     <div class="row mb-3">
+        <label for="{{ update_form.status.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Surgery Status</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.status }}</div>
+    </div>
+     <div class="row mb-3">
+        <label for="{{ update_form.primary_surgeon.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Primary Surgeon</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.primary_surgeon }}</div>
+    </div>
+    <div class="row mb-3">
+        <label for="{{ update_form.assistant_surgeon.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Assistant Surgeon</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.assistant_surgeon }}</div>
+    </div>
+    <div class="row mb-3">
+        <label for="{{ update_form.anesthesiologist.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Anesthesiologist</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.anesthesiologist }}</div>
+    </div>
+    <div class="row mb-3">
+        <label for="{{ update_form.actual_start_time.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Actual Start Time</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.actual_start_time }}</div>
+    </div>
+     <div class="row mb-3">
+        <label for="{{ update_form.actual_end_time.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Actual End Time</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.actual_end_time }}</div>
+    </div>
+    <div class="row mb-3">
+        <label for="{{ update_form.post_op_diagnosis.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Post-Op Diagnosis</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.post_op_diagnosis }}</div>
+    </div>
+    <div class="row mb-3">
+        <label for="{{ update_form.procedure_notes.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Procedure Notes</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.procedure_notes }}</div>
+    </div>
+    <div class="row mb-3">
+        <label for="{{ update_form.complications.id_for_label }}" class="col-md-4 col-lg-3 col-form-label">Complications</label>
+        <div class="col-md-8 col-lg-9">{{ update_form.complications }}</div>
+    </div>
+    <div class="text-center">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+    </div>
+</form>

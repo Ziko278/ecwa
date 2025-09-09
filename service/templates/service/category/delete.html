@@ -1,0 +1,47 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Delete Service Category</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item">Services</li>
+            <li class="breadcrumb-item"><a href="{% url 'service_category_list' %}">Categories</a></li>
+            <li class="breadcrumb-item active">Delete</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card border-danger">
+                <div class="card-body">
+                    <h5 class="card-title text-danger">Confirm Deletion</h5>
+
+                    <p>You are about to permanently delete the following service category:</p>
+                    <h4 class="text-center my-4">"{{ category.name }}"</h4>
+                    
+                    <div class="alert alert-danger" role="alert">
+                        <h4 class="alert-heading">Warning!</h4>
+                        <p>This action cannot be undone. Deleting this category will also permanently delete all services and items associated with it. Please be absolutely sure before you proceed.</p>
+                    </div>
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="text-center">
+                            <button type="submit" class="btn btn-danger">Yes, Delete This Category</button>
+                            <a href="{% url 'service_category_list' %}" class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
+

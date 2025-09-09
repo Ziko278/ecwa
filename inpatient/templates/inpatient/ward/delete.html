@@ -1,0 +1,46 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Confirm Ward Deletion</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'ward_index' %}">Wards</a></li>
+            <li class="breadcrumb-item active">Delete</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card border-danger border-top border-4">
+                <div class="card-body">
+                    <h5 class="card-title text-danger">Confirm Deletion</h5>
+                    <p>Are you sure you want to permanently delete the ward: <strong>"{{ ward.name }}"</strong>?</p>
+                    
+                    <div class="alert alert-danger">
+                        <strong>Warning!</strong> This action is irreversible.
+                        <ul class="mb-0">
+                            {% with bed_count=ward.beds.count %}
+                            <li>All <strong>{{ bed_count }}</strong> bed{{ bed_count|pluralize }} within this ward will also be permanently deleted.</li>
+                            {% endwith %}
+                            <li>This may affect historical admission records linked to these beds.</li>
+                        </ul>
+                    </div>
+
+                    <form method="post" class="text-end">
+                        {% csrf_token %}
+                        <a href="{% url 'ward_index' %}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-danger">Yes, Delete Ward</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

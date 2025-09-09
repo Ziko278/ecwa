@@ -130,6 +130,29 @@ class LabTestOrderModel(models.Model):
         default='lab',
         help_text='Source of the test order'
     )
+    admission = models.ForeignKey(
+        'inpatient.Admission',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lab_test_orders',
+        help_text="Link to an admission record if applicable"
+    )
+    consultation = models.ForeignKey(
+        'consultation.ConsultationSessionModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lab_consultation_order',
+    )
+    surgery = models.ForeignKey(
+        'inpatient.Surgery',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lab_test_orders',
+        help_text="Link to a surgery record if applicable"
+    )
 
     # Payment
     amount_charged = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
@@ -436,15 +459,39 @@ class LabTestTemplateBuilderModel(models.Model):
 
 # 8. LAB SETTINGS
 class LabSettingModel(models.Model):
-    """Lab configuration settings"""
-    lab_name = models.CharField(max_length=200, default="Clinical Laboratory")
-    lab_license = models.CharField(max_length=100, blank=True)
+    """
+    A singleton model to hold global settings for the Laboratory module.
+    """
+    # --- Workflow & Policy Settings (Your Suggestions Included) ---
+    lab_name = models.CharField(max_length=200, blank=True, default='')
+    mobile = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(max_length=100, blank=True, null=True)
+    allow_direct_lab_order = models.BooleanField(
+        default=False,
+        help_text="Allow patients to order lab tests directly without a consultation (walk-in)."
+    )
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    # --- Reporting & Printing Settings ---
+    allow_result_print_in_lab = models.BooleanField(
+        default=True,
+        help_text="Allow staff in the laboratory department to print test results."
+    )
+    allow_result_printing_by_consultant = models.BooleanField(
+        default=True,
+        help_text="Allow the ordering consultant/doctor to print test results from their dashboard."
+    )
+
+    # --- Timestamps ---
     updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'lab_settings'
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.lab_name} Settings"
+        return "Laboratory Settings"
+
+    class Meta:
+        verbose_name_plural = "Laboratory Settings"
+
+    def save(self, *args, **kwargs):
+        # Enforce a single instance of the settings
+        self.pk = 1
+        super(LabSettingModel, self).save(*args, **kwargs)

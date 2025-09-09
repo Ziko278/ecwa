@@ -1,0 +1,133 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    {% if object %}
+        <h1>Edit Surgery Type</h1>
+    {% else %}
+        <h1>Add New Surgery Type</h1>
+    {% endif %}
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'surgery_type_index' %}">Surgery Types</a></li>
+            <li class="breadcrumb-item active">{% if object %}Edit{% else %}Create{% endif %}</li>
+        </ol>
+    </nav>
+</div><!-- End Page Title -->
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% if object %}
+                            Update details for {{ object.name }}
+                        {% else %}
+                            Define a New Surgical Procedure
+                        {% endif %}
+                    </h5>
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+
+                        <!-- Basic Information Section -->
+                        <div class="col-12">
+                            <h6 class="card-subtitle mb-2 text-muted">Basic Information</h6>
+                            <hr>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="form-floating">
+                                {{ form.name }}
+                                <label for="{{ form.name.id_for_label }}">Surgery Name <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                {{ form.category }}
+                                <label for="{{ form.category.id_for_label }}">Category <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.description }}
+                                <label for="{{ form.description.id_for_label }}">Description</label>
+                            </div>
+                        </div>
+
+                        <!-- Fee Structure Section -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Fee Structure</h6>
+                            <hr>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                {{ form.base_surgeon_fee }}
+                                <label for="{{ form.base_surgeon_fee.id_for_label }}">Surgeon Fee (₦) <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                {{ form.base_anesthesia_fee }}
+                                <label for="{{ form.base_anesthesia_fee.id_for_label }}">Anesthesia Fee (₦)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating">
+                                {{ form.base_facility_fee }}
+                                <label for="{{ form.base_facility_fee.id_for_label }}">Facility Fee (₦)</label>
+                            </div>
+                        </div>
+
+                        <!-- Clinical Details Section -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Clinical Details</h6>
+                            <hr>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.estimated_duration_hours }}
+                                <label for="{{ form.estimated_duration_hours.id_for_label }}">Estimated Duration (Hours)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                             <div class="form-floating">
+                                {{ form.typical_stay_days }}
+                                <label for="{{ form.typical_stay_days.id_for_label }}">Typical Hospital Stay (Days)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mt-3">
+                            <div class="form-check form-switch">
+                                {{ form.requires_icu }}
+                                <label class="form-check-label" for="{{ form.requires_icu.id_for_label }}">Typically Requires ICU</label>
+                            </div>
+                        </div>
+                         <div class="col-md-6 mt-3">
+                            <div class="form-check form-switch">
+                                {{ form.is_active }}
+                                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active</label>
+                            </div>
+                        </div>
+
+                        <div class="text-end mt-4">
+                            <a href="{% url 'surgery_type_index' %}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">
+                                {% if object %}
+                                    Save Changes
+                                {% else %}
+                                    Create Surgery Type
+                                {% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

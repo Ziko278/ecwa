@@ -1,0 +1,60 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card profile-card card-bx m-b30">
+            <div class="card-header">
+                <h6 class="title">Laboratory Settings</h6>
+                {# The button now points directly to the edit view for the singleton object (pk=1) #}
+                <a href="{% url 'lab_setting_edit' 1 %}" class="btn btn-primary" style="float:right">Update Info</a>
+            </div>
+
+            <div class="card-body">
+                <div class="row">
+
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Laboratory Name</label>
+                        <br />
+                        <h1 class="card-title">{% if lab_setting.lab_name %} {{ lab_setting.lab_name|upper }} {% else %} NOT SET {% endif %}</h1>
+                    </div>
+
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Phone Number</label>
+                        <br />
+                        <h1 class="card-title">{% if lab_setting.mobile %} {{ lab_setting.mobile }} {% else %} NOT SET {% endif %}</h1>
+                    </div>
+
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Email</label>
+                        <br />
+                        <h1 class="card-title">{% if lab_setting.email %} {{ lab_setting.email|lower }} {% else %} NOT SET {% endif %}</h1>
+                    </div>
+
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Allow Direct Lab Order (Walk-in)</label>
+                        <br />
+                        <h1 class="card-title">{% if lab_setting.allow_direct_lab_order %} YES {% else %} NO {% endif %}</h1>
+                    </div>
+
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Allow Result Printing in Lab</label>
+                        <br />
+                        <h1 class="card-title">{% if lab_setting.allow_result_print_in_lab %} YES {% else %} NO {% endif %}</h1>
+                    </div>
+
+                    <div class="col-sm-6 m-b30 py-4">
+                        <label class="form-label">Allow Result Printing by Consultant</label>
+                        <br />
+                        <h1 class="card-title">{% if lab_setting.allow_result_printing_by_consultant %} YES {% else %} NO {% endif %}</h1>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+

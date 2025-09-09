@@ -9,10 +9,10 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-4">
                     <div>
-                        <h4 class="card-title mb-2">{{ template.name }}</h4>
-                        <p class="text-muted mb-0">Template Code: <span class="badge badge-info">{{ template.code }}</span></p>
+                        <h4 class="card-title mb-2">{{ template.name|upper }}</h4>
+                        <p class="mb-0">Template Code: {{ template.code|upper }}</p>
                     </div>
-                    <div class="text-end">
+                    <div class="text-end mt-3">
                         <a href="{% url 'lab_template_edit' template.pk %}" class="btn btn-primary btn-sm me-2">
                             <i class="mdi mdi-pencil"></i> Edit
                         </a>
@@ -36,9 +36,9 @@
                 <div class="mb-4">
                     <p><strong>Status:</strong> 
                         {% if template.is_active %}
-                            <span class="badge badge-success">Active</span>
+                            <span class="text-success">Active</span>
                         {% else %}
-                            <span class="badge badge-danger">Inactive</span>
+                            <span class="text-danger">Inactive</span>
                         {% endif %}
                     </p>
                 </div>
@@ -63,9 +63,9 @@
                                     {% for param in template.test_parameters.parameters %}
                                     <tr>
                                         <td><strong>{{ param.name }}</strong></td>
-                                        <td><span class="badge badge-secondary">{{ param.code }}</span></td>
+                                        <td><span class="text-secondary">{{ param.code }}</span></td>
                                         <td>
-                                            <span class="badge badge-{% if param.type == 'numeric' %}primary{% elif param.type == 'select' %}warning{% elif param.type == 'boolean' %}info{% else %}dark{% endif %}">
+                                            <span class="text-{% if param.type == 'numeric' %}primary{% elif param.type == 'select' %}warning{% elif param.type == 'boolean' %}info{% else %}dark{% endif %}">
                                                 {{ param.type|capfirst }}
                                             </span>
                                         </td>
@@ -113,9 +113,13 @@
                     <div id="reportPreview" class="border rounded p-4" style="background-color: #fdfdfd;">
                         <!-- Lab Header -->
                         <div class="text-center mb-4 border-bottom pb-3">
-                            <h3 class="text-primary mb-1">MEDILAB DIAGNOSTIC CENTER</h3>
-                            <p class="mb-1">123 Health Street, Medical District, Lagos, Nigeria</p>
-                            <p class="mb-1">Tel: +234-xxx-xxx-xxxx | Email: info@medilab.com</p>
+                            <h3 class="text-primary mb-1">{% if lab_setting.lab_name %}
+                                {{ lab_setting.lab_name|upper }}
+                                {% else %}
+                                {{ site_info.name|upper }}
+                            {% endif %}</h3>
+                            <p class="mb-1">{{ site_info.address }}</p>
+                            <p class="mb-1">Tel: {{ site_info.mobile_1 }} | Email: {{ site_info.email|lower }}</p>
                             <p class="mb-0"><strong>LABORATORY REPORT</strong></p>
                         </div>
 
@@ -145,7 +149,7 @@
                                 <table class="table table-borderless table-sm">
                                     <tr>
                                         <td><strong>Test:</strong></td>
-                                        <td><span class="badge badge-primary">{{ template.name }}</span></td>
+                                        <td><span class="">{{ template.name }}</span></td>
                                     </tr>
                                     <tr>
                                         <td><strong>Sample Type:</strong></td>
@@ -279,7 +283,7 @@
                     {% for order in recent_orders %}
                     <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
                         <div>
-                            <p class="mb-0"><strong>{{ order.patient.full_name }}</strong></p>
+                            <p class="mb-0"><strong>{{ order.patient|title }}</strong></p>
                             <small class="text-muted">{{ order.ordered_at|date:"M d, Y" }}</small>
                         </div>
                         <span class="badge badge-{% if order.status == 'completed' %}success{% elif order.status == 'pending' %}warning{% else %}info{% endif %}">
@@ -287,9 +291,7 @@
                         </span>
                     </div>
                     {% endfor %}
-                    <div class="text-center mt-3">
-                        <a href="#" class="btn btn-outline-primary btn-sm">View All Orders</a>
-                    </div>
+
                 {% else %}
                     <p class="text-muted">No orders found for this template.</p>
                 {% endif %}
@@ -301,24 +303,16 @@
             <div class="card-body">
                 <h5 class="card-title">Actions</h5>
                 <div class="d-grid gap-2">
-                    <a href="#" class="btn btn-success">
-                        <i class="mdi mdi-plus"></i> Create Order
-                    </a>
+<!--                    <a href="#" class="btn btn-success">-->
+<!--                        <i class="mdi mdi-plus"></i> Create Order-->
+<!--                    </a>-->
                     <a href="{% url 'lab_template_edit' template.pk %}" class="btn btn-primary">
                         <i class="mdi mdi-pencil"></i> Edit Template
                     </a>
                     <button class="btn btn-info" onclick="printReport()">
                         <i class="mdi mdi-printer"></i> Print Preview
                     </button>
-                    {% if template.is_active %}
-                    <button class="btn btn-warning">
-                        <i class="mdi mdi-pause"></i> Deactivate
-                    </button>
-                    {% else %}
-                    <button class="btn btn-success">
-                        <i class="mdi mdi-play"></i> Activate
-                    </button>
-                    {% endif %}
+
                 </div>
             </div>
         </div>

@@ -4,6 +4,8 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 
+from django.utils import timezone
+
 from finance.models import PatientTransactionModel
 from insurance.models import PatientInsuranceModel, HMOCoveragePlanModel
 
@@ -304,54 +306,126 @@ class PatientVitalsModel(models.Model):
         return None
 
 
-# 8. CONSULTATION SESSIONS (The actual consultation)
-class ConsultationSessionModel(models.Model):
-    """Individual consultation sessions with doctors"""
-    queue_entry = models.OneToOneField(PatientQueueModel, on_delete=models.CASCADE, related_name='consultation')
-
-    # Consultation details
-    chief_complaint = models.TextField(help_text="Main reason for visit")
-    history_of_present_illness = models.TextField(blank=True)
-    past_medical_history = models.TextField(blank=True)
-    physical_examination = models.TextField(blank=True)
-
-    # Diagnosis and plan
-    assessment = models.TextField(blank=True, help_text="Clinical assessment/impression")
-    diagnosis = models.TextField(blank=True)
-    treatment_plan = models.TextField(blank=True)
-
-    # Prescriptions and recommendations
-    medications_prescribed = models.TextField(blank=True)
-    investigations_ordered = models.TextField(blank=True)
-    follow_up_instructions = models.TextField(blank=True)
-
-    # Session status
-    SESSION_STATUS = [
-        ('in_progress', 'In Progress'),
-        ('paused', 'Paused'),
-        ('completed', 'Completed'),
-    ]
-    status = models.CharField(max_length=20, choices=SESSION_STATUS, default='in_progress')
-
-    # Tracking
+class DiagnosisOption(models.Model):
+    name = models.CharField(max_length=200, unique=True)
+    icd_code = models.CharField(max_length=20, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        db_table = 'consultation_sessions'
 
     def __str__(self):
-        return f"Consultation: {self.queue_entry.patient} - {self.created_at.strftime('%Y-%m-%d')}"
+        return self.name
 
-    def complete_session(self):
-        """Mark consultation as completed"""
+
+# 8. CONSULTATION SESSIONS (The actual consultation)
+class ConsultationSessionModel(models.Model):
+    queue_entry = models.OneToOneField(PatientQueueModel, on_delete=models.CASCADE, related_name='consultation')
+
+    # Consultation classification
+    consultation_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('new', 'New Patient'),
+            ('follow_up', 'Follow-up Visit'),
+        ],
+        help_text="Only NEW consultations appear in OPD register"
+    )
+
+    # Main consultation note
+    assessment = models.TextField(help_text="Comprehensive consultation notes")
+    chief_complaint = models.TextField(help_text="Comprehensive consultation notes")
+    diagnosis = models.TextField(help_text="Comprehensive consultation notes")
+
+    # Diagnosis fields (only for NEW consultations)
+    primary_diagnosis = models.ForeignKey(
+        DiagnosisOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='primary_consultations',
+        help_text="Required for new consultations"
+    )
+    other_diagnosis_text = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text="If diagnosis not in list above"
+    )
+
+    # Case completion status
+    case_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('ongoing', 'Ongoing Treatment'),
+            ('completed', 'Case Completed'),
+            ('referred', 'Referred'),
+            ('discharged', 'Discharged'),
+        ],
+        default='ongoing',
+        help_text="Mark as 'completed' to make next visit a NEW consultation"
+    )
+
+    # Optional voice recording
+    voice_recording = models.FileField(
+        upload_to='consultations/',
+        null=True,
+        blank=True
+    )
+
+    # Session status
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('in_progress', 'In Progress'),
+            ('completed', 'Completed'),
+        ],
+        default='in_progress'
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        # Auto-determine consultation type on creation
+        if not self.pk:  # New record
+            self.consultation_type = self.determine_consultation_type()
+        super().save(*args, **kwargs)
+
+    def determine_consultation_type(self):
+        """Determine if this is a new or follow-up consultation"""
+        patient = self.queue_entry.patient
+
+        # Check for previous consultations for this patient
+        previous_consultations = ConsultationSessionModel.objects.filter(
+            queue_entry__patient=patient,
+            status='completed'
+        ).order_by('-completed_at')
+
+        # If no previous consultations, it's NEW
+        if not previous_consultations.exists():
+            return 'new'
+
+        # Get the most recent consultation
+        last_consultation = previous_consultations.first()
+
+        # If last consultation was marked as completed/discharged, this is NEW
+        if last_consultation.case_status in ['completed', 'discharged']:
+            return 'new'
+
+        # Otherwise, it's a follow-up
+        return 'follow_up'
+
+    def complete_consultation(self):
+        """Complete the consultation session"""
         self.status = 'completed'
-        self.completed_at = datetime.now()
+        self.completed_at = timezone.now()
         self.save()
 
         # Also complete the queue entry
         self.queue_entry.complete_consultation()
+
+    def __str__(self):
+        return f"{self.get_consultation_type_display()}: {self.queue_entry.patient} - {self.created_at.strftime('%Y-%m-%d')}"
 
 
 # 9. DOCTOR SCHEDULE (When doctors are available)
