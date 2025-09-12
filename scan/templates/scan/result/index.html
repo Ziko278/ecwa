@@ -1,0 +1,266 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="pagetitle">
+    <h1>Scan Results</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'scan_dashboard' %}">Dashboard</a></li>
+            <li class="breadcrumb-item active">Scan Results</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="col-12">
+    <div class="card">
+        <div class="card-body pt-3">
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card info-card sales-card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Results <span>| Filtered</span></h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center"><i class="bi bi-files"></i></div>
+                                <div class="ps-3"><h6>{{ total_results }}</h6></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card info-card revenue-card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">Verified <span>| Reports</span></h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center"><i class="bi bi-check2-circle"></i></div>
+                                <div class="ps-3"><h6>{{ verified_results }}</h6></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card info-card customers-card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">Pending <span>| Verification</span></h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center"><i class="bi bi-hourglass-split"></i></div>
+                                <div class="ps-3"><h6>{{ pending_verification }}</h6></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <form id="filter-form" method="get">
+            <div class="row mb-3 g-2 align-items-center">
+                <div class="col-md-2">
+                    <select name="verified" id="verified-filter" class="form-select">
+                        {% for value, label in verified_choices %}
+                            <option value="{{ value }}" {% if current_verified == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="date" name="start_date" id="start-date-filter" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-2">
+                    <input type="date" name="end_date" id="end-date-filter" class="form-control" value="{{ end_date }}">
+                </div>
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="text" name="search" id="search-input" class="form-control" placeholder="Search Patient, Order, Scan..." value="{{ search_query }}">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+                    </div>
+                </div>
+                <div class="col-md-2 text-end">
+                    <a href="{% url 'scan_result_index' %}" class="btn btn-outline-primary w-100">
+                        <i class="bi bi-arrow-clockwise"></i> Clear
+                    </a>
+                </div>
+            </div>
+            </form>
+
+            {% if not results %}
+                <div class="text-center py-5">
+                    <i class="bi bi-journal-x" style="font-size: 4rem; color: #ccc;"></i>
+                    <h5 class="mt-3 text-muted">No Scan Results Found</h5>
+                    <p class="text-muted">No scan results match your current filters.</p>
+                </div>
+            {% else %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Patient</th>
+                                <th>Scan</th>
+                                <th>Order Number</th>
+                                <th>Report Date</th>
+                                <th>Status</th>
+                                <th>Verified By</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for result in results %}
+                            <tr>
+                                <td>
+                                    <strong>{{ result.order.patient|title }}</strong>
+                                    <br><small class="text-muted">{{ result.order.patient.card_number }}</small>
+                                </td>
+                                <td>
+                                    <strong>{{ result.order.template.name }}</strong>
+                                    <br><small class="text-muted">{{ result.order.template.category.name }}</small>
+                                </td>
+                                <td><span class="text-muted">
+                                    <a href="{% url 'scan_order_detail' result.order.id %}">{{ result.order.order_number }}</a></span></td>
+                                <td>
+                                    {{ result.created_at|date:"d M Y" }}
+                                    <br><small class="text-muted">{{ result.created_at|date:"h:i A" }}</small>
+                                </td>
+                                <td>
+                                    {% if result.is_verified %}
+                                        <span class="badge bg-success">Verified</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">Unverified</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if result.is_verified %}
+                                        {{ result.verified_by.get_full_name|default:result.verified_by.username }}
+                                        <br><small class="text-muted">{{ result.verified_at|date:"d M, h:i" }}</small>
+                                    {% else %}
+                                        <small class="text-muted">-</small>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{% url 'scan_result_detail' pk=result.pk %}" class="btn btn-outline-primary" title="View Details">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        {% if not result.is_verified %}
+                                        <button type="button" class="btn btn-outline-success verify-btn" title="Verify Result"
+                                                data-result-id="{{ result.id }}"
+                                                data-scan-name="{{ result.order.template.name }}">
+                                            <i class="bi bi-check2-circle"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if is_paginated %}
+                    <nav aria-label="Results pagination">
+                        <ul class="pagination justify-content-center mt-4">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item"><a class="page-link" href="?page=1&{{ request.GET.urlencode|cut:'page=' }}">First</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&{{ request.GET.urlencode|cut:'page=' }}">Previous</a></li>
+                            {% endif %}
+                            <li class="page-item active"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+                            {% if page_obj.has_next %}
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&{{ request.GET.urlencode|cut:'page=' }}">Next</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&{{ request.GET.urlencode|cut:'page=' }}">Last</a></li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="verificationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Verify Scan Report</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="verification-form">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Scan Type</label>
+                        <input type="text" id="verify-scan-name" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="radiologist-comments" class="form-label">Radiologist Comments (Optional)</label>
+                        <textarea id="radiologist-comments" name="radiologist_comments" class="form-control" rows="3"
+                                  placeholder="Enter any additional observations or final comments..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check2-circle me-1"></i>Confirm Verification
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Filter submission
+    const filterForm = document.getElementById('filter-form');
+    // Auto-submit on change for dropdowns and date pickers
+    document.getElementById('verified-filter').addEventListener('change', () => filterForm.submit());
+    document.getElementById('start-date-filter').addEventListener('change', () => filterForm.submit());
+    document.getElementById('end-date-filter').addEventListener('change', () => filterForm.submit());
+
+    // Verify button and modal logic
+    const verifyBtns = document.querySelectorAll('.verify-btn');
+    const verificationModal = new bootstrap.Modal(document.getElementById('verificationModal'));
+    const verificationForm = document.getElementById('verification-form');
+    let currentResultId = null;
+
+    verifyBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentResultId = this.dataset.resultId;
+            document.getElementById('verify-scan-name').value = this.dataset.scanName;
+            document.getElementById('radiologist-comments').value = '';
+            verificationModal.show();
+        });
+    });
+
+    if (verificationForm) {
+        verificationForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const submitBtn = this.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Verifying...`;
+
+            const formData = new FormData(verificationForm);
+            // The CSRF token is already included in the form
+
+            const verifyUrlTemplate = "{% url 'verify_scan_result' 0 %}";
+            const finalVerifyUrl = verifyUrlTemplate.replace('0', currentResultId);
+
+            fetch(finalVerifyUrl, { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    verificationModal.hide();
+                    location.reload(); // Refresh to show updated status
+                } else {
+                    alert('Error: ' + (data.error || 'Verification failed.'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred. Please check the console.');
+            })
+            .finally(() => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Confirm Verification';
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

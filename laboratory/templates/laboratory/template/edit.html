@@ -223,28 +223,80 @@
         <!-- Numeric specific fields -->
         <div class="numeric-fields" style="display: none;">
             <div class="row">
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <div class="form-floating mb-3">
                         <input type="text" class="form-control parameter-unit" placeholder="Unit">
                         <label>Unit (e.g., g/dL, mg/L)</label>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="form-floating mb-3">
-                        <input type="number" class="form-control parameter-min" step="0.01" placeholder="Min">
-                        <label>Normal Range - Min</label>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="form-floating mb-3">
-                        <input type="number" class="form-control parameter-max" step="0.01" placeholder="Max">
-                        <label>Normal Range - Max</label>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="form-check form-switch mt-3">
+                <div class="col-md-2">
+                    <div class="form-check mt-3">
                         <input type="checkbox" class="form-check-input parameter-gender-specific">
                         <label class="form-check-label">Gender Specific</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Standard ranges (when not gender specific) -->
+            <div class="standard-ranges">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            <input type="number" class="form-control parameter-min" step="0.01" placeholder="Min">
+                            <label>Normal Range - Min</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            <input type="number" class="form-control parameter-max" step="0.01" placeholder="Max">
+                            <label>Normal Range - Max</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gender-specific ranges (hidden by default) -->
+            <div class="gender-ranges" style="display: none;">
+                <div class="alert alert-info small">
+                    <i class="bi bi-info-circle"></i>
+                    Enter separate normal ranges for male and female patients.
+                </div>
+
+                <!-- Male ranges -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-primary">Male Normal Range</label>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating mb-2">
+                                <input type="number" class="form-control parameter-male-min" step="0.01" placeholder="Male Min">
+                                <label>Male - Min</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating mb-2">
+                                <input type="number" class="form-control parameter-male-max" step="0.01" placeholder="Male Max">
+                                <label>Male - Max</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Female ranges -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-danger">Female Normal Range</label>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating mb-2">
+                                <input type="number" class="form-control parameter-female-min" step="0.01" placeholder="Female Min">
+                                <label>Female - Min</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating mb-2">
+                                <input type="number" class="form-control parameter-female-max" step="0.01" placeholder="Female Max">
+                                <label>Female - Max</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -279,6 +331,26 @@
         </div>
     </div>
 </template>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="errorModalLabel">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Validation Error
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="errorModalMessage" class="mb-0"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Change Preview Modal -->
 <div class="modal fade" id="previewModal" tabindex="-1">
@@ -400,6 +472,14 @@ function showAlert(message, title = 'Information', type = 'info') {
     new bootstrap.Modal(alertModal).show();
 }
 
+// Function to show error modal
+function showErrorModal(message) {
+    const errorModal = document.getElementById('errorModal');
+    const errorModalMessage = document.getElementById('errorModalMessage');
+    errorModalMessage.textContent = message;
+    new bootstrap.Modal(errorModal).show();
+}
+
 // Confirm Modal Function
 function showConfirm(message, title = 'Confirm', onConfirm) {
     const alertModal = document.getElementById('alertModal');
@@ -481,15 +561,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (paramData.type === 'numeric') {
             if (paramData.unit) parameterItem.querySelector('.parameter-unit').value = paramData.unit;
+
             if (paramData.normal_range) {
-                if (paramData.normal_range.min !== undefined) {
-                    parameterItem.querySelector('.parameter-min').value = paramData.normal_range.min;
-                }
-                if (paramData.normal_range.max !== undefined) {
-                    parameterItem.querySelector('.parameter-max').value = paramData.normal_range.max;
-                }
                 if (paramData.normal_range.gender_specific) {
+                    // Load gender-specific ranges
                     parameterItem.querySelector('.parameter-gender-specific').checked = true;
+
+                    if (paramData.normal_range.male) {
+                        if (paramData.normal_range.male.min !== undefined) {
+                            parameterItem.querySelector('.parameter-male-min').value = paramData.normal_range.male.min;
+                        }
+                        if (paramData.normal_range.male.max !== undefined) {
+                            parameterItem.querySelector('.parameter-male-max').value = paramData.normal_range.male.max;
+                        }
+                    }
+
+                    if (paramData.normal_range.female) {
+                        if (paramData.normal_range.female.min !== undefined) {
+                            parameterItem.querySelector('.parameter-female-min').value = paramData.normal_range.female.min;
+                        }
+                        if (paramData.normal_range.female.max !== undefined) {
+                            parameterItem.querySelector('.parameter-female-max').value = paramData.normal_range.female.max;
+                        }
+                    }
+                } else {
+                    // Load standard ranges
+                    if (paramData.normal_range.min !== undefined) {
+                        parameterItem.querySelector('.parameter-min').value = paramData.normal_range.min;
+                    }
+                    if (paramData.normal_range.max !== undefined) {
+                        parameterItem.querySelector('.parameter-max').value = paramData.normal_range.max;
+                    }
                 }
             }
         } else if (paramData.type === 'select') {
@@ -503,6 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Trigger type change to show correct fields
         parameterItem.querySelector('.parameter-type').dispatchEvent(new Event('change'));
+        parameterItem.querySelector('.parameter-gender-specific').dispatchEvent(new Event('change'));
     }
 
     // Attach events to parameter item
@@ -513,6 +616,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const selectCheckbox = parameterItem.querySelector('.parameter-select');
         const numericFields = parameterItem.querySelector('.numeric-fields');
         const selectFields = parameterItem.querySelector('.select-fields');
+        const genderSpecificCheckbox = parameterItem.querySelector('.parameter-gender-specific');
+        const standardRanges = parameterItem.querySelector('.standard-ranges');
+        const genderRanges = parameterItem.querySelector('.gender-ranges');
 
         // Type change handler
         typeSelect.addEventListener('change', function() {
@@ -521,6 +627,27 @@ document.addEventListener('DOMContentLoaded', function() {
             // Show/hide relevant fields
             numericFields.style.display = type === 'numeric' ? 'block' : 'none';
             selectFields.style.display = type === 'select' ? 'block' : 'none';
+
+            updateJSON();
+        });
+
+        // Gender specific checkbox handler
+        genderSpecificCheckbox.addEventListener('change', function() {
+            const isGenderSpecific = this.checked;
+
+            standardRanges.style.display = isGenderSpecific ? 'none' : 'block';
+            genderRanges.style.display = isGenderSpecific ? 'block' : 'none';
+
+            // Clear the opposite fields when switching
+            if (isGenderSpecific) {
+                parameterItem.querySelector('.parameter-min').value = '';
+                parameterItem.querySelector('.parameter-max').value = '';
+            } else {
+                parameterItem.querySelector('.parameter-male-min').value = '';
+                parameterItem.querySelector('.parameter-male-max').value = '';
+                parameterItem.querySelector('.parameter-female-min').value = '';
+                parameterItem.querySelector('.parameter-female-max').value = '';
+            }
 
             updateJSON();
         });
@@ -582,17 +709,44 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add type-specific fields
         if (type === 'numeric') {
             const unit = parameterItem.querySelector('.parameter-unit').value.trim();
-            const min = parseFloat(parameterItem.querySelector('.parameter-min').value);
-            const max = parseFloat(parameterItem.querySelector('.parameter-max').value);
             const genderSpecific = parameterItem.querySelector('.parameter-gender-specific').checked;
 
             if (unit) parameter.unit = unit;
 
-            if (!isNaN(min) || !isNaN(max)) {
-                parameter.normal_range = {};
-                if (!isNaN(min)) parameter.normal_range.min = min;
-                if (!isNaN(max)) parameter.normal_range.max = max;
-                if (genderSpecific) parameter.normal_range.gender_specific = true;
+            if (genderSpecific) {
+                // Gender-specific ranges
+                const maleMin = parseFloat(parameterItem.querySelector('.parameter-male-min').value);
+                const maleMax = parseFloat(parameterItem.querySelector('.parameter-male-max').value);
+                const femaleMin = parseFloat(parameterItem.querySelector('.parameter-female-min').value);
+                const femaleMax = parseFloat(parameterItem.querySelector('.parameter-female-max').value);
+
+                if (!isNaN(maleMin) || !isNaN(maleMax) || !isNaN(femaleMin) || !isNaN(femaleMax)) {
+                    parameter.normal_range = {
+                        gender_specific: true
+                    };
+
+                    if (!isNaN(maleMin) || !isNaN(maleMax)) {
+                        parameter.normal_range.male = {};
+                        if (!isNaN(maleMin)) parameter.normal_range.male.min = maleMin;
+                        if (!isNaN(maleMax)) parameter.normal_range.male.max = maleMax;
+                    }
+
+                    if (!isNaN(femaleMin) || !isNaN(femaleMax)) {
+                        parameter.normal_range.female = {};
+                        if (!isNaN(femaleMin)) parameter.normal_range.female.min = femaleMin;
+                        if (!isNaN(femaleMax)) parameter.normal_range.female.max = femaleMax;
+                    }
+                }
+            } else {
+                // Standard ranges
+                const min = parseFloat(parameterItem.querySelector('.parameter-min').value);
+                const max = parseFloat(parameterItem.querySelector('.parameter-max').value);
+
+                if (!isNaN(min) || !isNaN(max)) {
+                    parameter.normal_range = {};
+                    if (!isNaN(min)) parameter.normal_range.min = min;
+                    if (!isNaN(max)) parameter.normal_range.max = max;
+                }
             }
         } else if (type === 'select') {
             const optionsText = parameterItem.querySelector('.parameter-options').value.trim();
@@ -675,17 +829,29 @@ document.addEventListener('DOMContentLoaded', function() {
         parameters.forEach(param => {
             let details = '';
 
-            if (param.type === 'numeric' && param.unit) details += 'Unit: ' + param.unit + ' ';
-            if (param.normal_range) {
-                details += 'Range: ' + (param.normal_range.min || '') + '-' + (param.normal_range.max || '') + ' ';
+            if (param.type === 'numeric') {
+                if (param.unit) details += 'Unit: ' + param.unit + ' ';
+                if (param.normal_range) {
+                    if (param.normal_range.gender_specific) {
+                        details += 'Gender-specific ranges ';
+                        if (param.normal_range.male) {
+                            details += 'Male: ' + (param.normal_range.male.min || '') + '-' + (param.normal_range.male.max || '') + ' ';
+                        }
+                        if (param.normal_range.female) {
+                            details += 'Female: ' + (param.normal_range.female.min || '') + '-' + (param.normal_range.female.max || '') + ' ';
+                        }
+                    } else {
+                        details += 'Range: ' + (param.normal_range.min || '') + '-' + (param.normal_range.max || '') + ' ';
+                    }
+                }
             }
-            if (param.options) details += 'Options: ' + param.options.slice(0, 3).join(', ') + '... ';
+
+            if (param.options) details += 'Options: ' + param.options.slice(0, 3).join(', ') + (param.options.length > 3 ? '...' : '') + ' ';
 
             previewHTML += '<tr>' +
                 '<td><strong>' + (param.name || 'Unnamed') + '</strong></td>' +
-                '<td><strong>' + (param.code || '') + '</strong></td>' +
-                '<td><strong>' + (param.type || '') + '</strong></td>' +
-
+                '<td><code>' + (param.code || '') + '</code></td>' +
+                '<td><span class="badge bg-info">' + (param.type || '') + '</span></td>' +
                 '<td><small>' + (details || '-') + '</small></td>' +
             '</tr>';
         });
@@ -693,7 +859,6 @@ document.addEventListener('DOMContentLoaded', function() {
         previewHTML += '</tbody></table></div>';
         document.getElementById('previewContent').innerHTML = previewHTML;
 
-        // Show modal (assuming Bootstrap is available)
         new bootstrap.Modal(document.getElementById('previewModal')).show();
     };
 
@@ -712,15 +877,29 @@ document.addEventListener('DOMContentLoaded', function() {
         const parameters = JSON.parse(hiddenInput.value).parameters;
         if (parameters.length === 0) {
             e.preventDefault();
-            showAlert('Please add at least one test parameter.', 'Validation Error', 'warning');
+            showErrorModal('Please add at least one test parameter.');
             return false;
         }
 
         const emptyNames = parameters.filter(p => !p.name.trim());
         if (emptyNames.length > 0) {
             e.preventDefault();
-            showAlert('Please fill in names for all parameters.', 'Validation Error', 'warning');
+            showErrorModal('Please fill in names for all parameters.');
             return false;
+        }
+
+        // Validate gender-specific ranges
+        for (let param of parameters) {
+            if (param.type === 'numeric' && param.normal_range && param.normal_range.gender_specific) {
+                const hasMaleRange = param.normal_range.male && (param.normal_range.male.min !== undefined || param.normal_range.male.max !== undefined);
+                const hasFemaleRange = param.normal_range.female && (param.normal_range.female.min !== undefined || param.normal_range.female.max !== undefined);
+
+                if (!hasMaleRange && !hasFemaleRange) {
+                    e.preventDefault();
+                    showErrorModal(`Parameter "${param.name}" is marked as gender-specific but has no male or female ranges defined.`);
+                    return false;
+                }
+            }
         }
     });
 

@@ -80,6 +80,7 @@ class LabTestTemplateModel(models.Model):
 
     # Status
     is_active = models.BooleanField(default=True)
+    reason_for_deactivate = models.CharField(max_length=250, blank=True, default='')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

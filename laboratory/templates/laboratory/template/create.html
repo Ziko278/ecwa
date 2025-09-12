@@ -5,7 +5,7 @@
 <div class="col-lg-12 grid-margin stretch-card">
     <div class="card">
         <div class="card-body">
-            <h4 class="card-title">Add Lab Test Template</h4>
+            <h4 class="card-title">Add Lab Test <a title="Go Back" onclick="window.history.back()" style="float:right" class="btn btn-sm btn-danger"><i class="bi bi-arrow-left"></i> </a> </h4>
             <p class="card-description">Fill in the details below to create a new lab test template.</p>
 
             {% include 'admin_site/partials/error.html' %}
@@ -16,12 +16,12 @@
                 <div class="row">
                     <div class="form-floating col-md-12 mb-3">
                         {{ form.name }}
-                        <label for="id_name">Template Name<span class="text-danger">*</span></label>
+                        <label for="id_name">Test Name<span class="text-danger">*</span></label>
                     </div>
 
                     <div class="form-floating col-md-6 mb-3">
                         {{ form.code }}
-                        <label for="id_code">Template Code</label>
+                        <label for="id_code">Test Code</label>
                     </div>
 
                     <div class="form-floating col-md-6 mb-3">
@@ -33,7 +33,7 @@
                 <!-- User-friendly Test Parameters Section -->
                 <div class="mb-4">
                     <h5 class="mb-3">Test Parameters</h5>
-                    <div class="card border-light">
+                    <div class="card border-light pt-2">
                         <div class="card-body">
                             <div id="parametersContainer">
                                 <!-- Parameters will be added here dynamically -->
@@ -139,22 +139,74 @@
                         <label>Unit (e.g., g/dL, mg/L)</label>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="form-floating mb-3">
-                        <input type="number" class="form-control parameter-min" step="0.01" placeholder="Min">
-                        <label>Normal Range - Min</label>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="form-floating mb-3">
-                        <input type="number" class="form-control parameter-max" step="0.01" placeholder="Max">
-                        <label>Normal Range - Max</label>
-                    </div>
-                </div>
                 <div class="col-md-2">
                     <div class="form-check mt-3">
                         <input type="checkbox" class="form-check-input parameter-gender-specific">
                         <label class="form-check-label">Gender Specific</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Standard ranges (when not gender specific) -->
+            <div class="standard-ranges">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            <input type="number" class="form-control parameter-min" step="0.01" placeholder="Min">
+                            <label>Normal Range - Min</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            <input type="number" class="form-control parameter-max" step="0.01" placeholder="Max">
+                            <label>Normal Range - Max</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gender-specific ranges (hidden by default) -->
+            <div class="gender-ranges" style="display: none;">
+                <div class="alert alert-info small">
+                    <i class="bi bi-info-circle"></i>
+                    Enter separate normal ranges for male and female patients.
+                </div>
+
+                <!-- Male ranges -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-primary">Male Normal Range</label>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating mb-2">
+                                <input type="number" class="form-control parameter-male-min" step="0.01" placeholder="Male Min">
+                                <label>Male - Min</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating mb-2">
+                                <input type="number" class="form-control parameter-male-max" step="0.01" placeholder="Male Max">
+                                <label>Male - Max</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Female ranges -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-danger">Female Normal Range</label>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating mb-2">
+                                <input type="number" class="form-control parameter-female-min" step="0.01" placeholder="Female Min">
+                                <label>Female - Min</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating mb-2">
+                                <input type="number" class="form-control parameter-female-max" step="0.01" placeholder="Female Max">
+                                <label>Female - Max</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -238,6 +290,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const removeBtn = parameterItem.querySelector('.remove-parameter-btn');
         const numericFields = parameterItem.querySelector('.numeric-fields');
         const selectFields = parameterItem.querySelector('.select-fields');
+        const genderSpecificCheckbox = parameterItem.querySelector('.parameter-gender-specific');
+        const standardRanges = parameterItem.querySelector('.standard-ranges');
+        const genderRanges = parameterItem.querySelector('.gender-ranges');
 
         // Type change handler
         typeSelect.addEventListener('change', function() {
@@ -246,6 +301,27 @@ document.addEventListener('DOMContentLoaded', function() {
             // Show/hide relevant fields
             numericFields.style.display = type === 'numeric' ? 'block' : 'none';
             selectFields.style.display = type === 'select' ? 'block' : 'none';
+
+            updateJSON();
+        });
+
+        // Gender specific checkbox handler
+        genderSpecificCheckbox.addEventListener('change', function() {
+            const isGenderSpecific = this.checked;
+
+            standardRanges.style.display = isGenderSpecific ? 'none' : 'block';
+            genderRanges.style.display = isGenderSpecific ? 'block' : 'none';
+
+            // Clear the opposite fields when switching
+            if (isGenderSpecific) {
+                parameterItem.querySelector('.parameter-min').value = '';
+                parameterItem.querySelector('.parameter-max').value = '';
+            } else {
+                parameterItem.querySelector('.parameter-male-min').value = '';
+                parameterItem.querySelector('.parameter-male-max').value = '';
+                parameterItem.querySelector('.parameter-female-min').value = '';
+                parameterItem.querySelector('.parameter-female-max').value = '';
+            }
 
             updateJSON();
         });
@@ -288,17 +364,44 @@ document.addEventListener('DOMContentLoaded', function() {
             // Add type-specific fields
             if (type === 'numeric') {
                 const unit = item.querySelector('.parameter-unit').value.trim();
-                const min = parseFloat(item.querySelector('.parameter-min').value);
-                const max = parseFloat(item.querySelector('.parameter-max').value);
                 const genderSpecific = item.querySelector('.parameter-gender-specific').checked;
 
                 if (unit) parameter.unit = unit;
 
-                if (!isNaN(min) || !isNaN(max)) {
-                    parameter.normal_range = {};
-                    if (!isNaN(min)) parameter.normal_range.min = min;
-                    if (!isNaN(max)) parameter.normal_range.max = max;
-                    if (genderSpecific) parameter.normal_range.gender_specific = true;
+                if (genderSpecific) {
+                    // Gender-specific ranges
+                    const maleMin = parseFloat(item.querySelector('.parameter-male-min').value);
+                    const maleMax = parseFloat(item.querySelector('.parameter-male-max').value);
+                    const femaleMin = parseFloat(item.querySelector('.parameter-female-min').value);
+                    const femaleMax = parseFloat(item.querySelector('.parameter-female-max').value);
+
+                    if (!isNaN(maleMin) || !isNaN(maleMax) || !isNaN(femaleMin) || !isNaN(femaleMax)) {
+                        parameter.normal_range = {
+                            gender_specific: true
+                        };
+
+                        if (!isNaN(maleMin) || !isNaN(maleMax)) {
+                            parameter.normal_range.male = {};
+                            if (!isNaN(maleMin)) parameter.normal_range.male.min = maleMin;
+                            if (!isNaN(maleMax)) parameter.normal_range.male.max = maleMax;
+                        }
+
+                        if (!isNaN(femaleMin) || !isNaN(femaleMax)) {
+                            parameter.normal_range.female = {};
+                            if (!isNaN(femaleMin)) parameter.normal_range.female.min = femaleMin;
+                            if (!isNaN(femaleMax)) parameter.normal_range.female.max = femaleMax;
+                        }
+                    }
+                } else {
+                    // Standard ranges
+                    const min = parseFloat(item.querySelector('.parameter-min').value);
+                    const max = parseFloat(item.querySelector('.parameter-max').value);
+
+                    if (!isNaN(min) || !isNaN(max)) {
+                        parameter.normal_range = {};
+                        if (!isNaN(min)) parameter.normal_range.min = min;
+                        if (!isNaN(max)) parameter.normal_range.max = max;
+                    }
                 }
             } else if (type === 'select') {
                 const optionsText = item.querySelector('.parameter-options').value.trim();
@@ -332,23 +435,46 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     if (param.type === 'numeric') {
                         if (param.unit) latestItem.querySelector('.parameter-unit').value = param.unit;
+
                         if (param.normal_range) {
-                            if (param.normal_range.min !== undefined) {
-                                latestItem.querySelector('.parameter-min').value = param.normal_range.min;
-                            }
-                            if (param.normal_range.max !== undefined) {
-                                latestItem.querySelector('.parameter-max').value = param.normal_range.max;
-                            }
                             if (param.normal_range.gender_specific) {
+                                // Load gender-specific ranges
                                 latestItem.querySelector('.parameter-gender-specific').checked = true;
+
+                                if (param.normal_range.male) {
+                                    if (param.normal_range.male.min !== undefined) {
+                                        latestItem.querySelector('.parameter-male-min').value = param.normal_range.male.min;
+                                    }
+                                    if (param.normal_range.male.max !== undefined) {
+                                        latestItem.querySelector('.parameter-male-max').value = param.normal_range.male.max;
+                                    }
+                                }
+
+                                if (param.normal_range.female) {
+                                    if (param.normal_range.female.min !== undefined) {
+                                        latestItem.querySelector('.parameter-female-min').value = param.normal_range.female.min;
+                                    }
+                                    if (param.normal_range.female.max !== undefined) {
+                                        latestItem.querySelector('.parameter-female-max').value = param.normal_range.female.max;
+                                    }
+                                }
+                            } else {
+                                // Load standard ranges
+                                if (param.normal_range.min !== undefined) {
+                                    latestItem.querySelector('.parameter-min').value = param.normal_range.min;
+                                }
+                                if (param.normal_range.max !== undefined) {
+                                    latestItem.querySelector('.parameter-max').value = param.normal_range.max;
+                                }
                             }
                         }
                     } else if (param.type === 'select' && param.options) {
                         latestItem.querySelector('.parameter-options').value = param.options.join('\n');
                     }
 
-                    // Trigger type change to show correct fields
+                    // Trigger events to show correct fields
                     latestItem.querySelector('.parameter-type').dispatchEvent(new Event('change'));
+                    latestItem.querySelector('.parameter-gender-specific').dispatchEvent(new Event('change'));
                 });
             }
         } catch (e) {
@@ -377,6 +503,20 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             showErrorModal('Please fill in names for all parameters.');
             return false;
+        }
+
+        // Validate gender-specific ranges
+        for (let param of parameters) {
+            if (param.type === 'numeric' && param.normal_range && param.normal_range.gender_specific) {
+                const hasMaleRange = param.normal_range.male && (param.normal_range.male.min !== undefined || param.normal_range.male.max !== undefined);
+                const hasFemaleRange = param.normal_range.female && (param.normal_range.female.min !== undefined || param.normal_range.female.max !== undefined);
+
+                if (!hasMaleRange && !hasFemaleRange) {
+                    e.preventDefault();
+                    showErrorModal(`Parameter "${param.name}" is marked as gender-specific but has no male or female ranges defined.`);
+                    return false;
+                }
+            }
         }
     });
 

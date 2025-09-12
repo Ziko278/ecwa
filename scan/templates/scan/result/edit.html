@@ -1,0 +1,719 @@
+<!-- scan/result/edit.html -->
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title mb-0">
+                    Edit Scan Results - {{ order.template.name }}
+                </h4>
+                <p class="card-description mb-0">
+                    Patient: {{ patient|title }} | Order: {{ order.order_number }}
+                </p>
+            </div>
+
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" id="result-form">
+                    {% csrf_token %}
+
+                    <!-- Patient & Order Info -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body p-3">
+                                    <h6>Patient Information</h6>
+                                    <p class="mb-1"><strong>Name:</strong> {{ patient|title }}</p>
+                                    <p class="mb-1"><strong>Card Number:</strong> {{ patient.card_number|upper }}</p>
+                                    <p class="mb-0"><strong>Age/Sex:</strong> {{ patient.age|default:"N/A" }} / {{ patient.get_gender_display|default:"N/A" }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body p-3">
+                                    <h6>Scan Information</h6>
+                                    <p class="mb-1"><strong>Scan Type:</strong> {{ order.template.name }}</p>
+                                    <p class="mb-1"><strong>Category:</strong> {{ order.template.category.name }}</p>
+                                    <p class="mb-1"><strong>Performed:</strong> {{ object.performed_at|date:"M d, Y H:i" }}</p>
+                                    <p class="mb-0"><strong>Status:</strong>
+                                        <span class="badge badge-{% if object.status == 'finalized' %}success{% elif object.status == 'reviewed' %}info{% elif object.status == 'pending_review' %}warning{% else %}secondary{% endif %}">
+                                            {{ object.get_status_display }}
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status Notice -->
+                    {% if object.status == 'finalized' %}
+                    <div class="alert alert-warning">
+                        <i class="mdi mdi-alert"></i>
+                        <strong>Notice:</strong> This report is finalized. Changes should be made carefully and may require administrative approval.
+                    </div>
+                    {% endif %}
+
+                    <!-- Measured Values/Parameters -->
+                    {% if measurements %}
+                    <div class="mb-4">
+                        <h5 class="mb-3">Measured Parameters</h5>
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 25%;">Parameter</th>
+                                        <th style="width: 20%;">Measured Value</th>
+                                        <th style="width: 15%;">Unit</th>
+                                        <th style="width: 20%;">Normal Range</th>
+                                        <th style="width: 20%;">Comments</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for measurement in measurements %}
+                                    {% comment %}
+                                    Find existing value for this measurement code
+                                    {% endcomment %}
+                                    {% for existing in object.measurements_data.measurements %}
+                                        {% if existing.code == measurement.code %}
+                                            {% with existing_value=existing.value existing_comment=existing.comment %}
+                                            <tr>
+                                                <td>
+                                                    <strong>{{ measurement.name }}</strong>
+                                                    <br><small class="text-muted">{{ measurement.code }}</small>
+                                                </td>
+                                                <td>
+                                                    {% if measurement.type == 'numeric' %}
+                                                        <input type="number"
+                                                               name="measurement_{{ measurement.code }}"
+                                                               class="form-control"
+                                                               step="0.01"
+                                                               value="{{ existing_value }}"
+                                                               placeholder="Enter value">
+                                                    {% elif measurement.type == 'select' %}
+                                                        <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                            <option value="">Select...</option>
+                                                            {% for option in measurement.options %}
+                                                                <option value="{{ option }}" {% if existing_value == option %}selected{% endif %}>{{ option }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    {% elif measurement.type == 'boolean' %}
+                                                        <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                            <option value="">Select...</option>
+                                                            <option value="Normal" {% if existing_value == "Normal" %}selected{% endif %}>Normal</option>
+                                                            <option value="Abnormal" {% if existing_value == "Abnormal" %}selected{% endif %}>Abnormal</option>
+                                                        </select>
+                                                    {% else %}
+                                                        <input type="text"
+                                                               name="measurement_{{ measurement.code }}"
+                                                               class="form-control"
+                                                               value="{{ existing_value }}"
+                                                               placeholder="Enter value">
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <small class="text-muted">{{ measurement.unit|default:"-" }}</small>
+                                                </td>
+                                                <td>
+                                                    {% if measurement.normal_range %}
+                                                        <small class="text-muted">
+                                                            {% if measurement.normal_range.min %}{{ measurement.normal_range.min }}{% endif %}
+                                                            {% if measurement.normal_range.min and measurement.normal_range.max %} - {% endif %}
+                                                            {% if measurement.normal_range.max %}{{ measurement.normal_range.max }}{% endif %}
+                                                        </small>
+                                                    {% else %}
+                                                        <small class="text-muted">-</small>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <input type="text"
+                                                           name="measurement_{{ measurement.code }}_comment"
+                                                           class="form-control form-control-sm"
+                                                           value="{{ existing_comment }}"
+                                                           placeholder="Optional comment">
+                                                </td>
+                                            </tr>
+                                            {% endwith %}
+                                        {% endif %}
+                                    {% empty %}
+                                        {% comment %}No existing measurement for this code, show empty row{% endcomment %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ measurement.name }}</strong>
+                                                <br><small class="text-muted">{{ measurement.code }}</small>
+                                            </td>
+                                            <td>
+                                                {% if measurement.type == 'numeric' %}
+                                                    <input type="number"
+                                                           name="measurement_{{ measurement.code }}"
+                                                           class="form-control"
+                                                           step="0.01"
+                                                           placeholder="Enter value">
+                                                {% elif measurement.type == 'select' %}
+                                                    <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                        <option value="">Select...</option>
+                                                        {% for option in measurement.options %}
+                                                            <option value="{{ option }}">{{ option }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                {% elif measurement.type == 'boolean' %}
+                                                    <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                        <option value="">Select...</option>
+                                                        <option value="Normal">Normal</option>
+                                                        <option value="Abnormal">Abnormal</option>
+                                                    </select>
+                                                {% else %}
+                                                    <input type="text"
+                                                           name="measurement_{{ measurement.code }}"
+                                                           class="form-control"
+                                                           placeholder="Enter value">
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ measurement.unit|default:"-" }}</small>
+                                            </td>
+                                            <td>
+                                                {% if measurement.normal_range %}
+                                                    <small class="text-muted">
+                                                        {% if measurement.normal_range.min %}{{ measurement.normal_range.min }}{% endif %}
+                                                        {% if measurement.normal_range.min and measurement.normal_range.max %} - {% endif %}
+                                                        {% if measurement.normal_range.max %}{{ measurement.normal_range.max }}{% endif %}
+                                                    </small>
+                                                {% else %}
+                                                    <small class="text-muted">-</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <input type="text"
+                                                       name="measurement_{{ measurement.code }}_comment"
+                                                       class="form-control form-control-sm"
+                                                       placeholder="Optional comment">
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Existing Images Display -->
+                    {% if existing_images %}
+                    <div class="mb-4">
+                        <h5 class="mb-3">Existing Images</h5>
+                        <div class="row">
+                            {% for image in existing_images %}
+                            <div class="col-md-4 mb-3">
+                                <div class="card">
+                                    <img src="{{ image.image.url }}" class="card-img-top" style="height: 200px; object-fit: cover;" alt="{{ image.view_type }}">
+                                    <div class="card-body p-2">
+                                        <h6 class="card-title mb-1">{{ image.view_type }}</h6>
+                                        <p class="card-text small">{{ image.description }}</p>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="delete_images" value="{{ image.id }}" id="delete_{{ image.id }}">
+                                            <label class="form-check-label text-danger small" for="delete_{{ image.id }}">
+                                                Delete this image
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Add New Images -->
+                    {% if template.expected_images %}
+                    <div class="mb-4">
+                        <h5 class="mb-3">Add New Images</h5>
+                        <div class="row">
+                            {% for image in template.expected_images %}
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <input type="file"
+                                           name="expected_image_{{ forloop.counter0 }}"
+                                           class="form-control"
+                                           accept="image/*" />
+                                    <input type="hidden" name="expected_image_view_{{ forloop.counter0 }}" value="{{ image.view }}" />
+                                    <small class="form-text text-muted">
+                                        {{ image.description|upper }} ({{ image.view|upper }})
+                                        {% if image.required %}<span class="text-info"> - Optional additional image</span>{% endif %}
+                                    </small>
+                                </div><br />
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Clinical Findings -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="findings" class="form-label">Clinical Findings</label>
+                                <textarea name="findings" id="findings"
+                                          class="form-control" rows="5"
+                                          placeholder="Describe the primary scan findings...">{{ form.findings.value|default:object.findings }}</textarea>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="impression" class="form-label">Clinical Impression</label>
+                                <textarea name="impression" id="impression"
+                                          class="form-control" rows="5"
+                                          placeholder="Enter clinical impression or diagnosis...">{{ form.impression.value|default:object.impression }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recommendations & Comments -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="recommendations" class="form-label">Recommendations</label>
+                                <textarea name="recommendations" id="recommendations"
+                                          class="form-control" rows="4"
+                                          placeholder="Enter follow-up recommendations...">{{ form.recommendations.value|default:object.recommendations }}</textarea>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="technician_comments" class="form-label">Technician Comments</label>
+                                <textarea name="technician_comments" id="technician_comments"
+                                          class="form-control" rows="4"
+                                          placeholder="Enter technical notes or observations...">{{ form.technician_comments.value|default:object.technician_comments }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Report Status & Date -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="status" class="form-label">Report Status</label>
+                                <select name="status" id="status" class="form-control">
+                                    <option value="draft" {% if object.status == 'draft' %}selected{% endif %}>Draft</option>
+                                    <option value="pending_review" {% if object.status == 'pending_review' %}selected{% endif %}>Pending Review</option>
+                                    <option value="reviewed" {% if object.status == 'reviewed' %}selected{% endif %}>Reviewed</option>
+                                    <option value="finalized" {% if object.status == 'finalized' %}selected{% endif %}>Finalized</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="report_date" class="form-label">Report Date</label>
+                                <input type="datetime-local" name="report_date" id="report_date"
+                                       class="form-control"
+                                       value="{{ object.report_date|date:'Y-m-d\TH:i' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Current Radiology Report Image -->
+                    {% if object.radiology_report_image %}
+                    <div class="mb-4">
+                        <h5>Current Radiology Report</h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <img src="{{ object.radiology_report_image.url }}" class="img-fluid border" alt="Current Report">
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mt-3">
+                                    <input class="form-check-input" type="checkbox" name="delete_radiology_report" value="true" id="delete_report">
+                                    <label class="form-check-label text-danger" for="delete_report">
+                                        Delete current report image
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+
+                    <!-- Form Actions -->
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <a href="{% url 'scan_result_detail' pk=object.pk %}" class="btn btn-secondary">
+                                <i class="mdi mdi-arrow-left me-2"></i>Back to Details
+                            </a>
+                            <a href="{% url 'scan_result_dashboard' %}" class="btn btn-outline-secondary">
+                                <i class="mdi mdi-view-dashboard me-2"></i>Dashboard
+                            </a>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-outline-primary me-2" onclick="validateForm()">
+                                <i class="mdi mdi-check me-2"></i>Validate
+                            </button>
+                            <button type="submit" class="btn btn-success">
+                                <i class="mdi mdi-content-save me-2"></i>Update Results
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="col-lg-4">
+        <!-- Scan Template Info -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Scan Information</h5>
+                <p><strong>Category:</strong> {{ template.category.name }}</p>
+                <p><strong>Duration:</strong> {{ template.estimated_duration|default:"Not specified" }}</p>
+                <p><strong>Equipment:</strong> {{ template.equipment_required|default:"Standard equipment" }}</p>
+                <p><strong>Price:</strong> ₦{{ template.price|floatformat:2 }}</p>
+
+                {% if template.preparation_required %}
+                    <div class="alert alert-info p-2 mt-3">
+                        <small><strong>Preparation Required:</strong> Yes</small>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Result History -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Result History</h5>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <small class="text-muted">Created:</small>
+                        <p>{{ object.created_at|date:"M d, Y H:i" }}</p>
+                    </div>
+                    <div class="timeline-item">
+                        <small class="text-muted">Last Updated:</small>
+                        <p>{{ object.updated_at|date:"M d, Y H:i" }}</p>
+                    </div>
+                    <div class="timeline-item">
+                        <small class="text-muted">Performed By:</small>
+                        <p>{{ object.performed_by.get_full_name|default:object.performed_by.username }}</p>
+                    </div>
+                    {% if object.verified_by %}
+                    <div class="timeline-item">
+                        <small class="text-muted">Verified By:</small>
+                        <p>{{ object.verified_by.get_full_name|default:object.verified_by.username }}</p>
+                        <small class="text-muted">{{ object.verified_at|date:"M d, Y H:i" }}</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Quick Actions</h5>
+                <div class="d-grid gap-2">
+                    <a href="{ url 'patient_scan_history' patient_id=patient.id %}" class="btn btn-outline-primary">
+                        <i class="mdi mdi-account"></i> View Patient Scans
+                    </a>
+                    <button class="btn btn-outline-info" onclick="previewReport()">
+                        <i class="mdi mdi-printer"></i> Preview Report
+                    </button>
+                    <a href="{% url 'scan_result_detail' pk=object.pk %}" class="btn btn-outline-success">
+                        <i class="mdi mdi-eye"></i> View Report
+                    </a>
+                    {% if object.status != 'finalized' %}
+                    <button class="btn btn-outline-warning" onclick="finalizeReport()">
+                        <i class="mdi mdi-lock"></i> Finalize Report
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.btn-loading {
+    position: relative;
+}
+
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: button-loading-spinner 1s ease infinite;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+}
+
+@keyframes button-loading-spinner {
+    from { transform: rotate(0turn); }
+    to { transform: rotate(1turn); }
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+.alert {
+    border-radius: 0.375rem;
+}
+
+.timeline {
+    padding: 0;
+}
+
+.timeline-item {
+    padding-bottom: 15px;
+    border-left: 2px solid #e9ecef;
+    padding-left: 15px;
+    margin-left: 8px;
+    position: relative;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 8px;
+    width: 8px;
+    height: 8px;
+    background: #007bff;
+    border-radius: 50%;
+}
+
+.card-img-top {
+    cursor: pointer;
+}
+
+.image-preview {
+    transition: transform 0.2s;
+}
+
+.image-preview:hover {
+    transform: scale(1.05);
+}
+</style>
+
+<script>
+function validateForm() {
+    const form = document.getElementById('result-form');
+    const findings = document.getElementById('findings').value.trim();
+    const impression = document.getElementById('impression').value.trim();
+    const status = document.getElementById('status').value;
+
+    // Check if essential fields are filled
+    if (!findings && !impression) {
+        alert('Please enter either clinical findings or impression before saving.');
+        return false;
+    }
+
+    // If finalizing, impression is required
+    if (status === 'finalized' && !impression) {
+        alert('Clinical impression is required to finalize the report.');
+        return false;
+    }
+
+    // Check if any images are marked for deletion
+    const deleteImages = form.querySelectorAll('input[name="delete_images"]:checked');
+    if (deleteImages.length > 0) {
+        const confirmDelete = confirm(`Are you sure you want to delete ${deleteImages.length} image(s)? This action cannot be undone.`);
+        if (!confirmDelete) {
+            return false;
+        }
+    }
+
+    // Check if radiology report is marked for deletion
+    const deleteReport = form.querySelector('input[name="delete_radiology_report"]:checked');
+    if (deleteReport) {
+        const confirmDeleteReport = confirm('Are you sure you want to delete the radiology report image? This action cannot be undone.');
+        if (!confirmDeleteReport) {
+            return false;
+        }
+    }
+
+    alert('Form validation passed! Ready to update results.');
+    return true;
+}
+
+function previewReport() {
+    // Collect current form values for preview
+    const findings = document.getElementById('findings').value;
+    const impression = document.getElementById('impression').value;
+    const recommendations = document.getElementById('recommendations').value;
+    const status = document.getElementById('status').value;
+    const reportDate = document.getElementById('report_date').value;
+
+    if (!findings && !impression) {
+        alert('Please enter some findings or impression to preview the report.');
+        return;
+    }
+
+    const previewWindow = window.open('', '_blank', 'width=800,height=600');
+    previewWindow.document.write(`
+        <html>
+        <head>
+            <title>Scan Report Preview</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; }
+                .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                .section { margin-bottom: 15px; }
+                .label { font-weight: bold; color: #333; }
+                .content { margin-left: 10px; margin-top: 5px; }
+                .status {
+                    display: inline-block;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    background: #007bff;
+                    color: white;
+                    font-size: 12px;
+                }
+                .patient-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2>Medical Scan Report</h2>
+                <p>{{ order.template.name }} - {{ patient|title }}</p>
+                <span class="status">${status.toUpperCase()}</span>
+            </div>
+            <div class="patient-info">
+                <strong>Patient:</strong> {{ patient|title }}<br>
+                <strong>Card Number:</strong> {{ patient.card_number|upper }}<br>
+                <strong>Report Date:</strong> ${new Date(reportDate).toLocaleString()}
+            </div>
+            <div class="section">
+                <div class="label">Clinical Findings:</div>
+                <div class="content">${findings}</div>
+            </div>
+            <div class="section">
+                <div class="label">Clinical Impression:</div>
+                <div class="content">${impression}</div>
+            </div>
+            <div class="section">
+                <div class="label">Recommendations:</div>
+                <div class="content">${recommendations}</div>
+            </div>
+        </body>
+        </html>
+    `);
+}
+
+function finalizeReport() {
+    const findings = document.getElementById('findings').value.trim();
+    const impression = document.getElementById('impression').value.trim();
+
+    if (!findings || !impression) {
+        alert('Both clinical findings and impression are required to finalize the report.');
+        return;
+    }
+
+    if (confirm('Are you sure you want to finalize this report? Finalized reports may require special permissions to edit.')) {
+        document.getElementById('status').value = 'finalized';
+        document.getElementById('result-form').submit();
+    }
+}
+
+// Image preview functionality
+function previewImage(input, previewId) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById(previewId);
+            if (preview) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+            }
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+// Set current datetime for report_date if empty
+document.addEventListener('DOMContentLoaded', function() {
+    const reportDateInput = document.getElementById('report_date');
+    if (reportDateInput && !reportDateInput.value) {
+        const now = new Date();
+        const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        reportDateInput.value = localISOTime;
+    }
+
+    // Auto-save draft functionality (optional)
+    let autoSaveTimeout;
+    const form = document.getElementById('result-form');
+    if (form) {
+        const inputs = form.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('input', function() {
+                clearTimeout(autoSaveTimeout);
+                autoSaveTimeout = setTimeout(() => {
+                    // Could implement auto-save draft here
+                    console.log('Auto-saving draft...');
+                }, 10000); // 10 seconds
+            });
+        });
+    }
+
+    // Add click handlers for image previews
+    const existingImages = document.querySelectorAll('.card-img-top');
+    existingImages.forEach(img => {
+        img.addEventListener('click', function() {
+            window.open(this.src, '_blank');
+        });
+    });
+
+    // Confirmation for status changes
+    const statusSelect = document.getElementById('status');
+    let originalStatus = statusSelect.value;
+    statusSelect.addEventListener('change', function() {
+        if (this.value === 'finalized' && originalStatus !== 'finalized') {
+            if (!confirm('Changing status to "Finalized" will restrict future edits. Are you sure?')) {
+                this.value = originalStatus;
+            }
+        }
+    });
+});
+
+// Form submission confirmation for critical changes
+document.getElementById('result-form').addEventListener('submit', function(e) {
+    const status = document.getElementById('status').value;
+    const deleteImages = this.querySelectorAll('input[name="delete_images"]:checked');
+    const deleteReport = this.querySelector('input[name="delete_radiology_report"]:checked');
+
+    let confirmMessage = '';
+
+    if (status === 'finalized') {
+        confirmMessage += 'You are finalizing this report. ';
+    }
+
+    if (deleteImages.length > 0) {
+        confirmMessage += `${deleteImages.length} image(s) will be deleted. `;
+    }
+
+    if (deleteReport) {
+        confirmMessage += 'The radiology report image will be deleted. ';
+    }
+
+    if (confirmMessage) {
+        confirmMessage += 'These changes cannot be undone. Continue?';
+        if (!confirm(confirmMessage)) {
+            e.preventDefault();
+        }
+    }
+});
+</script>
+{% endblock %}

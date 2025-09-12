@@ -493,8 +493,13 @@
             </a>
           </li>
           <li>
+            <a href="{% url 'lab_order_list' %}">
+              <i class="bi bi-circle"></i><span>View Lab Orders</span>
+            </a>
+          </li>
+          <li>
             <a href="{% url 'lab_result_index' %}">
-              <i class="bi bi-circle"></i><span>View Lab Tests</span>
+              <i class="bi bi-circle"></i><span>View Lab Results</span>
             </a>
           </li>
           <li>
@@ -504,13 +509,13 @@
           </li>
           <li>
             <a href="{% url 'lab_template_index' %}">
-              <i class="bi bi-circle"></i><span>Test Templates</span>
+              <i class="bi bi-circle"></i><span>Lab Test</span>
             </a>
           </li>
 
           <li>
             <a href="{% url 'lab_category_index' %}">
-              <i class="bi bi-circle"></i><span>Test Category</span>
+              <i class="bi bi-circle"></i><span>Lab Test Category</span>
             </a>
           </li>
 
@@ -533,10 +538,25 @@
 
 
           <li>
-            <a href="{% url 'lab_entry' %}">
-              <i class="bi bi-circle"></i><span>Patient Test</span>
+            <a href="{% url 'scan_entry' %}">
+              <i class="bi bi-circle"></i><span>Order New Scan</span>
             </a>
           </li>
+          <li>
+            <a href="{% url 'scan_order_index' %}">
+              <i class="bi bi-circle"></i><span>View Scan Orders</span>
+            </a>
+          </li>
+          <li>
+            <a href="{% url 'scan_result_index' %}">
+              <i class="bi bi-circle"></i><span>View Scan Results</span>
+            </a>
+          </li>
+<!--          <li>-->
+<!--            <a href="{% url 'laboratory_dashboard' %}">-->
+<!--              <i class="bi bi-circle"></i><span>Scan Dashboard</span>-->
+<!--            </a>-->
+<!--          </li>-->
           <li>
             <a href="{% url 'scan_template_index' %}">
               <i class="bi bi-circle"></i><span>Scan Templates</span>
@@ -546,6 +566,12 @@
           <li>
             <a href="{% url 'scan_category_index' %}">
               <i class="bi bi-circle"></i><span>Scan Category</span>
+            </a>
+          </li>
+
+          <li>
+            <a href="{% url 'scan_setting_detail' 1 %}">
+              <i class="bi bi-circle"></i><span>Scan Setting</span>
             </a>
           </li>
 

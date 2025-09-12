@@ -13,7 +13,7 @@
                 <li>
                     <a class="dropdown-item" href="{% url 'lab_template_create' %}">
                         <button title="Add Template" type="button" style="width:100%" class="btn btn-sm btn-primary">
-                            Add Template
+                            Add Lab Test
                         </button>
                     </a>
                 </li>
@@ -21,7 +21,7 @@
         </div>
 
         <div class="card-body">
-            <h5 class="card-title">List of Lab Test Templates</h5>
+            <h5 class="card-title">List of Lab Test</h5>
             {% include 'admin_site/partials/error.html' %}
 
             <table class="table table-borderless datatable">
@@ -52,7 +52,7 @@
                             {% if template.is_active %}
                                 <span class="badge bg-success">Yes</span>
                             {% else %}
-                                <span class="badge bg-danger">No</span>
+                                <span class="badge bg-danger" title="{{template.reason_for_deactivate}}">No</span>
                             {% endif %}
                         </td>
                         <td class="text-center">

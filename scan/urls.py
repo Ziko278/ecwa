@@ -35,7 +35,7 @@ urlpatterns = [
     # -------------------------
     # Patient Scans
     # -------------------------
-    path('patient/<int:patient_id>/', PatientScansView.as_view(), name='patient_scans'),
+    path('patient/<int:patient_id>/', PatientScansView.as_view(), name='patient_scan_orders'),
     path('patient/<int:patient_id>/create-order/', ScanOrderCreateView.as_view(), name='scan_order_create'),
     path('api/patient-scans/', get_patient_scans, name='get_patient_scans'),
 
@@ -55,7 +55,9 @@ urlpatterns = [
     # -------------------------
     # Results Dashboard
     # -------------------------
-    path('results/', ScanResultDashboardView.as_view(), name='scan_result_dashboard'),
+    path('dashboard/', ScanResultDashboardView.as_view(), name='scan_result_dashboard'),
+    path('results/', ScanResultListView.as_view(), name='scan_result_index'),
+    path('<int:patient_id>/results/', ScanResultDashboardView.as_view(), name='patient_scan_results'),
     path('results/create/<int:order_id>/', ScanResultCreateView.as_view(), name='scan_result_create_for_order'),
     path('results/<int:pk>/', ScanResultDetailView.as_view(), name='scan_result_detail'),
     path('results/<int:pk>/edit/', ScanResultUpdateView.as_view(), name='scan_result_edit'),
@@ -65,7 +67,6 @@ urlpatterns = [
     # Image Management
     # -------------------------
     path('results/<int:result_id>/upload-image/', ScanImageUploadView.as_view(), name='scan_image_upload'),
-    path('results/<int:result_id>/upload-multiple/', MultipleImageUploadView.as_view(), name='scan_multiple_image_upload'),
     path('images/<int:image_id>/delete/', delete_scan_image, name='delete_scan_image'),
     path('images/<int:image_id>/update/', update_image_details, name='update_image_details'),
 

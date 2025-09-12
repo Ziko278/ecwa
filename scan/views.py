@@ -7,11 +7,15 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.contrib.auth.models import User
+from django.contrib.messages.views import SuccessMessageMixin
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Q, Count, Sum, Case, When, IntegerField
+from django.db.models import Q, Count, Sum, Case, When, IntegerField, Value
+from django.db.models.functions import Concat
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
@@ -50,7 +54,7 @@ class FlashFormErrorsMixin:
 # Scan Category Views
 # -------------------------
 class ScanCategoryCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, SuccessMessageMixin, CreateView
 ):
     model = ScanCategoryModel
     permission_required = 'scan.add_scancategorymodel'
@@ -83,7 +87,7 @@ class ScanCategoryListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
 
 
 class ScanCategoryUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, SuccessMessageMixin, UpdateView
 ):
     model = ScanCategoryModel
     permission_required = 'scan.change_scancategorymodel'
@@ -100,7 +104,7 @@ class ScanCategoryUpdateView(
         return super().dispatch(request, *args, **kwargs)
 
 
-class ScanCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class ScanCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView):
     model = ScanCategoryModel
     permission_required = 'scan.delete_scancategorymodel'
     template_name = 'scan/category/delete.html'
@@ -115,13 +119,13 @@ class ScanCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, Delete
 # Scan Template Views
 # -------------------------
 class ScanTemplateCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    LoginRequiredMixin, PermissionRequiredMixin,
     CreateView
 ):
     model = ScanTemplateModel
-    permission_required = 'radiology.add_scantemplatemodel'
+    permission_required = 'scan.add_scantemplatemodel'
     form_class = ScanTemplateForm
-    template_name = 'radiology/template/create.html'
+    template_name = 'scan/template/create.html'
     success_message = 'Scan Template Successfully Created'
 
     def get_success_url(self):
@@ -135,7 +139,7 @@ class ScanTemplateCreateView(
 
 class ScanTemplateListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ScanTemplateModel
-    permission_required = 'radiology.view_scantemplatemodel'
+    permission_required = 'scan.view_scantemplatemodel'
     template_name = 'scan/template/index.html'
     context_object_name = "template_list"
 
@@ -150,8 +154,8 @@ class ScanTemplateListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
 
 class ScanTemplateDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = ScanTemplateModel
-    permission_required = 'radiology.view_scantemplatemodel'
-    template_name = 'radiology/template/detail.html'
+    permission_required = 'scan.view_scantemplatemodel'
+    template_name = 'scan/template/detail.html'
     context_object_name = "template"
 
     def get_context_data(self, **kwargs):
@@ -175,8 +179,8 @@ class ScanTemplateDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detail
 # -------------------------
 class ScanEntryView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     """Entry point for scan operations - patient verification"""
-    permission_required = 'radiology.view_scanordermodel'
-    template_name = 'radiology/order/entry.html'
+    permission_required = 'scan.view_scanordermodel'
+    template_name = 'scan/order/entry.html'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -186,7 +190,7 @@ class ScanEntryView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
 
 def verify_scan_patient_ajax(request):
     """AJAX view to verify patient by card number for scans"""
-    if not request.user.has_perm('radiology.view_scanordermodel'):
+    if not request.user.has_perm('scan.view_scanordermodel'):
         return JsonResponse({'success': False, 'error': 'Permission denied'})
 
     card_number = request.GET.get('card_number', '').strip()
@@ -194,7 +198,7 @@ def verify_scan_patient_ajax(request):
         return JsonResponse({'success': False, 'error': 'Please enter a card number'})
 
     try:
-        patient = PatientModel.objects.get(card_number=card_number, status='active')
+        patient = PatientModel.objects.get(card_number__iexact=card_number, status='active')
 
         # Get scan counts
         scan_counts = {
@@ -233,47 +237,15 @@ def verify_scan_patient_ajax(request):
 
 
 # -------------------------
-# Missing Scan Category Views
-# -------------------------
-class ScanCategoryUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
-):
-    model = ScanCategoryModel
-    permission_required = 'radiology.change_scancategorymodel'
-    form_class = ScanCategoryForm
-    template_name = 'radiology/category/index.html'
-    success_message = 'Scan Category Successfully Updated'
-
-    def get_success_url(self):
-        return reverse('scan_category_index')
-
-    def dispatch(self, request, *args, **kwargs):
-        if request.method == 'GET':
-            return redirect(reverse('scan_category_index'))
-        return super().dispatch(request, *args, **kwargs)
-
-
-class ScanCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
-    model = ScanCategoryModel
-    permission_required = 'radiology.delete_scancategorymodel'
-    template_name = 'radiology/category/delete.html'
-    context_object_name = "category"
-    success_message = 'Scan Category Successfully Deleted'
-
-    def get_success_url(self):
-        return reverse('scan_category_index')
-
-
-# -------------------------
 # Missing Scan Template Views
 # -------------------------
 class ScanTemplateUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = ScanTemplateModel
-    permission_required = 'radiology.change_scantemplatemodel'
+    permission_required = 'scan.change_scantemplatemodel'
     form_class = ScanTemplateForm
-    template_name = 'radiology/template/edit.html'
+    template_name = 'scan/template/edit.html'
     success_message = 'Scan Template Successfully Updated'
 
     def get_success_url(self):
@@ -288,8 +260,8 @@ class ScanTemplateUpdateView(
 
 class ScanTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = ScanTemplateModel
-    permission_required = 'radiology.delete_scantemplatemodel'
-    template_name = 'radiology/template/delete.html'
+    permission_required = 'scan.delete_scantemplatemodel'
+    template_name = 'scan/template/delete.html'
     context_object_name = "template"
     success_message = 'Scan Template Successfully Deleted'
 
@@ -297,18 +269,16 @@ class ScanTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, Delete
         return reverse('scan_template_index')
 
 
-# -------------------------
-# Missing Scan Order Views
-# -------------------------
 class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ScanOrderModel
-    permission_required = 'radiology.view_scanordermodel'
-    template_name = 'radiology/order/index.html'
+    permission_required = 'scan.view_scanordermodel'
+    template_name = 'scan/order/index.html'
     context_object_name = "order_list"
     paginate_by = 20
 
     def get_queryset(self):
-        queryset = ScanOrderModel.objects.select_related(
+        # Exclude pending orders to create a list of active scans
+        queryset = ScanOrderModel.objects.exclude(status='pending').select_related(
             'patient', 'template', 'ordered_by'
         ).order_by('-ordered_at')
 
@@ -317,7 +287,7 @@ class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
         if status:
             queryset = queryset.filter(status=status)
 
-        # Filter by patient if provided
+        # Filter by patient if provided (though not used in the template, the logic is here)
         patient = self.request.GET.get('patient')
         if patient:
             queryset = queryset.filter(patient__id=patient)
@@ -331,11 +301,11 @@ class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['status_choices'] = ScanOrderModel.STATUS_CHOICES
-        context['patient_list'] = PatientModel.objects.filter(status='active').order_by('first_name')
+        # Use a slice to exclude 'pending' and 'cancelled' from the filter dropdown
+        context['status_choices'] = [choice for choice in ScanOrderModel.STATUS_CHOICES if choice[0] not in ['pending', 'cancelled']]
         context['template_list'] = ScanTemplateModel.objects.filter(is_active=True).order_by('name')
 
-        # Add counts for dashboard
+        # Add counts for the dashboard summary cards
         context['status_counts'] = {
             'pending': ScanOrderModel.objects.filter(status='pending').count(),
             'paid': ScanOrderModel.objects.filter(status='paid').count(),
@@ -351,7 +321,7 @@ class ScanOrderUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, UpdateView
 ):
     model = ScanOrderModel
-    permission_required = 'radiology.change_scanordermodel'
+    permission_required = 'scan.change_scanordermodel'
     form_class = ScanOrderForm
     template_name = 'radiology/order/edit.html'
 
@@ -366,153 +336,6 @@ class ScanOrderUpdateView(
         return context
 
 
-# -------------------------
-# Missing Scan Result Views
-# -------------------------
-class ScanResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
-    """Update scan results (only if not verified)"""
-    model = ScanResultModel
-    permission_required = 'radiology.change_scanresultmodel'
-    template_name = 'radiology/result/edit.html'
-    fields = ['findings', 'impression', 'recommendations', 'technician_notes']
-
-    def dispatch(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        if self.object.is_verified:
-            messages.error(request, 'Cannot edit verified results.')
-            return redirect('scan_result_detail', pk=self.object.pk)
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context.update({
-            'result': self.object,
-            'order': self.object.order,
-            'patient': self.object.order.patient,
-            'template': self.object.order.template,
-            'expected_images': self.object.order.template.expected_images,
-            'measurements': self.object.order.template.scan_parameters.get('measurements', []),
-            'existing_measurements': {r['parameter_code']: r for r in
-                                      self.object.measurements_data.get('measurements', [])},
-            'scan_images': self.object.images.all().order_by('sequence_number')
-        })
-        return context
-
-    def post(self, request, *args, **kwargs):
-        self.object = self.get_object()
-
-        # Process updated measurements (for scans like ECG)
-        measurements = self.object.order.template.scan_parameters.get('measurements', [])
-        measurements_results = []
-
-        for measurement in measurements:
-            param_code = measurement.get('code', '')
-            value = request.POST.get(f'measurement_{param_code}', '').strip()
-
-            if value:
-                result_entry = {
-                    'parameter_code': param_code,
-                    'parameter_name': measurement.get('name', ''),
-                    'value': value,
-                    'unit': measurement.get('unit', ''),
-                    'type': measurement.get('type', 'numeric')
-                }
-
-                # Add normal range and status logic
-                if 'normal_range' in measurement:
-                    result_entry['normal_range'] = measurement['normal_range']
-                    if measurement.get('type') == 'numeric' and measurement['normal_range'].get('min') and measurement[
-                        'normal_range'].get('max'):
-                        try:
-                            numeric_value = float(value)
-                            min_val = float(measurement['normal_range']['min'])
-                            max_val = float(measurement['normal_range']['max'])
-
-                            if numeric_value < min_val:
-                                result_entry['status'] = 'low'
-                            elif numeric_value > max_val:
-                                result_entry['status'] = 'high'
-                            else:
-                                result_entry['status'] = 'normal'
-                        except (ValueError, TypeError):
-                            result_entry['status'] = 'normal'
-
-                measurements_results.append(result_entry)
-
-        # Update the result
-        findings = request.POST.get('findings', '').strip()
-        impression = request.POST.get('impression', '').strip()
-        recommendations = request.POST.get('recommendations', '').strip()
-        technician_notes = request.POST.get('technician_notes', '').strip()
-
-        try:
-            self.object.measurements_data = {'measurements': measurements_results} if measurements_results else {}
-            self.object.findings = findings
-            self.object.impression = impression
-            self.object.recommendations = recommendations
-            self.object.technician_notes = technician_notes
-            self.object.save(
-                update_fields=['measurements_data', 'findings', 'impression', 'recommendations', 'technician_notes'])
-
-            messages.success(request, 'Scan results updated successfully')
-            return redirect('scan_result_detail', pk=self.object.pk)
-
-        except Exception as e:
-            logger.exception("Error updating scan result %s", self.object.id)
-            messages.error(request, 'An error occurred while updating results. Please try again.')
-            return self.get(request, *args, **kwargs)
-
-
-class ScanResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
-    """List all scan results with filtering options"""
-    model = ScanResultModel
-    permission_required = 'radiology.view_scanresultmodel'
-    template_name = 'radiology/result/index.html'
-    context_object_name = 'results'
-    paginate_by = 20
-
-    def get_queryset(self):
-        verified_filter = self.request.GET.get('verified', '')
-        search_query = self.request.GET.get('search', '')
-
-        queryset = ScanResultModel.objects.select_related(
-            'order__patient', 'order__template', 'verified_by'
-        ).order_by('-created_at')
-
-        if verified_filter == 'verified':
-            queryset = queryset.filter(is_verified=True)
-        elif verified_filter == 'unverified':
-            queryset = queryset.filter(is_verified=False)
-
-        if search_query:
-            queryset = queryset.filter(
-                Q(order__patient__first_name__icontains=search_query) |
-                Q(order__patient__last_name__icontains=search_query) |
-                Q(order__order_number__icontains=search_query) |
-                Q(order__template__name__icontains=search_query)
-            )
-
-        return queryset
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        # Summary stats
-        context['pending_verification'] = ScanResultModel.objects.filter(is_verified=False).count()
-        context['total_results'] = ScanResultModel.objects.count()
-        context['verified_results'] = ScanResultModel.objects.filter(is_verified=True).count()
-
-        # Filter options
-        context['verified_choices'] = [
-            ('', 'All Results'),
-            ('verified', 'Verified Only'),
-            ('unverified', 'Unverified Only')
-        ]
-        context['current_verified'] = self.request.GET.get('verified', '')
-        context['search_query'] = self.request.GET.get('search', '')
-
-        return context
-
 
 # -------------------------
 # Patient Scan Management
@@ -520,8 +343,8 @@ class ScanResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 class PatientScansView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """View patient's scans with grouping by date"""
     model = ScanOrderModel
-    permission_required = 'radiology.view_scanordermodel'
-    template_name = 'radiology/order/patient_scans.html'
+    permission_required = 'scan.view_scanordermodel'
+    template_name = 'scan/order/patient_scans.html'
     context_object_name = 'orders'
     paginate_by = 30
 
@@ -580,9 +403,9 @@ class PatientScansView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 # -------------------------
 class ScanOrderCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = ScanOrderModel
-    permission_required = 'radiology.add_scanordermodel'
+    permission_required = 'scan.add_scanordermodel'
     form_class = ScanOrderForm
-    template_name = 'radiology/order/create.html'
+    template_name = 'scan/order/create.html'
 
     def get_initial(self):
         initial = super().get_initial()
@@ -644,7 +467,7 @@ class ScanOrderCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
 
         if created_orders:
             messages.success(request, f"Created {len(created_orders)} scan order(s).")
-            return redirect(reverse('patient_scans', kwargs={'patient_id': created_orders[0].patient.id}))
+            return redirect(reverse('patient_scan_orders', kwargs={'patient_id': created_orders[0].patient.id}))
         else:
             messages.error(request, "No valid scans selected.")
             return redirect(request.path)
@@ -652,8 +475,8 @@ class ScanOrderCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
 
 class ScanOrderDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = ScanOrderModel
-    permission_required = 'radiology.view_scanordermodel'
-    template_name = 'radiology/order/detail.html'
+    permission_required = 'scan.view_scanordermodel'
+    template_name = 'scan/order/detail.html'
     context_object_name = "order"
 
     def get_context_data(self, **kwargs):
@@ -664,14 +487,15 @@ class ScanOrderDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVie
         has_results = hasattr(order, 'result')
 
         context.update({
+            'scan_setting': ScanSettingModel.objects.first(),
             'has_results': has_results,
             'can_process_payment': order.status == 'pending' and self.request.user.has_perm(
-                'radiology.change_scanordermodel'),
-            'can_schedule': order.status == 'paid' and self.request.user.has_perm('radiology.change_scanordermodel'),
+                'scan.change_scanordermodel'),
+            'can_schedule': order.status == 'paid' and self.request.user.has_perm('scan.change_scanordermodel'),
             'can_start_scan': order.status == 'scheduled' and self.request.user.has_perm(
-                'radiology.change_scanordermodel'),
+                'scan.change_scanordermodel'),
             'can_complete_scan': order.status == 'in_progress' and self.request.user.has_perm(
-                'radiology.change_scanordermodel'),
+                'scan.change_scanordermodel'),
             'expected_images': order.template.expected_images,
         })
 
@@ -690,7 +514,7 @@ def process_scan_payments(request):
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
-    if not request.user.has_perm('radiology.change_scanordermodel'):
+    if not request.user.has_perm('scan.change_scanordermodel'):
         return JsonResponse({'success': False, 'error': 'Permission denied'})
 
     selected_orders = request.POST.getlist('selected_orders')
@@ -862,7 +686,7 @@ def process_scan_payments(request):
 # Scan Scheduling
 # -------------------------
 @login_required
-@permission_required('radiology.change_scanordermodel', raise_exception=True)
+@permission_required('scan.change_scanordermodel', raise_exception=True)
 def schedule_scan(request, order_id):
     """Schedule a paid scan"""
     if request.method != 'POST':
@@ -903,7 +727,7 @@ def schedule_scan(request, order_id):
 class ScanResultDashboardView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """Main dashboard for scan results - shows orders ready for scanning"""
     model = ScanOrderModel
-    permission_required = 'radiology.view_scanordermodel'
+    permission_required = 'scan.view_scanordermodel'
     template_name = 'radiology/result/dashboard.html'
     context_object_name = 'orders'
     paginate_by = 20
@@ -958,27 +782,24 @@ class ScanResultDashboardView(LoginRequiredMixin, PermissionRequiredMixin, ListV
 
 
 class ScanResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
-    """Create scan results"""
     model = ScanResultModel
-    permission_required = 'radiology.add_scanresultmodel'
-    template_name = 'radiology/result/create.html'
-    fields = ['findings', 'impression', 'recommendations', 'technician_notes']
+    form_class = ScanResultForm
+    permission_required = 'scan.add_scanresultmodel'
+    template_name = 'scan/result/create.html'
 
     def dispatch(self, request, *args, **kwargs):
-        # Get the order from URL
         order_id = kwargs.get('order_id')
+        self.order = None
         if order_id:
             self.order = get_object_or_404(ScanOrderModel, pk=order_id)
-            # Check if result already exists
-            if hasattr(self.order, 'result'):
-                messages.warning(request, 'Results already exist for this order. Redirecting to edit.')
-                return redirect('scan_result_edit', pk=self.order.result.pk)
-            # Check if order is ready for results
-            if self.order.status not in ['in_progress', 'scheduled']:
+            # Check if results already exist
+            if hasattr(self.order, 'scanresultmodel'):
+                messages.warning(request, 'Results already exist. Redirecting to edit.')
+                return redirect('scan_result_edit', pk=self.order.scanresultmodel.pk)
+            # Check if order is ready for result entry
+            if self.order.status not in ['in_progress', 'completed']:
                 messages.error(request, 'This order is not ready for result entry.')
                 return redirect('scan_result_dashboard')
-        else:
-            self.order = None
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
@@ -988,91 +809,445 @@ class ScanResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVi
                 'order': self.order,
                 'patient': self.order.patient,
                 'template': self.order.template,
-                'expected_images': self.order.template.expected_images,
-                'measurements': self.order.template.scan_parameters.get('measurements', [])
+                'measurements': self.order.template.scan_parameters.get('measurements', []),
             })
+        else:
+            # Provide orders available for result entry
+            context['available_orders'] = ScanOrderModel.objects.filter(
+                status__in=['in_progress', 'completed']
+            ).exclude(
+                id__in=ScanResultModel.objects.values_list('order_id', flat=True)
+            ).select_related('patient', 'template').order_by('-scan_completed_at')
         return context
 
-    def post(self, request, *args, **kwargs):
-        if not self.order:
-            messages.error(request, 'Invalid order selected.')
-            return redirect('scan_result_dashboard')
-
-        # Process measurements data if scan has measurements (like ECG)
-        measurements = self.order.template.scan_parameters.get('measurements', [])
-        measurements_results = []
-
-        for measurement in measurements:
-            param_code = measurement.get('code', '')
-            value = request.POST.get(f'measurement_{param_code}', '').strip()
-
-            if value:
-                result_entry = {
-                    'parameter_code': param_code,
-                    'parameter_name': measurement.get('name', ''),
-                    'value': value,
-                    'unit': measurement.get('unit', ''),
-                    'type': measurement.get('type', 'numeric')
-                }
-
-                # Add normal range if available
-                if 'normal_range' in measurement:
-                    result_entry['normal_range'] = measurement['normal_range']
-                    # Determine status for numeric values
-                    if measurement.get('type') == 'numeric' and measurement['normal_range'].get('min') and measurement[
-                        'normal_range'].get('max'):
-                        try:
-                            numeric_value = float(value)
-                            min_val = float(measurement['normal_range']['min'])
-                            max_val = float(measurement['normal_range']['max'])
-
-                            if numeric_value < min_val:
-                                result_entry['status'] = 'low'
-                            elif numeric_value > max_val:
-                                result_entry['status'] = 'high'
-                            else:
-                                result_entry['status'] = 'normal'
-                        except (ValueError, TypeError):
-                            result_entry['status'] = 'normal'
-
-                measurements_results.append(result_entry)
-
-        # Get form data
-        findings = request.POST.get('findings', '').strip()
-        impression = request.POST.get('impression', '').strip()
-        recommendations = request.POST.get('recommendations', '').strip()
-        technician_notes = request.POST.get('technician_notes', '').strip()
-
+    def form_valid(self, form):
+        """
+        Save ScanResultModel and then create ScanImageModel records for any uploaded expected images.
+        """
         try:
             with transaction.atomic():
-                result = ScanResultModel.objects.create(
-                    order=self.order,
-                    measurements_data={'measurements': measurements_results} if measurements_results else {},
-                    findings=findings,
-                    impression=impression,
-                    recommendations=recommendations,
-                    technician_notes=technician_notes
-                )
+                result = form.save(commit=False)
 
-                # Update order status
-                self.order.status = 'completed'
-                self.order.scan_completed_at = now()
-                self.order.performed_by = request.user
-                self.order.save(update_fields=['status', 'scan_completed_at', 'performed_by'])
+                # If view was invoked with order_id, use that; otherwise support order selected in the form
+                if self.order:
+                    result.order = self.order
+                else:
+                    # attempt to get order from form.cleaned_data (only if your form allows it)
+                    chosen_order = form.cleaned_data.get('order') if hasattr(form, 'cleaned_data') else None
+                    if chosen_order:
+                        result.order = chosen_order
+                    else:
+                        raise ValueError("No order specified for scan result")
 
-            messages.success(request, f'Results entered successfully for {self.order.template.name}')
-            return redirect('scan_result_detail', pk=result.pk)
+                # performed_by - be defensive
+                performed_by = self.request.user
+                result.performed_by = performed_by
+
+                # performed_at: prefer form input if present, else now
+                if not result.performed_at:
+                    result.performed_at = timezone.now()
+
+                # If amount_charged or other fields are needed populate them -- measured values handled below
+                # Process measured values from form data
+                measurements = result.order.template.scan_parameters.get('measurements', [])
+                measured_values = {'measurements': []}
+
+                for measurement in measurements:
+                    param_code = measurement.get('code', '')
+                    value = self.request.POST.get(f'measurement_{param_code}', '').strip()
+                    comment = self.request.POST.get(f'measurement_{param_code}_comment', '').strip()
+
+                    if value:
+                        measurement_result = {
+                            'code': param_code,
+                            'name': measurement.get('name', ''),
+                            'value': value,
+                            'unit': measurement.get('unit', ''),
+                            'type': measurement.get('type', 'text'),
+                            'comment': comment
+                        }
+
+                        if 'normal_range' in measurement and measurement.get('type') == 'numeric':
+                            measurement_result['normal_range'] = measurement['normal_range']
+                            try:
+                                numeric_value = float(value)
+                                min_val = measurement['normal_range'].get('min')
+                                max_val = measurement['normal_range'].get('max')
+
+                                if min_val is not None and max_val is not None:
+                                    if numeric_value < float(min_val):
+                                        measurement_result['status'] = 'low'
+                                    elif numeric_value > float(max_val):
+                                        measurement_result['status'] = 'high'
+                                    else:
+                                        measurement_result['status'] = 'normal'
+                            except (ValueError, TypeError):
+                                measurement_result['status'] = 'normal'
+
+                        measured_values['measurements'].append(measurement_result)
+
+                if measured_values['measurements']:
+                    result.measured_values = measured_values
+                print("Measured values being saved:", measured_values)
+                # Save the scan result first (so we can attach images)
+                result.save()
+
+                # Update the order status to completed if needed
+                if result.order.status != 'completed':
+                    result.order.status = 'completed'
+                    result.order.scan_completed_at = timezone.now()
+                    result.order.save(update_fields=['status', 'scan_completed_at'])
+
+                # --- Handle expected image uploads submitted with deterministic names ---
+                template_expected = result.order.template.expected_images or []
+                for idx, expected in enumerate(template_expected):
+                    file_field_name = f'expected_image_{idx}'
+                    uploaded_file = self.request.FILES.get(file_field_name)
+                    if uploaded_file:
+                        # retrieve view metadata sent from the template
+                        view_field_name = f'expected_image_view_{idx}'
+                        view_name = self.request.POST.get(view_field_name, expected.get('view', ''))
+
+                        # determine next sequence_number for this result
+                        last_seq = result.images.aggregate(max_seq=models.Max('sequence_number'))['max_seq'] or 0
+                        seq_no = last_seq + 1
+
+                        # create ScanImageModel instance
+                        ScanImageModel.objects.create(
+                            scan_result=result,
+                            image=uploaded_file,
+                            view_type=view_name,
+                            description=expected.get('description', ''),
+                            sequence_number=seq_no,
+                            image_quality='good',  # default, can be adjusted
+                            technical_parameters={}
+                        )
+
+                # Also support radiology_report_image file (already in the form)
+                report_img = self.request.FILES.get('radiology_report_image')
+                if report_img:
+                    result.radiology_report_image = report_img
+                    result.save(update_fields=['radiology_report_image'])
+
+            messages.success(self.request, f'Results entered successfully for {result.order.template.name}')
+            self.object = result
+            return super().form_valid(form)
+
+        except PermissionDenied as p:
+            messages.error(self.request, str(p))
+            return self.form_invalid(form)
 
         except Exception as e:
-            logger.exception("Error creating scan result for order %s", self.order.id)
-            messages.error(request, 'An error occurred while saving results. Please try again.')
-            return self.get(request, *args, **kwargs)
+            logger.exception("Error creating scan result for order %s", getattr(self.order, 'id', 'unknown'))
+            messages.error(self.request, f'An error occurred while saving results: {str(e)}')
+            return self.form_invalid(form)
+
+    def get_success_url(self):
+        return reverse('scan_result_detail', kwargs={'pk': self.object.pk})
+
+
+class ScanResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """List all scan results with filtering options"""
+    model = ScanResultModel
+    permission_required = 'scan.view_scanresultmodel'
+    template_name = 'radiology/result/index.html'  # Adapted path for scan app
+    context_object_name = 'results'
+    paginate_by = 20
+
+    def get_queryset(self):
+        # Get all filter values from the request (logic is identical to lab view)
+        verified_filter = self.request.GET.get('verified', '')
+        search_query = self.request.GET.get('search', '')
+        start_date_str = self.request.GET.get('start_date')
+        end_date_str = self.request.GET.get('end_date')
+
+        # Base queryset using ScanResultModel
+        queryset = ScanResultModel.objects.select_related(
+            'order__patient', 'order__template', 'verified_by'
+        ).order_by('-created_at')
+
+        # Apply verified filter (logic is identical)
+        if verified_filter == 'verified':
+            queryset = queryset.filter(is_verified=True)
+        elif verified_filter == 'unverified':
+            queryset = queryset.filter(is_verified=False)
+
+        # Apply date range filter (logic is identical)
+        if start_date_str and end_date_str:
+            try:
+                start_date = date.fromisoformat(start_date_str)
+                end_date = date.fromisoformat(end_date_str)
+                queryset = queryset.filter(created_at__date__range=[start_date, end_date])
+            except (ValueError, TypeError):
+                # Ignore invalid date formats gracefully
+                pass
+
+        # Apply search query filter (logic is identical, adapted for scan relationships)
+        if search_query:
+            queryset = queryset.annotate(
+                search_full_name=Concat(
+                    'order__patient__first_name', Value(' '), 'order__patient__last_name'
+                )
+            ).filter(
+                Q(search_full_name__icontains=search_query) |
+                Q(order__order_number__icontains=search_query) |
+                Q(order__template__name__icontains=search_query) |
+                Q(order__patient__card_number__icontains=search_query)
+            )
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Get the filtered queryset to make stats dynamic (pattern is identical to lab view)
+        filtered_queryset = self.get_queryset()
+
+        # Calculate stats based on the filtered queryset
+        context['total_results'] = filtered_queryset.count()
+        context['verified_results'] = filtered_queryset.filter(is_verified=True).count()
+        context['pending_verification'] = filtered_queryset.filter(is_verified=False).count()
+
+        # Get current filter values to maintain state in the template
+        context['current_verified'] = self.request.GET.get('verified', '')
+        context['search_query'] = self.request.GET.get('search', '')
+
+        # Set default dates and maintain state for date filters
+        today_str = date.today().isoformat()
+        context['start_date'] = self.request.GET.get('start_date', today_str)
+        context['end_date'] = self.request.GET.get('end_date', today_str)
+
+        # Filter choices for the template dropdown
+        context['verified_choices'] = [
+            ('', 'All Statuses'),
+            ('verified', 'Verified Only'),
+            ('unverified', 'Unverified Only')
+        ]
+
+        return context
+
+
+class ScanResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = ScanResultModel
+    form_class = ScanResultForm
+    permission_required = 'scan.change_scanresultmodel'
+    template_name = 'scan/result/edit.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        self.order = self.object.order
+
+        # Check permissions - only allow editing if not finalized
+        if self.object.status == 'finalized' and not request.user.has_perm('scan.finalize_scanresultmodel'):
+            messages.error(request, 'Cannot edit finalized results. Contact administrator.')
+            return redirect('scan_result_detail', pk=self.object.pk)
+
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update({
+            'order': self.order,
+            'patient': self.order.patient,
+            'template': self.order.template,
+            'measurements': self.order.template.scan_parameters.get('measurements', []),
+            'existing_images': self.object.images.all().order_by('sequence_number'),
+        })
+        return context
+
+    def get_initial(self):
+        """Populate form with existing measurement values"""
+        initial = super().get_initial()
+
+        # Populate measurement values from existing data
+        measurements_data = self.object.measurements_data
+        existing_measurements = measurements_data.get('measurements', [])
+
+        # Create a lookup dictionary for existing values
+        measurement_values = {}
+        for measurement in existing_measurements:
+            code = measurement.get('code', '')
+            if code:
+                measurement_values[f'measurement_{code}'] = measurement.get('value', '')
+                measurement_values[f'measurement_{code}_comment'] = measurement.get('comment', '')
+
+        initial.update(measurement_values)
+        return initial
+
+    def form_valid(self, form):
+        """
+        Update ScanResultModel and handle image uploads.
+        """
+        try:
+            with transaction.atomic():
+                result = form.save(commit=False)
+
+                # Update performed_by if changed
+                result.performed_by = self.request.user
+
+                # Update performed_at if provided, otherwise keep existing
+                if not result.performed_at:
+                    result.performed_at = self.object.performed_at
+
+                # Process measured values from form data
+                measurements = result.order.template.scan_parameters.get('measurements', [])
+                measured_values = {'measurements': []}
+
+                for measurement in measurements:
+                    param_code = measurement.get('code', '')
+                    value = self.request.POST.get(f'measurement_{param_code}', '').strip()
+                    comment = self.request.POST.get(f'measurement_{param_code}_comment', '').strip()
+
+                    if value:
+                        measurement_result = {
+                            'code': param_code,
+                            'name': measurement.get('name', ''),
+                            'value': value,
+                            'unit': measurement.get('unit', ''),
+                            'type': measurement.get('type', 'text'),
+                            'comment': comment
+                        }
+
+                        if 'normal_range' in measurement and measurement.get('type') == 'numeric':
+                            measurement_result['normal_range'] = measurement['normal_range']
+                            try:
+                                numeric_value = float(value)
+                                min_val = measurement['normal_range'].get('min')
+                                max_val = measurement['normal_range'].get('max')
+
+                                if min_val is not None and max_val is not None:
+                                    if numeric_value < float(min_val):
+                                        measurement_result['status'] = 'low'
+                                    elif numeric_value > float(max_val):
+                                        measurement_result['status'] = 'high'
+                                    else:
+                                        measurement_result['status'] = 'normal'
+                            except (ValueError, TypeError):
+                                measurement_result['status'] = 'normal'
+
+                        measured_values['measurements'].append(measurement_result)
+
+                if measured_values['measurements']:
+                    result.measured_values = measured_values
+
+                # Save the updated result
+                result.save()
+
+                # Handle deletion of existing images if requested
+                delete_image_ids = self.request.POST.getlist('delete_images')
+                if delete_image_ids:
+                    result.images.filter(id__in=delete_image_ids).delete()
+
+                # --- Handle new expected image uploads ---
+                template_expected = result.order.template.expected_images or []
+                for idx, expected in enumerate(template_expected):
+                    file_field_name = f'expected_image_{idx}'
+                    uploaded_file = self.request.FILES.get(file_field_name)
+                    if uploaded_file:
+                        # retrieve view metadata sent from the template
+                        view_field_name = f'expected_image_view_{idx}'
+                        view_name = self.request.POST.get(view_field_name, expected.get('view', ''))
+
+                        # determine next sequence_number for this result
+                        last_seq = result.images.aggregate(max_seq=models.Max('sequence_number'))['max_seq'] or 0
+                        seq_no = last_seq + 1
+
+                        # create ScanImageModel instance
+                        ScanImageModel.objects.create(
+                            scan_result=result,
+                            image=uploaded_file,
+                            view_type=view_name,
+                            description=expected.get('description', ''),
+                            sequence_number=seq_no,
+                            image_quality='good',
+                            technical_parameters={}
+                        )
+
+                # Handle radiology report image upload/replacement
+                report_img = self.request.FILES.get('radiology_report_image')
+                if report_img:
+                    result.radiology_report_image = report_img
+                    result.save(update_fields=['radiology_report_image'])
+
+                # Handle report image deletion if requested
+                if self.request.POST.get('delete_radiology_report') == 'true':
+                    if result.radiology_report_image:
+                        result.radiology_report_image.delete(save=False)
+                        result.radiology_report_image = None
+                        result.save(update_fields=['radiology_report_image'])
+
+            messages.success(self.request, f'Results updated successfully for {result.order.template.name}')
+            self.object = result
+            return super().form_valid(form)
+
+        except PermissionDenied as p:
+            messages.error(self.request, str(p))
+            return self.form_invalid(form)
+
+        except Exception as e:
+            logger.exception("Error updating scan result %s", self.object.pk)
+            messages.error(self.request, f'An error occurred while updating results: {str(e)}')
+            return self.form_invalid(form)
+
+    def get_success_url(self):
+        return reverse('scan_result_detail', kwargs={'pk': self.object.pk})
+
+
+class ScanResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """List all scan results with filtering options"""
+    model = ScanResultModel
+    permission_required = 'scan.view_scanresultmodel'
+    template_name = 'scan/result/index.html'
+    context_object_name = 'results'
+    paginate_by = 20
+
+    def get_queryset(self):
+        verified_filter = self.request.GET.get('verified', '')
+        search_query = self.request.GET.get('search', '')
+
+        queryset = ScanResultModel.objects.select_related(
+            'order__patient', 'order__template', 'verified_by'
+        ).order_by('-created_at')
+
+        if verified_filter == 'verified':
+            queryset = queryset.filter(is_verified=True)
+        elif verified_filter == 'unverified':
+            queryset = queryset.filter(is_verified=False)
+
+        if search_query:
+            queryset = queryset.filter(
+                Q(order__patient__first_name__icontains=search_query) |
+                Q(order__patient__last_name__icontains=search_query) |
+                Q(order__order_number__icontains=search_query) |
+                Q(order__template__name__icontains=search_query)
+            )
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Summary stats
+        context['pending_verification'] = ScanResultModel.objects.filter(is_verified=False).count()
+        context['total_results'] = ScanResultModel.objects.count()
+        context['verified_results'] = ScanResultModel.objects.filter(is_verified=True).count()
+
+        # Filter options
+        context['verified_choices'] = [
+            ('', 'All Results'),
+            ('verified', 'Verified Only'),
+            ('unverified', 'Unverified Only')
+        ]
+        context['current_verified'] = self.request.GET.get('verified', '')
+        context['search_query'] = self.request.GET.get('search', '')
+
+        return context
 
 
 class ScanResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = ScanResultModel
-    permission_required = 'radiology.view_scanresultmodel'
-    template_name = 'radiology/result/detail.html'
+    permission_required = 'scan.view_scanresultmodel'
+    template_name = 'scan/result/detail.html'
     context_object_name = 'result'
 
     def get_context_data(self, **kwargs):
@@ -1080,9 +1255,9 @@ class ScanResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVi
         result = self.object
 
         context.update({
-            'can_verify': not result.is_verified and self.request.user.has_perm('radiology.change_scanresultmodel'),
-            'can_edit': not result.is_verified and self.request.user.has_perm('radiology.change_scanresultmodel'),
-            'can_upload_images': self.request.user.has_perm('radiology.add_scanimagemodel'),
+            'can_verify': not result.is_verified and self.request.user.has_perm('scan.change_scanresultmodel'),
+            'can_edit': not result.is_verified and self.request.user.has_perm('scan.change_scanresultmodel'),
+            'can_upload_images': self.request.user.has_perm('scan.add_scanimagemodel'),
             'order': result.order,
             'patient': result.order.patient,
             'template': result.order.template,
@@ -1100,7 +1275,7 @@ class ScanResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVi
 class ScanImageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """Upload individual scan images"""
     model = ScanImageModel
-    permission_required = 'radiology.add_scanimagemodel'
+    permission_required = 'scan.add_scanimagemodel'
     form_class = ScanImageForm
     template_name = 'radiology/image/upload.html'
 
@@ -1129,61 +1304,12 @@ class ScanImageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
         return reverse('scan_result_detail', kwargs={'pk': self.object.scan_result.pk})
 
 
-class MultipleImageUploadView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    """Upload multiple scan images at once"""
-    permission_required = 'radiology.add_scanimagemodel'
-    template_name = 'radiology/image/multiple_upload.html'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        result_id = self.kwargs.get('result_id')
-        if result_id:
-            scan_result = get_object_or_404(ScanResultModel, id=result_id)
-            context['scan_result'] = scan_result
-            context['expected_images'] = scan_result.order.template.expected_images
-            context['form'] = MultipleImageUploadForm(initial={'scan_result': scan_result})
-        return context
-
-    def post(self, request, *args, **kwargs):
-        result_id = self.kwargs.get('result_id')
-        scan_result = get_object_or_404(ScanResultModel, id=result_id)
-
-        files = request.FILES.getlist('images')
-        if not files:
-            messages.error(request, 'Please select at least one image')
-            return redirect(request.path)
-
-        try:
-            with transaction.atomic():
-                # Get next sequence number
-                last_image = scan_result.images.order_by('-sequence_number').first()
-                next_seq = (last_image.sequence_number + 1) if last_image else 1
-
-                uploaded_count = 0
-                for file in files:
-                    ScanImageModel.objects.create(
-                        scan_result=scan_result,
-                        image=file,
-                        description=f"Image {next_seq}",
-                        sequence_number=next_seq
-                    )
-                    next_seq += 1
-                    uploaded_count += 1
-
-            messages.success(request, f'Successfully uploaded {uploaded_count} image(s)')
-            return redirect('scan_result_detail', pk=scan_result.pk)
-
-        except Exception as e:
-            logger.exception("Error uploading multiple images")
-            messages.error(request, 'Error uploading images. Please try again.')
-            return redirect(request.path)
-
 
 # -------------------------
 # Scan Status Update Actions
 # -------------------------
 @login_required
-@permission_required('radiology.change_scanordermodel', raise_exception=True)
+@permission_required('scan.change_scanordermodel', raise_exception=True)
 def start_scan(request, order_id):
     """Start scan procedure - AJAX endpoint"""
     if request.method != 'POST':
@@ -1219,8 +1345,9 @@ def start_scan(request, order_id):
 
 
 @login_required
-@permission_required('radiology.change_scanresultmodel', raise_exception=True)
-def verify_scan_result(request, result_id):
+@permission_required('scan.change_scanresultmodel', raise_exception=True)
+def verify_scan_result(request, pk):
+    result_id = pk
     """AJAX endpoint to verify a scan result"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
@@ -1242,8 +1369,8 @@ def verify_scan_result(request, result_id):
             result.verified_by = request.user
             result.verified_at = now()
             if radiologist_comments:
-                result.doctor_interpretation = radiologist_comments
-            result.save(update_fields=['is_verified', 'verified_by', 'verified_at', 'doctor_interpretation'])
+                result.technician_comments = radiologist_comments
+            result.save(update_fields=['is_verified', 'verified_by', 'verified_at', 'technician_comments'])
 
         return JsonResponse({
             'success': True,
@@ -1349,7 +1476,7 @@ def scan_dashboard_data(request):
 # -------------------------
 class ScanDashboardView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = 'radiology/dashboard.html'
-    permission_required = 'radiology.view_scanordermodel'
+    permission_required = 'scan.view_scanordermodel'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -1386,7 +1513,7 @@ class ScanDashboardView(LoginRequiredMixin, PermissionRequiredMixin, TemplateVie
 # Image Management Actions
 # -------------------------
 @login_required
-@permission_required('radiology.delete_scanimagemodel', raise_exception=True)
+@permission_required('scan.delete_scanimagemodel', raise_exception=True)
 def delete_scan_image(request, image_id):
     """Delete a scan image - AJAX endpoint"""
     if request.method != 'POST':
@@ -1420,7 +1547,7 @@ def delete_scan_image(request, image_id):
 
 
 @login_required
-@permission_required('radiology.change_scanimagemodel', raise_exception=True)
+@permission_required('scan.change_scanimagemodel', raise_exception=True)
 def update_image_details(request, image_id):
     """Update image description and view type - AJAX endpoint"""
     if request.method != 'POST':
@@ -1465,7 +1592,7 @@ def update_image_details(request, image_id):
 # Bulk Actions
 # -------------------------
 @login_required
-@permission_required('radiology.change_scanordermodel', raise_exception=True)
+@permission_required('scan.change_scanordermodel', raise_exception=True)
 def multi_scan_order_action(request):
     """Handle bulk actions on scan orders"""
     if request.method == 'POST':
@@ -1510,7 +1637,7 @@ def multi_scan_order_action(request):
 # Print Views
 # -------------------------
 @login_required
-@permission_required('radiology.view_scanordermodel', raise_exception=True)
+@permission_required('scan.view_scanordermodel', raise_exception=True)
 def print_scan_order(request, pk):
     order = get_object_or_404(ScanOrderModel, pk=pk)
     context = {
@@ -1521,7 +1648,7 @@ def print_scan_order(request, pk):
 
 
 @login_required
-@permission_required('radiology.view_scanresultmodel', raise_exception=True)
+@permission_required('scan.view_scanresultmodel', raise_exception=True)
 def print_scan_result(request, pk):
     result = get_object_or_404(ScanResultModel, pk=pk)
     context = {
@@ -1539,7 +1666,7 @@ def print_scan_result(request, pk):
 # -------------------------
 class ScanReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = 'radiology/reports/index.html'
-    permission_required = 'radiology.view_scanordermodel'
+    permission_required = 'scan.view_scanordermodel'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -2180,59 +2307,105 @@ def process_payment(request, pk):
     return redirect(reverse('scan_order_detail', kwargs={'pk': pk}))
 
 
+
 @login_required
 @permission_required('scan.change_scanordermodel', raise_exception=True)
-def schedule_scan(request, pk):
-    order = get_object_or_404(ScanOrderModel, pk=pk)
+def schedule_scan(request, order_id):
+    """
+    Schedule a paid scan via an AJAX POST request.
+    Returns a JSON response.
+    """
+    # 1. Ensure the request is a POST
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
     try:
+        order = get_object_or_404(ScanOrderModel, id=order_id)
+
+        # 2. Validate the order's current status
         if order.status != 'paid':
-            messages.info(request, "Scan can only be scheduled for paid orders.")
-            return redirect(reverse('scan_order_detail', kwargs={'pk': pk}))
+            return JsonResponse({
+                'success': False,
+                'error': 'This scan can only be scheduled if it has been paid for.'
+            }, status=400) # 400 = Bad Request
 
-        # Optionally read scheduled_date from POST if provided
-        scheduled_date = None
-        if request.method == 'POST':
-            sd = request.POST.get('scheduled_date')
-            if sd:
-                try:
-                    scheduled_date = datetime.strptime(sd, '%Y-%m-%dT%H:%M')
-                except Exception:
-                    scheduled_date = None
+        # 3. Get and validate the scheduled_date from the POST data
+        scheduled_date_str = request.POST.get('scheduled_date')
+        if not scheduled_date_str:
+            return JsonResponse({'success': False, 'error': 'Scheduled date is required.'}, status=400)
 
+        # Use Django's robust parser
+        scheduled_date = parse_datetime(scheduled_date_str)
+        if not scheduled_date:
+            return JsonResponse({'success': False, 'error': 'Invalid date format provided.'}, status=400)
+
+        # 4. Update the database within a transaction
         with transaction.atomic():
             order.status = 'scheduled'
-            if scheduled_date:
-                order.scheduled_date = scheduled_date
+            order.scheduled_date = scheduled_date
             order.scheduled_by = request.user
             order.save(update_fields=['status', 'scheduled_date', 'scheduled_by'])
 
-        messages.success(request, f"Scan scheduled for order {order.order_number}")
-    except Exception:
-        logger.exception("Error scheduling scan for order id=%s", pk)
-        messages.error(request, "An error occurred while scheduling scan. Contact admin.")
-    return redirect(reverse('scan_order_detail', kwargs={'pk': pk}))
+        # 5. Return a success JSON response
+        return JsonResponse({
+            'success': True,
+            'message': f'Scan for "{order.template.name}" has been successfully scheduled.',
+            'scheduled_date': scheduled_date.strftime('%Y-%m-%d %H:%M')
+        })
+
+    except ScanOrderModel.DoesNotExist:
+         return JsonResponse({'success': False, 'error': 'Order not found.'}, status=404)
+    except Exception as e:
+        logger.exception("Error scheduling scan for order id=%s", order_id)
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected server error occurred. Please contact an administrator.'
+        }, status=500) # 500 = Internal Server Error
 
 
 @login_required
 @permission_required('scan.change_scanordermodel', raise_exception=True)
-def start_scan(request, pk):
-    order = get_object_or_404(ScanOrderModel, pk=pk)
-    try:
-        if order.status != 'scheduled':
-            messages.info(request, "Scan can only be started for scheduled orders.")
-            return redirect(reverse('scan_order_detail', kwargs={'pk': pk}))
+def start_scan(request, order_id):
+    """
+    Starts a scheduled scan via an AJAX POST request.
+    Returns a JSON response.
+    """
+    # 1. This action should only be performed via POST
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
 
+    try:
+        order = get_object_or_404(ScanOrderModel, id=order_id)
+
+        # 2. Validate that the order is in the correct state
+        if order.status != 'scheduled':
+            return JsonResponse({
+                'success': False,
+                'error': 'Scan can only be started for scheduled orders.'
+            }, status=400) # 400 = Bad Request
+
+        # 3. Update the database atomically
         with transaction.atomic():
             order.status = 'in_progress'
             order.scan_started_at = now()
             order.performed_by = request.user
             order.save(update_fields=['status', 'scan_started_at', 'performed_by'])
 
-        messages.success(request, f"Scan started for order {order.order_number}")
-    except Exception:
-        logger.exception("Error starting scan for order id=%s", pk)
-        messages.error(request, "An error occurred while starting scan. Contact admin.")
-    return redirect(reverse('scan_order_detail', kwargs={'pk': pk}))
+        # 4. Return a success JSON response, including a redirect URL for the JS
+        return JsonResponse({
+            'success': True,
+            'message': f'Scan started for order {order.order_number}. Redirecting to result entry...',
+            'redirect_url': reverse('scan_result_create_for_order', kwargs={'order_id': order.id})
+        })
+
+    except ScanOrderModel.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Order not found.'}, status=404)
+    except Exception as e:
+        logger.exception("Error starting scan for order id=%s", order_id)
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected server error occurred. Please contact an administrator.'
+        }, status=500) # 500 = Internal Server Error
 
 
 @login_required

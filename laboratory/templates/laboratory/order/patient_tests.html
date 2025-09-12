@@ -121,7 +121,7 @@
                                                     <h6 class="mb-1">{{ order.template.name }}</h6>
                                                     <small class="text-muted">
                                                         {{ order.template.category.name }} |
-                                                        Order #{{ order.order_number }}
+                                                        <a href="{% url 'lab_order_detail' order.id %}">Order #{{ order.order_number }}</a>
                                                     </small>
                                                 </div>
 
@@ -531,7 +531,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const testName = this.dataset.testName;
 
             document.getElementById('sample-test-name').value = testName;
-            document.getElementById('sample-label').value = `LAB-${this.dataset.orderNumber}`;
+            document.getElementById('sample-label').value = `${this.dataset.orderNumber}`;
             document.getElementById('expected-completion').value = '';
 
             sampleCollectionModal.show();

@@ -1,0 +1,788 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h4 class="card-title">Edit Scan Template</h4>
+                    <p class="card-description">Update the details for <strong>{{ template.name }}</strong></p>
+                </div>
+                <div>
+                    <a href="{% url 'scan_template_detail' template.pk %}" class="btn btn-info btn-sm me-2">
+                        <i class="bi bi-eye"></i> View Details
+                    </a>
+                    <a href="{% url 'scan_template_index' %}" class="btn btn-secondary btn-sm">
+                        <i class="bi bi-arrow-left"></i> Back to List
+                    </a>
+                </div>
+            </div>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form method="post" id="templateForm" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <!-- Basic Info -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.name }}
+                            <label for="id_name">Template Name<span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-floating mb-3">
+                            {{ form.code }}
+                            <label for="id_code">Template Code</label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-floating mb-3">
+                            {{ form.category }}
+                            <label for="id_category">Category</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pricing & Duration -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="form-floating mb-3">
+                            {{ form.price }}
+                            <label for="id_price">Price (₦)</label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-floating mb-3">
+                            {{ form.estimated_duration }}
+                            <label for="id_estimated_duration">Estimated Duration</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-center">
+                        <div class="form-check me-4">
+                            {{ form.preparation_required }}
+                            <label class="form-check-label" for="id_preparation_required">Preparation Required?</label>
+                        </div>
+                        <div class="form-check me-4">
+                            {{ form.fasting_required }}
+                            <label class="form-check-label" for="id_fasting_required">Fasting Required?</label>
+                        </div>
+                        <div class="form-check">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="id_is_active">Active?</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Equipment -->
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="form-floating mb-3">
+                            {{ form.equipment_required }}
+                            <label for="id_equipment_required">Equipment Required (optional)</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expected Images Section -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Expected Images / Views</h5>
+                        <div class="badge badge-info">
+                            <span id="viewsCount">0</span> views
+                        </div>
+                    </div>
+
+                    <div class="card border-light">
+                        <div class="card-body">
+                            <div id="viewsContainer"></div>
+
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <div>
+                                    <button type="button" class="btn btn-success btn-sm" id="addViewBtn">
+                                        <i class="bi bi-plus"></i> Add Image View
+                                    </button>
+                                </div>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-primary" onclick="reorderItems('views','up')" title="Move Up">
+                                        <i class="bi bi-arrow-up"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" onclick="reorderItems('views','down')" title="Move Down">
+                                        <i class="bi bi-arrow-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Measurements Section -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Measurements (for report extraction)</h5>
+                        <div class="badge badge-info">
+                            <span id="measurementsCount">0</span> measurements
+                        </div>
+                    </div>
+
+                    <div class="card border-light">
+                        <div class="card-body">
+                            <div id="measurementsContainer"></div>
+
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <div>
+                                    <button type="button" class="btn btn-info btn-sm" id="addMeasurementBtn">
+                                        <i class="bi bi-plus"></i> Add Measurement
+                                    </button>
+                                </div>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-primary" onclick="reorderItems('measurements','up')" title="Move Up">
+                                        <i class="bi bi-arrow-up"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" onclick="reorderItems('measurements','down')" title="Move Down">
+                                        <i class="bi bi-arrow-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden fields for JSON -->
+                <input type="hidden" id="id_expected_views" name="expected_images" value='{{ form.expected_images.value|default:"[]" }}'>
+                <input type="hidden" id="id_expected_measurements" name="expected_measurements" value='{{ form.scan_parameters.value|default:"[]" }}'>
+
+                <!-- Change Log -->
+                <div class="mb-4">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">Template Information</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <small class="text-muted">
+                                        <strong>Created:</strong> {{ template.created_at|date:"M d, Y g:i A" }}<br>
+                                        <strong>Last Updated:</strong> {{ template.updated_at|date:"M d, Y g:i A" }}
+                                    </small>
+                                </div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">
+                                        <strong>Total Orders:</strong> <span id="totalOrders">{{ total_orders|default:0 }}</span><br>
+                                        <strong>Required images:</strong> { template.required_images_count }}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="bi bi-save"></i> Update Template
+                        </button>
+                        <button type="button" class="btn btn-success me-2" onclick="previewChanges()">
+                            <i class="bi bi-eye"></i> Preview Changes
+                        </button>
+                    </div>
+                    <div>
+                        <a href="{% url 'scan_template_detail' template.pk %}" class="btn btn-secondary me-2">
+                            <i class="bi bi-x"></i> Cancel
+                        </a>
+                        {% if template.is_active and total_orders > 0 %}
+                        <button type="button" class="btn btn-warning" onclick="showWarning()">
+                            <i class="bi bi-exclamation-triangle"></i> Has Active Orders
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- View Template -->
+<template id="viewTemplate">
+    <div class="view-item border rounded p-3 mb-3" style="background-color: #e9f7ef;">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input view-select">
+                <label class="form-check-label">Select for reorder</label>
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-primary btn-sm duplicate-view" title="Duplicate">
+                    <i class="bi bi-copy"></i>
+                </button>
+                <button type="button" class="btn btn-danger btn-sm remove-view-btn" title="Remove">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control view-name" placeholder="View Name">
+                    <label>View Name *</label>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control view-description" placeholder="Description">
+                    <label>Description</label>
+                </div>
+            </div>
+            <div class="col-md-2 d-flex align-items-center">
+                <div class="form-check mt-2">
+                    <input type="checkbox" class="form-check-input view-required" checked>
+                    <label class="form-check-label">Required</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Measurement Template -->
+<template id="measurementTemplate">
+    <div class="measurement-item border rounded p-3 mb-3" style="background-color: #fff6fb;">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input measurement-select">
+                <label class="form-check-label">Select for reorder</label>
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-primary btn-sm duplicate-measurement" title="Duplicate">
+                    <i class="bi bi-copy"></i>
+                </button>
+                <button type="button" class="btn btn-danger btn-sm remove-measurement-btn" title="Remove">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control measurement-name" placeholder="Measurement Name" required>
+                    <label>Measurement Name *</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-floating mb-3">
+                    <select class="form-control measurement-type">
+                        <option value="text">Text/Description</option>
+                        <option value="numeric">Numeric Value</option>
+                        <option value="select">Select Options</option>
+                    </select>
+                    <label>Type</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control measurement-unit" placeholder="Unit">
+                    <label>Unit (optional)</label>
+                </div>
+            </div>
+            <div class="col-md-2 d-flex align-items-center">
+                <div class="form-check mt-2">
+                    <input type="checkbox" class="form-check-input measurement-required">
+                    <label class="form-check-label">Required</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="numeric-fields" style="display:none;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-floating mb-3">
+                        <input type="number" class="form-control measurement-min" step="0.01" placeholder="Min">
+                        <label>Normal Range - Min</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-floating mb-3">
+                        <input type="number" class="form-control measurement-max" step="0.01" placeholder="Max">
+                        <label>Normal Range - Max</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="select-fields" style="display:none;">
+            <div class="mb-3">
+                <label class="form-label">Options (Enter each option on a new line):</label>
+                <textarea class="form-control measurement-options" rows="3" placeholder="Normal&#10;Abnormal&#10;Enlarged"></textarea>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="form-floating">
+                    <textarea class="form-control measurement-notes" placeholder="Notes (optional)" rows="2"></textarea>
+                    <label>Notes</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Preview Changes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="previewContent"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('templateForm').submit();">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Modal -->
+<div class="modal fade" id="alertModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div id="alertIcon" class="mb-3">
+                    <i class="bi bi-info-circle-fill text-primary" style="font-size: 3rem;"></i>
+                </div>
+                <h5 id="alertTitle" class="mb-3">Information</h5>
+                <p id="alertMessage" class="mb-4"></p>
+                <div id="alertButtons">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.view-item, .measurement-item {
+    position: relative;
+    transition: all 0.3s ease;
+}
+.view-item:hover, .measurement-item:hover { box-shadow: 0 4px 10px rgba(0,0,0,0.08); transform: translateY(-2px); }
+.view-item.selected, .measurement-item.selected { border-left: 4px solid #28a745; background: #f6fffa; }
+#viewsContainer:empty::before {
+    content: "No image views added yet. Click 'Add Image View' to start.";
+    color: #6c757d; font-style: italic; display:block; padding: 20px; text-align:center;
+    border: 2px dashed #dee2e6; border-radius:8px; margin-bottom:15px;
+}
+#measurementsContainer:empty::before {
+    content: "No measurements defined yet. Click 'Add Measurement' to start.";
+    color: #6c757d; font-style: italic; display:block; padding: 20px; text-align:center;
+    border: 2px dashed #dee2e6; border-radius:8px; margin-bottom:15px;
+}
+</style>
+
+<script>
+// Helper
+const $ = id => document.getElementById(id);
+
+function showAlert(message, title = 'Information', type = 'info') {
+    const alertModal = document.getElementById('alertModal');
+    const alertIcon = document.getElementById('alertIcon');
+    const alertTitle = document.getElementById('alertTitle');
+    const alertMessage = document.getElementById('alertMessage');
+    const alertButtons = document.getElementById('alertButtons');
+
+    let iconClass = 'bi-info-circle-fill text-primary';
+    if (type === 'warning') iconClass = 'bi-exclamation-triangle-fill text-warning';
+    else if (type === 'danger') iconClass = 'bi-x-circle-fill text-danger';
+    else if (type === 'success') iconClass = 'bi-check-circle-fill text-success';
+
+    alertIcon.innerHTML = `<i class="bi ${iconClass}" style="font-size:3rem;"></i>`;
+    alertTitle.textContent = title;
+    alertMessage.textContent = message;
+    alertButtons.innerHTML = '<button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>';
+
+    new bootstrap.Modal(alertModal).show();
+}
+
+function showConfirm(message, title='Confirm', onConfirm) {
+    const alertModal = document.getElementById('alertModal');
+    const alertIcon = document.getElementById('alertIcon');
+    const alertTitle = document.getElementById('alertTitle');
+    const alertMessage = document.getElementById('alertMessage');
+    const alertButtons = document.getElementById('alertButtons');
+
+    alertIcon.innerHTML = '<i class="bi bi-question-circle-fill text-warning" style="font-size:3rem;"></i>';
+    alertTitle.textContent = title;
+    alertMessage.textContent = message;
+    alertButtons.innerHTML = `
+        <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmBtn">Confirm</button>
+    `;
+
+    const modal = new bootstrap.Modal(alertModal);
+    modal.show();
+
+    document.getElementById('confirmBtn').onclick = function() {
+        modal.hide();
+        if (onConfirm) onConfirm();
+    };
+
+    alertModal.addEventListener('hidden.bs.modal', function() {
+        alertButtons.innerHTML = '<button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>';
+    }, { once: true });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Elements
+    const viewsContainer = $('viewsContainer');
+    const measurementsContainer = $('measurementsContainer');
+    const addViewBtn = $('addViewBtn');
+    const addMeasurementBtn = $('addMeasurementBtn');
+    const viewTemplate = $('viewTemplate');
+    const measurementTemplate = $('measurementTemplate');
+    const hiddenViewsInput = $('id_expected_views');
+    const hiddenMeasurementsInput = $('id_expected_measurements');
+    const viewsCountBadge = $('viewsCount');
+    const measurementsCountBadge = $('measurementsCount');
+
+    let viewCounter = 0;
+    let measurementCounter = 0;
+
+    /* ----- Views ----- */
+    function attachViewEvents(item) {
+        if (!item) return;
+        const selectCb = item.querySelector('.view-select');
+        const removeBtn = item.querySelector('.remove-view-btn');
+        const dupBtn = item.querySelector('.duplicate-view');
+        const inputs = item.querySelectorAll('input');
+
+        if (selectCb) {
+            selectCb.addEventListener('change', function() {
+                item.classList.toggle('selected', this.checked);
+            });
+        }
+        if (removeBtn) removeBtn.addEventListener('click', function() {
+            showConfirm('Remove this image view?', 'Remove View', function() {
+                item.remove();
+                updateViewsJSON();
+                updateCounts();
+            });
+        });
+        if (dupBtn) dupBtn.addEventListener('click', function() {
+            const data = getViewData(item);
+            addView(data);
+        });
+        inputs.forEach(i => i.addEventListener('input', function() { updateViewsJSON(); }));
+    }
+
+    function addView(data = null) {
+        if (!viewTemplate || !viewsContainer) return;
+        viewCounter++;
+        const frag = viewTemplate.content.cloneNode(true);
+        const el = frag.querySelector('.view-item');
+        if (el) el.dataset.viewId = viewCounter;
+        viewsContainer.appendChild(frag);
+
+        const appended = viewsContainer.querySelector('.view-item[data-view-id="'+viewCounter+'"]') || viewsContainer.querySelector('.view-item:last-child');
+        attachViewEvents(appended);
+
+        if (data) fillViewData(appended, data);
+        updateViewsJSON();
+        updateCounts();
+    }
+
+    function fillViewData(item, data) {
+        if (!item || !data) return;
+        item.querySelector('.view-name').value = data.view || data.name || '';
+        item.querySelector('.view-description').value = data.description || '';
+        item.querySelector('.view-required').checked = (data.required === undefined) ? true : !!data.required;
+        updateViewsJSON();
+    }
+
+    function getViewData(item) {
+        return {
+            view: item.querySelector('.view-name') ? item.querySelector('.view-name').value.trim() : '',
+            description: item.querySelector('.view-description') ? item.querySelector('.view-description').value.trim() : '',
+            required: item.querySelector('.view-required') ? item.querySelector('.view-required').checked : false
+        };
+    }
+
+    function updateViewsJSON() {
+        if (!viewsContainer || !hiddenViewsInput) return;
+        const items = viewsContainer.querySelectorAll('.view-item');
+        const arr = Array.from(items).map(it => getViewData(it));
+        hiddenViewsInput.value = JSON.stringify(arr, null, 2);
+    }
+
+    /* ----- Measurements ----- */
+    function attachMeasurementEvents(item) {
+        if (!item) return;
+        const selectCb = item.querySelector('.measurement-select');
+        const removeBtn = item.querySelector('.remove-measurement-btn');
+        const dupBtn = item.querySelector('.duplicate-measurement');
+        const typeSelect = item.querySelector('.measurement-type');
+        const numericFields = item.querySelector('.numeric-fields');
+        const selectFields = item.querySelector('.select-fields');
+        const inputs = item.querySelectorAll('input, textarea, select');
+
+        if (selectCb) {
+            selectCb.addEventListener('change', function() { item.classList.toggle('selected', this.checked); });
+        }
+        if (removeBtn) removeBtn.addEventListener('click', function() {
+            showConfirm('Remove this measurement?', 'Remove Measurement', function() {
+                item.remove();
+                updateMeasurementsJSON();
+                updateCounts();
+            });
+        });
+        if (dupBtn) dupBtn.addEventListener('click', function() {
+            const data = getMeasurementData(item);
+            addMeasurement(data);
+        });
+        if (typeSelect) {
+            typeSelect.addEventListener('change', function() {
+                const t = this.value;
+                if (numericFields) numericFields.style.display = (t === 'numeric') ? 'block' : 'none';
+                if (selectFields) selectFields.style.display = (t === 'select') ? 'block' : 'none';
+                updateMeasurementsJSON();
+            });
+            typeSelect.dispatchEvent(new Event('change'));
+        }
+        inputs.forEach(i => i.addEventListener('input', function() { updateMeasurementsJSON(); }));
+    }
+
+    function addMeasurement(data = null) {
+        if (!measurementTemplate || !measurementsContainer) return;
+        measurementCounter++;
+        const frag = measurementTemplate.content.cloneNode(true);
+        const el = frag.querySelector('.measurement-item');
+        if (el) el.dataset.measurementId = measurementCounter;
+        measurementsContainer.appendChild(frag);
+
+        const appended = measurementsContainer.querySelector('.measurement-item[data-measurement-id="'+measurementCounter+'"]') || measurementsContainer.querySelector('.measurement-item:last-child');
+        attachMeasurementEvents(appended);
+
+        if (data) fillMeasurementData(appended, data);
+        updateMeasurementsJSON();
+        updateCounts();
+    }
+
+    function fillMeasurementData(item, data) {
+        if (!item || !data) return;
+        item.querySelector('.measurement-name').value = data.name || '';
+        item.querySelector('.measurement-type').value = data.type || 'text';
+        item.querySelector('.measurement-unit').value = data.unit || '';
+        item.querySelector('.measurement-required').checked = !!data.required;
+        item.querySelector('.measurement-notes').value = data.notes || '';
+        if (data.type === 'numeric' && data.normal_range) {
+            if (data.normal_range.min !== undefined) item.querySelector('.measurement-min').value = data.normal_range.min;
+            if (data.normal_range.max !== undefined) item.querySelector('.measurement-max').value = data.normal_range.max;
+        }
+        if (data.type === 'select' && data.options) {
+            item.querySelector('.measurement-options').value = Array.isArray(data.options) ? data.options.join('\n') : data.options;
+        }
+        // Trigger type change to show correct fields
+        const ts = item.querySelector('.measurement-type');
+        if (ts) ts.dispatchEvent(new Event('change'));
+        updateMeasurementsJSON();
+    }
+
+    function getMeasurementData(item) {
+        const name = item.querySelector('.measurement-name') ? item.querySelector('.measurement-name').value.trim() : '';
+        const type = item.querySelector('.measurement-type') ? item.querySelector('.measurement-type').value : 'text';
+        const unit = item.querySelector('.measurement-unit') ? item.querySelector('.measurement-unit').value.trim() : '';
+        const required = item.querySelector('.measurement-required') ? item.querySelector('.measurement-required').checked : false;
+        const notes = item.querySelector('.measurement-notes') ? item.querySelector('.measurement-notes').value.trim() : '';
+
+        const measurement = { name, type, unit, required };
+        if (notes) measurement.notes = notes;
+
+        if (type === 'numeric') {
+            const min = parseFloat(item.querySelector('.measurement-min').value);
+            const max = parseFloat(item.querySelector('.measurement-max').value);
+            if (!isNaN(min) || !isNaN(max)) {
+                measurement.normal_range = {};
+                if (!isNaN(min)) measurement.normal_range.min = min;
+                if (!isNaN(max)) measurement.normal_range.max = max;
+            }
+        } else if (type === 'select') {
+            const opts = item.querySelector('.measurement-options').value.trim();
+            if (opts) measurement.options = opts.split('\n').map(o => o.trim()).filter(Boolean);
+        }
+
+        return measurement;
+    }
+
+    function updateMeasurementsJSON() {
+        if (!measurementsContainer || !hiddenMeasurementsInput) return;
+        const items = measurementsContainer.querySelectorAll('.measurement-item');
+        const arr = Array.from(items).map(it => getMeasurementData(it));
+        hiddenMeasurementsInput.value = JSON.stringify(arr, null, 2);
+    }
+
+    /* ----- Counts & Utilities ----- */
+    function updateCounts() {
+        const vcount = viewsContainer ? viewsContainer.querySelectorAll('.view-item').length : 0;
+        const mcount = measurementsContainer ? measurementsContainer.querySelectorAll('.measurement-item').length : 0;
+        viewsCountBadge.textContent = vcount;
+        measurementsCountBadge.textContent = mcount;
+    }
+
+    // Reorder selected items (target: 'views' or 'measurements')
+    window.reorderItems = function(target, direction) {
+        const container = (target === 'views') ? viewsContainer : measurementsContainer;
+        if (!container) return showAlert('Nothing to reorder', 'Reorder', 'warning');
+
+        const selected = container.querySelectorAll('.selected');
+        if (selected.length === 0) return showAlert('Please select items to reorder', 'No Selection', 'warning');
+
+        selected.forEach(it => {
+            if (direction === 'up' && it.previousElementSibling) {
+                container.insertBefore(it, it.previousElementSibling);
+            } else if (direction === 'down' && it.nextElementSibling) {
+                container.insertBefore(it.nextElementSibling, it);
+            }
+        });
+
+        // Refresh JSONs & counts
+        updateViewsJSON();
+        updateMeasurementsJSON();
+        updateCounts();
+    };
+
+    // Preview Modal
+    window.previewChanges = function() {
+        updateViewsJSON();
+        updateMeasurementsJSON();
+
+        const views = JSON.parse(hiddenViewsInput.value || '[]');
+        const measurements = JSON.parse(hiddenMeasurementsInput.value || '[]');
+
+        let html = '<h5>Expected Image Views (' + views.length + ')</h5>';
+        html += '<div class="row">';
+        views.forEach(v => {
+            html += `<div class="col-md-4 mb-2"><div class="p-2 border rounded"><strong>${v.view || 'Unnamed'}</strong><div class="text-muted small">${v.description || '-'}</div><div class="mt-1"><small>${v.required ? '<span class="badge bg-success">Required</span>' : '<span class="badge bg-secondary">Optional</span>'}</small></div></div></div>`;
+        });
+        if (views.length === 0) html += '<div class="col-12"><div class="alert alert-info">No image views</div></div>';
+        html += '</div>';
+
+        html += '<hr>';
+        html += '<h5>Measurements (' + measurements.length + ')</h5>';
+        if (measurements.length) {
+            html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Name</th><th>Type</th><th>Unit</th><th>Details</th></tr></thead><tbody>';
+            measurements.forEach(m => {
+                let details = '';
+                if (m.type === 'numeric' && m.normal_range) {
+                    details = (m.normal_range.min || '') + (m.normal_range.min && m.normal_range.max ? ' - ' : '') + (m.normal_range.max || '');
+                } else if (m.type === 'select' && m.options) {
+                    details = (Array.isArray(m.options) ? m.options.join(', ') : m.options);
+                }
+                html += `<tr><td><strong>${m.name || 'Unnamed'}</strong></td><td>${(m.type || '').toUpperCase()}</td><td>${m.unit || '-'}</td><td>${details || '-'}</td></tr>`;
+            });
+            html += '</tbody></table></div>';
+        } else {
+            html += '<div class="alert alert-secondary">No measurements defined</div>';
+        }
+
+        document.getElementById('previewContent').innerHTML = html;
+        new bootstrap.Modal(document.getElementById('previewModal')).show();
+    };
+
+    // Warning
+    window.showWarning = function() {
+        showAlert('This template has active orders. Changes may affect existing scan orders. Proceed with caution.', 'Active Template Warning', 'warning');
+    };
+
+    // Form validation on submit: require at least one view OR one measurement, and at least one named item
+    const formEl = $('templateForm');
+    if (formEl) {
+        formEl.addEventListener('submit', function(e) {
+            updateViewsJSON();
+            updateMeasurementsJSON();
+
+            let views = [];
+            let measurements = [];
+            try { views = JSON.parse(hiddenViewsInput.value || '[]'); } catch(e) { views = []; }
+            try { measurements = JSON.parse(hiddenMeasurementsInput.value || '[]'); } catch(e) { measurements = []; }
+
+            if ((views.length === 0) && (measurements.length === 0)) {
+                e.preventDefault();
+                showAlert('Please add at least one image view OR at least one measurement.', 'Validation Error', 'warning');
+                return false;
+            }
+
+            const hasNamedView = views.some(v => v.view && v.view.trim().length > 0);
+            const hasNamedMeasurement = measurements.some(m => m.name && m.name.trim().length > 0);
+
+            if (!hasNamedView && !hasNamedMeasurement) {
+                e.preventDefault();
+                showAlert('Please provide a name for at least one image view or at least one measurement.', 'Validation Error', 'warning');
+                return false;
+            }
+
+            // If views present but all unnamed (and no named measurements) -> reject
+            const unnamedViews = views.filter(v => !v.view || !v.view.trim()).length;
+            if (views.length > 0 && unnamedViews === views.length && !hasNamedMeasurement) {
+                e.preventDefault();
+                showAlert('Please fill in names for your image views or add a named measurement.', 'Validation Error', 'warning');
+                return false;
+            }
+
+            // If measurements present but all unnamed (and no named views) -> reject
+            const unnamedMeasurements = measurements.filter(m => !m.name || !m.name.trim()).length;
+            if (measurements.length > 0 && unnamedMeasurements === measurements.length && !hasNamedView) {
+                e.preventDefault();
+                showAlert('Please fill in names for your measurements or add a named image view.', 'Validation Error', 'warning');
+                return false;
+            }
+
+            // all good -> allow submit
+        });
+    }
+
+    // Load existing JSON content into UI on page load
+    function loadExisting() {
+        // Views
+        try {
+            const existingViews = JSON.parse(hiddenViewsInput.value || '[]');
+            if (Array.isArray(existingViews) && existingViews.length) {
+                existingViews.forEach(v => addView({ view: v.view || v.name, description: v.description, required: v.required }));
+            }
+        } catch (e) { console.warn('Error parsing existing views', e); }
+
+        // Measurements
+        try {
+            const existingMeasurements = JSON.parse(hiddenMeasurementsInput.value || '[]');
+            if (Array.isArray(existingMeasurements) && existingMeasurements.length) {
+                alert(existingMeasurements)
+                existingMeasurements.forEach(m => addMeasurement(m));
+            } else if (template && template.scan_parameters && template.scan_parameters.measurements) {
+                // fallback: if server stored measurements inside scan_parameters
+                try {
+                    const fromScanParams = template.scan_parameters.measurements || [];
+                    fromScanParams.forEach(m => addMeasurement(m));
+                } catch (e) { /* ignore */ }
+            }
+        } catch (e) { console.warn('Error parsing existing measurements', e); }
+
+        updateCounts();
+    }
+
+    // Hook events
+    if (addViewBtn) addViewBtn.addEventListener('click', () => addView());
+    if (addMeasurementBtn) addMeasurementBtn.addEventListener('click', () => addMeasurement());
+
+    // Initialize
+    loadExisting();
+    updateCounts();
+});
+</script>
+
+{% endblock %}

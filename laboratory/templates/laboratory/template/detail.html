@@ -10,7 +10,7 @@
                 <div class="d-flex justify-content-between align-items-start mb-4">
                     <div>
                         <h4 class="card-title mb-2">{{ template.name|upper }}</h4>
-                        <p class="mb-0">Template Code: {{ template.code|upper }}</p>
+                        <p class="mb-0">Test Code: {{ template.code|upper }}</p>
                     </div>
                     <div class="text-end mt-3">
                         <a href="{% url 'lab_template_edit' template.pk %}" class="btn btn-primary btn-sm me-2">
@@ -19,6 +19,19 @@
                         <a href="{% url 'lab_template_delete' template.pk %}" class="btn btn-danger btn-sm">
                             <i class="mdi mdi-delete"></i> Delete
                         </a>
+
+                        {% if template.is_active %}
+                                <button type="button" class="btn btn-sm btn-secondary" title="Deactivate Test"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#confirmationModal">
+                                    <i class="bi bi-power"></i>
+                                </button>
+                            {% else %}
+                                <button type="button" class="btn btn-sm btn-success" title="Activate Test"
+                                        data-bs-toggle="modal" data-bs-target="#confirmationModal">
+                                    <i class="bi bi-check-circle"></i>
+                                </button>
+                            {% endif %}
                     </div>
                 </div>
 
@@ -39,6 +52,8 @@
                             <span class="text-success">Active</span>
                         {% else %}
                             <span class="text-danger">Inactive</span>
+                            <br>
+                            <span><strong>Reason: {{template.reason_for_deactivate}}</strong></span>
                         {% endif %}
                     </p>
                 </div>
@@ -72,11 +87,22 @@
                                         <td>{{ param.unit|default:"-" }}</td>
                                         <td>
                                             {% if param.normal_range %}
-                                                {% if param.normal_range.min %}{{ param.normal_range.min }}{% endif %}
-                                                {% if param.normal_range.min and param.normal_range.max %} - {% endif %}
-                                                {% if param.normal_range.max %}{{ param.normal_range.max }}{% endif %}
                                                 {% if param.normal_range.gender_specific %}
-                                                    <small class="text-muted">(Gender specific)</small>
+                                                    <small>
+                                                        <strong>M:</strong>
+                                                        {% if param.normal_range.male.min %}{{ param.normal_range.male.min }}{% endif %}
+                                                        {% if param.normal_range.male.min and param.normal_range.male.max %}-{% endif %}
+                                                        {% if param.normal_range.male.max %}{{ param.normal_range.male.max }}{% endif %}
+                                                        <br>
+                                                        <strong>F:</strong>
+                                                        {% if param.normal_range.female.min %}{{ param.normal_range.female.min }}{% endif %}
+                                                        {% if param.normal_range.female.min and param.normal_range.female.max %}-{% endif %}
+                                                        {% if param.normal_range.female.max %}{{ param.normal_range.female.max }}{% endif %}
+                                                    </small>
+                                                {% else %}
+                                                    {% if param.normal_range.min %}{{ param.normal_range.min }}{% endif %}
+                                                    {% if param.normal_range.min and param.normal_range.max %} - {% endif %}
+                                                    {% if param.normal_range.max %}{{ param.normal_range.max }}{% endif %}
                                                 {% endif %}
                                             {% else %}
                                                 -
@@ -204,9 +230,23 @@
                                         <td>{{ param.unit|default:"-" }}</td>
                                         <td>
                                             {% if param.normal_range %}
-                                                {% if param.normal_range.min %}{{ param.normal_range.min }}{% endif %}
-                                                {% if param.normal_range.min and param.normal_range.max %} - {% endif %}
-                                                {% if param.normal_range.max %}{{ param.normal_range.max }}{% endif %}
+                                                {% if param.normal_range.gender_specific %}
+                                                    <small>
+                                                        <strong>M:</strong>
+                                                        {% if param.normal_range.male.min %}{{ param.normal_range.male.min }}{% endif %}
+                                                        {% if param.normal_range.male.min and param.normal_range.male.max %}-{% endif %}
+                                                        {% if param.normal_range.male.max %}{{ param.normal_range.male.max }}{% endif %}
+                                                        <br>
+                                                        <strong>F:</strong>
+                                                        {% if param.normal_range.female.min %}{{ param.normal_range.female.min }}{% endif %}
+                                                        {% if param.normal_range.female.min and param.normal_range.female.max %}-{% endif %}
+                                                        {% if param.normal_range.female.max %}{{ param.normal_range.female.max }}{% endif %}
+                                                    </small>
+                                                {% else %}
+                                                    {% if param.normal_range.min %}{{ param.normal_range.min }}{% endif %}
+                                                    {% if param.normal_range.min and param.normal_range.max %} - {% endif %}
+                                                    {% if param.normal_range.max %}{{ param.normal_range.max }}{% endif %}
+                                                {% endif %}
                                             {% else %}
                                                 -
                                             {% endif %}
@@ -319,6 +359,42 @@
     </div>
 </div>
 
+<form id="modal-confirm-form" method="POST" action="{% url 'lab_template_toggle' template.pk %}" class="d-inline">
+    <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+              <h5 class="modal-title" id="confirmationModalLabel"><b>Confirm Action</b></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            Are you sure you want to
+              {% if template.is_active %}
+              <strong class="text-danger">Deactivate</strong>
+              {% else %}
+              <strong class="text-success">Activate</strong>
+              {% endif %}
+              this Lab Test??
+
+              {% if template.is_active %}
+              <input type="hidden" value="deactivate" name="action">
+              <br><br>
+              <input type="text" name="reason" class="form-control" required placeholder="Reason for Deactivation">
+              {% else %}
+              <input type="hidden" value="activate" name="action">
+              {% endif %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary">Confirm</button>
+
+          </div>
+        </div>
+      </div>
+    </div>
+ </form>
 <style>
 .sample-data {
     color: #6c757d;

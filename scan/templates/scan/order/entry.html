@@ -1,0 +1,232 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Radiology / Scan - Patient Verification</h4>
+            <p class="card-description">Enter patient card number to access their scan orders or create a new scan.</p>
+
+            <!-- Error Container -->
+            <div id="error-container" style="display:none;">
+                <div class="alert alert-danger d-flex align-items-center" role="alert">
+                    <i class="mdi mdi-alert-circle me-2"></i>
+                    <div id="error-message" class="flex-grow-1"></div>
+                    <button type="button" class="btn-close ms-2" onclick="hideError()"></button>
+                </div>
+            </div>
+
+            <!-- Patient Verification Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Patient Verification</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-6">
+                            <label for="card-number-input" class="form-label">Patient Card Number <span class="text-danger">*</span></label>
+                            <input type="text" id="card-number-input" class="form-control" placeholder="Enter patient card number..." autocomplete="off" />
+                            <small class="text-muted">Type the patient's card number and click Verify.</small>
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" id="verify-patient-btn" class="btn btn-primary">
+                                <i class="mdi mdi-account-search me-1"></i> Verify Patient
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Patient Details (hidden until verified) -->
+            <div id="patient-details-section" class="card mb-4" style="display:none;">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="mdi mdi-check-circle me-2"></i>Patient Verified</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- Patient Info -->
+                        <div class="col-lg-8" id="patient-info">
+                            <!-- filled by JS -->
+                        </div>
+
+                        <!-- Scan Summary -->
+                        <div class="col-lg-4">
+                            <div id="order-summary"></div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="mt-4 d-flex gap-2">
+                        <button type="button" id="view-orders-btn" class="btn btn-info">
+                            <i class="mdi mdi-image-multiple me-2"></i> View Scans
+                        </button>
+
+                        <button type="button" id="new-scan-btn" class="btn btn-success">
+                            <i class="mdi mdi-plus-circle me-2"></i> Order New Scan
+                        </button>
+
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<style>
+/* Small niceties */
+#order-summary .list-group-item { display:flex; justify-content:space-between; align-items:center; }
+#patient-info h6 { margin-bottom: .5rem; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const cardNumberInput = document.getElementById('card-number-input');
+    const verifyPatientBtn = document.getElementById('verify-patient-btn');
+    const patientDetailsSection = document.getElementById('patient-details-section');
+    const viewOrdersBtn = document.getElementById('view-orders-btn');
+    const newScanBtn = document.getElementById('new-scan-btn');
+    const errorContainer = document.getElementById('error-container');
+    const errorMessage = document.getElementById('error-message');
+    const patientInfoEl = document.getElementById('patient-info');
+    const orderSummaryEl = document.getElementById('order-summary');
+
+    let currentPatient = null;
+
+    function showError(msg) {
+        if (!errorMessage) { alert(msg); return; }
+        errorMessage.innerHTML = `<strong>${msg}</strong>`;
+        errorContainer.style.display = 'block';
+        errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    window.hideError = function() {
+        if (errorContainer) errorContainer.style.display = 'none';
+    };
+
+    // Build a summary row
+    function summaryRow(label, count, badgeClass='bg-secondary') {
+        return `<div class="list-group-item">
+                    <span>${label}</span>
+                    <span class="badge ${badgeClass}">${count}</span>
+                </div>`;
+    }
+
+    function safe(val, fallback='N/A') {
+        return (val !== undefined && val !== null && String(val).trim() !== '') ? val : fallback;
+    }
+
+    function renderPatient(patient, scanCounts) {
+        const phone = safe(patient.phone || patient.mobile, 'N/A');
+        const card = safe(patient.patient_id || patient.card_number, 'N/A');
+        const fullname = safe(patient.full_name || patient.name, 'Unknown');
+        const age = safe(patient.age, '');
+        const gender = safe(patient.gender, 'N/A');
+        const address = safe(patient.address, 'N/A');
+
+        // patient info HTML
+        patientInfoEl.innerHTML = `
+            <h6 class="mb-2">${fullname}</h6>
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-1"><strong>Card Number:</strong> ${card}</p>
+                    <p class="mb-1"><strong>Phone:</strong> ${phone}</p>
+                    <p class="mb-1"><strong>Age:</strong> ${age || 'Not specified'}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="mb-1"><strong>Gender:</strong> ${gender}</p>
+                    <p class="mb-1"><strong>Address:</strong> ${address}</p>
+                </div>
+            </div>
+        `;
+
+        // normalize scanCounts with safe defaults
+        const sc = Object.assign({
+            total: 0, pending: 0, paid: 0, scheduled: 0, in_progress: 0, completed: 0, cancelled: 0
+        }, scanCounts || {});
+
+        let html = '<h6 class="mb-2">Scan Summary</h6><div class="list-group list-group-flush">';
+        html += summaryRow('Total Scans:', sc.total, 'bg-primary');
+        html += summaryRow('Pending Payment:', sc.pending, 'bg-warning');
+        html += summaryRow('Paid:', sc.paid, 'bg-info');
+        html += summaryRow('Scheduled:', sc.scheduled, 'bg-secondary');
+        html += summaryRow('In Progress:', sc.in_progress, 'bg-secondary');
+        html += summaryRow('Completed:', sc.completed, 'bg-success');
+        html += summaryRow('Cancelled:', sc.cancelled, 'bg-danger');
+        html += '</div>';
+        orderSummaryEl.innerHTML = html;
+
+        // show section
+        patientDetailsSection.style.display = 'block';
+        patientDetailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        // wire buttons
+        if (viewOrdersBtn) {
+            viewOrdersBtn.onclick = function() {
+                if (!currentPatient) return showError('No patient selected');
+                // replace 0 with patient id in the URL
+                window.location.href = `{% url 'patient_scan_orders' patient_id=0 %}`.replace('0', currentPatient.id);
+            };
+        }
+
+        if (newScanBtn) {
+            newScanBtn.onclick = function() {
+                if (!currentPatient) return showError('No patient selected');
+                window.location.href = `{% url 'scan_order_create' patient_id=0 %}`.replace('0', currentPatient.id);
+            };
+        }
+    }
+
+    // Perform AJAX verify
+    verifyPatientBtn.addEventListener('click', function () {
+        const card = cardNumberInput.value.trim();
+        if (!card) { showError('Please enter a patient card number'); return; }
+
+        verifyPatientBtn.disabled = true;
+        verifyPatientBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-1"></i> Verifying...';
+
+        fetch(`{% url 'verify_scan_patient_ajax' %}?card_number=${encodeURIComponent(card)}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        })
+        .then(r => {
+            if (!r.ok) throw new Error('Network error');
+            return r.json();
+        })
+        .then(data => {
+            if (data.success) {
+                currentPatient = data.patient || null;
+                const counts = data.scan_counts || data.scanCounts || {}; // be tolerant of naming
+                renderPatient(data.patient || {}, counts);
+                hideError();
+            } else {
+                currentPatient = null;
+                showError(data.error || 'Patient not found');
+                if (patientDetailsSection) patientDetailsSection.style.display = 'none';
+            }
+        })
+        .catch(err => {
+            console.error('Verify error', err);
+            currentPatient = null;
+            showError('An error occurred while verifying patient. Please try again.');
+            if (patientDetailsSection) patientDetailsSection.style.display = 'none';
+        })
+        .finally(() => {
+            verifyPatientBtn.disabled = false;
+            verifyPatientBtn.innerHTML = '<i class="mdi mdi-account-search me-1"></i> Verify Patient';
+        });
+    });
+
+    // allow Enter to trigger verify
+    cardNumberInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') verifyPatientBtn.click();
+    });
+
+    // focus
+    if (cardNumberInput) cardNumberInput.focus();
+});
+</script>
+
+{% endblock %}

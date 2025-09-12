@@ -1,0 +1,45 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Scan Template</h4>
+            <p>Template: <i>{{ template.name|upper }}</i></p>
+
+            <p>The Scan Template will be permanently deleted from the system.</p>
+
+            {% if template.scan_parameters %}
+                <p><b>Note:</b> This template has defined scan parameters (preparation, procedure steps, measurements, etc.) that will no longer be available for future orders.</p>
+            {% else %}
+                <p>This template does not have specific scan parameters defined.</p>
+            {% endif %}
+
+            {% if template.expected_images and template.expected_images|length > 0 %}
+                <p><b>Images:</b> This template defines <strong>{{ template.expected_images|length }}</strong> expected image view{{ template.expected_images|length|pluralize }} which will be removed.</p>
+            {% endif %}
+
+            {# Count linked orders through the related_name 'orders' on the template FK #}
+            {% with order_count=template.orders.all|length %}
+                {% if order_count > 0 %}
+                    <p>
+                        <span class="text-danger">{{ order_count }}</span>
+                        order{{ order_count|pluralize }} are linked to this template.
+                        Deleting it will not remove existing orders but may break references or reporting for those orders.
+                    </p>
+                {% else %}
+                    <p>There are currently no orders linked to this template.</p>
+                {% endif %}
+            {% endwith %}
+
+            <form method="post" style="display:inline">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a href="{% url 'scan_template_index' %}" class="btn btn-danger">Cancel</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,500 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card" id="patient-info-container" data-wallet-balance="{{ patient.wallet.amount }}">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="card-title mb-0">Scans - {{ patient|title }}</h4>
+                <h4 class="card-title mb-0" style="margin-top:-20px">Wallet Balance: <span id="wallet-balance-display">₦{{ patient.wallet.amount|intcomma }}</span></h4>
+                <p class="card-description mb-0">Card Number: {{ patient.card_number|upper }}</p>
+            </div>
+            <div>
+                <a href="{% url 'scan_order_create' patient_id=patient.id %}" class="btn btn-success">
+                    <i class="mdi mdi-plus-circle me-2"></i>Order New Scan
+                </a>
+                <a href="{% url 'scan_entry' %}" class="btn btn-secondary ms-2">
+                    <i class="mdi mdi-arrow-left me-2"></i>Back to Entry
+                </a>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <div class="row mb-4">
+                <div class="col-3">
+                    <div class="card bg-info text-white h-70">
+                        <div class="card-body text-center p-3 d-flex flex-column justify-content-center">
+                            <h5 class="mb-1 fs-4">{{ scan_counts.paid }}</h5>
+                            <small class="text-nowrap">Paid</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-3">
+                    <div class="card bg-secondary text-white h-70">
+                        <div class="card-body text-center p-3 d-flex flex-column justify-content-center">
+                            <h5 class="mb-1 fs-4">{{ scan_counts.scheduled }}</h5>
+                            <small class="text-nowrap">Scheduled</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-3">
+                    <div class="card bg-dark text-white h-70">
+                        <div class="card-body text-center p-3 d-flex flex-column justify-content-center">
+                            <h5 class="mb-1 fs-4">{{ scan_counts.in_progress }}</h5>
+                            <small class="text-nowrap">In Progress</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-3">
+                    <div class="card bg-success text-white h-70">
+                        <div class="card-body text-center p-3 d-flex flex-column justify-content-center">
+                            <h5 class="mb-1 fs-4">{{ scan_counts.completed }}</h5>
+                            <small class="text-nowrap">Completed</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <select id="status-filter" class="form-control">
+                        <option value="">All Statuses</option>
+                        {% for status_code, status_name in status_choices %}
+                            <option value="{{ status_code }}" {% if request.GET.status == status_code %}selected{% endif %}>
+                                {{ status_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    {% if scan_counts.pending > 0 %}
+                        <button type="button" id="pay-selected-btn" class="btn btn-warning" disabled>
+                            <i class="mdi mdi-credit-card me-2"></i>Pay Selected Scans
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if not orders_by_date %}
+                <div class="text-center py-5">
+                    <i class="mdi mdi-radiology-box" style="font-size: 4rem; color: #ccc;"></i>
+                    <h5 class="mt-3 text-muted">No Scans Found</h5>
+                    <p class="text-muted">This patient has no scan orders yet.</p>
+                    <a href="{% url 'scan_order_create_for_patient' patient_id=patient.id %}" class="btn btn-success">
+                        <i class="mdi mdi-plus-circle me-2"></i>Order First Scan
+                    </a>
+                </div>
+            {% else %}
+                <form id="payment-form" method="post">
+                    {% csrf_token %}
+                    {% for date, date_orders in orders_by_date.items %}
+                        <div class="row mb-2">
+                            <div class="col-12">
+                                <div class="bg-light p-2 rounded">
+                                    <h6 class="mb-0 text-primary">
+                                        <i class="mdi mdi-calendar me-2"></i>{{ date|date:"F d, Y" }}
+                                        <small class="text-muted">({{ date_orders|length }} scan{{ date_orders|length|pluralize }})</small>
+                                    </h6>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% for order in date_orders %}
+                            <div class="row mb-2">
+                                <div class="col-12">
+                                    <div class="card border-left-{% if order.status == 'pending' %}warning{% elif order.status == 'paid' %}info{% elif order.status == 'scheduled' %}secondary{% elif order.status == 'in_progress' %}dark{% elif order.status == 'completed' %}success{% else %}light{% endif %}">
+                                        <div class="card-body p-3">
+                                            <div class="row align-items-center">
+                                                <div class="col-md-1">
+                                                    {% if order.status == 'pending' %}
+                                                        <div class="form-check">
+                                                            <input class="form-check-input payment-checkbox" type="checkbox"
+                                                                   value="{{ order.id }}" id="order_{{ order.id }}"
+                                                                   data-amount="{{ order.amount_charged|default:order.template.price }}">
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
+
+                                                <div class="col-md-4">
+                                                    <h6 class="mb-1">{{ order.template.name }}</h6>
+                                                    <small class="text-muted">
+                                                        {{ order.template.category.name }} |
+                                                        Order #{{ order.order_number }}
+                                                    </small>
+                                                </div>
+
+                                                <div class="col-md-2">
+                                                    <span class="badge badge-{% if order.status == 'pending' %}warning{% elif order.status == 'paid' %}info{% elif order.status == 'scheduled' %}secondary{% elif order.status == 'in_progress' %}dark{% elif order.status == 'completed' %}success{% else %}light{% endif %}">
+                                                        {{ order.get_status_display }}
+                                                    </span>
+                                                </div>
+
+                                                <div class="col-md-2">
+                                                    <strong>₦{{ order.amount_charged|default:order.template.price|intcomma }}</strong>
+                                                </div>
+
+                                                <div class="col-md-3 text-end">
+                                                    {% if order.status == 'pending' %}
+                                                        <small class="text-muted">Awaiting payment</small>
+                                                    {% elif order.status == 'paid' %}
+                                                        <button type="button" class="btn btn-sm btn-info schedule-scan-btn"
+                                                                data-order-id="{{ order.id }}" data-scan-name="{{ order.template.name }}">
+                                                            <i class="mdi mdi-calendar-clock me-1"></i>Schedule Scan
+                                                        </button>
+                                                    {% elif order.status == 'scheduled' %}
+                                                        <button type="button" class="btn btn-sm btn-dark start-scan-btn" data-url="{% url 'start_scan' order.id %}">
+                                                            <i class="mdi mdi-play-circle me-1"></i>Start Scan
+                                                        </button>
+                                                    {% elif order.status == 'in_progress' %}
+                                                        <a href="{% url 'scan_result_create_for_order' order.id %}" class="btn btn-sm btn-secondary">
+                                                            <i class="mdi mdi-clipboard-text me-1"></i>Input Results
+                                                        </a>
+                                                    {% elif order.status == 'completed' %}
+                                                        <a href="{% url 'scan_result_detail' order.result.id %}" class="btn btn-sm btn-success">
+                                                            <i class="mdi mdi-eye me-1"></i>View Results
+                                                        </a>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% endfor %}
+                </form>
+
+                {% if is_paginated %}
+                    <nav aria-label="Scan pagination">
+                        <ul class="pagination justify-content-center mt-4">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">First</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Previous</a>
+                                </li>
+                            {% endif %}
+
+                            <li class="page-item active">
+                                <span class="page-link">
+                                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                                </span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Next</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Last</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="infoModalLabel">Notification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="infoModalBody">
+                </div>
+            <div class="modal-footer" id="infoModalFooter">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="scheduleScanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Schedule Scan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="schedule-scan-form">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Scan Name</label>
+                        <input type="text" id="schedule-scan-name" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="schedule-date">Scheduled Date & Time <span class="text-danger">*</span></label>
+                        <input type="datetime-local" id="schedule-date" class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-info">
+                        <i class="mdi mdi-calendar-check me-2"></i>Confirm Schedule
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.card .border-left-warning { border-left: 4px solid #ffc107 !important; }
+.card .border-left-info { border-left: 4px solid #17a2b8 !important; }
+.card .border-left-secondary { border-left: 4px solid #6c757d !important; }
+.card .border-left-dark { border-left: 4px solid #343a40 !important; }
+.card .border-left-success { border-left: 4px solid #28a745 !important; }
+.card .border-left-light { border-left: 4px solid #f8f9fa !important; }
+.row .col-3 .card { min-height: 90px; }
+.card:hover { transform: translateY(-2px); transition: all 0.3s ease; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); }
+.btn:hover { transform: translateY(-1px); transition: all 0.2s ease; }
+.btn-loading { position: relative; color: transparent !important; pointer-events: none; }
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 16px; height: 16px; top: 0; left: 0; right: 0; bottom: 0;
+    margin: auto; border: 2px solid transparent; border-top-color: #ffffff;
+    border-radius: 50%; animation: button-loading-spinner 1s ease infinite;
+}
+@keyframes button-loading-spinner { from { transform: rotate(0turn); } to { transform: rotate(1turn); } }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // ================================== DOM ELEMENTS ==================================
+    const statusFilter = document.getElementById('status-filter');
+    const paySelectedBtn = document.getElementById('pay-selected-btn');
+    const paymentCheckboxes = document.querySelectorAll('.payment-checkbox');
+    const scheduleScanBtns = document.querySelectorAll('.schedule-scan-btn');
+    const startScanBtns = document.querySelectorAll('.start-scan-btn');
+
+    // Modals
+    const scheduleScanModal = new bootstrap.Modal(document.getElementById('scheduleScanModal'));
+    const infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
+    const scheduleScanForm = document.getElementById('schedule-scan-form');
+
+    let currentOrderId = null;
+
+    // ================================== MODAL SYSTEM ==================================
+    function showModal(title, message, type = 'info', buttons = [], autoReload = false) {
+        const modalTitle = document.getElementById('infoModalLabel');
+        const modalBody = document.getElementById('infoModalBody');
+        const modalFooter = document.getElementById('infoModalFooter');
+        const modalHeader = document.querySelector('#infoModal .modal-header');
+
+        modalTitle.textContent = title;
+        modalBody.innerHTML = message;
+
+        modalFooter.innerHTML = '';
+        modalHeader.className = 'modal-header';
+
+        const typeClasses = {
+            success: 'bg-success text-white', error: 'bg-danger text-white',
+            warning: 'bg-warning text-dark', info: 'bg-info text-white'
+        };
+        if (typeClasses[type]) {
+            modalHeader.classList.add(...typeClasses[type].split(' '));
+        }
+
+        if (buttons.length === 0) {
+            buttons.push({ text: 'Close', class: 'btn-secondary', action: () => infoModal.hide() });
+        }
+
+        buttons.forEach(btnInfo => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = btnInfo.text;
+            button.className = `btn ${btnInfo.class}`;
+            button.addEventListener('click', () => {
+                if (btnInfo.action) { btnInfo.action(); }
+                else { infoModal.hide(); }
+            });
+            modalFooter.appendChild(button);
+        });
+
+        const modalElement = document.getElementById('infoModal');
+        const onHideHandler = () => {
+            if (autoReload && type === 'success') { location.reload(); }
+            modalElement.removeEventListener('hidden.bs.modal', onHideHandler);
+        };
+        modalElement.addEventListener('hidden.bs.modal', onHideHandler);
+        infoModal.show();
+    }
+
+    // ================================== EVENT LISTENERS ==================================
+    if (statusFilter) {
+        statusFilter.addEventListener('change', function() {
+            const status = this.value;
+            const url = new URL(window.location);
+            if (status) { url.searchParams.set('status', status); }
+            else { url.searchParams.delete('status'); }
+            window.location.href = url.toString();
+        });
+    }
+
+    function updatePayButton() {
+        const checkedBoxes = document.querySelectorAll('.payment-checkbox:checked');
+        if (paySelectedBtn) {
+            paySelectedBtn.disabled = checkedBoxes.length === 0;
+            if (checkedBoxes.length > 0) {
+                paySelectedBtn.innerHTML = `<i class="mdi mdi-credit-card me-2"></i>Pay Selected (${checkedBoxes.length})`;
+            } else {
+                paySelectedBtn.innerHTML = '<i class="mdi mdi-credit-card me-2"></i>Pay Selected Scans';
+            }
+        }
+    }
+    paymentCheckboxes.forEach(checkbox => { checkbox.addEventListener('change', updatePayButton); });
+
+    if (paySelectedBtn) {
+        paySelectedBtn.addEventListener('click', function() {
+            const checkedBoxes = document.querySelectorAll('.payment-checkbox:checked');
+            const patientWallet = parseFloat(document.getElementById('patient-info-container').dataset.walletBalance);
+
+            if (checkedBoxes.length === 0) {
+                showModal('No Scans Selected', 'Please select at least one scan to pay for.', 'error');
+                return;
+            }
+
+            let totalCost = 0;
+            const selectedOrders = [];
+            checkedBoxes.forEach(cb => {
+                totalCost += parseFloat(cb.dataset.amount);
+                selectedOrders.push(cb.value);
+            });
+
+            if (totalCost > patientWallet) {
+                const message = `The total cost (<b>₦${totalCost.toLocaleString()}</b>) exceeds wallet balance (<b>₦${patientWallet.toLocaleString()}</b>).<br><br>Please fund the wallet.`;
+                showModal('Insufficient Funds', message, 'error');
+                return;
+            }
+
+            const confirmationMessage = `Process payment for <b>${selectedOrders.length} scan(s)</b>, totaling <b>₦${totalCost.toLocaleString()}</b>?`;
+            showModal('Confirm Payment', confirmationMessage, 'warning', [
+                { text: 'Cancel', class: 'btn-secondary', action: () => infoModal.hide() },
+                { text: 'Confirm Payment', class: 'btn-primary', action: () => processPayment(selectedOrders) }
+            ]);
+        });
+    }
+
+    scheduleScanBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentOrderId = this.dataset.orderId;
+            document.getElementById('schedule-scan-name').value = this.dataset.scanName;
+            document.getElementById('schedule-date').value = '';
+            scheduleScanModal.show();
+        });
+    });
+
+    if (scheduleScanForm) {
+        scheduleScanForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            scheduleScan(this);
+        });
+    }
+
+    startScanBtns.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const url = this.dataset.url;
+            const confirmationMessage = 'Are you sure you want to start this scan? This will move the order to "In Progress".';
+            showModal('Confirm Start Scan', confirmationMessage, 'info', [
+                { text: 'Cancel', class: 'btn-secondary' },
+                { text: 'Start Scan', class: 'btn-dark', action: () => startScanAction(url) }
+            ]);
+        });
+    });
+
+    // ================================== ASYNC FUNCTIONS ==================================
+    function processPayment(selectedOrders) {
+        infoModal.hide();
+        paySelectedBtn.classList.add('btn-loading');
+        paySelectedBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        selectedOrders.forEach(orderId => { formData.append('selected_orders', orderId); });
+
+        fetch('{% url "process_scan_payments" %}', { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) { showModal('Payment Successful', data.message, 'success', [], true); }
+            else { showModal('Payment Failed', data.error || 'An unexpected error occurred.', 'error'); }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showModal('Request Error', 'An error occurred while communicating with the server.', 'error');
+        })
+        .finally(() => {
+            paySelectedBtn.classList.remove('btn-loading');
+            paySelectedBtn.disabled = false;
+            updatePayButton();
+        });
+    }
+
+    function scheduleScan(form) {
+        const scheduleDate = document.getElementById('schedule-date').value;
+        if (!scheduleDate) {
+            showModal('Validation Error', 'Please select a date and time.', 'error');
+            return;
+        }
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        submitBtn.classList.add('btn-loading');
+        submitBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        formData.append('scheduled_date', scheduleDate);
+
+        fetch(`{% url "schedule_scan" 0 %}`.replace('0', currentOrderId), { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                scheduleScanModal.hide();
+                showModal('Scan Scheduled', data.message, 'success', [], true);
+            } else {
+                showModal('Scheduling Failed', data.error || 'An unexpected error occurred.', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showModal('Request Error', 'An error occurred while scheduling the scan.', 'error');
+        })
+        .finally(() => {
+            submitBtn.classList.remove('btn-loading');
+            submitBtn.disabled = false;
+        });
+    }
+
+    function startScanAction(url) {
+        infoModal.hide();
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showModal('Scan Started', data.message, 'success', [], true);
+            } else {
+                showModal('Action Failed', data.error || 'Could not start the scan.', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showModal('Request Error', 'An error occurred while starting the scan.', 'error');
+        });
+    }
+});
+</script>
+{% endblock %}

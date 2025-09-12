@@ -95,11 +95,7 @@ class ScanTemplateModel(models.Model):
 
     # Duration and preparation
     estimated_duration = models.CharField(max_length=50, blank=True, help_text="e.g., 30 minutes, 1 hour")
-    preparation_required = models.BooleanField(default=False)
     fasting_required = models.BooleanField(default=False)
-
-    # Equipment and requirements
-    equipment_required = models.TextField(blank=True, help_text="List of equipment/machines needed")
 
     # Keep it simple - add more fields later as needed
 
@@ -177,19 +173,33 @@ class ScanImageModel(models.Model):
         return f"{self.scan_result} - {self.view_type} #{self.sequence_number}"
 
 
-# Example usage in your scan results model
-
-
-# 3. SCAN ORDERS (When a scan is requested)
 class ScanOrderModel(models.Model):
     """Individual scan orders for patients"""
     # Using Patient model from your existing system
-    patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE, related_name='scan_orders')
-    template = models.ForeignKey(ScanTemplateModel, on_delete=models.CASCADE, related_name='orders')
+    patient = models.ForeignKey(
+        'patient.PatientModel',
+        on_delete=models.CASCADE,
+        related_name='scan_orders'
+    )
+
+    # Template remains required at DB level (you set it when creating orders programmatically)
+    template = models.ForeignKey(
+        'ScanTemplateModel',
+        on_delete=models.CASCADE,
+        related_name='orders'
+    )
 
     # Order details
     order_number = models.CharField(max_length=20, unique=True, blank=True)
-    ordered_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='ordered_scans')
+
+    # ordered_by: allow blank in forms and be nullable so admin/tools can leave it empty
+    ordered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ordered_scans'
+    )
 
     # Status tracking
     STATUS_CHOICES = [
@@ -200,7 +210,9 @@ class ScanOrderModel(models.Model):
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
     ]
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    # blank=True so ModelForm won't require it; default keeps behavior if omitted
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', blank=True)
+
     admission = models.ForeignKey(
         'inpatient.Admission',
         on_delete=models.SET_NULL,
@@ -224,20 +236,39 @@ class ScanOrderModel(models.Model):
         blank=True,
         related_name='scan_consultation_order',
     )
+
     # Payment
     amount_charged = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     payment_status = models.BooleanField(default=False)
     payment_date = models.DateTimeField(blank=True, null=True)
-    payment_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='processed_scan_payments')
+    payment_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='processed_scan_payments'
+    )
 
     # Scheduling
     scheduled_date = models.DateTimeField(blank=True, null=True)
-    scheduled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='scheduled_scans')
+    scheduled_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scheduled_scans'
+    )
 
     # Execution
     scan_started_at = models.DateTimeField(blank=True, null=True)
     scan_completed_at = models.DateTimeField(blank=True, null=True)
-    performed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='performed_scans')
+    performed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='performed_scans'
+    )
 
     # Dates
     ordered_at = models.DateTimeField(auto_now_add=True)
@@ -280,34 +311,151 @@ class ScanOrderModel(models.Model):
 
 
 class ScanResultModel(models.Model):
-    """Actual scan execution results"""
-    order = models.OneToOneField(ScanOrderModel, on_delete=models.CASCADE)
-    patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE)
+    """Actual scan execution results - Enhanced with report handling"""
+    order = models.OneToOneField(ScanOrderModel, on_delete=models.CASCADE, related_name='result')
 
-    # Results and findings
-    findings = models.TextField(blank=True)
-    impression = models.TextField(blank=True)
+    # === CORE FINDINGS ===
+    findings = models.TextField(blank=True, help_text="Primary scan findings")
+    impression = models.TextField(blank=True, help_text="Clinical impression/diagnosis")
+    recommendations = models.TextField(blank=True, help_text="Follow-up recommendations")
+    technician_comments = models.TextField(blank=True, help_text="Technical notes")
 
-    # Status
-    status = models.CharField(
-        max_length=20,
-        choices=[
-            ('pending', 'Pending'),
-            ('in_progress', 'In Progress'),
-            ('completed', 'Completed'),
-            ('reviewed', 'Reviewed'),
-        ],
-        default='pending'
+    # === TIMING ===
+    performed_at = models.DateTimeField()
+    report_date = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="When report was finalized"
     )
 
-    performed_at = models.DateTimeField()
-    performed_by = models.ForeignKey('human_resource.StaffModel', on_delete=models.CASCADE)
+    # === STAFF TRACKING ===
+    performed_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='performed_scan_results'
+    )
 
-    # Images are handled by ScanImageModel with related_name='images'
-    # Access via: scan_result.images.all()
+    # === STATUS MANAGEMENT ===
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('pending_review', 'Pending Review'),
+        ('reviewed', 'Reviewed'),
+        ('finalized', 'Finalized'),
+        ('amended', 'Amended'),
+    ]
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='draft'
+    )
 
+    # === VERIFICATION ===
+    is_verified = models.BooleanField(default=False)
+    verified_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_scan_results'
+    )
+    verified_at = models.DateTimeField(blank=True, null=True)
+
+    # === REPORT IMAGE HANDLING ===
+    radiology_report_image = models.ImageField(
+        upload_to='radiology_reports/%Y/%m/',
+        blank=True,
+        null=True,
+        help_text="Uploaded radiology report image"
+    )
+
+    # === EXTRACTED/STRUCTURED DATA ===
+    # Template-based measurements (matching ScanTemplateModel.scan_parameters)
+    measured_values = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="""
+        Actual measured values matching template structure:
+        {
+            "measurements": [
+                {
+                    "code": "HR",
+                    "value": 85,
+                    "unit": "bpm", 
+                    "normal": true,
+                    "comment": "Within normal limits"
+                }
+            ],
+            "technical_factors": {
+                "kvp": 120,
+                "mas": 100,
+                "exposure_time": "0.5s"
+            }
+        }
+        """
+    )
+
+    # Free-form extracted data from report images
+    extracted_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="""
+        Key findings extracted from report image:
+        {
+            "key_findings": ["Heart size normal", "Lung fields clear"],
+            "abnormalities": [],
+            "follow_up_required": false
+        }
+        """
+    )
+
+    # === EXTRACTION TRACKING ===
+    report_extracted = models.BooleanField(default=False)
+    extracted_by = models.ForeignKey(
+        'human_resource.StaffModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='extracted_scan_reports'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'scan_results'
+        ordering = ['-performed_at']
+
+    def __str__(self):
+        return f"{self.order.template.name} - {self.performed_at.date()}"
+
+    # === HELPER METHODS ===
+    def get_readable_findings(self):
+        """Get findings - from extracted data or original text"""
+        if self.extracted_data and 'key_findings' in self.extracted_data:
+            return self.extracted_data['key_findings']
+        return self.findings
+
+    def has_report_image(self):
+        """Check if radiology report image was uploaded"""
+        return bool(self.radiology_report_image)
+
+    @property
+    def measurements_data(self):
+        """
+        Backwards-compatible accessor for measured values.
+        Returns a dict with at least a 'measurements' key containing a list.
+        """
+        # measured_values is a JSONField with default=dict
+        mv = self.measured_values or {}
+        # Return a copy so callers can't accidentally mutate the stored JSON without using the model
+        data = dict(mv)
+        if 'measurements' not in data:
+            data['measurements'] = []
+        return data
+
+
+    def needs_extraction(self):
+        """Check if report image exists but extraction not done"""
+        return self.has_report_image() and not self.report_extracted
 
 
 # 5. SCAN EQUIPMENT (Equipment used for scans)
@@ -568,26 +716,31 @@ class ScanTemplateBuilderModel(models.Model):
 # 8. SCAN SETTINGS
 class ScanSettingModel(models.Model):
     """Scan department configuration settings"""
-    department_name = models.CharField(max_length=200, default="Diagnostic Imaging")
-    department_head = models.CharField(max_length=200, blank=True)
+    scan_name = models.CharField(max_length=200, blank=True, default='')
+    mobile = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(max_length=100, blank=True, null=True)
+    allow_direct_scan_order = models.BooleanField(
+        default=False,
+        help_text="Allow patients to order lab tests directly without a consultation (walk-in)."
+    )
 
-    # Appointment settings
-    default_appointment_duration = models.IntegerField(default=30, help_text="Default duration in minutes")
-    advance_booking_days = models.IntegerField(default=30, help_text="How many days ahead can appointments be booked")
+    # --- Reporting & Printing Settings ---
+    allow_result_print_in_scan = models.BooleanField(
+        default=True,
+        help_text="Allow staff in the scan department to print test results."
+    )
+    allow_result_printing_by_consultant = models.BooleanField(
+        default=True,
+        help_text="Allow the ordering consultant/doctor to print test results from their dashboard."
+    )
 
-    # Working hours
-    working_hours_start = models.TimeField(default="08:00")
-    working_hours_end = models.TimeField(default="17:00")
-
-    # Notifications
-    send_appointment_reminders = models.BooleanField(default=True)
-    reminder_hours_before = models.IntegerField(default=24)
-
-    created_at = models.DateTimeField(auto_now_add=True)
+    # --- Timestamps ---
     updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
         db_table = 'scan_settings'
 
     def __str__(self):
-        return f"{self.department_name} Settings"
+        return f"{self.scan_name} Settings"
+

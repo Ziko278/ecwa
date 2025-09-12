@@ -1,0 +1,400 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="row">
+    <!-- Template Details Card -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-4">
+                    <div>
+                        <h4 class="card-title mb-2">{{ template.name|upper }}</h4>
+                        <p class="mb-0">Template Code: {{ template.code|upper }}</p>
+                    </div>
+                    <div class="text-end mt-3">
+                        <a href="{% url 'scan_template_edit' template.pk %}" class="btn btn-primary btn-sm me-2">
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </a>
+                        <a href="{% url 'scan_template_delete' template.pk %}" class="btn btn-danger btn-sm">
+                            <i class="mdi mdi-delete"></i> Delete
+                        </a>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <p><strong>Category:</strong> {{ template.category.name }}</p>
+                         <p><strong>Estimated Duration:</strong> {{ template.estimated_duration|default:"Not specified" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Price:</strong> ₦{{ template.price|floatformat:2|intcomma }}</p>
+
+                        <p><strong>Fasting Required:</strong>
+                            {% if template.fasting_required %}<span class="text-warning">Yes (check hours)</span>{% else %}<span class="text-muted">No</span>{% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <p><strong>Status:</strong>
+                        {% if template.is_active %}
+                            <span class="text-success">Active</span>
+                        {% else %}
+                            <span class="text-danger">Inactive</span>
+                        {% endif %}
+                    </p>
+                </div>
+
+                <!-- Expected Images / Views -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Expected Image Views</h5>
+                    {% if template.expected_images %}
+                        <div class="row g-2">
+                            {% for img in template.expected_images %}
+                            <div class="col-md-6">
+                                <div class="card p-2">
+                                    <div class="d-flex justify-content-between">
+                                        <div>
+                                            <h6 class="mb-1">{{ img.view|default:img.name|default:"Unnamed View" }}</h6>
+                                            <p class="mb-0 small text-muted">{{ img.description|default:"No description" }}</p>
+                                        </div>
+                                        <div class="text-end">
+                                            {% if img.required %}
+                                                <span class="badge badge-pill bg-success">Required</span>
+                                            {% else %}
+                                                <span class="badge badge-pill bg-secondary">Optional</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <i class="mdi mdi-image-multiple"></i> No expected image views defined.
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Measurements (often stored in scan_parameters.measurements) -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Measurements / Extractables</h5>
+                    {% if template.scan_parameters.measurements %}
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Code</th>
+                                        <th>Type</th>
+                                        <th>Unit</th>
+                                        <th>Normal Range</th>
+                                        <th>Options</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for m in template.scan_parameters.measurements %}
+                                    <tr>
+                                        <td><strong>{{ m.name }}</strong></td>
+                                        <td><span class="text-secondary">{{ m.code|default:"-" }}</span></td>
+                                        <td>
+                                            <span class="text-{% if m.type == 'numeric' %}primary{% elif m.type == 'select' %}warning{% else %}dark{% endif %}">
+                                                {{ m.type|capfirst }}
+                                            </span>
+                                        </td>
+                                        <td>{{ m.unit|default:"-" }}</td>
+                                        <td>
+                                            {% if m.normal_range %}
+                                                {% if m.normal_range.min %}{{ m.normal_range.min }}{% endif %}
+                                                {% if m.normal_range.min and m.normal_range.max %} - {% endif %}
+                                                {% if m.normal_range.max %}{{ m.normal_range.max }}{% endif %}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if m.options %}
+                                                <small>{{ m.options|join:", " }}</small>
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            <i class="mdi mdi-alert"></i> No measurements defined for this template.
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Template Preview (Radiology report style) -->
+                <div class="mb-4">
+                    <h5 class="mb-3">
+                        Template Preview
+                        <button class="btn btn-success btn-sm ms-2" onclick="printReport()">
+                            <i class="mdi mdi-printer"></i> Print Preview
+                        </button>
+                    </h5>
+
+                    <div id="reportPreview" class="border rounded p-4" style="background-color: #fdfdfd;">
+                        <!-- Header -->
+                        <div class="text-center mb-4 border-bottom pb-3">
+                            <h3 class="text-primary mb-1">
+                                {% if lab_setting.lab_name %}{{ lab_setting.lab_name|upper }}{% else %}{{ site_info.name|upper }}{% endif %}
+                            </h3>
+                            <p class="mb-1">{{ site_info.address }}</p>
+                            <p class="mb-1">Tel: {{ site_info.mobile_1 }} | Email: {{ site_info.email|lower }}</p>
+                            <p class="mb-0"><strong>RADIOLOGY / SCAN REPORT</strong></p>
+                        </div>
+
+                        <!-- Patient & Scan Info -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <table class="table table-borderless table-sm">
+                                    <tr><td><strong>Patient Name:</strong></td><td class="sample-data">John Doe Adebayo</td></tr>
+                                    <tr><td><strong>Patient ID:</strong></td><td class="sample-data">PAT-2025-001</td></tr>
+                                    <tr><td><strong>Age/Sex:</strong></td><td class="sample-data">38 Years / Female</td></tr>
+                                    <tr><td><strong>Referring Doctor:</strong></td><td class="sample-data">Dr. Adaeze Chukwu</td></tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-borderless table-sm">
+                                    <tr><td><strong>Scan:</strong></td><td>{{ template.name }}</td></tr>
+                                    <tr><td><strong>Views Expected:</strong></td><td>{{ template.required_images_count }} required &middot; {{ template.expected_images|length }} total</td></tr>
+                                    <tr><td><strong>Performed At:</strong></td><td class="sample-data">02-Sep-2025 11:00 AM</td></tr>
+                                    <tr><td><strong>Report Date:</strong></td><td class="sample-data">02-Sep-2025 02:00 PM</td></tr>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Images preview (placeholders) -->
+                        <div class="mb-4">
+                            <h6 class="mb-3 text-uppercase" style="background-color: #e9ecef; padding: 8px;">IMAGES / VIEWS</h6>
+                            <div class="row">
+                                {% if template.expected_images %}
+                                    {% for img in template.expected_images %}
+                                    <div class="col-md-4 mb-3">
+                                        <div class="border rounded p-2 text-center" style="background:#fafafa;">
+                                            <div style="height:120px; display:flex; align-items:center; justify-content:center; color:#6c757d;">
+                                                <i class="mdi mdi-image-outline" style="font-size:32px;"></i>
+                                            </div>
+                                            <div class="mt-2">
+                                                <strong>{{ img.view|default:img.name|default:"View" }}</strong><br>
+                                                <small class="text-muted">{{ img.description|default:"-" }}</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="col-12">
+                                        <div class="alert alert-info mb-0">No image views configured for preview.</div>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Extracted Results / Measurements sample -->
+                        <div class="mb-4">
+                            <h6 class="mb-3 text-uppercase" style="background-color: #f8f9fa; padding:8px;">EXTRACTED / SAMPLE FINDINGS</h6>
+                            {% if template.scan_parameters.measurements %}
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr><th>Parameter</th><th>Sample Result</th><th>Unit</th><th>Normal Range</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for m in template.scan_parameters.measurements %}
+                                    <tr>
+                                        <td><strong>{{ m.name }}</strong></td>
+                                        <td class="sample-result">
+                                            {% if m.type == 'numeric' %}
+                                                <span class="sample-data">12.5</span>
+                                            {% else %}
+                                                <span class="sample-data">{{ m.options.0|default:"Present" }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ m.unit|default:"-" }}</td>
+                                        <td>
+                                            {% if m.normal_range %}
+                                                {% if m.normal_range.min %}{{ m.normal_range.min }}{% endif %}
+                                                {% if m.normal_range.min and m.normal_range.max %} - {% endif %}
+                                                {% if m.normal_range.max %}{{ m.normal_range.max }}{% endif %}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% else %}
+                                <div class="alert alert-secondary">No extractable measurements defined for sample results.</div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Comments & Signatures -->
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <div class="border-top pt-3">
+                                    <p><strong>Findings / Comments:</strong></p>
+                                    <p class="sample-data text-muted">No acute abnormality identified in this sample preview.</p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="border-top pt-3 text-end">
+                                    <p><strong>Radiologist:</strong></p>
+                                    <p class="sample-data">_______________________</p>
+                                    <p class="small">Dr. Example Name, MD</p>
+                                    <p class="small sample-data">Date: 02-Sep-2025</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Footer -->
+                        <div class="text-center mt-4 pt-3 border-top">
+                            <small class="text-muted">
+                                This radiology report is electronically generated and valid without signature.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="col-lg-4">
+        <!-- Quick Stats -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Quick Stats</h5>
+                <div class="row text-center">
+                    <div class="col-6">
+                        <div class="mb-2">
+                            <h4 class="text-primary mb-0">{{ total_orders|default:0 }}</h4>
+                            <small class="text-muted">Total Orders</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mb-2">
+                            <h4 class="text-success mb-0">{{ template.scan_parameters.measurements|length|default:0 }}</h4>
+                            <small class="text-muted">Measurements</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3 text-center">
+                    <small class="text-muted">Required images: {{ template.required_images_count }}</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Orders -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Recent Orders</h5>
+                {% if recent_orders %}
+                    {% for order in recent_orders %}
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                        <div>
+                            <p class="mb-0"><strong>{{ order.patient|title }}</strong></p>
+                            <small class="text-muted">{{ order.ordered_at|date:"M d, Y" }}</small>
+                        </div>
+                        <span class="badge badge-{% if order.status == 'completed' %}success{% elif order.status == 'pending' %}warning{% else %}info{% endif %}">
+                            {{ order.get_status_display }}
+                        </span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No recent orders for this template.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Template Actions -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Actions</h5>
+                <div class="d-grid gap-2">
+                    <a href="{% url 'scan_template_index' %}" class="btn btn-success">
+                        <i class="mdi mdi-plus"></i> View All Images
+                    </a>
+                    <a href="{% url 'scan_template_edit' template.pk %}" class="btn btn-primary">
+                        <i class="mdi mdi-pencil"></i> Edit Template
+                    </a>
+                    <a href="{% url 'scan_template_delete' template.pk %}" class="btn btn-danger">
+                        <i class="mdi mdi-delete"></i> Delete Template
+                    </a>
+                    <button class="btn btn-info" onclick="printReport()">
+                        <i class="mdi mdi-printer"></i> Print Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.sample-data { color: #6c757d; font-style: italic; }
+.sample-result { font-weight: 600; }
+@media print {
+    .card, .btn, .border { border: none !important; box-shadow: none !important; }
+    .no-print { display: none !important; }
+    #reportPreview { background-color: white !important; }
+}
+.badge { font-size: 0.75rem; }
+.table-borderless td { padding: 0.25rem 0.5rem; }
+</style>
+
+<script>
+function printReport() {
+    const reportContent = document.getElementById('reportPreview').innerHTML;
+    const printWindow = window.open('', '_blank', 'width=900,height=800');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Scan Report - {{ template.name }}</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                th, td { padding: 8px; border: 1px solid #ddd; text-align: left; }
+                th { background-color: #f8f9fa; }
+                .text-center { text-align: center; }
+                .text-primary { color: #007bff; }
+                .border-bottom { border-bottom: 1px solid #ddd; }
+                .border-top { border-top: 1px solid #ddd; }
+                .badge { padding: 2px 6px; border-radius: 3px; font-size: 10px; }
+                .badge-success { background-color: #28a745; color: white; }
+                .badge-primary { background-color: #007bff; color: white; }
+                .sample-data { color: #333; font-style: normal; }
+            </style>
+        </head>
+        <body>
+            ${reportContent}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+}
+
+// optionally animate sample numeric results a bit
+setInterval(function() {
+    const sampleResults = document.querySelectorAll('.sample-result .sample-data');
+    const sampleValues = ['11.8','12.5','13.1','14.0','15.2'];
+    sampleResults.forEach((el) => {
+        if (el.textContent.match(/^\d+\.?\d*$/)) {
+            el.textContent = sampleValues[Math.floor(Math.random() * sampleValues.length)];
+        }
+    });
+}, 4000);
+</script>
+
+{% endblock %}

@@ -15,6 +15,7 @@ urlpatterns = [
     path('template/index', LabTestTemplateListView.as_view(), name='lab_template_index'),
     path('template/<int:pk>/detail', LabTestTemplateDetailView.as_view(), name='lab_template_detail'),
     path('template/<int:pk>/edit', LabTestTemplateUpdateView.as_view(), name='lab_template_edit'),
+    path('template/<int:pk>/toggle-status', LabTestTemplateToggleStatusView.as_view(), name='lab_template_toggle'),
     path('template/<int:pk>/delete', LabTestTemplateDeleteView.as_view(), name='lab_template_delete'),
 
     # Orders

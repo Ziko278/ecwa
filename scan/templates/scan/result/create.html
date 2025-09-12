@@ -1,0 +1,517 @@
+<!-- scan/result/create.html -->
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title mb-0">
+                    {% if order %}
+                        Enter Scan Results - {{ order.template.name }} {{ form.errors }}
+                    {% else %}
+                        Select Scan Order for Result Entry
+                    {% endif %}
+                </h4>
+                {% if order %}
+                    <p class="card-description mb-0">
+                        Patient: {{ patient|title }} | Order: {{ order.order_number }}
+                    </p>
+                {% endif %}
+            </div>
+
+            <div class="card-body">
+                {% if not order %}
+                    <!-- Order Selection -->
+                    <div class="mb-4">
+                        <h5>Select Scan Order</h5>
+                        {% if available_orders %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Patient</th>
+                                            <th>Scan Type</th>
+                                            <th>Order Number</th>
+                                            <th>Scheduled Date</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for available_order in available_orders %}
+                                        <tr>
+                                            <td>{{ available_order.patient|title }}</td>
+                                            <td>{{ available_order.template.name }}</td>
+                                            <td>{{ available_order.order_number }}</td>
+                                            <td>{{ available_order.scheduled_date|date:"M d, Y H:i"|default:"-" }}</td>
+                                            <td>
+                                                <span class="badge badge-{% if available_order.status == 'in_progress' %}warning{% elif available_order.status == 'completed' %}success{% else %}info{% endif %}">
+                                                    {{ available_order.get_status_display }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <a href="{% url 'scan_result_create_for_order' order_id=available_order.id %}"
+                                                   class="btn btn-sm btn-primary">
+                                                    Enter Results
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="mdi mdi-radiobox-blank" style="font-size: 3rem; color: #ccc;"></i>
+                                <h6 class="mt-3 text-muted">No Scan Orders Available</h6>
+                                <p class="text-muted">No scan orders are ready for result entry.</p>
+                                <a href="{% url 'scan_result_dashboard' %}" class="btn btn-primary">
+                                    Back to Dashboard
+                                </a>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <!-- Result Entry Form -->
+                    <form method="post" enctype="multipart/form-data" id="result-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="order_id" value="{{ order.id }}">
+
+                        <!-- Patient & Order Info -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body p-3">
+                                        <h6>Patient Information</h6>
+                                        <p class="mb-1"><strong>Name:</strong> {{ patient|title }}</p>
+                                        <p class="mb-1"><strong>Card Number:</strong> {{ patient.card_number|upper }}</p>
+                                        <p class="mb-0"><strong>Age/Sex:</strong> {{ patient.age|default:"N/A" }} / {{ patient.get_gender_display|default:"N/A" }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body p-3">
+                                        <h6>Scan Information</h6>
+                                        <p class="mb-1"><strong>Scan Type:</strong> {{ order.template.name }}</p>
+                                        <p class="mb-1"><strong>Category:</strong> {{ order.template.category.name }}</p>
+                                        <p class="mb-0"><strong>Performed:</strong> {{ order.scan_completed_at|date:"M d, Y H:i"|default:"In Progress" }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Measured Values/Parameters -->
+                        {% if measurements %}
+                        <div class="mb-4">
+                            <h5 class="mb-3">Measured Parameters</h5>
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width: 25%;">Parameter</th>
+                                            <th style="width: 20%;">Measured Value</th>
+                                            <th style="width: 15%;">Unit</th>
+                                            <th style="width: 20%;">Normal Range</th>
+                                            <th style="width: 20%;">Comments</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for measurement in measurements %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ measurement.name }}</strong>
+                                                <br><small class="text-muted">{{ measurement.code }}</small>
+                                            </td>
+                                            <td>
+                                                {% if measurement.type == 'numeric' %}
+                                                    <input type="number"
+                                                           name="measurement_{{ measurement.code }}"
+                                                           class="form-control"
+                                                           step="0.01"
+                                                           placeholder="Enter value">
+                                                {% elif measurement.type == 'select' %}
+                                                    <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                        <option value="">Select...</option>
+                                                        {% for option in measurement.options %}
+                                                            <option value="{{ option }}">{{ option }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                {% elif measurement.type == 'boolean' %}
+                                                    <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                        <option value="">Select...</option>
+                                                        <option value="Normal">Normal</option>
+                                                        <option value="Abnormal">Abnormal</option>
+                                                    </select>
+                                                {% else %}
+                                                    <input type="text"
+                                                           name="measurement_{{ measurement.code }}"
+                                                           class="form-control"
+                                                           placeholder="Enter value">
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ measurement.unit|default:"-" }}</small>
+                                            </td>
+                                            <td>
+                                                {% if measurement.normal_range %}
+                                                    <small class="text-muted">
+                                                        {% if measurement.normal_range.min %}{{ measurement.normal_range.min }}{% endif %}
+                                                        {% if measurement.normal_range.min and measurement.normal_range.max %} - {% endif %}
+                                                        {% if measurement.normal_range.max %}{{ measurement.normal_range.max }}{% endif %}
+                                                    </small>
+                                                {% else %}
+                                                    <small class="text-muted">-</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <input type="text"
+                                                       name="measurement_{{ measurement.code }}_comment"
+                                                       class="form-control form-control-sm"
+                                                       placeholder="Optional comment">
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {# ... inside the Result Entry Form where you had template.expected_images ... #}
+                        {% if template.expected_images %}
+                        <div class="mb-4">
+                            <h5 class="mb-3"><b>Expected Images</b></h5>
+                            <div class="row">
+                                {% for image in template.expected_images %}
+                                <div class="col-md-12">
+                                    <div class="form-group">
+                                        {# Add a deterministic name for each expected image input #}
+                                        <input type="file"
+                                               name="expected_image_{{ forloop.counter0 }}"
+                                               class="form-control"
+                                               accept="image/*"
+                                               {% if image.required %} required {% endif %} />
+                                        {# Provide view metadata so server can know which view this file belongs to #}
+                                        <input type="hidden" name="expected_image_view_{{ forloop.counter0 }}" value="{{ image.view }}" />
+                                        <small class="form-text text-muted">
+                                            {{ image.description|upper }} ({{ image.view|upper }})
+                                            {% if image.required %}<span class="text-danger"> *required</span>{% endif %}
+                                        </small>
+                                    </div><br />
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+
+                        <!-- Clinical Findings -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="findings" class="form-label">Clinical Findings</label>
+                                    <textarea name="findings" id="findings"
+                                              class="form-control" rows="5"
+                                              placeholder="Describe the primary scan findings..."></textarea>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="impression" class="form-label">Clinical Impression</label>
+                                    <textarea name="impression" id="impression"
+                                              class="form-control" rows="5"
+                                              placeholder="Enter clinical impression or diagnosis..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recommendations & Comments -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="recommendations" class="form-label">Recommendations</label>
+                                    <textarea name="recommendations" id="recommendations"
+                                              class="form-control" rows="4"
+                                              placeholder="Enter follow-up recommendations..."></textarea>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="technician_comments" class="form-label">Technician Comments</label>
+                                    <textarea name="technician_comments" id="technician_comments"
+                                              class="form-control" rows="4"
+                                              placeholder="Enter technical notes or observations..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Report Status & Date -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="status" class="form-label">Report Status</label>
+                                    <select name="status" id="status" class="form-control">
+                                        <option value="draft">Draft</option>
+                                        <option value="pending_review">Pending Review</option>
+                                        <option value="reviewed">Reviewed</option>
+                                        <option value="finalized">Finalized</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="report_date" class="form-label">Report Date</label>
+                                    <input type="datetime-local" name="report_date" id="report_date"
+                                           class="form-control">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Form Actions -->
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'scan_result_dashboard' %}" class="btn btn-secondary">
+                                <i class="mdi mdi-arrow-left me-2"></i>Back to Dashboard
+                            </a>
+                            <div>
+                                <button type="button" class="btn btn-outline-primary me-2" onclick="validateForm()">
+                                    <i class="mdi mdi-check me-2"></i>Validate
+                                </button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="mdi mdi-content-save me-2"></i>Save Results
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="col-lg-4">
+        {% if order %}
+            <!-- Scan Template Info -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Scan Information</h5>
+                    <p><strong>Category:</strong> {{ template.category.name }}</p>
+                    <p><strong>Duration:</strong> {{ template.estimated_duration|default:"Not specified" }}</p>
+                    <p><strong>Equipment:</strong> {{ template.equipment_required|default:"Standard equipment" }}</p>
+                    <p><strong>Price:</strong> ₦{{ template.price|floatformat:2 }}</p>
+
+                    {% if template.preparation_required %}
+                        <div class="alert alert-info p-2 mt-3">
+                            <small><strong>Preparation Required:</strong> Yes</small>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Expected Images -->
+            {% if template.expected_images %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Expected Images</h5>
+                    <ul class="list-unstyled mb-0">
+                        {% for img in template.expected_images %}
+                        <li class="mb-2">
+                            <span class="text-{% if img.required %}primary{% else %}secondary{% endif %} me-2">
+                                {{ img.view }}
+                            </span>
+                            <small>{{ img.description }}</small>
+                            {% if img.required %}
+                                <small class="text-danger">(Required)</small>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Quick Actions -->
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Quick Actions</h5>
+                    <div class="d-grid gap-2">
+                        <a href="{url 'patient_scan_history' patient_id=patient.id %}" class="btn btn-outline-primary">
+                            <i class="mdi mdi-account"></i> View Patient Scans
+                        </a>
+                        <button class="btn btn-outline-info" onclick="previewReport()">
+                            <i class="mdi mdi-printer"></i> Preview Report
+                        </button>
+                        <a href="{% url 'scan_image_upload' result_id=0 %}" class="btn btn-outline-success" style="display: none;" id="upload-images-btn">
+                            <i class="mdi mdi-camera"></i> Upload Images
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.btn-loading {
+    position: relative;
+}
+
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: button-loading-spinner 1s ease infinite;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+}
+
+@keyframes button-loading-spinner {
+    from { transform: rotate(0turn); }
+    to { transform: rotate(1turn); }
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+.alert {
+    border-radius: 0.375rem;
+}
+</style>
+
+<script>
+function validateForm() {
+    const form = document.getElementById('result-form');
+    const findings = document.getElementById('findings').value.trim();
+    const impression = document.getElementById('impression').value.trim();
+    const status = document.getElementById('status').value;
+
+    // Check if essential fields are filled
+    if (!findings && !impression) {
+        alert('Please enter either clinical findings or impression before saving.');
+        return false;
+    }
+
+    // If finalizing, impression is required
+    if (status === 'finalized' && !impression) {
+        alert('Clinical impression is required to finalize the report.');
+        return false;
+    }
+
+    // Check measurements if they exist
+    const measurementInputs = form.querySelectorAll('input[name^="measurement_"], select[name^="measurement_"]');
+    let hasMeasurements = false;
+    measurementInputs.forEach(input => {
+        if (input.value.trim()) {
+            hasMeasurements = true;
+        }
+    });
+
+    alert('Form validation passed! Ready to save results.');
+    return true;
+}
+
+function previewReport() {
+    // Collect current form values for preview
+    const form = document.getElementById('result-form');
+    const formData = new FormData(form);
+
+    // Create a simple preview in a new window
+    const findings = document.getElementById('findings').value;
+    const impression = document.getElementById('impression').value;
+    const recommendations = document.getElementById('recommendations').value;
+
+    if (!findings && !impression) {
+        alert('Please enter some findings or impression to preview the report.');
+        return;
+    }
+
+    const previewWindow = window.open('', '_blank', 'width=800,height=600');
+    previewWindow.document.write(`
+        <html>
+        <head>
+            <title>Scan Report Preview</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                .section { margin-bottom: 15px; }
+                .label { font-weight: bold; }
+                .content { margin-left: 10px; margin-top: 5px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2>Scan Report Preview</h2>
+                <p>{{ order.template.name }} - {{ patient|title }}</p>
+            </div>
+            <div class="section">
+                <div class="label">Findings:</div>
+                <div class="content">${findings}</div>
+            </div>
+            <div class="section">
+                <div class="label">Impression:</div>
+                <div class="content">${impression}</div>
+            </div>
+            <div class="section">
+                <div class="label">Recommendations:</div>
+                <div class="content">${recommendations}</div>
+            </div>
+        </body>
+        </html>
+    `);
+}
+
+// Set current datetime for report_date on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const reportDateInput = document.getElementById('report_date');
+    if (reportDateInput && !reportDateInput.value) {
+        const now = new Date();
+        const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        reportDateInput.value = localISOTime;
+    }
+
+    // Auto-save draft functionality (optional)
+    let autoSaveTimeout;
+    const form = document.getElementById('result-form');
+    if (form) {
+        const inputs = form.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('input', function() {
+                clearTimeout(autoSaveTimeout);
+                autoSaveTimeout = setTimeout(() => {
+                    // Could implement auto-save draft here
+                    console.log('Auto-saving draft...');
+                }, 5000);
+            });
+        });
+    }
+});
+
+// Show upload images button after form is saved (you'd modify this based on your flow)
+function showUploadImagesButton(resultId) {
+    const uploadBtn = document.getElementById('upload-images-btn');
+    if (uploadBtn) {
+        uploadBtn.href = uploadBtn.href.replace('/0/', `/${resultId}/`);
+        uploadBtn.style.display = 'block';
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,330 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="card-title mb-0">Order New Scan</h4>
+                <p class="card-description mb-0">Create new scan order for {{ patient|title }}</p>
+            </div>
+            <div>
+                <a href="{% url 'patient_scan_orders' patient_id=patient.id %}" class="btn btn-secondary">
+                    <i class="mdi mdi-arrow-left me-2"></i> Back to Scans
+                </a>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <!-- Patient Info -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="mdi mdi-account me-2"></i>Patient Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Name:</strong> {{ patient|title }}</p>
+                            <p class="mb-1"><strong>Card Number:</strong> {{ patient.card_number|upper }}</p>
+                            <p class="mb-1"><strong>Phone:</strong> {{ patient.mobile|default:"Not provided" }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Age:</strong> {{ patient.age|default:"Not specified" }}</p>
+                            <p class="mb-1"><strong>Gender:</strong> {{ patient.get_gender_display|default:"Not specified" }}</p>
+                            <p class="mb-1"><strong>Address:</strong> {{ patient.address|default:"Not provided" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order Form -->
+            <form method="post" id="order-form">
+                {% csrf_token %}
+                <input type="hidden" name="patient" value="{{ patient.id }}">
+                <input type="hidden" name="ordered_by" value="{{ request.user.id }}">
+                <input type="hidden" name="source" id="source_scan" value="scan">
+
+                <!-- Scan Template Search -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Scan Selection</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3 position-relative">
+                            <div class="col-md-8">
+                                <label class="form-label">Search Scan Template <span class="text-danger">*</span></label>
+                                <input type="text" id="template-search" class="form-control" placeholder="Start typing scan name or code...">
+                                <div id="search-results" class="list-group position-absolute w-100" style="z-index:1000; display:none;"></div>
+                                <small class="text-muted">Search by name, code, or category. Click to add to order.</small>
+                            </div>
+                        </div>
+
+                        <!-- Selected Templates -->
+                        <div id="selected-templates-container" style="display:none;">
+                            <h6 class="mb-3">Selected Scans</h6>
+                            <div id="selected-templates-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Details -->
+                <div class="card mb-4" id="order-details-card" style="display:none;">
+                    <div class="card-header">
+                        <h5 class="mb-0">Order Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="scheduled_date" class="form-label">Scheduled Date & Time (Optional)</label>
+                                <input type="datetime-local" id="scheduled_date" name="scheduled_date" class="form-control">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="expected_completion" class="form-label">Expected Completion (Optional)</label>
+                                <input type="datetime-local" id="expected_completion" name="expected_completion" class="form-control">
+                            </div>
+                        </div>
+
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <label for="special_instructions" class="form-label">Special Instructions (Optional)</label>
+                                <textarea id="special_instructions" name="special_instructions" class="form-control" rows="3" placeholder="Any special instructions for this scan..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Summary -->
+                <div class="card mb-4" id="order-summary-card" style="display:none;">
+                    <div class="card-header">
+                        <h5 class="mb-0">Order Summary</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="order-summary-content"></div>
+                        <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+                            <strong>Total Amount:</strong>
+                            <strong id="total-amount" class="text-success">₦0.00</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{% url 'patient_scan_orders' patient_id=patient.id %}" class="btn btn-light">Cancel</a>
+                    <button type="submit" id="create-order-btn" class="btn btn-success" disabled>
+                        <i class="mdi mdi-check me-2"></i> Create Order
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Elements
+    const templateSearch = document.getElementById('template-search');
+    const searchResults = document.getElementById('search-results');
+    const selectedContainer = document.getElementById('selected-templates-container');
+    const selectedList = document.getElementById('selected-templates-list');
+    const orderDetailsCard = document.getElementById('order-details-card');
+    const orderSummaryCard = document.getElementById('order-summary-card');
+    const orderSummaryContent = document.getElementById('order-summary-content');
+    const totalAmountElement = document.getElementById('total-amount');
+    const createOrderBtn = document.getElementById('create-order-btn');
+    const orderForm = document.getElementById('order-form');
+
+    // Available scan templates (seeded from context)
+    const availableTemplates = [
+        {% for template in template_list %}
+        {
+            id: {{ template.id }},
+            name: "{{ template.name|escapejs }}",
+            code: "{{ template.code|escapejs }}",
+            category: "{{ template.category.name|escapejs }}",
+            price: {{ template.price }},
+            duration: "{{ template.estimated_duration|escapejs }}",
+            preparation_required: {{ template.preparation_required|yesno:"true,false" }},
+            fasting_required: {{ template.fasting_required|yesno:"true,false" }},
+            expected_images_count: {{ template.expected_images|length }},
+        },
+        {% endfor %}
+    ];
+
+    let selectedTemplates = [];
+    let searchTimeout;
+
+    // Search logic
+    templateSearch.addEventListener('input', function() {
+        const q = this.value.toLowerCase().trim();
+        clearTimeout(searchTimeout);
+        if (q.length < 2) {
+            searchResults.style.display = 'none';
+            return;
+        }
+        searchTimeout = setTimeout(() => {
+            const filtered = availableTemplates.filter(t =>
+                t.name.toLowerCase().includes(q) ||
+                (t.code && t.code.toLowerCase().includes(q)) ||
+                (t.category && t.category.toLowerCase().includes(q))
+            ).filter(t => !selectedTemplates.some(sel => sel.id === t.id));
+            displaySearchResults(filtered);
+        }, 220);
+    });
+
+    function displaySearchResults(items) {
+        if (!items.length) {
+            searchResults.innerHTML = '<div class="list-group-item text-muted">No templates found</div>';
+        } else {
+            searchResults.innerHTML = items.map(t => `
+                <div class="list-group-item list-group-item-action template-result-item" data-id="${t.id}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="mb-1">${t.name}</h6>
+                            <small class="text-muted">${t.category} | Code: ${t.code || '-'}</small>
+                        </div>
+                        <div class="text-end">
+                            <strong class="text-success">₦${parseFloat(t.price).toFixed(2)}</strong><br>
+                            <small class="text-muted">${t.duration || 'Duration N/A'}</small>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        searchResults.style.display = 'block';
+
+        // attach click
+        document.querySelectorAll('.template-result-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const id = parseInt(this.dataset.id);
+                const tpl = availableTemplates.find(x => x.id === id);
+                if (tpl) addTemplateToOrder(tpl);
+            });
+        });
+    }
+
+    // Add selected template
+    function addTemplateToOrder(tpl) {
+        selectedTemplates.push(tpl);
+        templateSearch.value = '';
+        searchResults.style.display = 'none';
+        updateSelectedDisplay();
+        updateOrderSummary();
+    }
+
+    // Remove template
+    function removeTemplateFromOrder(id) {
+        selectedTemplates = selectedTemplates.filter(t => t.id !== id);
+        updateSelectedDisplay();
+        updateOrderSummary();
+    }
+
+    function updateSelectedDisplay() {
+        if (!selectedTemplates.length) {
+            selectedContainer.style.display = 'none';
+            orderDetailsCard.style.display = 'none';
+            orderSummaryCard.style.display = 'none';
+            createOrderBtn.disabled = true;
+            return;
+        }
+
+        selectedContainer.style.display = 'block';
+        orderDetailsCard.style.display = 'block';
+        orderSummaryCard.style.display = 'block';
+        createOrderBtn.disabled = false;
+
+        selectedList.innerHTML = selectedTemplates.map(t => `
+            <div class="card mb-2">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">${t.name}</h6>
+                            <small class="text-muted">${t.category} · ${t.duration || 'Duration N/A'}</small>
+                            <div class="mt-1 small text-muted">
+                                ${t.preparation_required ? '<span class="badge bg-warning text-dark me-1">Preparation</span>' : ''}
+                                ${t.fasting_required ? '<span class="badge bg-secondary">Fasting</span>' : ''}
+                                <span class="badge bg-info ms-1">${t.expected_images_count} views</span>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <strong class="text-success me-3">₦${parseFloat(t.price).toFixed(2)}</strong>
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-template-btn" data-id="${t.id}">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // attach remove handlers
+        document.querySelectorAll('.remove-template-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const id = parseInt(this.dataset.id);
+                removeTemplateFromOrder(id);
+            });
+        });
+    }
+
+    function updateOrderSummary() {
+        if (!selectedTemplates.length) {
+            orderSummaryContent.innerHTML = '';
+            totalAmountElement.textContent = '₦0.00';
+            return;
+        }
+
+        const total = selectedTemplates.reduce((s, t) => s + parseFloat(t.price), 0);
+        orderSummaryContent.innerHTML = selectedTemplates.map(t => `
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                <span>${t.name}</span>
+                <span>₦${parseFloat(t.price).toFixed(2)}</span>
+            </div>
+        `).join('');
+        totalAmountElement.textContent = `₦${total.toFixed(2)}`;
+    }
+
+    // Hide search when click outside
+    document.addEventListener('click', function(e) {
+        if (!templateSearch.contains(e.target) && !searchResults.contains(e.target)) {
+            searchResults.style.display = 'none';
+        }
+    });
+
+    // Form submit: append scan ids (name = "scans")
+    orderForm.addEventListener('submit', function(e) {
+        if (!selectedTemplates.length) {
+            e.preventDefault();
+            alert('Please select at least one scan.');
+            return;
+        }
+
+        // Remove existing scan inputs if any (avoid duplicates)
+        const existing = orderForm.querySelectorAll('input[name="scans"]');
+        existing.forEach(n => n.remove());
+
+        selectedTemplates.forEach(t => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'scans';
+            input.value = t.id;
+            orderForm.appendChild(input);
+        });
+
+        createOrderBtn.disabled = true;
+        createOrderBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-2"></i>Creating Order...';
+    });
+
+    // Keyboard: enter triggers search
+    templateSearch.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            // if there is exactly one result displayed, click it
+            const items = document.querySelectorAll('.template-result-item');
+            if (items.length === 1) items[0].click();
+            return false;
+        }
+    });
+
+});
+</script>
+{% endblock %}

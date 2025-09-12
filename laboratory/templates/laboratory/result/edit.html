@@ -102,17 +102,28 @@
                                             </td>
                                             <td>
                                                 {% if param.normal_range %}
-                                                    <small class="text-muted">
-                                                        {% if param.normal_range.min %}{{ param.normal_range.min }}{% endif %}
-                                                        {% if param.normal_range.min and param.normal_range.max %} - {% endif %}
-                                                        {% if param.normal_range.max %}{{ param.normal_range.max }}{% endif %}
                                                         {% if param.normal_range.gender_specific %}
-                                                            <br>(Gender specific)
+                                                            <small>
+                                                                {% if patient.gender|lower == 'male' %}
+
+                                                                {% if param.normal_range.male.min %}{{ param.normal_range.male.min }}{% endif %}
+                                                                {% if param.normal_range.male.min and param.normal_range.male.max %}-{% endif %}
+                                                                {% if param.normal_range.male.max %}{{ param.normal_range.male.max }}{% endif %}
+                                                                {% else %}
+
+                                                                {% if param.normal_range.female.min %}{{ param.normal_range.female.min }}{% endif %}
+                                                                {% if param.normal_range.female.min and param.normal_range.female.max %}-{% endif %}
+                                                                {% if param.normal_range.female.max %}{{ param.normal_range.female.max }}{% endif %}
+                                                                {% endif %}
+                                                            </small>
+                                                        {% else %}
+                                                            {% if param.normal_range.min %}{{ param.normal_range.min }}{% endif %}
+                                                            {% if param.normal_range.min and param.normal_range.max %} - {% endif %}
+                                                            {% if param.normal_range.max %}{{ param.normal_range.max }}{% endif %}
                                                         {% endif %}
-                                                    </small>
-                                                {% else %}
-                                                    <small class="text-muted">-</small>
-                                                {% endif %}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
                                             </td>
                                             <td>
                                                 {% if current_result.status %}

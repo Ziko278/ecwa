@@ -1,0 +1,209 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="pagetitle">
+    <h1>All Lab Test Orders</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Dashboard</a></li>
+            <li class="breadcrumb-item active">Lab Orders</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="col-12">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title">Lab Order Management</h5>
+                <a href="{% url 'lab_entry' %}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle me-1"></i> Order New Test
+                </a>
+            </div>
+            <p>View, filter, and manage all lab test orders across the system.</p>
+
+            <div class="row mb-3">
+
+                <div class="col">
+                     <div class="card info-card revenue-card h-100">
+                         <div class="card-body">
+                            <h5 class="card-title">Paid <span>| Awaiting Sample</span></h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center" style="background-color: #b3e5fc;">
+                                    <i class="bi bi-credit-card" style="color: #03a9f4;"></i>
+                                </div>
+                                <div class="ps-3">
+                                    <h6>{{ status_counts.paid|default:0 }}</h6>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col">
+                     <div class="card info-card customers-card h-100">
+                         <div class="card-body">
+                            <h5 class="card-title">Collected <span>| To Process</span></h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center" style="background-color: #cfd8dc;">
+                                    <i class="bi bi-eyedropper" style="color: #607d8b;"></i>
+                                </div>
+                                <div class="ps-3">
+                                    <h6>{{ status_counts.collected|default:0 }}</h6>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col">
+                     <div class="card info-card customers-card h-100" style="background-color: #455a64; color: white;">
+                         <div class="card-body">
+                            <h5 class="card-title" style="color: #eceff1;">Processing</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center" style="background-color: #607d8b;">
+                                    <i class="bi bi-gear-wide-connected" style="color: white;"></i>
+                                </div>
+                                <div class="ps-3">
+                                    <h6 style="color: white;">{{ status_counts.processing|default:0 }}</h6>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                 <div class="col">
+                     <div class="card info-card revenue-card h-100" style="background-color: #4caf50;">
+                         <div class="card-body">
+                            <h5 class="card-title" style="color: white;">Completed</h5>
+                            <div class="d-flex align-items-center">
+                                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center" style="background-color: #81c784;">
+                                    <i class="bi bi-check2-circle" style="color: white;"></i>
+                                </div>
+                                <div class="ps-3">
+                                    <h6 style="color: white;">{{ status_counts.completed|default:0 }}</h6>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <form method="get" class="row g-3 mb-4 align-items-center">
+                <div class="col-md-4">
+                    <input type="text" name="search" class="form-control" placeholder="Search by Patient Name, Card#, Order#" value="{{ search_query }}">
+                </div>
+                <div class="col-md-3">
+                    <select name="status" class="form-select">
+                        <option value="">All Statuses</option>
+                        {% for code, name in status_choices %}
+                        <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>{{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="template" class="form-select">
+                        <option value="">All Lab Tests</option>
+                        {% for template in template_list %}
+                        <option value="{{ template.id }}" {% if request.GET.template|add:"0" == template.id %}selected{% endif %}>{{ template.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">Filter</button>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Order #</th>
+                            <th>Patient</th>
+                            <th>Test Name</th>
+                            <th class="text-end">Amount</th>
+                            <th class="text-center">Status</th>
+                            <th>Ordered At</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in order_list %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'lab_order_detail' order.id %}">{{ order.order_number }}</a>
+                            </td>
+                            <td>
+                                <div>{{ order.patient|title }}</div>
+                                <small class="text-muted">{{ order.patient.card_number }}</small>
+                            </td>
+                            <td>{{ order.template.name }}</td>
+                            <td class="text-end">₦{{ order.amount_charged|intcomma }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-{% if order.status == 'pending' %}warning text-dark{% elif order.status == 'paid' %}info text-dark{% elif order.status == 'collected' %}secondary{% elif order.status == 'processing' %}dark{% elif order.status == 'completed' %}success{% else %}light text-dark{% endif %}">
+                                    {{ order.get_status_display }}
+                                </span>
+                            </td>
+                            <td>{{ order.ordered_at|date:"d M Y, h:i A" }}</td>
+                            <td class="text-center">
+                                {% if order.status == 'paid' or order.status == 'pending' %}
+                                    <a href="{% url 'patient_lab_tests' order.patient.id %}" class="btn btn-warning btn-sm" title="Go to Patient's Page to Pay/Collect Sample">
+                                        <i class="bi bi-person-lines-fill"></i> Manage
+                                    </a>
+                                {% elif order.status == 'collected' or order.status == 'processing' %}
+                                    <a href="{% url 'lab_result_create' %}?order_id={{ order.id }}" class="btn btn-dark btn-sm" title="Input Test Results">
+                                        <i class="bi bi-keyboard"></i> Input Result
+                                    </a>
+                                {% elif order.status == 'completed' %}
+                                    <a href="{% url 'lab_result_detail' order.result.id %}" class="btn btn-success btn-sm" title="View Test Results">
+                                        <i class="bi bi-eye"></i> View Result
+                                    </a>
+                                {% endif %}
+                                <a href="{% url 'lab_order_detail' order.id %}" class="btn btn-light btn-sm" title="View Order Details">
+                                    <i class="bi bi-three-dots"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <h5>No Lab Test Orders Found</h5>
+                                <p>No orders match the current filter criteria.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if is_paginated %}
+            <nav aria-label="Lab order pagination" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1&{{ request.GET.urlencode|cut:'page=' }}">First</a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}&{{ request.GET.urlencode|cut:'page=' }}">Previous</a>
+                        </li>
+                    {% endif %}
+
+                    <li class="page-item active" aria-current="page">
+                        <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                           <a class="page-link" href="?page={{ page_obj.next_page_number }}&{{ request.GET.urlencode|cut:'page=' }}">Next</a>
+                        </li>
+                         <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&{{ request.GET.urlencode|cut:'page=' }}">Last</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endblock %}

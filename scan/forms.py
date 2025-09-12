@@ -1,8 +1,14 @@
+import datetime
+import json
+
 from django import forms
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
 from datetime import date
 import re
+
+from django.utils import timezone
+
 from .models import *
 
 
@@ -56,8 +62,8 @@ class ScanTemplateForm(forms.ModelForm):
     class Meta:
         model = ScanTemplateModel
         fields = ['name', 'code', 'category', 'scan_parameters', 'expected_images',
-                  'price', 'estimated_duration', 'preparation_required',
-                  'fasting_required', 'equipment_required', 'is_active']
+                  'price', 'estimated_duration',
+                  'fasting_required', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'code': forms.TextInput(attrs={'class': 'form-control'}),
@@ -66,9 +72,7 @@ class ScanTemplateForm(forms.ModelForm):
             'expected_images': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
             'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'estimated_duration': forms.TextInput(attrs={'class': 'form-control'}),
-            'preparation_required': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'fasting_required': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'equipment_required': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
@@ -121,88 +125,199 @@ class ScanTemplateForm(forms.ModelForm):
 
 
 class ScanOrderForm(forms.ModelForm):
+    """
+    Minimal form used on the "Order New Scan" page.
+    - DOES NOT include `template` or `patient` (these are set in the view).
+    - Validates only user-entered fields and provides helpful widgets.
+    """
     class Meta:
         model = ScanOrderModel
-        fields = ['patient', 'template', 'ordered_by', 'status',
-                  'payment_status', 'payment_date', 'payment_by',
-                  'scheduled_date', 'scheduled_by',
-                  'scan_started_at', 'scan_completed_at', 'performed_by',
-                  'clinical_indication', 'special_instructions']
+        fields = [
+            'clinical_indication',
+            'special_instructions',
+            'scheduled_date',
+        ]
         widgets = {
-            'patient': forms.Select(attrs={'class': 'form-control'}),
-            'template': forms.Select(attrs={'class': 'form-control'}),
-            'ordered_by': forms.Select(attrs={'class': 'form-control'}),
-            'status': forms.Select(attrs={'class': 'form-control'}),
-            'payment_status': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'payment_date': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
-            'payment_by': forms.Select(attrs={'class': 'form-control'}),
-            'scheduled_date': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
-            'scheduled_by': forms.Select(attrs={'class': 'form-control'}),
-            'scan_started_at': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
-            'scan_completed_at': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
-            'performed_by': forms.Select(attrs={'class': 'form-control'}),
             'clinical_indication': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'special_instructions': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'scheduled_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
+        }
+        labels = {
+            'clinical_indication': 'Clinical Indication',
+            'special_instructions': 'Special Instructions',
+            'scheduled_date': 'Scheduled Date & Time (optional)',
         }
 
-    def clean(self):
-        cleaned_data = super().clean()
-        payment_status = cleaned_data.get('payment_status')
-        payment_date = cleaned_data.get('payment_date')
+    def clean_scheduled_date(self):
+        sd = self.cleaned_data.get('scheduled_date')
+        if sd:
+            now = timezone.now()
+            # Allow small clock skew
+            earliest_allowed = now - datetime.timedelta(minutes=5)
+            if sd < earliest_allowed:
+                raise ValidationError("Scheduled date/time cannot be in the past.")
+            # Prevent scheduling ridiculously far in the future
+            latest_allowed = now + datetime.timedelta(days=365)
+            if sd > latest_allowed:
+                raise ValidationError("Scheduled date/time cannot be more than 365 days from now.")
+        return sd
 
-        # If payment is marked as paid, ensure payment_date is set
-        if payment_status and not payment_date:
-            raise ValidationError("Payment date is required when payment status is marked as paid.")
+    def clean(self):
+        """
+        Cross-field validation:
+         - Must provide at least one of clinical_indication, special_instructions, or scheduled_date.
+         - Enforce reasonable max lengths for free-text fields.
+         - (Other business rules can be added here.)
+        """
+        cleaned = super().clean()
+        clinical = (cleaned.get('clinical_indication') or '').strip()
+        special = (cleaned.get('special_instructions') or '').strip()
+        scheduled = cleaned.get('scheduled_date')
+
+        # Require at least one meaningful field to avoid empty orders
+        if not clinical and not special and not scheduled:
+            raise ValidationError(
+                "Please provide at least one of: clinical indication, special instructions, or a scheduled date/time."
+            )
+
+        # Reasonable max lengths to protect DB / UI
+        MAX_LEN = 2000
+        if clinical and len(clinical) > MAX_LEN:
+            self.add_error('clinical_indication', f'Clinical indication cannot exceed {MAX_LEN} characters.')
+
+        if special and len(special) > MAX_LEN:
+            self.add_error('special_instructions', f'Special instructions cannot exceed {MAX_LEN} characters.')
+
+        return cleaned
+
+
+class ScanResultForm(forms.ModelForm):
+    """
+    The CORRECT, focused form for creating or editing a report's content.
+    It does NOT include fields that should be set automatically by the system.
+    """
+
+    class Meta:
+        model = ScanResultModel
+        # ✅ The explicit, focused list of fields a user should edit.
+        fields = [
+            'findings',
+            'impression',
+            'recommendations',
+            'technician_comments',
+            'status',
+            'report_date',
+            'measured_values',
+            'radiology_report_image',
+        ]
+
+        widgets = {
+            'findings': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
+            'impression': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'recommendations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'technician_comments': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'status': forms.Select(attrs={'class': 'form-control'}),
+            'report_date': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'measured_values': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
+            'radiology_report_image': forms.ClearableFileInput(attrs={'class': 'form-control'}),
+        }
+
+    def clean_report_date(self):
+        """Ensure the report date is not in the future."""
+        report_date = self.cleaned_data.get('report_date')
+        if report_date and report_date > timezone.now():
+            raise ValidationError("The report date cannot be in the future.")
+
+        # NOTE: The check for `report_date` vs `performed_at` is done in the view,
+        # where we have access to the order's `scan_completed_at`.
+        return report_date
+
+    def clean_measured_values(self):
+        """Validate the JSON format for measured values."""
+        data = self.cleaned_data.get('measured_values')
+        if not data:
+            return {}  # Default to an empty dictionary
+        try:
+            if isinstance(data, str):
+                return json.loads(data)
+            return data
+        except json.JSONDecodeError:
+            raise ValidationError("Invalid JSON format for measured values.")
+
+    def clean(self):
+        """
+        Perform cross-field validation for the report content.
+        """
+        cleaned_data = super().clean()
+
+        status = cleaned_data.get('status')
+        impression = cleaned_data.get('impression')
+
+        # Workflow validation: If the report is being finalized, it must have a conclusion.
+        if status == 'finalized' and not impression:
+            self.add_error('impression', "An impression is required to finalize a report.")
 
         return cleaned_data
 
 
-class ScanResultForm(forms.ModelForm):
-    class Meta:
-        model = ScanResultModel
-        fields = '__all__'
-
-
-    def clean_measurements_data(self):
-        """Validate JSON format"""
-        import json
-        data = self.cleaned_data.get('measurements_data')
-        if data:
-            try:
-                if isinstance(data, str):
-                    json.loads(data)
-            except json.JSONDecodeError:
-                raise ValidationError("Invalid JSON format for measurements data.")
-        return data
-
-
-# NEW: Form for the ScanImageModel
 class ScanImageForm(forms.ModelForm):
+    """
+    A form for uploading and editing a single scan image and its metadata.
+    """
+
     class Meta:
         model = ScanImageModel
-        fields = ['scan_result', 'image', 'view_type', 'description',
-                  'sequence_number', 'image_quality', 'technical_parameters']
+        # Explicitly list all fields a user can edit
+        fields = [
+            'scan_result',
+            'image',
+            'view_type',
+            'description',
+            'sequence_number',
+            'image_quality',
+            'technical_parameters',
+        ]
+
         widgets = {
-            'scan_result': forms.Select(attrs={'class': 'form-control'}),
-            'image': forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
-            'view_type': forms.TextInput(attrs={'class': 'form-control'}),
-            'description': forms.TextInput(attrs={'class': 'form-control'}),
+            'scan_result': forms.Select(attrs={'class': 'form-select'}),
+            'image': forms.ClearableFileInput(attrs={'class': 'form-control'}),
+            'view_type': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., AP, Lateral, Oblique'}),
+            'description': forms.TextInput(
+                attrs={'class': 'form-control', 'placeholder': 'e.g., Left knee, anterior view'}),
             'sequence_number': forms.NumberInput(attrs={'class': 'form-control', 'min': '1'}),
-            'image_quality': forms.Select(attrs={'class': 'form-control'}),
-            'technical_parameters': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'image_quality': forms.Select(attrs={'class': 'form-select'}),
+            'technical_parameters': forms.Textarea(attrs={'class': 'form-control', 'rows': 4,
+                                                          'placeholder': 'Enter as JSON, e.g., {"kvp": 120, "mas": 100}'}),
         }
 
+        labels = {
+            'scan_result': 'Associated Scan Report',
+            'view_type': 'View Type / Projection',
+            'sequence_number': 'Image Sequence Number',
+        }
+
+    def clean_sequence_number(self):
+        """Ensure the sequence number is a positive integer."""
+        seq_num = self.cleaned_data.get('sequence_number')
+        if seq_num is not None and seq_num < 1:
+            raise ValidationError("Sequence number must be 1 or greater.")
+        return seq_num
+
     def clean_technical_parameters(self):
-        """Validate JSON format for technical parameters"""
-        import json
+        """Validate the JSON format for technical parameters."""
         data = self.cleaned_data.get('technical_parameters')
-        if data:
-            try:
-                if isinstance(data, str):
-                    json.loads(data)
-            except json.JSONDecodeError:
-                raise ValidationError("Invalid JSON format for technical parameters.")
-        return data
+        if not data:
+            return {}  # Default to an empty dictionary if blank
+
+        # If the data is already a dict (from JSONField), it's valid
+        if isinstance(data, dict):
+            return data
+
+        # If it's a string (from a textarea), try to parse it
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError:
+            raise ValidationError("Invalid JSON format for technical parameters.")
 
 
 class ScanEquipmentForm(forms.ModelForm):
@@ -265,19 +380,30 @@ class ScanTemplateBuilderForm(forms.ModelForm):
 
 
 class ScanSettingForm(forms.ModelForm):
+    """
+    Form for updating the global Laboratory Settings.
+    """
     class Meta:
         model = ScanSettingModel
-        fields = ['department_name', 'department_head',
-                  'default_appointment_duration', 'advance_booking_days',
-                  'working_hours_start', 'working_hours_end',
-                  'send_appointment_reminders', 'reminder_hours_before']
+        fields = [
+            'scan_name', 'mobile', 'email',
+            'allow_direct_scan_order',
+            'allow_result_print_in_scan',
+            'allow_result_printing_by_consultant',
+        ]
         widgets = {
-            'department_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'department_head': forms.TextInput(attrs={'class': 'form-control'}),
-            'default_appointment_duration': forms.NumberInput(attrs={'class': 'form-control'}),
-            'advance_booking_days': forms.NumberInput(attrs={'class': 'form-control'}),
-            'working_hours_start': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
-            'working_hours_end': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
-            'send_appointment_reminders': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'reminder_hours_before': forms.NumberInput(attrs={'class': 'form-control'}),
+            'scan_name': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Official name of the laboratory'
+            }),
+            'mobile': forms.TextInput(attrs={
+                'class': 'form-control',
+            }),
+            'email': forms.TextInput(attrs={
+                'class': 'form-control',
+            }),
+            'allow_direct_scan_order': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'allow_result_print_in_scan': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'allow_result_printing_by_consultant': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+

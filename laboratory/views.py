@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.contrib.auth.models import User
+from django.contrib.messages.views import SuccessMessageMixin
 from django.db import transaction
 from django.db.models import Q, Count, Sum, Value
 from django.db.models.functions import Concat
@@ -14,6 +15,7 @@ from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils.timezone import now
+from django.views import View
 from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
@@ -51,7 +53,7 @@ class FlashFormErrorsMixin:
 # Lab Test Category Views
 # -------------------------
 class LabTestCategoryCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, SuccessMessageMixin,
     CreateView
 ):
     model = LabTestCategoryModel
@@ -85,7 +87,7 @@ class LabTestCategoryListView(LoginRequiredMixin, PermissionRequiredMixin, ListV
 
 
 class LabTestCategoryUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, SuccessMessageMixin, UpdateView
 ):
     model = LabTestCategoryModel
     permission_required = 'laboratory.change_labtestcategorymodel'
@@ -102,7 +104,7 @@ class LabTestCategoryUpdateView(
         return super().dispatch(request, *args, **kwargs)
 
 
-class LabTestCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class LabTestCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView):
     model = LabTestCategoryModel
     permission_required = 'laboratory.delete_labtestcategorymodel'
     template_name = 'laboratory/category/delete.html'
@@ -197,6 +199,36 @@ class LabTestTemplateUpdateView(
         context['category_list'] = LabTestCategoryModel.objects.all().order_by('name')
         context['template'] = self.object
         return context
+
+
+class LabTestTemplateToggleStatusView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'lab.change_labtesttemplatemodel'
+
+    def post(self, request, pk):
+        template = get_object_or_404(LabTestTemplateModel, pk=pk)
+        action = request.POST.get('action')
+
+        if action == 'deactivate':
+            reason = request.POST.get('reason', '').strip()
+            if not reason:
+                messages.error(request, 'Reason for deactivation is required.')
+                return redirect('lab_template_detail', pk=pk)
+
+            template.is_active = False
+            template.reason_for_deactivate = reason
+            template.save()
+            messages.success(request, f'Template "{template.name}" has been deactivated.')
+
+        elif action == 'activate':
+            template.is_active = True
+            template.reason_for_deactivate = ''
+            template.save()
+            messages.success(request, f'Template "{template.name}" has been activated.')
+
+        else:
+            messages.error(request, 'Invalid action.')
+
+        return redirect('lab_template_detail', pk=pk)
 
 
 class LabTestTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
@@ -637,12 +669,6 @@ def collect_sample(request, order_id):
         return JsonResponse({'success': False, 'error': f'Error collecting sample: {str(e)}'})
 
 
-
-
-
-# -------------------------
-# Other Views (Updated existing ones)
-# -------------------------
 class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = LabTestOrderModel
     permission_required = 'laboratory.view_labtestordermodel'
@@ -651,7 +677,7 @@ class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
     paginate_by = 20
 
     def get_queryset(self):
-        queryset = LabTestOrderModel.objects.select_related(
+        queryset = LabTestOrderModel.objects.exclude(status='pending').select_related(
             'patient', 'template', 'ordered_by'
         ).order_by('-ordered_at')
 
@@ -675,7 +701,6 @@ class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['status_choices'] = LabTestOrderModel.STATUS_CHOICES
-        context['patient_list'] = PatientModel.objects.filter(is_active=True).order_by('first_name')
         context['template_list'] = LabTestTemplateModel.objects.filter(is_active=True).order_by('name')
 
         # Add counts for dashboard
@@ -705,6 +730,7 @@ class LabTestOrderDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detail
 
         context.update({
             'has_results': has_results,
+            'lab_setting': LabSettingModel.objects.first(),
             'can_process_payment': order.status == 'pending' and self.request.user.has_perm(
                 'laboratory.change_labtestordermodel'),
             'can_collect_sample': order.status == 'paid' and self.request.user.has_perm(
@@ -1081,100 +1107,6 @@ def laboratory_analytics_api(request):
 
     return JsonResponse({'error': 'Invalid chart type'}, status=400)
 
-class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
-    """Create lab test results"""
-    model = LabTestResultModel
-    permission_required = 'laboratory.add_labtestresultmodel'
-    template_name = 'laboratory/result/create.html'
-    fields = ['results_data', 'technician_comments']
-
-    def dispatch(self, request, *args, **kwargs):
-        # Get the order from URL or POST data
-        order_id = kwargs.get('order_id') or request.POST.get('order_id')
-        if order_id:
-            self.order = get_object_or_404(LabTestOrderModel, pk=order_id)
-            # Check if result already exists
-            if hasattr(self.order, 'result'):
-                messages.warning(request, 'Results already exist for this order. Use edit instead.')
-                return redirect('lab_result_edit', pk=self.order.result.pk)
-        else:
-            self.order = None
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        if self.order:
-            context.update({
-                'order': self.order,
-                'patient': self.order.patient,
-                'template': self.order.template,
-                'parameters': self.order.template.test_parameters.get('parameters', [])
-            })
-        else:
-            # Show available orders for selection
-            context['available_orders'] = LabTestOrderModel.objects.filter(
-                status__in=['collected', 'processing']
-            ).exclude(result__isnull=False).select_related('patient', 'template')
-        return context
-
-    def form_valid(self, form):
-        if not self.order and 'order_id' in self.request.POST:
-            self.order = get_object_or_404(LabTestOrderModel, pk=self.request.POST['order_id'])
-
-        if not self.order:
-            messages.error(self.request, 'Please select a valid lab order.')
-            return self.form_invalid(form)
-
-        # Set the order and update status
-        form.instance.order = self.order
-
-        with transaction.atomic():
-            response = super().form_valid(form)
-            # Update order status to processing or completed
-            self.order.status = 'completed'
-            self.order.processed_at = now()
-            self.order.processed_by = self.request.user
-            self.order.save(update_fields=['status', 'processed_at', 'processed_by'])
-
-        messages.success(self.request, f'Results entered successfully for {self.order.template.name}')
-        return response
-
-    def get_success_url(self):
-        return reverse('lab_result_detail', kwargs={'pk': self.object.pk})
-
-
-class LabTestResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
-    """Update lab test results (only if not verified)"""
-    model = LabTestResultModel
-    permission_required = 'laboratory.change_labtestresultmodel'
-    template_name = 'laboratory/result/edit.html'
-    fields = ['results_data', 'technician_comments']
-
-    def dispatch(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        if self.object.is_verified:
-            messages.error(request, 'Cannot edit verified results.')
-            return redirect('lab_result_detail', pk=self.object.pk)
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context.update({
-            'result': self.object,
-            'order': self.object.order,
-            'patient': self.object.order.patient,
-            'template': self.object.order.template,
-            'parameters': self.object.order.template.test_parameters.get('parameters', [])
-        })
-        return context
-
-    def form_valid(self, form):
-        messages.success(self.request, 'Lab results updated successfully')
-        return super().form_valid(form)
-
-    def get_success_url(self):
-        return reverse('lab_result_detail', kwargs={'pk': self.object.pk})
-
 
 class LabTestResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = LabTestResultModel
@@ -1255,10 +1187,6 @@ class LabTestResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListVie
 
         return queryset
 
-    # your_app/views.py
-    from datetime import date
-
-    # ... inside your LabTestResultListView class
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -1291,6 +1219,7 @@ class LabTestResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListVie
         ]
 
         return context
+
 
 @login_required
 @permission_required('laboratory.change_labtestresultmodel', raise_exception=True)
@@ -1390,6 +1319,7 @@ class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, Creat
     fields = ['technician_comments']
 
     def dispatch(self, request, *args, **kwargs):
+
         # Get the order from URL
         order_id = request.GET.get('order_id')
         if order_id:
@@ -1426,6 +1356,10 @@ class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, Creat
         parameters = self.order.template.test_parameters.get('parameters', [])
         results = []
 
+        # Get patient gender for gender-specific ranges
+        patient_gender = self.order.patient.gender.lower() if hasattr(self.order.patient,
+                                                                      'gender') and self.order.patient.gender else None
+
         for param in parameters:
             param_code = param.get('code', '')
             value = request.POST.get(f'param_{param_code}', '').strip()
@@ -1441,22 +1375,40 @@ class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, Creat
 
                 # Add normal range if available
                 if 'normal_range' in param:
-                    result_entry['normal_range'] = param['normal_range']
-                    # Determine status (normal/abnormal) for numeric values
-                    if param.get('type') == 'numeric' and param['normal_range'].get('min') and param[
-                        'normal_range'].get('max'):
-                        try:
-                            numeric_value = float(value)
-                            min_val = float(param['normal_range']['min'])
-                            max_val = float(param['normal_range']['max'])
+                    normal_range = param['normal_range']
+                    result_entry['normal_range'] = normal_range
 
-                            if numeric_value < min_val:
-                                result_entry['status'] = 'low'
-                            elif numeric_value > max_val:
-                                result_entry['status'] = 'high'
-                            else:
+                    # Determine status (normal/abnormal) for numeric values
+                    if param.get('type') == 'numeric':
+                        min_val = None
+                        max_val = None
+
+                        # Check if it's gender-specific
+                        if normal_range.get('gender_specific') and patient_gender:
+                            gender_range = normal_range.get(patient_gender, {})
+                            min_val = gender_range.get('min')
+                            max_val = gender_range.get('max')
+                        else:
+                            # Use standard range
+                            min_val = normal_range.get('min')
+                            max_val = normal_range.get('max')
+
+                        # Only evaluate status if we have valid range values
+                        if min_val is not None and max_val is not None:
+                            try:
+                                numeric_value = float(value)
+                                min_val = float(min_val)
+                                max_val = float(max_val)
+
+                                if numeric_value < min_val:
+                                    result_entry['status'] = 'low'
+                                elif numeric_value > max_val:
+                                    result_entry['status'] = 'high'
+                                else:
+                                    result_entry['status'] = 'normal'
+                            except (ValueError, TypeError):
                                 result_entry['status'] = 'normal'
-                        except (ValueError, TypeError):
+                        else:
                             result_entry['status'] = 'normal'
                     else:
                         result_entry['status'] = 'normal'
@@ -1471,12 +1423,15 @@ class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, Creat
                 result = LabTestResultModel.objects.create(
                     order=self.order,
                     results_data={'results': results},
-                    technician_comments=technician_comments
+                    technician_comments=technician_comments,
+
                 )
 
                 # Update order status
                 self.order.status = 'completed'
-                self.order.save(update_fields=['status'])
+                self.order.processed_at = now()
+                self.order.processed_by = self.request.user
+                self.order.save(update_fields=['status', 'processed_at', 'processed_by'])
 
             messages.success(request, f'Results entered successfully for {self.order.template.name}')
             return redirect('lab_result_detail', pk=result.pk)
@@ -1520,6 +1475,10 @@ class LabTestResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Updat
         parameters = self.object.order.template.test_parameters.get('parameters', [])
         results = []
 
+        # Get patient gender for gender-specific ranges
+        patient_gender = self.object.order.patient.gender.lower() if hasattr(self.object.order.patient,
+                                                                             'gender') and self.object.order.patient.gender else None
+
         for param in parameters:
             param_code = param.get('code', '')
             value = request.POST.get(f'param_{param_code}', '').strip()
@@ -1533,23 +1492,42 @@ class LabTestResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Updat
                     'type': param.get('type', 'text')
                 }
 
-                # Add normal range and status logic (same as create view)
+                # Add normal range and status logic
                 if 'normal_range' in param:
-                    result_entry['normal_range'] = param['normal_range']
-                    if param.get('type') == 'numeric' and param['normal_range'].get('min') and param[
-                        'normal_range'].get('max'):
-                        try:
-                            numeric_value = float(value)
-                            min_val = float(param['normal_range']['min'])
-                            max_val = float(param['normal_range']['max'])
+                    normal_range = param['normal_range']
+                    result_entry['normal_range'] = normal_range
 
-                            if numeric_value < min_val:
-                                result_entry['status'] = 'low'
-                            elif numeric_value > max_val:
-                                result_entry['status'] = 'high'
-                            else:
+                    # Determine status (normal/abnormal) for numeric values
+                    if param.get('type') == 'numeric':
+                        min_val = None
+                        max_val = None
+
+                        # Check if it's gender-specific
+                        if normal_range.get('gender_specific') and patient_gender:
+                            gender_range = normal_range.get(patient_gender, {})
+                            min_val = gender_range.get('min')
+                            max_val = gender_range.get('max')
+                        else:
+                            # Use standard range
+                            min_val = normal_range.get('min')
+                            max_val = normal_range.get('max')
+
+                        # Only evaluate status if we have valid range values
+                        if min_val is not None and max_val is not None:
+                            try:
+                                numeric_value = float(value)
+                                min_val = float(min_val)
+                                max_val = float(max_val)
+
+                                if numeric_value < min_val:
+                                    result_entry['status'] = 'low'
+                                elif numeric_value > max_val:
+                                    result_entry['status'] = 'high'
+                                else:
+                                    result_entry['status'] = 'normal'
+                            except (ValueError, TypeError):
                                 result_entry['status'] = 'normal'
-                        except (ValueError, TypeError):
+                        else:
                             result_entry['status'] = 'normal'
                     else:
                         result_entry['status'] = 'normal'
@@ -1563,6 +1541,11 @@ class LabTestResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Updat
             self.object.results_data = {'results': results}
             self.object.technician_comments = technician_comments
             self.object.save(update_fields=['results_data', 'technician_comments'])
+
+            self.object.order.status = 'completed'
+            self.object.order.processed_at = now()
+            self.object.order.processed_by = self.request.user
+            self.object.order.save(update_fields=['status', 'processed_at', 'processed_by'])
 
             messages.success(request, 'Lab results updated successfully')
             return redirect('lab_result_detail', pk=self.object.pk)

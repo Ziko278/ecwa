@@ -1,0 +1,347 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="pagetitle">
+    <h1>Scan Order Details</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'scan_dashboard' %}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'scan_order_index' %}">Scan Orders</a></li>
+            <li class="breadcrumb-item active">{{ order.order_number }}</li>
+        </ol>
+    </nav>
+</div>
+
+<section class="section profile">
+    <div class="row">
+        <div class="col-xl-8">
+            <div class="card">
+                <div class="card-body pt-3">
+                    <ul class="nav nav-tabs nav-tabs-bordered">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#order-overview">Overview</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#scheduling-details">Scheduling & Execution</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#payment-clinical">Payment & Clinical Info</button>
+                        </li>
+                         <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#result-images">Result & Images</button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content pt-2">
+                        <div class="tab-pane fade show active profile-overview" id="order-overview">
+                            <h5 class="card-title">Order Summary</h5>
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Scan Name</div>
+                                <div class="col-lg-9 col-md-8">{{ order.template.name }}</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Scan Category</div>
+                                <div class="col-lg-9 col-md-8">{{ order.template.category.name }}</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Order Number</div>
+                                <div class="col-lg-9 col-md-8">{{ order.order_number }}</div>
+                            </div>
+                             <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Status</div>
+                                <div class="col-lg-9 col-md-8">
+                                    <span class="badge bg-{% if order.status == 'pending' %}warning text-dark{% elif order.status == 'paid' %}info text-dark{% elif order.status == 'scheduled' %}secondary{% elif order.status == 'in_progress' %}dark{% elif order.status == 'completed' %}success{% else %}light text-dark{% endif %}">
+                                        {{ order.get_status_display }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Ordered At</div>
+                                <div class="col-lg-9 col-md-8">{{ order.ordered_at|date:"d M Y, h:i A" }}</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Ordered By</div>
+                                <div class="col-lg-9 col-md-8">{{ order.ordered_by.user_staff_profile.staff|title|default:order.ordered_by.username|default:"N/A" }}</div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade pt-3" id="scheduling-details">
+                            <h5 class="card-title">Scheduling Information</h5>
+                            {% if order.scheduled_date %}
+                                <div class="row">
+                                    <div class="col-lg-3 col-md-4 label">Scheduled For</div>
+                                    <div class="col-lg-9 col-md-8">{{ order.scheduled_date|date:"d M Y, h:i A" }}</div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-lg-3 col-md-4 label">Scheduled By</div>
+                                    <div class="col-lg-9 col-md-8">{{ order.scheduled_by.user_staff_profile.staff|title|default:order.scheduled_by.username|default:"N/A" }}</div>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info">This scan has not been scheduled yet.</div>
+                            {% endif %}
+
+                            <h5 class="card-title mt-4">Execution Details</h5>
+                             {% if order.scan_started_at %}
+                                <div class="row">
+                                    <div class="col-lg-3 col-md-4 label">Scan Started At</div>
+                                    <div class="col-lg-9 col-md-8">{{ order.scan_started_at|date:"d M Y, h:i A" }}</div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-lg-3 col-md-4 label">Performed By</div>
+                                    <div class="col-lg-9 col-md-8">{{ order.performed_by.user_staff_profile.staff|title|default:order.performed_by.username|default:"N/A" }}</div>
+                                </div>
+                            {% else %}
+                                 <div class="alert alert-secondary">This scan has not been started yet.</div>
+                            {% endif %}
+                            {% if order.scan_completed_at %}
+                                <div class="row">
+                                    <div class="col-lg-3 col-md-4 label">Scan Completed At</div>
+                                    <div class="col-lg-9 col-md-8">{{ order.scan_completed_at|date:"d M Y, h:i A" }}</div>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="tab-pane fade pt-3" id="payment-clinical">
+                            <h5 class="card-title">Payment Information</h5>
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Amount Charged</div>
+                                <div class="col-lg-9 col-md-8">₦{{ order.amount_charged|intcomma }}</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Payment Status</div>
+                                <div class="col-lg-9 col-md-8">
+                                    {% if order.payment_status %}
+                                        <span class="badge bg-success">Paid</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Not Paid</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% if order.payment_date %}
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Payment Date</div>
+                                <div class="col-lg-9 col-md-8">{{ order.payment_date|date:"d M Y, h:i A" }}</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Payment By</div>
+                                <div class="col-lg-9 col-md-8">{{ order.payment_by.user_staff_profile.staff|title|default:order.payment_by.username|default:"N/A" }}</div>
+                            </div>
+                            {% endif %}
+
+                            <h5 class="card-title mt-4">Clinical Information</h5>
+                             <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Clinical Indication</div>
+                                <div class="col-lg-9 col-md-8">{{ order.clinical_indication|default:"Not provided." }}</div>
+                            </div>
+                             <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Special Instructions</div>
+                                <div class="col-lg-9 col-md-8">{{ order.special_instructions|default:"None." }}</div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade pt-3" id="result-images">
+                             <h5 class="card-title">Result Status</h5>
+                            {% if order.result %}
+                                <div class="alert alert-success">
+                                    Results are available for this scan.
+                                    <a href="{% url 'scan_result_detail' order.result.id %}" class="alert-link fw-bold">Click here to view the report.</a>
+                                </div>
+                                <h5 class="card-title mt-4">Uploaded Images</h5>
+                                <div class="row">
+                                    {% for image in order.result.images.all %}
+                                        <div class="col-md-3 mb-3 text-center">
+                                            <a href="{{ image.image.url }}" data-gallery="scan-images" class="glightbox">
+                                                <img src="{{ image.image.url }}" alt="{{ image.description|default:'Scan Image' }}" class="img-fluid rounded">
+                                            </a>
+                                            <p class="small mt-1 mb-0">{{ image.view_type|default:"Image" }}</p>
+                                        </div>
+                                    {% empty %}
+                                        <div class="col-12">
+                                            <p>No images have been uploaded for this result yet.</p>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="alert alert-warning">Results have not been entered for this scan yet.</div>
+                            {% endif %}
+                        </div>
+
+                    </div></div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card">
+                <div class="card-body profile-card pt-4 d-flex flex-column align-items-center">
+                    <i class="bi bi-person-circle" style="font-size: 64px;"></i>
+                    <h5 class="mt-2">{{ order.patient|title }}</h5>
+                    <h6 class="text-muted">{{ order.patient.card_number }}</h6>
+                    <div class="mt-2">
+                        <a href="{% url 'patient_scan_orders' order.patient.id %}" class="btn btn-sm btn-outline-primary">View All Patient's Scans</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Actions</h5>
+
+                    {% if order.status == 'pending' %}
+                    <a href="{% url 'patient_scan_orders' order.patient.id %}" class="btn btn-warning w-100 mb-2">
+                        <i class="bi bi-credit-card me-1"></i> Go to Pay
+                    </a>
+                    <p class="small text-muted">Navigate to the patient's page to process payment.</p>
+                    {% elif order.status == 'paid' %}
+                    <a href="{% url 'patient_scan_orders' order.patient.id %}" class="btn btn-info w-100 mb-2">
+                        <i class="bi bi-calendar-event me-1"></i> Schedule Scan
+                    </a>
+                    <p class="small text-muted">Navigate to the patient's page to schedule this scan.</p>
+                    {% elif order.status == 'scheduled' %}
+                     <a href="{% url 'patient_scan_orders' order.patient.id %}" class="btn btn-dark w-100 mb-2">
+                        <i class="bi bi-play-circle me-1"></i> Start Scan
+                    </a>
+                    <p class="small text-muted">Navigate to the patient's page to start the scan process.</p>
+                    {% elif order.status == 'in_progress' %}
+                     <a href="{% url 'scan_result_create_for_order' order.id %}" class="btn btn-secondary w-100 mb-2">
+                        <i class="bi bi-keyboard me-1"></i> Input Results
+                    </a>
+                    <p class="small text-muted">Proceed to the result entry page for this order.</p>
+                    {% elif order.status == 'completed' %}
+                     <a href="{% url 'scan_result_detail' order.result.id %}" class="btn btn-success w-100 mb-2">
+                        <i class="bi bi-file-earmark-check me-1"></i> View Final Result
+                    </a>
+                    <p class="small text-muted">The report for this scan is available.</p>
+                    {% endif %}
+
+                    <hr>
+                    <button type="button" class="btn btn-light w-100" data-bs-toggle="modal" data-bs-target="#referralModal">
+                        <i class="bi bi-printer me-1"></i> Print Referral
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Referral Modal -->
+<div class="modal fade" id="referralModal" tabindex="-1" aria-labelledby="referralModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="referralModalLabel">Medical Imaging Referral</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="referralForm">
+                    <div class="mb-3">
+                        <label for="referralTitle" class="form-label">Referral Title</label>
+                        <input type="text" class="form-control" id="referralTitle" value="MEDICAL IMAGING REFERRAL">
+                    </div>
+                    <div class="mb-3">
+                        <label for="referralContent" class="form-label">Referral Details</label>
+                        <textarea class="form-control" id="referralContent" rows="15" style="font-family: monospace;">Date: {{ order.ordered_at|date:"d M Y" }}
+
+TO: RECEIVING IMAGING CENTER/RADIOLOGY DEPARTMENT
+FROM: {{ scan_setting.scan_name|upper }}
+
+PATIENT REFERRAL FOR MEDICAL IMAGING
+
+Patient Information:
+- Name: {{ order.patient|title }}
+- Gender: {{ order.patient.gender|title }}
+
+Referring Physician: {{ order.ordered_by.user_staff_profile.staff|title|default:order.ordered_by.username }}
+
+Imaging Study Requested:
+- {{ order.template.name }} ({{ order.template.category.name }})
+
+Clinical Indication:
+{% if order.clinical_indication %}{{ order.clinical_indication }}{% else %}[Please provide relevant clinical history, symptoms, and reason for imaging]{% endif %}
+
+Special Instructions:
+{% if order.special_instructions %}{{ order.special_instructions }}{% else %}[Include any special preparation, contrast requirements, or technical considerations]{% endif %}
+
+Contact Information:
+{% if scan_setting.mobile %}- Phone: {{ scan_setting.mobile }}{% endif %}
+{% if scan_setting.email %}- Email: {{ scan_setting.email|lower }}{% endif %}
+
+Thank you for your cooperation in providing quality imaging services.
+
+Signature: _________________________
+{{ request.user.user_staff_profile.staff|title|default:order.ordered_by.username }}
+Date: {{ order.ordered_at|date:"d M Y" }}</textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="printReferral()">
+                    <i class="bi bi-printer me-1"></i> Print Referral
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function printReferral() {
+    const title = document.getElementById('referralTitle').value;
+    const content = document.getElementById('referralContent').value;
+
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>${title}</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    font-size: 12pt;
+                    line-height: 1.4;
+                    margin: 1in;
+                    color: #000;
+                }
+                h1 {
+                    text-align: center;
+                    font-size: 16pt;
+                    font-weight: bold;
+                    margin-bottom: 20px;
+                    text-decoration: underline;
+                }
+                .content {
+                    white-space: pre-line;
+                }
+                @media print {
+                    body {
+                        margin: 0.5in;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <h1>${title}</h1>
+            <div class="content">${content}</div>
+        </body>
+        </html>
+    `);
+
+    printWindow.document.close();
+
+    // Wait for the content to load, then print
+    printWindow.onload = function() {
+        printWindow.print();
+        printWindow.close();
+    };
+
+    // Close the modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('referralModal'));
+    modal.hide();
+}
+</script>
+
+{% endblock %}

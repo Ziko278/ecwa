@@ -37,6 +37,10 @@
                     <button class="btn btn-info btn-sm" onclick="printResult()">
                         <i class="mdi mdi-printer"></i> Print
                     </button>
+                    <button class="btn btn-danger btn-sm" onclick="window.history.back()">
+                        <i class="mdi mdi-printer"></i> Back
+                    </button>
+
                 </div>
             </div>
 
@@ -150,9 +154,23 @@
                                     <td>{{ result_item.unit|default:"-" }}</td>
                                     <td>
                                         {% if result_item.normal_range %}
-                                            {% if result_item.normal_range.min %}{{ result_item.normal_range.min }}{% endif %}
-                                            {% if result_item.normal_range.min and result_item.normal_range.max %} - {% endif %}
-                                            {% if result_item.normal_range.max %}{{ result_item.normal_range.max }}{% endif %}
+                                            {% if result_item.normal_range.gender_specific %}
+                                                <small>
+                                                    {% if patient.gender|lower == 'male' %}
+                                                        {% if result_item.normal_range.male.min %}{{ result_item.normal_range.male.min }}{% endif %}
+                                                        {% if result_item.normal_range.male.min and result_item.normal_range.male.max %}-{% endif %}
+                                                        {% if result_item.normal_range.male.max %}{{ result_item.normal_range.male.max }}{% endif %}
+                                                    {% else %}
+                                                        {% if result_item.normal_range.female.min %}{{ result_item.normal_range.female.min }}{% endif %}
+                                                        {% if result_item.normal_range.female.min and result_item.normal_range.female.max %}-{% endif %}
+                                                        {% if result_item.normal_range.female.max %}{{ result_item.normal_range.female.max }}{% endif %}
+                                                    {% endif %}
+                                                </small>
+                                            {% else %}
+                                                {% if result_item.normal_range.min %}{{ result_item.normal_range.min }}{% endif %}
+                                                {% if result_item.normal_range.min and result_item.normal_range.max %} - {% endif %}
+                                                {% if result_item.normal_range.max %}{{ result_item.normal_range.max }}{% endif %}
+                                            {% endif %}
                                         {% else %}
                                             -
                                         {% endif %}
@@ -201,7 +219,7 @@
                             <div class="border-top pt-3">
                                 <p><strong>Lab Technician:</strong></p>
                                 <p>_______________________</p>
-                                <p class="small">{{ order.processed_by }}</p>
+                                <p class="small">{{ order.processed_by.user_staff_profile.staff|title }}</p>
                                 <p class="small">Date: {{ result.created_at|date:"d-M-Y" }}</p>
                             </div>
                         </div>

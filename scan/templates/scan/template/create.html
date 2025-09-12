@@ -1,0 +1,559 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Add Imaging</h4>
+            <p class="card-description">Fill in the details below to create a new scan template.</p>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form method="post" id="templateForm">
+                {% csrf_token %}
+
+                <div class="row">
+                    <div class="form-floating col-md-12 mb-3">
+                        {{ form.name }}
+                        <label for="id_name">Template Name<span class="text-danger">*</span></label>
+                    </div>
+
+                    <div class="form-floating col-md-6 mb-3">
+                        {{ form.code }}
+                        <label for="id_code">Template Code</label>
+                    </div>
+
+                    <div class="form-floating col-md-6 mb-3">
+                        {{ form.category }}
+                        <label for="id_category">Category</label>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-floating col-md-12 mb-3">
+                        {{ form.description }}
+                        <label for="id_description">Description</label>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="form-floating col-md-4 mb-3">
+                        {{ form.price }}
+                        <label for="id_price">Price (₦)</label>
+                    </div>
+
+                    <div class="form-floating col-md-4 mb-3">
+                        {{ form.estimated_duration }}
+                        <label for="id_estimated_duration">Estimated Duration</label>
+                    </div>
+
+                    <div class="form-floating col-md-4 mb-3">
+                        {{ form.fasting_required }}
+                        <label for="id_fasting_required">Fasting Required? </label>
+                    </div>
+
+                </div>
+
+
+                <!-- Expected Views/Images Section -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Expected Images/Views</h5>
+                    <div class="card border-light">
+                        <div class="card-body">
+                            <div id="viewsContainer">
+                                <!-- Views will be added here dynamically -->
+                            </div>
+
+                            <button type="button" class="btn btn-success btn-sm" id="addViewBtn">
+                                <i class="bi bi-plus"></i> Add Image View
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expected Measurements Section (for report extraction) -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Expected Measurements for Report Extraction</h5>
+                    <p class="text-muted small">Define what measurements to extract from radiology reports for better readability</p>
+                    <div class="card border-light">
+                        <div class="card-body">
+                            <div id="measurementsContainer">
+                                <!-- Measurements will be added here dynamically -->
+                            </div>
+
+                            <button type="button" class="btn btn-info btn-sm" id="addMeasurementBtn">
+                                <i class="bi bi-plus"></i> Add Measurement
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden fields for JSON data -->
+                <input type="hidden" id="id_expected_images" name="expected_images" value='[]'>
+                <input type="hidden" id="id_scan_parameters" name="scan_parameters" value='{"measurements": []}'>
+
+                <div class="form-check mb-3">
+                    {{ form.is_active }}
+                    <label class="form-check-label" for="id_is_active">Active?</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary me-2">Save</button>
+                <a href="{% url 'scan_template_index' %}" class="btn btn-danger">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="errorModalLabel">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Validation Error
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="errorModalMessage" class="mb-0"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Template (Hidden) -->
+<template id="viewTemplate">
+    <div class="view-item border rounded p-3 mb-3" style="background-color: #e3f2fd;">
+        <div class="row">
+            <div class="col-md-5">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control view-name" placeholder="View Name">
+                    <label>View Name * (e.g., AP, Lateral, Oblique)</label>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control view-description" placeholder="Description">
+                    <label>Description</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-3">
+                    <input type="checkbox" class="form-check-input view-required" checked>
+                    <label class="form-check-label">Required</label>
+                </div>
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-danger btn-sm remove-view-btn mt-3">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Measurement Template (Hidden) -->
+<template id="measurementTemplate">
+    <div class="measurement-item border rounded p-3 mb-3" style="background-color: #f3e5f5;">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control measurement-name" placeholder="Measurement Name">
+                    <label>Measurement Name *</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-floating mb-3">
+                    <select class="form-control measurement-type">
+                        <option value="text">Text/Description</option>
+                        <option value="numeric">Numeric Value</option>
+                        <option value="select">Select Options</option>
+                    </select>
+                    <label>Type</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-floating mb-3">
+                    <input type="text" class="form-control measurement-unit" placeholder="Unit">
+                    <label>Unit (opt)</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-3">
+                    <input type="checkbox" class="form-check-input measurement-required">
+                    <label class="form-check-label">Required</label>
+                </div>
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-danger btn-sm remove-measurement-btn mt-3">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Numeric specific fields -->
+        <div class="numeric-fields" style="display: none;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-floating mb-3">
+                        <input type="number" class="form-control measurement-min" step="0.01" placeholder="Min">
+                        <label>Normal Range - Min</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-floating mb-3">
+                        <input type="number" class="form-control measurement-max" step="0.01" placeholder="Max">
+                        <label>Normal Range - Max</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Select options fields -->
+        <div class="select-fields" style="display: none;">
+            <div class="mb-3">
+                <label class="form-label">Options (Enter each option on a new line):</label>
+                <textarea class="form-control measurement-options" rows="3" placeholder="Normal&#10;Abnormal&#10;Enlarged&#10;Small"></textarea>
+            </div>
+        </div>
+    </div>
+</template>
+
+<style>
+.view-item {
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.measurement-item {
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.view-item:hover, .measurement-item:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.remove-view-btn, .remove-measurement-btn {
+    width: 40px;
+    height: 40px;
+}
+
+#viewsContainer:empty::before {
+    content: "No image views added yet. Click 'Add Image View' to start.";
+    color: #6c757d;
+    font-style: italic;
+    display: block;
+    padding: 20px;
+    text-align: center;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+#measurementsContainer:empty::before {
+    content: "No measurements defined yet. Click 'Add Measurement' to define what to extract from reports.";
+    color: #6c757d;
+    font-style: italic;
+    display: block;
+    padding: 20px;
+    text-align: center;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const $ = id => document.getElementById(id);
+
+    const viewsContainer = $('viewsContainer');
+    const measurementsContainer = $('measurementsContainer');
+    const addViewBtn = $('addViewBtn');
+    const addMeasurementBtn = $('addMeasurementBtn');
+    const viewTemplate = $('viewTemplate');
+    const measurementTemplate = $('measurementTemplate');
+    const hiddenViewsInput = $('id_expected_images');
+    const hiddenMeasurementsInput = $('id_scan_parameters');
+    const errorModalEl = $('errorModal');
+    const errorModalMessage = $('errorModalMessage');
+
+    let errorModal = null;
+    if (typeof bootstrap !== 'undefined' && errorModalEl) {
+        try { errorModal = new bootstrap.Modal(errorModalEl); } catch (e) { errorModal = null; }
+    }
+
+    function showErrorModal(message) {
+        if (errorModal && errorModalMessage) {
+            errorModalMessage.textContent = message;
+            errorModal.show();
+        } else {
+            alert(message);
+        }
+    }
+
+    // Conditional fields
+    const fastingRequiredCheckbox = $('id_fasting_required');
+    const fastingHoursDiv = $('fastingHoursDiv');
+    const contrastRequiredCheckbox = $('id_contrast_required');
+    const contrastTypeDiv = $('contrastTypeDiv');
+
+    function toggleConditionalFields() {
+        if (fastingHoursDiv) fastingHoursDiv.style.display = (fastingRequiredCheckbox && fastingRequiredCheckbox.checked) ? 'block' : 'none';
+        if (contrastTypeDiv) contrastTypeDiv.style.display = (contrastRequiredCheckbox && contrastRequiredCheckbox.checked) ? 'block' : 'none';
+    }
+    if (fastingRequiredCheckbox) fastingRequiredCheckbox.addEventListener('change', toggleConditionalFields);
+    if (contrastRequiredCheckbox) contrastRequiredCheckbox.addEventListener('change', toggleConditionalFields);
+    toggleConditionalFields();
+
+    let viewCounter = 0;
+    let measurementCounter = 0;
+
+    /* ---------- Views (images) ---------- */
+    function attachViewEvents(viewItem) {
+        if (!viewItem) return;
+        const removeBtn = viewItem.querySelector('.remove-view-btn');
+        const inputs = viewItem.querySelectorAll('input');
+
+        if (removeBtn) removeBtn.addEventListener('click', function() { viewItem.remove(); updateViewsJSON(); });
+
+        inputs.forEach(i => { i.addEventListener('input', updateViewsJSON); i.addEventListener('change', updateViewsJSON); });
+    }
+
+    function addView() {
+        if (!viewTemplate || !viewsContainer) return;
+        viewCounter++;
+        const frag = viewTemplate.content.cloneNode(true);
+        const viewItemInFrag = frag.querySelector('.view-item');
+        if (viewItemInFrag) viewItemInFrag.dataset.viewId = viewCounter;
+        viewsContainer.appendChild(frag);
+        const appended = viewsContainer.querySelector('.view-item[data-view-id="' + viewCounter + '"]') || viewsContainer.querySelector('.view-item:last-child');
+        attachViewEvents(appended);
+        updateViewsJSON();
+    }
+
+    // IMPORTANT: we now serialize all added view items (even unnamed) so the server
+    // can tell that an image view was defined. We still validate names on submit.
+    function updateViewsJSON() {
+        if (!viewsContainer || !hiddenViewsInput) return;
+        const views = [];
+        const viewItems = viewsContainer.querySelectorAll('.view-item');
+
+        viewItems.forEach((item, idx) => {
+            const nameEl = item.querySelector('.view-name');
+            const descriptionEl = item.querySelector('.view-description');
+            const requiredEl = item.querySelector('.view-required');
+
+            // include the item even if name is empty — server must see the presence
+            const name = nameEl ? nameEl.value.trim() : '';
+            const description = descriptionEl ? descriptionEl.value.trim() : '';
+            const required = requiredEl ? requiredEl.checked : false;
+
+            views.push({
+                // preserve ordering and any empty name
+                name: name,
+                description: description,
+                required: required
+            });
+        });
+
+        hiddenViewsInput.value = JSON.stringify(views, null, 2);
+    }
+
+    /* ---------- Measurements ---------- */
+    function attachMeasurementEvents(measurementItem) {
+        if (!measurementItem) return;
+        const typeSelect = measurementItem.querySelector('.measurement-type');
+        const removeBtn = measurementItem.querySelector('.remove-measurement-btn');
+        const numericFields = measurementItem.querySelector('.numeric-fields');
+        const selectFields = measurementItem.querySelector('.select-fields');
+
+        if (typeSelect) {
+            const onTypeChange = function() {
+                const type = this.value;
+                if (numericFields) numericFields.style.display = type === 'numeric' ? 'block' : 'none';
+                if (selectFields) selectFields.style.display = type === 'select' ? 'block' : 'none';
+                updateMeasurementsJSON();
+            };
+            typeSelect.addEventListener('change', onTypeChange);
+            typeSelect.dispatchEvent(new Event('change'));
+        }
+
+        if (removeBtn) removeBtn.addEventListener('click', function() { measurementItem.remove(); updateMeasurementsJSON(); });
+
+        const inputs = measurementItem.querySelectorAll('input, select, textarea');
+        inputs.forEach(i => { i.addEventListener('input', updateMeasurementsJSON); i.addEventListener('change', updateMeasurementsJSON); });
+    }
+
+    function addMeasurement() {
+        if (!measurementTemplate || !measurementsContainer) return;
+        measurementCounter++;
+        const frag = measurementTemplate.content.cloneNode(true);
+        const measItemInFrag = frag.querySelector('.measurement-item');
+        if (measItemInFrag) measItemInFrag.dataset.measurementId = measurementCounter;
+        measurementsContainer.appendChild(frag);
+        const appended = measurementsContainer.querySelector('.measurement-item[data-measurement-id="' + measurementCounter + '"]') || measurementsContainer.querySelector('.measurement-item:last-child');
+        attachMeasurementEvents(appended);
+        updateMeasurementsJSON();
+    }
+
+    // likewise: always include measurement entries (even if name empty) when serializing
+    function updateMeasurementsJSON() {
+        if (!measurementsContainer || !hiddenMeasurementsInput) return;
+        const measurements = [];
+        const measurementItems = measurementsContainer.querySelectorAll('.measurement-item');
+
+        measurementItems.forEach(item => {
+            const nameEl = item.querySelector('.measurement-name');
+            const typeEl = item.querySelector('.measurement-type');
+            const unitEl = item.querySelector('.measurement-unit');
+            const requiredEl = item.querySelector('.measurement-required');
+
+            const name = nameEl ? nameEl.value.trim() : '';
+            const type = typeEl ? typeEl.value : 'text';
+            const unit = unitEl ? unitEl.value.trim() : '';
+            const required = requiredEl ? requiredEl.checked : false;
+
+            const measurement = { name: name, type: type, required: required };
+            if (unit) measurement.unit = unit;
+
+            if (type === 'numeric') {
+                const minEl = item.querySelector('.measurement-min');
+                const maxEl = item.querySelector('.measurement-max');
+                const min = minEl ? parseFloat(minEl.value) : NaN;
+                const max = maxEl ? parseFloat(maxEl.value) : NaN;
+                if (!isNaN(min) || !isNaN(max)) {
+                    measurement.normal_range = {};
+                    if (!isNaN(min)) measurement.normal_range.min = min;
+                    if (!isNaN(max)) measurement.normal_range.max = max;
+                }
+            } else if (type === 'select') {
+                const optionsTextEl = item.querySelector('.measurement-options');
+                const optionsText = optionsTextEl ? optionsTextEl.value.trim() : '';
+                if (optionsText) {
+                    measurement.options = optionsText.split('\n').map(o => o.trim()).filter(o => o.length);
+                }
+            }
+
+            measurements.push(measurement);
+        });
+
+        hiddenMeasurementsInput.value = JSON.stringify({ measurements: measurements }, null, 2);
+    }
+
+    // Hook up add buttons
+    if (addViewBtn) addViewBtn.addEventListener('click', addView);
+    if (addMeasurementBtn) addMeasurementBtn.addEventListener('click', addMeasurement);
+
+    /* ---------- Form submit validation ----------
+       Require at least one image view OR one measurement to be present.
+       Also require at least one non-empty name among the present items
+       (so we don't send only blank items to the server).
+    */
+    const templateForm = $('templateForm');
+    if (templateForm) {
+        templateForm.addEventListener('submit', function(e) {
+            // ensure hidden inputs reflect current DOM
+            updateViewsJSON();
+            updateMeasurementsJSON();
+
+            // Parse safely
+            let views = [];
+            try { views = JSON.parse(hiddenViewsInput && hiddenViewsInput.value ? hiddenViewsInput.value : '[]'); }
+            catch (err) { e.preventDefault(); showErrorModal('Unexpected data in image views. Please review.'); return false; }
+            let measurementsData = { measurements: [] };
+            try {
+                measurementsData = hiddenMeasurementsInput && hiddenMeasurementsInput.value ? JSON.parse(hiddenMeasurementsInput.value) : { measurements: [] };
+                if (!measurementsData || !Array.isArray(measurementsData.measurements)) measurementsData = { measurements: [] };
+            } catch (err) { e.preventDefault(); showErrorModal('Unexpected data in measurements. Please review.'); return false; }
+            const measurements = measurementsData.measurements;
+
+            // If both are empty -> error
+            if ((views.length === 0) && (measurements.length === 0)) {
+                e.preventDefault();
+                showErrorModal('Please add at least one image view OR at least one measurement.');
+                return false;
+            }
+
+            // Ensure at least one non-empty name among all present items
+            const hasNamedView = views.some(v => v.name && v.name.trim().length > 0);
+            const hasNamedMeasurement = measurements.some(m => m.name && m.name.trim().length > 0);
+
+            if (!hasNamedView && !hasNamedMeasurement) {
+                e.preventDefault();
+                showErrorModal('Please provide a name for at least one image view or at least one measurement.');
+                return false;
+            }
+
+            // If any views present that have empty names, point that out specifically
+            const unnamedViewsCount = views.filter(v => !v.name || !v.name.trim()).length;
+            if (views.length > 0 && unnamedViewsCount === views.length && !hasNamedMeasurement) {
+                // all views are unnamed and there are no named measurements
+                e.preventDefault();
+                showErrorModal('Please fill in names for your image views, or add a named measurement.');
+                return false;
+            }
+
+            // If any measurements present with empty names and no named views -> error
+            const unnamedMeasurementsCount = measurements.filter(m => !m.name || !m.name.trim()).length;
+            if (measurements.length > 0 && unnamedMeasurementsCount === measurements.length && !hasNamedView) {
+                e.preventDefault();
+                showErrorModal('Please fill in names for your measurements, or add a named image view.');
+                return false;
+            }
+
+            // All checks passed -> allow submit
+        });
+    }
+
+    // Defaults (only create defaults if empty)
+    function addDefaultViews() {
+        if (!viewsContainer) return;
+        addView();
+        const first = viewsContainer.querySelector('.view-item:last-child');
+        if (first) {
+            const nameEl = first.querySelector('.view-name');
+            const descEl = first.querySelector('.view-description');
+            if (nameEl) nameEl.value = 'AP';
+            if (descEl) descEl.value = 'Anterior-Posterior view';
+        }
+
+        addView();
+        const second = viewsContainer.querySelector('.view-item:last-child');
+        if (second) {
+            const nameEl = second.querySelector('.view-name');
+            const descEl = second.querySelector('.view-description');
+            if (nameEl) nameEl.value = 'Lateral';
+            if (descEl) descEl.value = 'Lateral view';
+        }
+
+        updateViewsJSON();
+    }
+
+    function addDefaultMeasurement() {
+        if (!measurementsContainer) return;
+        addMeasurement();
+        const m = measurementsContainer.querySelector('.measurement-item:last-child');
+        if (m) {
+            const nameEl = m.querySelector('.measurement-name');
+            const typeEl = m.querySelector('.measurement-type');
+            const requiredEl = m.querySelector('.measurement-required');
+            if (nameEl) nameEl.value = 'Primary Findings';
+            if (typeEl) typeEl.value = 'text';
+            if (requiredEl) requiredEl.checked = true;
+            if (typeEl) typeEl.dispatchEvent(new Event('change'));
+        }
+        updateMeasurementsJSON();
+    }
+
+    if (viewsContainer && viewsContainer.children.length === 0) addDefaultViews();
+    if (measurementsContainer && measurementsContainer.children.length === 0) addDefaultMeasurement();
+
+});
+</script>
+
+{% endblock %}

@@ -1,10 +1,75 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
 
-</body>
-</html>
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Add Template" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'scan_template_create' %}">
+                        <button title="Add Template" type="button" style="width:100%" class="btn btn-sm btn-primary">
+                            Add Imaging
+                        </button>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">List of Imaging Service</h5>
+            {% include 'admin_site/partials/error.html' %}
+
+            <table class="table table-borderless datatable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Code</th>
+                        <th>Category</th>
+                        <th>Price</th>
+                        <th>Duration</th>
+                        <th>Active?</th>
+                        <th class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for template in template_list %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td title="created at {{ template.created_at|date }}">
+                            {{ template.name|title }}
+                        </td>
+                        <td>{{ template.code }}</td>
+                        <td>{% if template.category %}{{ template.category.name }}{% else %}---{% endif %}</td>
+                        <td>{{ template.price }}</td>
+                        <td>{{ template.estimated_duration|default:"N/A" }}</td>
+                        <td>
+                            {% if template.is_active %}
+                                <span class="badge bg-success">Yes</span>
+                            {% else %}
+                                <span class="badge bg-danger">No</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a title="View Detail" href="{% url 'scan_template_detail' template.id %}" class="btn btn-primary btn-sm"><i class="bi bi-eye"></i></a>
+                            <a title="Edit Template" href="{% url 'scan_template_edit' template.id %}" class="btn btn-warning btn-sm"><i class="bi bi-pencil-square"></i></a>
+                            <a title="Delete Template" href="{% url 'scan_template_delete' template.id %}" class="btn btn-danger btn-sm"><i class="bi bi-trash"></i></a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+
+            {% if not template_list %}
+                <h3 class="text-center">No Scan Template Added Yet</h3>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
