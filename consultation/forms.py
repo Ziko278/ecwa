@@ -68,15 +68,22 @@ class ConsultationRoomForm(ModelForm):
 
 
 class SpecializationForm(ModelForm):
-    """Form for medical specializations"""
+    """Form for medical specializations."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Set a common class and autocomplete for all fields
         for field in self.fields:
             self.fields[field].widget.attrs.update({
                 'class': 'form-control',
                 'autocomplete': 'off'
             })
+
+        # Customize the group field's widget
+        self.fields['group'].widget.attrs.update({
+            'class': 'form-control select2'  # Use select2 for a better UI
+        })
 
     class Meta:
         model = SpecializationModel
@@ -99,7 +106,7 @@ class SpecializationForm(ModelForm):
 
     def clean_base_consultation_fee(self):
         fee = self.cleaned_data.get('base_consultation_fee')
-        if fee and fee < 0:
+        if fee is not None and fee < 0:
             raise ValidationError("Consultation fee cannot be negative.")
         return fee
 
@@ -111,11 +118,11 @@ class SpecializationForm(ModelForm):
         # Remove extra spaces and validate
         name = ' '.join(name.strip().split())
         if len(name) < 2:
-            raise ValidationError("Department name must be at least 2 characters long.")
+            raise ValidationError("Specialization name must be at least 2 characters long.")
 
-        # Check for special characters (allow only letters, numbers, spaces, hyphens)
+        # Check for special characters (allow only letters, numbers, spaces, hyphens, and ampersands)
         if not re.match(r'^[a-zA-Z0-9\s\-&]+$', name):
-            raise ValidationError("Department name contains invalid characters.")
+            raise ValidationError("Specialization name contains invalid characters.")
 
         # Check uniqueness (case-insensitive)
         existing = SpecializationModel.objects.filter(name__iexact=name)
@@ -124,6 +131,47 @@ class SpecializationForm(ModelForm):
 
         if existing.exists():
             raise ValidationError(f"Specialization '{name}' already exists.")
+
+        return name
+
+
+class SpecializationGroupForm(ModelForm):
+    """Form for medical specialization groups."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields:
+            self.fields[field].widget.attrs.update({
+                'class': 'form-control',
+                'autocomplete': 'off'
+            })
+
+    class Meta:
+        model = SpecializationGroupModel
+        fields = ['name']
+        widgets = {
+            'name': TextInput(attrs={
+                'placeholder': 'e.g., General Practice'
+            }),
+
+        }
+
+    def clean_name(self):
+        name = self.cleaned_data.get('name')
+        if not name:
+            raise ValidationError("Group name is required.")
+
+        # Strip extra spaces and ensure length
+        name = ' '.join(name.strip().split())
+        if len(name) < 2:
+            raise ValidationError("Group name must be at least 2 characters long.")
+
+        existing = SpecializationGroupModel.objects.filter(name__iexact=name)
+        if self.instance.pk:
+            existing = existing.exclude(pk=self.instance.pk)
+
+        if existing.exists():
+            raise ValidationError(f"Specialization Group '{name}' already exists.")
 
         return name
 
@@ -160,7 +208,7 @@ class ConsultantForm(ModelForm):
             }),
             'max_daily_patients': NumberInput(attrs={
                 'min': '1',
-                'max': '100',
+                'max': '500',
                 'placeholder': 'Max patients per day'
             }),
             'consultation_days': TextInput(attrs={
@@ -246,6 +294,10 @@ class ConsultationFeeForm(ModelForm):
                 'placeholder': '0.00'
             }),
 
+            'validity_in_days': NumberInput(attrs={
+                'min': '1'
+            }),
+
             'is_active': CheckboxInput(attrs={
                 'class': 'form-check-input'
             }),
@@ -305,6 +357,12 @@ class ConsultationFeeForm(ModelForm):
                     )
 
         return cleaned_data
+
+    def clean_validity_in_days(self):
+        days = self.cleaned_data.get('validity_in_days')
+        if days is not None and days < 1:
+            raise ValidationError("Validity period must be at least 1 day.")
+        return days
 
 
 class PatientQueueForm(ModelForm):
@@ -366,7 +424,7 @@ class PatientVitalsForm(ModelForm):
         model = PatientVitalsModel
         fields = [
             'temperature', 'blood_pressure_systolic', 'blood_pressure_diastolic',
-            'pulse_rate', 'respiratory_rate', 'oxygen_saturation',
+            'pulse_rate', 'respiratory_rate', 'oxygen_saturation', 'extra_note',
             'height', 'weight', 'general_appearance', 'chief_complaint', 'notes'
         ]
         widgets = {
@@ -397,7 +455,7 @@ class PatientVitalsForm(ModelForm):
                 'placeholder': 'per minute'
             }),
             'oxygen_saturation': NumberInput(attrs={
-                'min': '70',
+                'min': '30',
                 'max': '100',
                 'placeholder': 'SpO2 %'
             }),
@@ -563,7 +621,7 @@ class DoctorScheduleForm(ModelForm):
             }),
             'max_patients': NumberInput(attrs={
                 'min': '1',
-                'max': '100',
+                'max': '500',
                 'placeholder': 'Max patients'
             }),
             'current_bookings': NumberInput(attrs={

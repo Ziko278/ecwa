@@ -2,112 +2,141 @@
 {% block 'main' %}
 {% load static %}
 
-<div class="pagetitle">
-    <h1>Inventory & Service Items</h1>
-    <nav>
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
-            <li class="breadcrumb-item">Services</li>
-            <li class="breadcrumb-item active">Inventory</li>
-        </ol>
-    </nav>
-</div><!-- End Page Title -->
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+             <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#helperModal"><b><i class="bi bi-question-circle"></i> Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Actions</h6>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'service_item_create' %}">
+                         <button type="button" style="width:100%" class="btn btn-sm btn-primary">
+                            <i class="bi bi-plus-circle"></i> Add Item
+                        </button>
+                    </a>
+                </li>
+            </ul>
+        </div>
 
-<section class="section">
-    <div class="row">
-        <div class="col-lg-12">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">All Service Items</h5>
-                    <p>Manage all physical products, drugs, and supplies. Items marked in <span class="text-danger">red</span> are low on stock.</p>
+        <div class="card-body">
+            <h5 class="card-title">Inventory Items <span>| Management</span></h5>
 
-                    <div class="d-flex justify-content-end mb-3">
-                        <a href="{% url 'service_item_create' %}" class="btn btn-primary">
-                            <i class="bi bi-plus-circle"></i> Add New Item
-                        </a>
-                    </div>
+            {% include 'admin_site/partials/error.html' %}
 
-                    {% include 'admin_site/partials/error.html' %}
-
-                    <table class="table table-hover datatable">
-                        <thead>
-                            <tr>
-                                <th scope="col">#</th>
-                                <th scope="col">Name</th>
-                                <th scope="col">Category</th>
-                                <th scope="col">Price</th>
-                                <th scope="col">Cost Price</th>
-                                <th scope="col">Stock Qty</th>
-                                <th scope="col">Status</th>
-                                <th scope="col">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in service_item_list %}
-                            <tr class="{% if item.is_low_stock %}table-danger{% endif %}">
-                                <th scope="row">{{ forloop.counter }}</th>
-                                <td>
-                                    <a href="{% url 'service_item_detail' item.pk %}">{{ item.name }}</a>
-                                    {% if item.is_low_stock %}
-                                        <span class="badge bg-danger">Low Stock</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ item.category.name }}</td>
-                                <td>{{ item.price }}</td>
-                                <td>{{ item.cost_price|default:"N/A" }}</td>
-                                <td><strong>{{ item.stock_quantity }}</strong> {{ item.unit_of_measure }}s</td>
-                                <td>
-                                    {% if item.is_active %}
-                                        <span class="badge bg-primary">Active</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">Inactive</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <div class="btn-group">
-                                        <a href="{% url 'service_item_detail' item.pk %}" class="btn btn-sm btn-outline-info" title="View Details"><i class="bi bi-eye"></i></a>
-                                        <a href="{% url 'service_item_edit' item.pk %}" class="btn btn-sm btn-outline-primary" title="Edit"><i class="bi bi-pencil"></i></a>
-                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteItemModal_{{ item.pk }}" title="Delete">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="8" class="text-center">No service items found. <a href="{% url 'service_item_create' %}">Add the first one</a>.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+            <form method="get" class="row g-3 mb-4">
+                <div class="col-md-5">
+                    <input type="text" name="search" class="form-control" placeholder="Search by name or description..." value="{{ search_query }}">
                 </div>
-            </div>
+                <div class="col-md-3">
+                    <select name="category" class="form-select">
+                        <option value="">All Categories</option>
+                        {% for category in categories %}
+                            <option value="{{ category.id }}" {% if selected_category == category.id|stringformat:"s" %}selected{% endif %}>{{ category.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="stock_status" class="form-select">
+                        <option value="">All Stock Levels</option>
+                        <option value="low" {% if stock_status == 'low' %}selected{% endif %}>Low Stock</option>
+                        <option value="out" {% if stock_status == 'out' %}selected{% endif %}>Out of Stock</option>
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button>
+                </div>
+            </form>
+
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Item Name</th>
+                        <th scope="col">Category</th>
+                        <th scope="col">Price (₦)</th>
+                        <th scope="col" class="text-center">Stock Qty</th>
+                        <th scope="col" class="text-center">Status</th>
+                        <th scope="col" class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in item_list %}
+                    <tr>
+                        <th scope="row">{{ forloop.counter }}</th>
+                        <td>
+                            <a href="{% url 'service_item_detail' item.pk %}">
+                                <strong>{{ item.name|title }}</strong>
+                            </a>
+                        </td>
+                        <td>{{ item.category.name }}</td>
+                        <td>{{ item.price|floatformat:2 }}</td>
+                        <td class="text-center fw-bold
+                            {% if item.is_low_stock and item.stock_quantity > 0 %} text-warning
+                            {% elif item.stock_quantity == 0 %} text-danger {% endif %}">
+                            {{ item.stock_quantity }} {{ item.get_unit_of_measure_display }}
+                        </td>
+                        <td class="text-center">
+                            {% if item.stock_quantity == 0 %}
+                                <span class="badge bg-danger">Out of Stock</span>
+                            {% elif item.is_low_stock %}
+                                <span class="badge bg-warning text-dark">Low Stock</span>
+                            {% else %}
+                                <span class="badge bg-success">In Stock</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'service_item_edit' item.id %}" class="btn btn-warning btn-sm" title="Edit">
+                                <i class="bi bi-pencil-square"></i>
+                            </a>
+                            <a href="{% url 'service_item_delete' item.id %}" class="btn btn-danger btn-sm" title="Delete">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if not item_list %}
+                <h4 class="text-center text-muted mt-4">No items found. Try adjusting your search or filters.</h4>
+            {% endif %}
+
+            {% include '_pagination.html' %}
+
         </div>
     </div>
-</section>
+</div>
 
-<!-- Delete Modals -->
-{% for item in service_item_list %}
-<div class="modal fade" id="deleteItemModal_{{ item.pk }}" tabindex="-1">
-    <div class="modal-dialog">
+<div class="modal fade" id="helperModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Confirm Deletion</h5>
+                <h5 class="modal-title"><b><i class="bi bi-info-circle-fill"></i> Inventory Item Helper Guide</b></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                Are you sure you want to delete the item: <strong>{{ item.name }}</strong>? This will also remove its stock history and cannot be undone.
+                <p>
+                    An <strong>Item</strong> is a physical product that you sell or dispense to patients. Unlike services, items have stock levels that must be managed.
+                </p>
+                <p>
+                    <strong>STOCK QUANTITY:</strong> The current number of units available in your inventory.
+                </p>
+                <p>
+                    <strong>MINIMUM STOCK LEVEL:</strong> When the quantity on hand falls to this number or below, it will be flagged as "Low Stock". This is a trigger to re-order the item.
+                </p>
+                <p>
+                    <strong>COST PRICE vs. SELLING PRICE:</strong> You can record both what you paid for the item (Cost Price) and what you sell it for (Selling Price) to track profitability.
+                </p>
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> The system automatically deducts stock when an item is marked as paid on a patient's bill. To add new stock, you must use the "Manage Stock" feature on the item's detail page.
+                </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form action="{% url 'service_item_delete' item.pk %}" method="post">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-danger">Delete Item</button>
-                </form>
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
             </div>
         </div>
     </div>
 </div>
-{% endfor %}
-
 {% endblock %}

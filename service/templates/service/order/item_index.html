@@ -1,0 +1,70 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="card-body">
+            <h5 class="card-title">Item Orders <span>| Dispensing History</span></h5>
+            <p class="card-description">Only paid and dispensed orders are shown here.</p>
+            {% include 'admin_site/partials/error.html' %}
+
+            <form method="get" class="row g-3 mb-4">
+                <div class="col-md-8">
+                    <input type="text" name="q" class="form-control" placeholder="Search by Patient, Item, Category, Card No..." value="{{ search_query }}">
+                </div>
+                <div class="col-md-3">
+                    <input type="date" name="date" class="form-control" value="{{ search_date }}">
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button>
+                </div>
+            </form>
+
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Patient</th>
+                        <th>Item</th>
+                        <th>Category</th>
+                        <th>Date</th>
+                        <th class="text-center">Total Qty</th>
+                        <th class="text-center">Dispensed Qty</th>
+                        <th class="text-center">Staff</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in orders %}
+                    <tr>
+                        <td>{{ tx.patient|title }}<br><small class="text-muted">{{ tx.patient.card_number }}</small></td>
+                        <td>{{ tx.service_item.name|title }}</td>
+                        <td>{{ tx.service_item.category.name|title }}</td>
+                        <td>{{ tx.created_at|date:"d M Y, P" }}</td>
+                        <td class="text-center">{{ tx.quantity }}</td>
+                        <td class="text-center fw-bold">{{ tx.quantity_dispensed }}</td>
+                        <td class="text-center fw-bold">
+                        {% if tx.performed_by.user_staff_profile %}
+                                        {{ tx.performed_by.user_staff_profile.staff|title }}
+                                    {% else %}
+                                        {{ tx.performed_by|title }}
+                                    {% endif %}</td>
+                        <td>
+                             <span class="badge 
+                                {% if tx.status == 'fully_dispensed' %}bg-success
+                                {% elif tx.status == 'partially_dispensed' %}bg-info text-dark
+                                {% else %}bg-secondary{% endif %}">
+                                {{ tx.get_status_display }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-center">No item orders found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% include '_pagination.html' %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}

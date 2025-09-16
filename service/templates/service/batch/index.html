@@ -1,0 +1,154 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Actions" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#batchHelperModal"><b><i class="bi bi-question-circle"></i> Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="#">
+                    <button title="Create a New Batch for Stocking In" type="button" style="width:100%" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addBatchModal">
+                        <i class="bi bi-plus-circle"></i> Create New Batch
+                    </button>
+                </a></li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">Service Item Batches <span>| For Stocking In</span></h5>
+            {% include 'admin_site/partials/error.html' %}
+            <table class="table table-borderless datatable">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Batch Name</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Created At</th>
+                    <th scope="col" class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for batch in batch_list %}
+                <tr>
+                    <th scope="row">{{ forloop.counter }}</th>
+                    <td>{{ batch.name|upper }}</td>
+                    <td>{{ batch.date|date:"F d, Y" }}</td>
+                    <td>{{ batch.created_at|date:"F d, Y H:i" }}</td>
+                    {# This is the 'Action' column in your table #}
+                    <td class="text-center">
+                        {# THIS IS THE CHANGE: The "Add Stock" button is now inside the conditional block #}
+                        {% if last_batch and last_batch.pk == batch.pk %}
+                            <a title="Add Stock to this Batch" href="{% url 'service_item_stock_add' batch.id %}" class="btn btn-success"><i class="bi bi-journal-plus"></i></a>
+                             <a title="View Batch Details" href="{% url 'service_item_batch_detail' batch.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
+                            <button title="Edit Batch" type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#editBatchModal{{ batch.id }}"><i class="bi bi-pencil-square"></i></button>
+                            <a title="Delete Batch" href="{% url 'service_item_batch_delete' batch.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                        {% else %}
+                            {# For older batches, show a "View Details" button instead #}
+                            <a title="View Batch Details" href="{% url 'service_item_batch_detail' batch.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
+                            <button title="Only the last batch can be edited" type="button" class="btn btn-warning disabled" disabled><i class="bi bi-pencil-square"></i></button>
+                            <button title="Only the last batch can be deleted" type="button" class="btn btn-danger disabled" disabled><i class="bi bi-trash"></i></button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% if not batch_list %}
+                 <h3 class="text-center text-muted mt-4">No Item Batches Created Yet.</h3>
+            {% endif %}
+
+            {% include '_pagination.html' %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="batchHelperModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b><i class="bi bi-info-circle-fill"></i> Item Batch Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>
+                    An <strong>Item Batch</strong> is used to track a single purchase or delivery of multiple inventory items. It acts like a digital invoice or goods received note.
+                </p>
+                <div class="alert alert-info">
+                    <strong>Workflow:</strong> First, you create a new batch. Then, you click "Add Stock" to go to a separate page where you can add all the individual items that belong to that batch.
+                </div>
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> You can only edit or delete the **most recently created batch**. Once a new batch is created, older ones are locked for auditing purposes.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<form method="POST" action="{% url 'service_item_batch_create' %}">
+    {% csrf_token %}
+    <div class="modal fade" id="addBatchModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Create New Item Batch</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating mb-3">
+                        {{ form.name }}
+                        <label for="{{ form.name.id_for_label }}">Batch Name</label>
+                        <small class="form-text text-muted">{{ form.name.help_text }}</small>
+                    </div>
+                    <div class="form-floating mb-3">
+                        {{ form.date }}
+                        <label for="{{ form.date.id_for_label }}">Batch Date</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Batch & Add Stock</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% if last_batch %}
+<form method="POST" action="{% url 'service_item_batch_update' last_batch.id %}">
+    {% csrf_token %}
+    <div class="modal fade" id="editBatchModal{{ last_batch.id }}" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit Batch: {{ last_batch.name }}</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating mb-3">
+                        <input type="text" name="name" value="{{ last_batch.name }}" autocomplete="off" class="form-control" id="edit_batch_name_{{ last_batch.id }}">
+                        <label for="edit_batch_name_{{ last_batch.id }}">Batch Name</label>
+                    </div>
+                    <div class="form-floating mb-3">
+                        <input type="date" name="date" value="{{ last_batch.date|date:'Y-m-d' }}" class="form-control" id="edit_batch_date_{{ last_batch.id }}">
+                        <label for="edit_batch_date_{{ last_batch.id }}">Batch Date</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endif %}
+{% endblock %}

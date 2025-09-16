@@ -459,6 +459,7 @@ class DrugBatchForm(ModelForm):
 
         return name
 
+
 class DrugStockForm(ModelForm):
     class Meta:
         model = DrugStockModel

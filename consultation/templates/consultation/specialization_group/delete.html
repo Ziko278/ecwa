@@ -1,0 +1,21 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Consultation Group</h4>
+            <p>Group: <i>{{ specialization_group.name|title }}</i></p>
+
+            <p>The group will be permanently deleted.</p>
+            <p>Data Tied to the group may also be lost</p>
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'specialization_group_index' %}">Cancel</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

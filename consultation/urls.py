@@ -12,6 +12,12 @@ urlpatterns = [
     path('specialization/<int:pk>/edit', SpecializationUpdateView.as_view(), name='specialization_edit'),
     path('specialization/<int:pk>/delete', SpecializationDeleteView.as_view(), name='specialization_delete'),
 
+    path('specialization-group/index', SpecializationGroupListView.as_view(), name='specialization_group_index'),
+    path('specialization-group/create/', SpecializationGroupCreateView.as_view(), name='specialization_group_create'),
+    path('specialization-group/<int:pk>/update/', SpecializationGroupUpdateView.as_view(), name='specialization_group_update'),
+    path('specialization-group/<int:pk>/delete/', SpecializationGroupDeleteView.as_view(), name='specialization_group_delete'),
+
+
     # -------------------------
     # 2. CONSULTATION BLOCKS URLS
     # -------------------------
@@ -36,8 +42,15 @@ urlpatterns = [
     path('consultant/<int:pk>/detail', ConsultantDetailView.as_view(), name='consultant_detail'),
     path('consultant/<int:pk>/edit', ConsultantUpdateView.as_view(), name='consultant_edit'),
     path('consultant/<int:pk>/delete', ConsultantDeleteView.as_view(), name='consultant_delete'),
-    path('consultant/<int:pk>/toggle-availability/', toggle_consultant_availability, name='consultant_toggle_availability'),
 
+    path('consultant/<int:pk>/toggle-availability/', toggle_consultant_availability,
+         name='consultant_toggle_availability'),
+    path('consultant/<int:pk>/queue/', ConsultantQueueView.as_view(), name='consultant_queue'),
+
+    # AJAX endpoints
+    path('ajax/transfer-patient/<int:queue_id>/<int:new_consultant_id>/', transfer_patient_ajax,
+         name='transfer_patient_ajax'),
+    path('ajax/bulk-transfer-patients/', bulk_transfer_patients_ajax, name='bulk_transfer_patients_ajax'),
 
     # -------------------------
     # 5. CONSULTATION FEES URLS
@@ -56,6 +69,14 @@ urlpatterns = [
     path('verify-patient', verify_patient_ajax, name='verify_patient_ajax'),
     path('get-consultation-fees', get_consultation_fees_ajax, name='get_consultation_fees_ajax'),
     path('get-specialization-consultants', get_specialization_consultants_ajax, name='get_specialization_consultants_ajax'),
+
+    # --- Add the two new URL patterns for the AJAX views ---
+    path('ajax/get-consultation-status/', get_consultation_status_ajax, name='get_consultation_status_ajax'),
+    path('ajax/create-queue-from-payment/', create_queue_from_payment_ajax, name='create_queue_from_payment_ajax'),
+
+    # This URL should already exist, just showing for context
+    path('ajax/verify-patient/', verify_patient_ajax, name='verify_patient_ajax'),
+
 
     # -------------------------
     # 7. PATIENT QUEUE MANAGEMENT URLS

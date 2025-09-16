@@ -1,0 +1,129 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+{# Safely embed the existing result data for the JavaScript to use #}
+{{ result.result_data|json_script:"initial-result-data" }}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Edit Service Result</h4>
+            
+            <div class="card-description">
+                <p><strong>Patient:</strong> {{ result.transaction.patient|title }}</p>
+                <p><strong>Service:</strong> {{ result.transaction.service.name }}</p>
+            </div>
+            <hr>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form class="forms-sample" method="post" enctype="multipart/form-data" id="result-form" novalidate>
+                {% csrf_token %}
+                <div style="display: none;">{{ form.transaction }}</div>
+
+                <div id="dynamic-result-fields" class="mb-4"><p class="text-muted">Loading result template...</p></div>
+
+                <div class="form-floating mb-3">
+                    {{ form.interpretation }}
+                    <label for="{{ form.interpretation.id_for_label }}">Interpretation / Summary</label>
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ form.result_file.id_for_label }}" class="form-label">Upload New Result File (Optional)</label>
+                    {{ form.result_file }}
+                </div>
+
+                <div class="form-check form-switch mb-4">
+                    {{ form.is_abnormal }}
+                    <label class="form-check-label" for="{{ form.is_abnormal.id_for_label }}">Mark as Abnormal</label>
+                </div>
+                
+                <div style="display: none;">
+                    {{ form.result_data }}
+                </div>
+
+                <button type="submit" class="btn btn-primary me-2">Save Changes</button>
+                <a href="{% url 'service_result_detail' result.pk %}" class="btn btn-light">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<script>
+window.onload = function() {
+    const dynamicFieldsContainer = document.getElementById('dynamic-result-fields');
+    const resultDataTextarea = document.getElementById('{{ form.result_data.id_for_label }}');
+    const resultForm = document.getElementById('result-form');
+
+    function buildFormFromTemplate(template) {
+        dynamicFieldsContainer.innerHTML = '';
+        if (!template || !Array.isArray(template) || template.length === 0) {
+            dynamicFieldsContainer.innerHTML = '<p class="text-danger">This service does not have a valid result template.</p>';
+            return;
+        }
+        template.forEach(field => {
+            const formGroup = document.createElement('div');
+            formGroup.className = 'form-floating mb-3';
+            let inputHtml = '';
+            const inputId = `id_result_${field.name.replace(/\s+/g, '_')}`;
+            const commonAttrs = `class="form-control dynamic-field" id="${inputId}" name="${field.name}" placeholder="${field.placeholder || ''}"`;
+            switch(field.type) {
+                case 'number': inputHtml = `<input type="number" step="any" ${commonAttrs}>`; break;
+                case 'date': inputHtml = `<input type="date" ${commonAttrs}>`; break;
+                case 'textarea': inputHtml = `<textarea ${commonAttrs} rows="3"></textarea>`; break;
+                default: inputHtml = `<input type="text" ${commonAttrs}>`;
+            }
+            formGroup.innerHTML = `${inputHtml}<label for="${inputId}">${field.name}</label>`;
+            dynamicFieldsContainer.appendChild(formGroup);
+        });
+    }
+
+    function populateFormWithExistingData(template) {
+        const dataElement = document.getElementById('initial-result-data');
+        if (!dataElement) return;
+
+        try {
+            const existingData = JSON.parse(dataElement.textContent);
+            template.forEach(field => {
+                const input = document.querySelector(`.dynamic-field[name="${field.name}"]`);
+                if (input && existingData[field.name]) {
+                    input.value = existingData[field.name];
+                }
+            });
+        } catch (e) {
+            console.error('Could not parse existing result data:', e);
+        }
+    }
+
+    function updateHiddenResultData() {
+        const resultData = {};
+        dynamicFieldsContainer.querySelectorAll('.dynamic-field').forEach(field => {
+            resultData[field.name] = field.value;
+        });
+        resultDataTextarea.value = JSON.stringify(resultData);
+    }
+
+    // --- INITIALIZATION ---
+    const serviceId = {{ service_id|default:"null" }};
+    if (serviceId) {
+        fetch(`/portal/service/ajax/service/${serviceId}/template/`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.template) {
+                    buildFormFromTemplate(data.template);
+                    // After building the form, fill it with the saved data
+                    populateFormWithExistingData(data.template);
+                } else {
+                    dynamicFieldsContainer.innerHTML = '<p class="text-warning">No result template found for this service.</p>';
+                }
+            });
+    } else {
+        dynamicFieldsContainer.innerHTML = '<p class="text-danger">Could not identify the service for this transaction.</p>';
+    }
+
+    resultForm.addEventListener('submit', updateHiddenResultData);
+};
+</script>
+{% endblock %}

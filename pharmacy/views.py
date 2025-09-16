@@ -826,6 +826,7 @@ class DrugStockCreateView(
             }
             return self.render_to_response(context)
 
+
 class DrugBatchStockListView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyContextMixin, ListView):
     # This view now lists DrugBatchModels, showing aggregated stock info
     model = DrugBatchModel  # Model is now DrugBatchModel

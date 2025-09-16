@@ -103,6 +103,7 @@
                         <button class="btn btn-sm btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#quickActionsModal">
                             <i class="bi bi-lightning"></i> Quick Actions
                         </button>
+
                         <a title="Refresh Queue" href="{% url 'patient_queue_index' %}" class="btn btn-sm btn-info text-white">
                             <i class="bi bi-arrow-clockwise"></i> Refresh
                         </a>
@@ -141,11 +142,13 @@
                                     </div>
                                 </td>
                                 <td>
+                                    <small class="text-muted d-block">{{ queue.specialization|title }}</small>
+
                                     {% if queue.consultant %}
+
                                         <div>
                                             <strong>Dr. {{ queue.consultant.staff|title }}</strong>
-                                            <small class="text-muted d-block">{{ queue.consultant.specialization.name|title }}</small>
-                                        </div>
+                                          </div>
                                     {% else %}
                                         <span class="text-warning">Not Assigned</span>
                                     {% endif %}
@@ -168,7 +171,7 @@
                                                 <i class="bi bi-heart-pulse"></i> Start Vitals
                                             </button>
                                         {% elif queue.status == 'vitals_done' and not queue.consultant %}
-                                            <button class="btn btn-sm btn-primary" onclick="assignDoctor({{ queue.id }}, '{{ queue.payment.fee_structure.specialization.id }}')">
+                                        <button class="btn btn-sm btn-primary" onclick="assignDoctor({{ queue.id }}, '{{ queue.specialization.id }}')">
                                                 <i class="bi bi-person-plus"></i> Assign Doctor
                                             </button>
                                         {% endif %}
@@ -196,7 +199,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Quick Actions</h5>
+                <h5 class="modal-title">Quick Actions <small>(Select patient checkbox first)</small></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -258,12 +261,12 @@
                             </div>
                             <div class="row">
                                 <div class="col-6">
-                                    <label class="form-label">BP Systolic</label>
-                                    <input type="number" class="form-control" name="blood_pressure_systolic" placeholder="120">
+                                    <label class="form-label">BP Systolic<span style="color:red">*</span></label>
+                                    <input type="number" class="form-control" required name="blood_pressure_systolic" placeholder="120">
                                 </div>
                                 <div class="col-6">
-                                    <label class="form-label">BP Diastolic</label>
-                                    <input type="number" class="form-control" name="blood_pressure_diastolic" placeholder="80">
+                                    <label class="form-label">BP Diastolic<span style="color:red">*</span></label>
+                                    <input type="number" class="form-control" required name="blood_pressure_diastolic" placeholder="80">
                                 </div>
                             </div>
                             <div class="mt-3">
@@ -299,7 +302,7 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Notes</label>
-                                <textarea class="form-control" name="notes" rows="2" placeholder="Additional observations..."></textarea>
+                                <textarea class="form-control" name="extra_note" rows="2" placeholder="Additional observations..."></textarea>
                             </div>
                         </div>
                     </div>
@@ -376,6 +379,32 @@ function initializeCheckboxes() {
 
     checkboxes.forEach(cb => {
         cb.addEventListener('change', function() {
+            const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+            const noneChecked = Array.from(checkboxes).every(checkbox => !checkbox.checked);
+            selectAll.checked = allChecked;
+            selectAll.indeterminate = !allChecked && !noneChecked;
+        });
+    });
+
+    checkboxes.forEach(cb => {
+        cb.addEventListener('click', function() {
+            // If checkbox is checked, auto-select this patient in quick actions
+            if (this.checked) {
+                // Uncheck other checkboxes to ensure only one is selected for quick actions
+                checkboxes.forEach(otherCb => {
+                    if (otherCb !== this) otherCb.checked = false;
+                });
+
+                // Set the patient in quick actions modal
+                const queueId = this.value;
+                const quickActionPatient = document.getElementById('quickActionPatient');
+                quickActionPatient.value = queueId;
+
+                // Trigger the loadQuickActions function to populate available actions
+                loadQuickActions();
+            }
+
+            // Update select all checkbox state
             const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
             const noneChecked = Array.from(checkboxes).every(checkbox => !checkbox.checked);
             selectAll.checked = allChecked;
@@ -523,7 +552,7 @@ function startVitals(queueId) {
             form.querySelector('[name="weight"]').value = data.weight || '';
             form.querySelector('[name="general_appearance"]').value = data.general_appearance || '';
             form.querySelector('[name="chief_complaint"]').value = data.chief_complaint || '';
-            form.querySelector('[name="notes"]').value = data.notes || '';
+            form.querySelector('[name="extra_note"]').value = data.extra_note || '';
         } else {
             form.reset();
         }
@@ -707,11 +736,11 @@ function showAlert(message, type) {
     }, 5000);
 }
 
-// Auto-refresh every 30 seconds
+// Auto-refresh every 45 seconds
 setInterval(() => {
     if (!document.querySelector('.modal.show')) {
         location.reload();
     }
-}, 30000);
+}, 45000);
 </script>
 {% endblock %}

@@ -2,171 +2,217 @@
 {% block 'main' %}
 {% load static %}
 
-<div class="pagetitle">
-    <h1>Service Categories</h1>
-    <nav>
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
-            <li class="breadcrumb-item">Services</li>
-            <li class="breadcrumb-item active">Categories</li>
-        </ol>
-    </nav>
-</div><!-- End Page Title -->
-
-<section class="section">
-    <div class="row">
-        <!-- Add Category Form -->
-        <div class="col-lg-5">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Add New Category</h5>
-
-                    <!-- Display form errors and messages -->
-                    {% include 'admin_site/partials/error.html' %}
-
-                    <form method="post" action="{% url 'service_category_create' %}">
-                        {% csrf_token %}
-
-                        <div class="form-floating mb-3">
-                            {{ form.name }}
-                            <label for="{{ form.name.id_for_label }}">Category Name <span class="text-danger">*</span></label>
-                        </div>
-
-                        <div class="form-floating mb-3">
-                            {{ form.category_type }}
-                            <label for="{{ form.category_type.id_for_label }}">Category Type</label>
-                        </div>
-
-                        <div class="form-floating mb-3">
-                            {{ form.description }}
-                            <label for="{{ form.description.id_for_label }}">Description</label>
-                        </div>
-
-                        <div class="form-check form-switch mb-3">
-                            {{ form.show_as_record_column }}
-                            <label class="form-check-label" for="{{ form.show_as_record_column.id_for_label }}">Show in Daily Reports?</label>
-                        </div>
-
-                        <div class="form-check form-switch mb-3">
-                            {{ form.is_active }}
-                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active?</label>
-                        </div>
-
-
-                        <div class="text-center">
-                            <button type="submit" class="btn btn-primary">Save Category</button>
-                            <button type="reset" class="btn btn-secondary">Reset</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#helperModal"><b><i class="bi bi-question-circle"></i> Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Actions</h6>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#">
+                        <button type="button" style="width:100%" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                            <i class="bi bi-plus-circle"></i> Add Category
+                        </button>
+                    </a>
+                </li>
+            </ul>
         </div>
 
-        <!-- Category List -->
-        <div class="col-lg-7">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Existing Categories</h5>
+        <div class="card-body">
+            <h5 class="card-title">Service Categories <span>| Management</span></h5>
 
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th scope="col">#</th>
-                                    <th scope="col">Name</th>
-                                    <th scope="col">Type</th>
-                                    <th scope="col">Items/Services</th>
-                                    <th scope="col">Status</th>
-                                    <th scope="col">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for category in category_list %}
-                                <tr>
-                                    <th scope="row">{{ forloop.counter }}</th>
-                                    <td>{{ category.name }}</td>
-                                    <td>{{ category.get_category_type_display }}</td>
-                                    <td>
-                                        {% if category.category_type == 'service' %}
-                                            <span class="badge bg-info">{{ category.total_services }} Services</span>
-                                        {% elif category.category_type == 'item' %}
-                                            <span class="badge bg-primary">{{ category.total_items }} Items</span>
-                                        {% else %}
-                                             <span class="badge bg-info">{{ category.total_services }} Services</span><br>
-                                             <span class="badge bg-primary mt-1">{{ category.total_items }} Items</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if category.is_active %}
-                                            <span class="badge bg-success">Active</span>
-                                        {% else %}
-                                            <span class="badge bg-danger">Inactive</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <a href="{% url 'service_category_update' category.pk %}" class="btn btn-sm btn-outline-primary" title="Edit">
-                                            <i class="bi bi-pencil-square"></i>
-                                        </a>
-                                        <button type="button" class="btn btn-sm btn-outline-danger" title="Delete"
-                                                data-bs-toggle="modal" data-bs-target="#deleteCategoryModal"
-                                                data-url="{% url 'service_category_delete' category.pk %}"
-                                                data-name="{{ category.name }}">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                                {% empty %}
-                                <tr>
-                                    <td colspan="6" class="text-center">No service categories found.</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
+            {% include 'admin_site/partials/error.html' %}
 
-<!-- Delete Confirmation Modal -->
-<div class="modal fade" id="deleteCategoryModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Confirm Deletion</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                Are you sure you want to delete the category: <strong id="categoryName"></strong>?
-                <p class="text-danger mt-2">This action cannot be undone. All associated services and items will also be deleted.</p>
-            </div>
-            <div class="modal-footer">
-                <form id="deleteForm" method="post">
-                    {% csrf_token %}
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Delete</button>
-                </form>
-            </div>
+            <table class="table table-borderless datatable">
+                <thead>
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Name</th>
+                        <th scope="col">Type</th>
+                        <th scope="col" class="text-center">Show on Record</th>
+                        <th scope="col" class="text-center">Status</th>
+                        <th scope="col" class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for category in category_list %}
+                    <tr>
+                        <th scope="row">{{ forloop.counter }}</th>
+                        <td><strong>{{ category.name|title }}</strong></td>
+                        <td>{{ category.get_category_type_display }}</td>
+                        <td class="text-center">
+                            {% if category.show_as_record_column %}
+                                <i class="fs-5 bi bi-check-circle-fill text-success"></i>
+                            {% else %}
+                                <i class="fs-5 bi bi-x-circle-fill text-danger"></i>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if category.is_active %}
+                                <span class="badge bg-success">Active</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editCategoryModal{{ category.id }}">
+                                <i class="bi bi-pencil-square"></i>
+                            </button>
+                            <a href="{% url 'service_category_delete' category.id %}" class="btn btn-danger btn-sm">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if not category_list %}
+                <h4 class="text-center text-muted mt-4">No service categories have been added yet.</h4>
+            {% endif %}
         </div>
     </div>
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const deleteModal = document.getElementById('deleteCategoryModal');
-    deleteModal.addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const url = button.getAttribute('data-url');
-        const name = button.getAttribute('data-name');
+<div class="modal fade" id="helperModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b><i class="bi bi-info-circle-fill"></i> Category Helper Guide</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>
+                    A <strong>Service Category</strong> is a high-level grouping for all financial activities in the hospital. Examples include: <i>'Laboratory', 'Pharmacy', 'Consultation', 'Optical Sales'</i>.
+                </p>
 
-        const modalForm = deleteModal.querySelector('#deleteForm');
-        modalForm.setAttribute('action', url);
+                <p>
+                    <strong>CATEGORY TYPE:</strong> This defines what can be added to the category.
+                    <ul>
+                        <li><b>Service/Procedure:</b> For abstract services like consultations or lab tests.</li>
+                        <li><b>Item/Product:</b> For physical goods that have stock, like drugs or eyeglass frames.</li>
+                        <li><b>Both Services and Items:</b> For categories that can contain both types.</li>
+                    </ul>
+                </p>
 
-        const modalBodyName = deleteModal.querySelector('#categoryName');
-        modalBodyName.textContent = name;
-    });
-});
-</script>
+                <p>
+                    <strong>SHOW ON RECORD:</strong> If checked, this category might be given its own dedicated column on certain financial reports or detailed patient statements, making specific charges easier to see.
+                </p>
 
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> Proper categorization is the foundation of good financial tracking and reporting.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{% url 'service_category_create' %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Add New Service Category</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="form-floating">
+                                {{ form.name }}
+                                <label for="{{ form.name.id_for_label }}">Category Name <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-floating">
+                                {{ form.category_type }}
+                                <label for="{{ form.category_type.id_for_label }}">Category Type <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-floating">
+                                {{ form.description }}
+                                <label for="{{ form.description.id_for_label }}">Description</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                             <div class="form-check form-switch mb-2">
+                                {{ form.show_as_record_column }}
+                                <label class="form-check-label" for="{{ form.show_as_record_column.id_for_label }}">Show as a column on records</label>
+                            </div>
+                             <div class="form-check form-switch">
+                                {{ form.is_active }}
+                                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% for category in category_list %}
+<div class="modal fade" id="editCategoryModal{{ category.id }}" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{% url 'service_category_update' category.id %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit {{ category.name }}</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="form-floating">
+                                <input type="text" name="name" value="{{ category.name }}" class="form-control" required id="id_name_{{ category.id }}">
+                                <label for="id_name_{{ category.id }}">Category Name <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-floating">
+                                <select name="category_type" class="form-select" required id="id_category_type_{{ category.id }}">
+                                    {% for value, text in form.category_type.field.choices %}
+                                        <option value="{{ value }}" {% if category.category_type == value %}selected{% endif %}>{{ text }}</option>
+                                    {% endfor %}
+                                </select>
+                                <label for="id_category_type_{{ category.id }}">Category Type <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                             <div class="form-floating">
+                                <textarea name="description" class="form-control" style="height: 80px;" id="id_description_{{ category.id }}">{{ category.description|default_if_none:'' }}</textarea>
+                                <label for="id_description_{{ category.id }}">Description</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                             <div class="form-check form-switch">
+                                <input type="checkbox" name="show_as_record_column" class="form-check-input" {% if category.show_as_record_column %}checked{% endif %} role="switch" id="id_show_as_record_column_{{ category.id }}">
+                                <label class="form-check-label" for="id_show_as_record_column_{{ category.id }}">Show as a column on patient bills/records</label>
+                            </div>
+                             <div class="form-check form-switch">
+                                <input type="checkbox" name="is_active" class="form-check-input" {% if category.is_active %}checked{% endif %} role="switch" id="id_is_active_{{ category.id }}">
+                                <label class="form-check-label" for="id_is_active_{{ category.id }}">Is Active</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}

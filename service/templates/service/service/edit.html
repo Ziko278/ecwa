@@ -2,250 +2,194 @@
 {% block 'main' %}
 {% load static %}
 
-<div class="pagetitle">
-    <h1>Edit Service</h1>
-    <nav>
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
-            <li class="breadcrumb-item">Services</li>
-            <li class="breadcrumb-item"><a href="{% url 'service_list' %}">Services & Procedures</a></li>
-            <li class="breadcrumb-item active">Edit</li>
-        </ol>
-    </nav>
-</div><!-- End Page Title -->
+{# STEP 1: Safely embed the initial JSON data using json_script. This is the correct way. #}
+{{ form.instance.result_template|json_script:"initial-template-data" }}
 
-<section class="section">
-    <div class="row">
-        <div class="col-lg-8">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Editing: {{ service.name }}</h5>
-                    <p>Modify the details of the service below.</p>
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Edit Service: {{ service.name }}</h4>
+            <p class="card-description">
+                Update the details for this service.
+            </p>
 
-                    {% include 'admin_site/partials/error.html' %}
+            {% include 'admin_site/partials/error.html' %}
 
-                    <form method="post" id="serviceForm">
-                        {% csrf_token %}
+            {# STEP 2: Give the form an ID so we can attach a submit listener. #}
+            <form class="forms-sample" method="post" id="service-edit-form" action="{% url 'service_edit' service.pk %}">
+                {% csrf_token %}
 
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-floating mb-3">
-                                    {{ form.name }}
-                                    <label for="{{ form.name.id_for_label }}">Service Name <span class="text-danger">*</span></label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-floating mb-3">
-                                    {{ form.category }}
-                                    <label for="{{ form.category.id_for_label }}">Category <span class="text-danger">*</span></label>
-                                </div>
-                            </div>
-                        </div>
-
+                {# The form fields are the same as create.html. Django automatically pre-fills them with the service's current data. #}
+                <div class="row">
+                    <div class="col-md-6">
                         <div class="form-floating mb-3">
+                            {{ form.name }}
+                            <label for="{{ form.name.id_for_label }}">Service Name <span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.category }}
+                            <label for="{{ form.category.id_for_label }}">Category <span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-floating mb-3">
+                    {{ form.description }}
+                    <label for="{{ form.description.id_for_label }}">Description</label>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                         <div class="form-floating mb-3">
                             {{ form.price }}
-                            <label for="{{ form.price.id_for_label }}">Default Price</label>
+                            <label for="{{ form.price.id_for_label }}">Price (₦) <span class="text-danger">*</span></label>
                         </div>
-
-                        <div class="form-floating mb-3">
-                            {{ form.description }}
-                            <label for="{{ form.description.id_for_label }}">Description</label>
-                        </div>
-
-                        <div class="form-check form-switch mb-3">
+                    </div>
+                     <div class="col-md-6">
+                         <div class="form-check form-switch mb-4">
                             {{ form.has_results }}
-                            <label class="form-check-label" for="{{ form.has_results.id_for_label }}">Does this service produce results?</label>
+                            <label class="form-check-label" for="{{ form.has_results.id_for_label }}">
+                                <strong>This service produces a recordable result</strong></label>
                         </div>
-
-                        <!-- Result Template Builder (Dynamic) -->
-                        <div class="mb-4" id="resultTemplateBuilder" style="display: none;">
-                            <h6 class="mb-3">Result Template Fields</h6>
-                            <div class="card border-light">
-                                <div class="card-body pt-3">
-                                    <div id="fieldsContainer">
-                                        <!-- Fields will be added here dynamically -->
-                                    </div>
-                                    <button type="button" class="btn btn-success btn-sm" id="addFieldBtn">
-                                        <i class="bi bi-plus"></i> Add Field
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Hidden input for the actual JSON data -->
-                        {{ form.result_template }}
-
-                        <div class="form-check form-switch mb-3">
-                            {{ form.is_active }}
-                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active?</label>
-                        </div>
-
-                        <div class="text-end">
-                            <a href="{% url 'service_list' %}" class="btn btn-secondary">Cancel</a>
-                            <button type="submit" class="btn btn-primary">Update Service</button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
-            </div>
+
+                <div class="mb-3 border rounded p-3" id="result-template-section" style="display: none;">
+                    <h6 class="card-title pb-2">Result Template Builder</h6>
+                    <div id="result-fields-container"></div>
+                    <button type="button" id="add-result-field-btn" class="btn btn-sm btn-outline-primary mt-2">
+                        <i class="bi bi-plus-circle"></i> Add Parameter
+                    </button>
+                    <div style="display: none;">
+                         {{ form.result_template }}
+                    </div>
+                </div>
+
+                <div class="form-check form-switch mb-4">
+                    {{ form.is_active }}
+                    <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary me-2">Save Changes</button>
+                <a href="{% url 'service_detail' service.pk %}" class="btn btn-light">Cancel</a>
+            </form>
         </div>
     </div>
-</section>
-
-<!-- Field Template for JSON Builder (Hidden) -->
-<template id="fieldTemplate">
-    <div class="field-item border rounded p-3 mb-3 bg-light">
-        <div class="row align-items-center">
-            <div class="col-md-5">
-                <div class="form-floating mb-2">
-                    <input type="text" class="form-control field-name" placeholder="Field Name">
-                    <label>Field Name *</label>
-                </div>
-            </div>
-            <div class="col-md-5">
-                <div class="form-floating mb-2">
-                    <select class="form-control field-type">
-                        <option value="text">Text</option>
-                        <option value="number">Number</option>
-                        <option value="options">Options (Select)</option>
-                    </select>
-                    <label>Field Type</label>
-                </div>
-            </div>
-            <div class="col-md-2 text-end">
-                <button type="button" class="btn btn-danger btn-sm remove-field-btn">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </div>
-        </div>
-        <!-- Options textarea -->
-        <div class="options-field" style="display: none;">
-            <div class="form-floating mt-2">
-                <textarea class="form-control field-options" rows="3" placeholder="Enter each option on a new line"></textarea>
-                <label>Options (one per line)</label>
-            </div>
-        </div>
-    </div>
-</template>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const serviceForm = document.getElementById('service-edit-form');
     const hasResultsCheckbox = document.getElementById('{{ form.has_results.id_for_label }}');
-    const resultTemplateBuilder = document.getElementById('resultTemplateBuilder');
-    const fieldsContainer = document.getElementById('fieldsContainer');
-    const addFieldBtn = document.getElementById('addFieldBtn');
-    const fieldTemplate = document.getElementById('fieldTemplate');
-    const hiddenInput = document.getElementById('id_result_template');
+    const resultTemplateSection = document.getElementById('result-template-section');
+    const fieldsContainer = document.getElementById('result-fields-container');
+    const addFieldBtn = document.getElementById('add-result-field-btn');
+    const hiddenTextarea = document.getElementById('{{ form.result_template.id_for_label }}');
 
-    // Hide the default textarea for the JSON field
-    if (hiddenInput) {
-        hiddenInput.style.display = 'none';
-    }
-
-    // Toggle builder visibility based on checkbox
-    hasResultsCheckbox.addEventListener('change', function() {
-        resultTemplateBuilder.style.display = this.checked ? 'block' : 'none';
-        if (this.checked && fieldsContainer.children.length === 0) {
-            addField(); // Add one field by default when shown
-        }
-    });
-
-    // Add field function
-    function addField() {
-        const clone = fieldTemplate.content.cloneNode(true);
-        fieldsContainer.appendChild(clone);
-        const newField = fieldsContainer.lastElementChild;
-        attachFieldEvents(newField);
-        updateJSON();
-    }
-
-    // Attach events to a field item
-    function attachFieldEvents(fieldItem) {
-        fieldItem.querySelector('.remove-field-btn').addEventListener('click', () => {
-            fieldItem.remove();
-            updateJSON();
-        });
-
-        const typeSelect = fieldItem.querySelector('.field-type');
-        const optionsField = fieldItem.querySelector('.options-field');
-        typeSelect.addEventListener('change', () => {
-            optionsField.style.display = typeSelect.value === 'options' ? 'block' : 'none';
-            updateJSON();
-        });
-
-        const inputs = fieldItem.querySelectorAll('input, select, textarea');
-        inputs.forEach(input => {
-            input.addEventListener('input', updateJSON);
-            input.addEventListener('change', updateJSON);
-        });
-    }
-
-    // Update hidden JSON input
-    function updateJSON() {
-        const fields = [];
-        const fieldItems = fieldsContainer.querySelectorAll('.field-item');
-
-        fieldItems.forEach(item => {
-            const name = item.querySelector('.field-name').value.trim();
-            const type = item.querySelector('.field-type').value;
-
-            if (!name) return; // Skip if no name
-
-            const field = {
-                name: name,
-                type: type,
-            };
-
-            if (type === 'options') {
-                const optionsText = item.querySelector('.field-options').value.trim();
-                if (optionsText) {
-                    field.options = optionsText.split('\n').map(opt => opt.trim()).filter(Boolean);
-                }
-            }
-            fields.push(field);
-        });
-
-        hiddenInput.value = JSON.stringify({ fields: fields }, null, 2);
-    }
-
-    // Load existing data from hidden input
-    function loadExistingData() {
-        try {
-            // Ensure we handle the case where the hidden input is empty or invalid
-            const initialValue = hiddenInput.value.trim();
-            if (!initialValue) {
-                return;
-            }
-            const data = JSON.parse(initialValue);
-            
-            if (data.fields && data.fields.length > 0) {
-                hasResultsCheckbox.checked = true;
-                resultTemplateBuilder.style.display = 'block';
-
-                data.fields.forEach(field => {
-                    addField();
-                    const newItem = fieldsContainer.lastElementChild;
-                    newItem.querySelector('.field-name').value = field.name || '';
-                    newItem.querySelector('.field-type').value = field.type || 'text';
-                    if (field.type === 'options' && field.options) {
-                        newItem.querySelector('.field-options').value = field.options.join('\n');
-                        newItem.querySelector('.options-field').style.display = 'block';
+    function updateHiddenJson() {
+        const jsonArray = [];
+        const rows = fieldsContainer.querySelectorAll('.result-field-row');
+        rows.forEach(row => {
+            const name = row.querySelector('.field-name').value.trim();
+            const type = row.querySelector('.field-type').value;
+            const placeholder = row.querySelector('.field-placeholder').value;
+            if (name) {
+                let fieldObject = { name: name, type: type, placeholder: placeholder };
+                if (type === 'number') {
+                    const minRange = row.querySelector('.field-min-range')?.value;
+                    const maxRange = row.querySelector('.field-max-range')?.value;
+                    if (minRange && maxRange) {
+                        fieldObject.range = `${minRange}-${maxRange}`;
                     }
-                });
+                }
+                jsonArray.push(fieldObject);
+            }
+        });
+        hiddenTextarea.value = JSON.stringify(jsonArray, null, 2);
+    }
+
+    function createFieldRow(initialData = null) {
+        const row = document.createElement('div');
+        row.className = 'p-2 border rounded mb-2 result-field-row';
+        row.innerHTML = `<div class="row g-2 align-items-center"><div class="col-md-3"><label class="form-label-sm">Parameter Name</label><input type="text" class="form-control form-control-sm field-name"></div><div class="col-md-2"><label class="form-label-sm">Input Type</label><select class="form-select form-select-sm field-type"><option value="text">Text</option><option value="number">Number</option><option value="date">Date</option><option value="textarea">Long Text</option></select></div><div class="col-md-6"><div class="range-placeholder-container"><label class="form-label-sm">Placeholder / Unit</label><input type="text" class="form-control form-control-sm field-placeholder"></div></div><div class="col-md-1 text-end"><button type="button" class="btn btn-sm btn-outline-danger remove-field-btn mt-3"><i class="bi bi-trash"></i></button></div></div>`;
+
+        const typeSelector = row.querySelector('.field-type');
+        const rangePlaceholderContainer = row.querySelector('.range-placeholder-container');
+
+        const handleTypeChange = (type) => {
+             if (type === 'number') {
+                rangePlaceholderContainer.innerHTML = `<div class="row g-2"><div class="col-4"><label class="form-label-sm">Unit</label><input type="text" class="form-control form-control-sm field-placeholder" placeholder="Unit"></div><div class="col-4"><label class="form-label-sm">Min Range</label><input type="number" class="form-control form-control-sm field-min-range" placeholder="Min"></div><div class="col-4"><label class="form-label-sm">Max Range</label><input type="number" class="form-control form-control-sm field-max-range" placeholder="Max"></div></div>`;
+            } else {
+                rangePlaceholderContainer.innerHTML = `<label class="form-label-sm">Placeholder / Unit</label><input type="text" class="form-control form-control-sm field-placeholder">`;
+            }
+            row.querySelectorAll('input').forEach(input => input.addEventListener('input', updateHiddenJson));
+        }
+
+        typeSelector.addEventListener('change', () => handleTypeChange(typeSelector.value));
+
+        if (initialData) {
+            row.querySelector('.field-name').value = initialData.name || '';
+            typeSelector.value = initialData.type || 'text';
+            handleTypeChange(initialData.type || 'text'); // This rebuilds the inputs
+
+            // Now we can safely populate the newly created inputs
+            const placeholderInput = row.querySelector('.field-placeholder');
+            if (placeholderInput) placeholderInput.value = initialData.placeholder || '';
+
+            if (initialData.type === 'number' && initialData.range) {
+                const [min, max] = initialData.range.split('-');
+                const minInput = row.querySelector('.field-min-range');
+                const maxInput = row.querySelector('.field-max-range');
+                if(minInput) minInput.value = min;
+                if(maxInput) maxInput.value = max;
+            }
+        }
+
+        fieldsContainer.appendChild(row);
+        row.querySelectorAll('input, select').forEach(input => input.addEventListener('input', updateHiddenJson));
+        row.querySelector('.remove-field-btn').addEventListener('click', () => {
+            row.remove();
+            updateHiddenJson();
+        });
+    }
+
+    function populateBuilderFromInitialJson() {
+        const dataElement = document.getElementById('initial-template-data');
+        if (!dataElement) return;
+
+        try {
+            const initialJson = JSON.parse(dataElement.textContent);
+            if (Array.isArray(initialJson) && initialJson.length > 0) {
+                fieldsContainer.innerHTML = ''; // Clear any existing rows
+                initialJson.forEach(fieldData => createFieldRow(fieldData));
             }
         } catch (e) {
-            console.error("Could not load existing result template JSON.", e);
+            console.error("Could not parse initial JSON:", e);
         }
     }
 
-    // --- Init ---
-    addFieldBtn.addEventListener('click', addField);
-    loadExistingData(); // Run on page load to populate the form
-
-    // Initial check
-    if (hasResultsCheckbox.checked) {
-       resultTemplateBuilder.style.display = 'block';
+    function toggleResultTemplateVisibility() {
+        resultTemplateSection.style.display = hasResultsCheckbox.checked ? 'block' : 'none';
     }
 
+    // --- INITIAL SETUP ---
+    addFieldBtn.addEventListener('click', () => createFieldRow(null));
+    hasResultsCheckbox.addEventListener('change', toggleResultTemplateVisibility);
+
+    populateBuilderFromInitialJson();
+    if (fieldsContainer.children.length === 0) {
+        createFieldRow(); // Always start with one row if template was empty
+    }
+
+    toggleResultTemplateVisibility();
+
+    // STEP 3: Add the submit event listener to the form.
+    serviceForm.addEventListener('submit', function(event) {
+        // This function will now run right before the form is sent to the server.
+        updateHiddenJson();
+    });
 });
 </script>
 

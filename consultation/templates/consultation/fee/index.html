@@ -28,6 +28,7 @@
                     <th scope="col">Specialization</th>
                     <th scope="col">Patient Category</th>
                     <th scope="col">Insurance</th>
+                    <th class="text-center" scope="col">Validity (Days)</th>
                     <th scope="col">Amount (₦)</th>
                     <th class="text-center" scope="col">Status</th>
                     <th scope="col" class="text-center">Action</th>
@@ -40,7 +41,8 @@
                     <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
                     <td>{{ fee.specialization.name|title }}</td>
                     <td>{{ fee.get_patient_category_display }}</td>
-                    <td>{% if fee.insurance %}{{ fee.insurance.name|title }}{% else %}N/A{% endif %}</td>
+                    <td>{% if fee.insurance %}{{ fee.insurance.name|title }}{% else %}N/A{% endif %}
+                    <td class="text-center">{{ fee.validity_in_days }}</td>
                     <td>₦{{ fee.amount|floatformat:2|intcomma }}</td>
                     <td class="text-center">
                         {% if fee.is_active %}
@@ -82,6 +84,10 @@
                     <strong>Tip:</strong> You can define different fees for the same specialization if the patient is under a different insurance plan or is a regular patient.
                 </div>
 
+                <p class="card-description">
+                    The <strong>Validity (Days)</strong> field specifies how many days a paid consultation is valid for. For example, a value of '1' means it's valid for the day it's paid.
+                </p>
+
                 <div class="alert alert-warning">
                     <strong>Note:</strong> A unique fee entry requires a combination of Specialization, Patient Category, and Insurance (Insurance can be left blank for 'Regular Patients').
                 </div>
@@ -122,6 +128,11 @@
                     <div class="form-floating mb-3">
                         {{ form.amount }}
                         <label for="id_amount">Amount (₦)<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {{ form.validity_in_days }}
+                        <label for="id_validity_in_days">Validity (Days)<span style="color:red"><b>*</b></span></label>
                     </div>
 
                     <div class="form-check form-switch mb-3">
@@ -181,6 +192,11 @@
                     <div class="form-floating mb-3">
                         <input type="number" name="amount" value="{{ fee.amount|floatformat:2 }}" step="0.01" min="0" placeholder="0.00" class="form-control" required>
                         <label for="edit_amount_{{ forloop.counter }}">Amount (₦)<span style="color:red"><b>*</b></span></label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <input type="number" name="validity_in_days" value="{{ fee.validity_in_days }}" min="1" class="form-control" required>
+                        <label>Validity (Days)<span style="color:red"><b>*</b></span></label>
                     </div>
 
                     <div class="form-check form-switch mb-3">

@@ -1,0 +1,184 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Add New Item Stock</h4>
+            {% include 'admin_site/partials/error.html' %}
+
+            <div class="alert alert-info" role="alert">
+                You are adding stock to batch: <strong>{{ batch.name|upper }}</strong> (Date: {{ batch.date|date:"F d, Y" }})
+            </div>
+
+            <form method="post">
+                {% csrf_token %}
+                {{ formset.management_form }} {# REQUIRED for formsets #}
+
+                <div id="form-container">
+                    {% for form in formset %}
+                        <div class="stock-item-form card p-4 mb-4 border border-secondary">
+                            <h6 class="mb-3">Stock Entry #{{ forloop.counter }}</h6>
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.service_item }}
+                                        <label for="{{ form.service_item.id_for_label }}">Service Item</label>
+                                        {% if form.service_item.errors %}<div class="text-danger small mt-1">{{ form.service_item.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.quantity }}
+                                        <label for="{{ form.quantity.id_for_label }}">Quantity Received</label>
+                                        {% if form.quantity.errors %}<div class="text-danger small mt-1">{{ form.quantity.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.unit_cost }}
+                                        <label for="{{ form.unit_cost.id_for_label }}">Unit Cost Price (₦)</label>
+                                        {% if form.unit_cost.errors %}<div class="text-danger small mt-1">{{ form.unit_cost.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.batch_number }}
+                                        <label for="{{ form.batch_number.id_for_label }}">Manufacturer Batch No. (Optional)</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.expiry_date }}
+                                        <label for="{{ form.expiry_date.id_for_label }}">Expiry Date (Optional)</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-12 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.notes }}
+                                        <label for="{{ form.notes.id_for_label }}">Notes (Optional)</label>
+                                    </div>
+                                </div>
+                                {% if forloop.counter > 1 %}
+                                <div class="col-12">
+                                    <button type="button" class="btn btn-danger btn-sm remove-form"><i class="bi bi-trash"></i> Remove Entry</button>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <button type="button" id="add-another-stock" class="btn btn-info btn-sm mb-4">
+                    <i class="bi bi-plus-circle me-1"></i> Add Another Item
+                </button>
+
+                <div class="d-flex justify-content-end">
+                    <a class="btn btn-secondary me-2" href="{% url 'service_item_batch_list' %}">Cancel</a>
+                    <button type="submit" class="btn btn-primary">Save All Stock Entries</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# Hidden template for new forms #}
+<div id="empty-form-template" style="display: none;">
+    <div class="stock-item-form card p-4 mb-4 border border-secondary">
+        <h6 class="mb-3">Stock Entry #<span class="form-counter"></span></h6>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.service_item }}
+                    <label for="{{ formset.empty_form.service_item.id_for_label }}">Service Item</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.quantity }}
+                    <label for="{{ formset.empty_form.quantity.id_for_label }}">Quantity Received</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.unit_cost }}
+                    <label for="{{ formset.empty_form.unit_cost.id_for_label }}">Unit Cost Price (₦)</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.batch_number }}
+                    <label for="{{ formset.empty_form.batch_number.id_for_label }}">Manufacturer Batch No. (Optional)</label>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.expiry_date }}
+                    <label for="{{ formset.empty_form.expiry_date.id_for_label }}">Expiry Date (Optional)</label>
+                </div>
+            </div>
+            <div class="col-md-12 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.notes }}
+                    <label for="{{ formset.empty_form.notes.id_for_label }}">Notes (Optional)</label>
+                </div>
+            </div>
+            <div class="col-12">
+                <button type="button" class="btn btn-danger btn-sm remove-form"><i class="bi bi-trash"></i> Remove Entry</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// This JavaScript is identical to your drug stock template
+document.addEventListener('DOMContentLoaded', function() {
+    const formContainer = document.getElementById('form-container');
+    const addAnotherBtn = document.getElementById('add-another-stock');
+    const totalForms = document.querySelector('input[name="form-TOTAL_FORMS"]');
+    const emptyFormTemplate = document.getElementById('empty-form-template');
+
+    function updateFormNumbers() {
+        const forms = formContainer.querySelectorAll('.stock-item-form');
+        forms.forEach((form, index) => {
+            const counter = form.querySelector('.form-counter');
+            if (counter) {
+                counter.textContent = index + 1;
+            }
+            const h6 = form.querySelector('h6');
+            if (h6 && !counter) {
+                h6.textContent = `Stock Entry #${index + 1}`;
+            }
+        });
+    }
+
+    function addRemoveHandlers() {
+        formContainer.querySelectorAll('.remove-form').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.closest('.stock-item-form').remove();
+                updateFormNumbers();
+                // Note: Django's formsets don't decrement TOTAL_FORMS on removal,
+                // the empty forms just don't get submitted. This is normal.
+            });
+        });
+    }
+
+    addAnotherBtn.addEventListener('click', function() {
+        const formRegex = new RegExp(`form-(\\d+)-`, 'g');
+        const formIndex = parseInt(totalForms.value);
+        
+        let newFormHtml = emptyFormTemplate.innerHTML.replace(/__prefix__/g, formIndex);
+        formContainer.insertAdjacentHTML('beforeend', newFormHtml);
+        
+        totalForms.value = formIndex + 1;
+
+        updateFormNumbers();
+        addRemoveHandlers();
+    });
+
+    addRemoveHandlers();
+});
+</script>
+
+{% endblock %}

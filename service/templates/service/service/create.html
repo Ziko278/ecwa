@@ -1,0 +1,180 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Create New Service</h4>
+            <p class="card-description">
+                Define a new billable service or procedure offered by the hospital.
+            </p>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form class="forms-sample" method="post" action="{% url 'service_create' %}">
+                {% csrf_token %}
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.name }}
+                            <label for="{{ form.name.id_for_label }}">Service Name <span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.category }}
+                            <label for="{{ form.category.id_for_label }}">Category <span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-floating mb-3">
+                    {{ form.description }}
+                    <label for="{{ form.description.id_for_label }}">Description</label>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                         <div class="form-floating mb-3">
+                            {{ form.price }}
+                            <label for="{{ form.price.id_for_label }}">Price (₦) <span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                         <div class="form-check form-switch mb-4">
+                            {{ form.has_results }}
+                            <label class="form-check-label" for="{{ form.has_results.id_for_label }}">
+                                <strong>This service produces a recordable result</strong></label>
+                        </div>
+                    </div>
+
+
+                </div>
+
+                <div class="mb-3 border rounded p-3" id="result-template-section" style="display: none;">
+                    <h6 class="card-title pb-2">Result Template Builder</h6>
+                    <p class="card-description">Add the fields required for this service's result. This will be used to generate the result entry form later.</p>
+
+                    <div id="result-fields-container">
+                        </div>
+
+                    <button type="button" id="add-result-field-btn" class="btn btn-sm btn-outline-primary mt-2">
+                        <i class="bi bi-plus-circle"></i> Add Parameter
+                    </button>
+
+                    <div class="mt-2">
+                         {{ form.result_template }}
+                    </div>
+                </div>
+
+                <div class="form-check form-switch mb-4">
+                    {{ form.is_active }}
+                    <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary me-2">Save Service</button>
+                <a href="{% url 'service_list' %}" class="btn btn-light">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Section Toggling ---
+    const hasResultsCheckbox = document.getElementById('{{ form.has_results.id_for_label }}');
+    const resultTemplateSection = document.getElementById('result-template-section');
+
+    function toggleResultTemplateVisibility() {
+        if (hasResultsCheckbox.checked) {
+            resultTemplateSection.style.display = 'block';
+        } else {
+            resultTemplateSection.style.display = 'none';
+        }
+    }
+
+    // --- Dynamic Field Builder ---
+    const fieldsContainer = document.getElementById('result-fields-container');
+    const addFieldBtn = document.getElementById('add-result-field-btn');
+    const hiddenTextarea = document.getElementById('{{ form.result_template.id_for_label }}');
+
+    // Hide the real textarea and its label; we will control it with JS
+    hiddenTextarea.style.display = 'none';
+    const label = document.querySelector(`label[for="{{ form.result_template.id_for_label }}"]`);
+    if(label) label.style.display = 'none';
+
+    // Function to update the hidden textarea with a JSON array of objects
+    function updateHiddenJson() {
+        const jsonArray = [];
+        const rows = fieldsContainer.querySelectorAll('.result-field-row');
+        rows.forEach(row => {
+            const name = row.querySelector('.field-name').value.trim();
+            const type = row.querySelector('.field-type').value;
+            const placeholder = row.querySelector('.field-placeholder').value;
+
+            if (name) { // Only add if the name is not empty
+                jsonArray.push({
+                    name: name,
+                    type: type,
+                    placeholder: placeholder
+                });
+            }
+        });
+        // Store the array of objects as a pretty-printed JSON string
+        hiddenTextarea.value = JSON.stringify(jsonArray, null, 2);
+    }
+
+    // Function to create a new input row
+    function createFieldRow() {
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-2 align-items-center result-field-row';
+        row.innerHTML = `
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm field-name" placeholder="Parameter Name">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm field-type">
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="date">Date</option>
+                    <option value="textarea">Long Text</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm field-placeholder" placeholder="Placeholder or Unit (e.g., mmHg)">
+            </div>
+            <div class="col-md-1 text-end">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-field-btn"><i class="bi bi-trash"></i></button>
+            </div>
+        `;
+        fieldsContainer.appendChild(row);
+
+        // Add event listeners to all inputs in the new row
+        row.querySelectorAll('input, select').forEach(input => {
+            input.addEventListener('input', updateHiddenJson);
+        });
+
+        // Add event listener for the remove button
+        row.querySelector('.remove-field-btn').addEventListener('click', function() {
+            row.remove();
+            updateHiddenJson(); // Update JSON after removal
+        });
+
+        // Trigger an update in case this is the first row
+        updateHiddenJson();
+    }
+
+    // --- Initial Setup ---
+    addFieldBtn.addEventListener('click', createFieldRow);
+    toggleResultTemplateVisibility();
+    hasResultsCheckbox.addEventListener('change', toggleResultTemplateVisibility);
+
+    // Add one empty row to start with for convenience
+    createFieldRow();
+});
+</script>
+
+{% endblock %}

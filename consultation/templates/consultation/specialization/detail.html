@@ -38,6 +38,13 @@
               <div class="card">
                 <div class="card-body" style="padding:20px">
                   <p><b>Specialization Name: </b>{{ specialization.name|title }}</p>
+                  <p><b>Specialization Group: </b>
+                        {% if specialization.group %}
+                            {{ specialization.group.name|title }}
+                        {% else %}
+                            <span class="text-muted">N/A</span>
+                        {% endif %}
+                  </p>
                   <p><b>Code: </b>{{ specialization.code|upper }}</p>
                   <p><b>Base Consultation Fee: </b>{{ specialization.base_consultation_fee|floatformat:2 }}</p>
                   <p><b>Description: </b>{{ specialization.description|default:"No description provided" }}</p>
@@ -62,9 +69,9 @@
                   <tr>
                     <th><img class="rounded-circle" style="width:50px" src="{% if doctor.image %}{{ doctor.image.url }}{% else %}{% static 'admin_site/images/default_image.jpg' %}{% endif %}" /></th>
                     <td>{{ doctor|title }}</td>
-                    <td>{{ doctor.staff_id|upper }}</td>
-                    <td>{{ doctor.mobile|default:"-" }}</td>
-                    <td><a href="{% url 'staff_detail' doctor.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a></td>
+                    <td>{{ doctor.staff.staff_id|upper }}</td>
+                    <td>{{ doctor.staff.mobile|default:"-" }}</td>
+                    <td><a href="{% url 'staff_detail' doctor.staff.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a></td>
                   </tr>
                   {% empty %}
                   <tr><td colspan="5"><h3 class="text-center">No Doctor with this Specialization Yet</h3></td></tr>
@@ -92,6 +99,18 @@
                     <div class="form-floating">
                         <input type="text" name="name" value="{{ specialization.name|lower }}" autocomplete="off" required class="form-control">
                         <label for="floatingName">Specialization Name<span style="color:red"><b>*</b></span></label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        <select name="group" class="form-select">
+                            <option value="">---------</option> {# Allows setting the group to None #}
+                            {% for group in specialization_group_list %}
+                                <option value="{{ group.id }}" {% if specialization.group.id == group.id %}selected{% endif %}>
+                                    {{ group.name|title }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <label for="floatingGroup">Group</label>
                     </div><br />
 
                     <div class="form-floating">

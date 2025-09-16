@@ -1,0 +1,100 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Record Service Result</h4>
+            
+            {# Use the transaction_object passed from the view #}
+            {% if transaction_object %}
+            <div class="card-description">
+                <p><strong>Patient:</strong> {{ transaction_object.patient|title }}</p>
+                <p><strong>Service:</strong> {{ transaction_object.service.name }}</p>
+                <p><strong>Date of Service:</strong> {{ transaction_object.created_at|date:"F d, Y" }}</p>
+            </div>
+            <hr>
+            {% endif %}
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form class="forms-sample" method="post" enctype="multipart/form-data" id="result-form" novalidate>
+                {% csrf_token %}
+                <div style="display: none;">{{ form.transaction }}</div>
+                <div id="dynamic-result-fields" class="mb-4"><p class="text-muted">Loading result template...</p></div>
+                <div class="form-floating mb-3">{{ form.interpretation }}<label for="{{ form.interpretation.id_for_label }}">Interpretation / Summary</label></div>
+                <div class="mb-3"><label for="{{ form.result_file.id_for_label }}" class="form-label">Upload Result File (Optional)</label>{{ form.result_file }}</div>
+                <div class="form-check form-switch mb-4">{{ form.is_abnormal }}<label class="form-check-label" for="{{ form.is_abnormal.id_for_label }}">Mark as Abnormal</label></div>
+                <div style="display: none;">{{ form.result_data }}</div>
+                <button type="submit" class="btn btn-primary me-2">Save Result</button>
+                <a href="#" onclick="window.history.back(); return false;" class="btn btn-light">Cancel & Close</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+window.onload = function() {
+    const dynamicFieldsContainer = document.getElementById('dynamic-result-fields');
+    const resultDataTextarea = document.getElementById('{{ form.result_data.id_for_label }}');
+    const resultForm = document.getElementById('result-form');
+
+    // Function to build form fields (remains the same)
+    function buildFormFromTemplate(template) {
+        dynamicFieldsContainer.innerHTML = '';
+        if (!template || !Array.isArray(template) || template.length === 0) {
+            dynamicFieldsContainer.innerHTML = '<p class="text-danger">This service does not have a valid result template.</p>';
+            return;
+        }
+        template.forEach(field => {
+            const formGroup = document.createElement('div');
+            formGroup.className = 'form-floating mb-3';
+            let inputHtml = '';
+            const inputId = `id_result_${field.name.replace(/\s+/g, '_')}`;
+            const commonAttrs = `class="form-control dynamic-field" id="${inputId}" name="${field.name}" placeholder="${field.placeholder || ''}"`;
+            switch(field.type) {
+                case 'number': inputHtml = `<input type="number" step="any" ${commonAttrs}>`; break;
+                case 'date': inputHtml = `<input type="date" ${commonAttrs}>`; break;
+                case 'textarea': inputHtml = `<textarea ${commonAttrs} rows="3"></textarea>`; break;
+                default: inputHtml = `<input type="text" ${commonAttrs}>`;
+            }
+            formGroup.innerHTML = `${inputHtml}<label for="${inputId}">${field.name}</label>`;
+            dynamicFieldsContainer.appendChild(formGroup);
+        });
+    }
+
+    // Function to gather data (remains the same)
+    function updateHiddenResultData() {
+        const resultData = {};
+        dynamicFieldsContainer.querySelectorAll('.dynamic-field').forEach(field => {
+            resultData[field.name] = field.value;
+        });
+        resultDataTextarea.value = JSON.stringify(resultData);
+    }
+
+    // --- THIS IS THE CORRECTED INITIALIZATION ---
+    // Read the service_id directly from the context variable provided by the view.
+    const serviceId = {{ service_id|default:"null" }};
+    if (serviceId) {
+        fetch(`/portal/service/ajax/service/${serviceId}/template/`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.template) {
+                    buildFormFromTemplate(data.template);
+                } else {
+                    dynamicFieldsContainer.innerHTML = '<p class="text-warning">No result template found for this service.</p>';
+                }
+            })
+            .catch(err => {
+                dynamicFieldsContainer.innerHTML = '<p class="text-danger">Error loading result template.</p>';
+                console.error(err);
+            });
+    } else {
+        dynamicFieldsContainer.innerHTML = '<p class="text-danger">Could not identify the service for this transaction.</p>';
+    }
+
+    resultForm.addEventListener('submit', updateHiddenResultData);
+};
+</script>
+{% endblock %}

@@ -25,6 +25,7 @@
                 <tr>
                     <th scope="col">#</th>
                     <th scope="col">Specialization</th>
+                    <th scope="col">Group</th>
                     <th scope="col">Code</th>
                     <th scope="col">Base Consultation Fee (₦)</th>
                     <th scope="col" class="text-center">Action</th>
@@ -35,7 +36,14 @@
                 <tr>
                     <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
                     <td title="created at {{ specialization.created_at|date }}">{{ specialization.name|title }}</td>
-                    <td>{{ specialization.code }}</td>
+                    <td>
+                        {% if specialization.group %}
+                            {{ specialization.group.name|title }}
+                        {% else %}
+                            <span class="text-muted">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ specialization.code|upper }}</td>
                     <td>{{ specialization.base_consultation_fee|floatformat:2 }}</td>
                     <td class="text-center">
                         <a title="Specialization Detail" href="{% url 'specialization_detail' specialization.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
@@ -63,6 +71,9 @@
             <div class="modal-body">
                 <p class="card-description">
                     Specializations are used to define the different medical fields of expertise available. Each specialization has a name, a unique code, and a base consultation fee.
+                </p>
+                <p class="card-description">
+                    A <strong>group</strong> allows you to link several specializations together. For example, "Surgical" could be a group for Orthopedics, General Surgery, and Neurosurgery.
                 </p>
 
                 <div class="alert alert-info">
@@ -93,6 +104,11 @@
                     <div class="form-floating">
                         {{ form.name }}
                         <label for="floatingName">Specialization Name<span style="color:red"><b>*</b></span></label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        {{ form.group }}
+                        <label for="floatingGroup">Group</label>
                     </div><br />
 
                     <div class="form-floating">
@@ -133,6 +149,18 @@
                     <div class="form-floating">
                         <input type="text" name="name" value="{{ specialization.name|lower }}" autocomplete="off" required class="form-control">
                         <label for="floatingName">Specialization Name<span style="color:red"><b>*</b></span></label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        <select name="group" class="form-select">
+                            <option value="">---------</option> {# Allows setting the group to None #}
+                            {% for group in specialization_group_list %}
+                                <option value="{{ group.id }}" {% if specialization.group.id == group.id %}selected{% endif %}>
+                                    {{ group.name|title }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <label for="floatingGroup">Group</label>
                     </div><br />
 
                     <div class="form-floating">

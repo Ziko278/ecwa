@@ -1,45 +1,33 @@
 {% extends 'admin_site/layout.html' %}
 {% block 'main' %}
-{% load static %}
 
-<div class="pagetitle">
-    <h1>Confirm Deletion</h1>
-    <nav>
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
-            <li class="breadcrumb-item">Services</li>
-            <li class="breadcrumb-item"><a href="{% url 'service_item_list' %}">Inventory</a></li>
-            <li class="breadcrumb-item active">Delete</li>
-        </ol>
-    </nav>
-</div><!-- End Page Title -->
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Inventory Item</h4>
+            <hr>
+            <p>You are about to delete the following item:</p>
+            <ul>
+                <li><strong>Item Name:</strong> <i>{{ item.name|upper }}</i></li>
+                <li><strong>Category:</strong> <i>{{ item.category.name }}</i></li>
+            </ul>
 
-<section class="section">
-    <div class="row">
-        <div class="col-lg-8">
-            <div class="card border-danger">
-                <div class="card-body">
-                    <h5 class="card-title text-danger">Delete Service Item: {{ service_item.name }}</h5>
-
-                    <p>
-                        Are you sure you want to delete this item?
-                    </p>
-                    <p class="fw-bold">
-                        This action is irreversible. All associated data, including stock history, will be permanently removed.
-                    </p>
-
-                    <form method="post">
-                        {% csrf_token %}
-                        <div class="text-end">
-                            <a href="{% url 'service_item_detail' service_item.pk %}" class="btn btn-secondary">Cancel</a>
-                            <button type="submit" class="btn btn-danger">Yes, Delete Item</button>
-                        </div>
-                    </form>
-
-                </div>
+            <div class="alert alert-danger">
+                <p class="fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Warning: This action is permanent and cannot be undone.</p>
+                {% with transaction_count=item.transactions.count %}
+                    {% if transaction_count > 0 %}
+                        <p class="mb-0">Deleting this item will also permanently delete <strong>{{ transaction_count }} patient transaction record(s)</strong> associated with it. This will affect historical patient financial data.</p>
+                    {% endif %}
+                {% endwith %}
             </div>
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success">Proceed With Deletion</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'service_item_detail' item.pk %}">Cancel</a>
         </div>
     </div>
-</section>
+</div>
 
 {% endblock %}

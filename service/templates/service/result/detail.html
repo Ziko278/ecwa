@@ -1,0 +1,92 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<style>
+    /* This style block ensures only the result card is printed */
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        #printable-result-area, #printable-result-area * {
+            visibility: visible;
+        }
+        #printable-result-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+        }
+        .no-print {
+            display: none;
+        }
+    }
+</style>
+
+<div class="col-12">
+    <div class="card no-print">
+        <div class="card-body">
+            <h5 class="card-title pb-0">Actions</h5>
+            <a href="{% url 'service_result_edit' result.pk %}" class="btn btn-warning"><i class="bi bi-pencil-square"></i> Edit Result</a>
+            <button onclick="window.print()" class="btn btn-primary"><i class="bi bi-printer"></i> Print Result</button>
+            <a href="#" onclick="window.history.back(); return false;" class="btn btn-secondary" style="float: right;"><i class="bi bi-arrow-left"></i> Go Back</a>
+        </div>
+    </div>
+
+    <div class="card" id="printable-result-area">
+        <div class="card-body">
+            <div class="text-center my-4">
+                <h3 class="card-title fs-4">{{ result.transaction.service.category.name|title }} Result</h3>
+                <h4>{{ result.transaction.service.name|title }}</h4>
+            </div>
+            <hr>
+            <h5>Patient Details</h5>
+            <dl class="row">
+                <dt class="col-sm-3">Patient Name:</dt><dd class="col-sm-9">{{ result.transaction.patient|title }}</dd>
+                <dt class="col-sm-3">Patient ID:</dt><dd class="col-sm-9">{{ result.transaction.patient.card_number|upper }}</dd>
+                <dt class="col-sm-3">Date of Service:</dt><dd class="col-sm-9">{{ result.transaction.created_at|date:"F d, Y" }}</dd>
+                <dt class="col-sm-3">Result Date:</dt><dd class="col-sm-9">{{ result.created_at|date:"F d, Y" }}</dd>
+            </dl>
+            <hr>
+            <h5>Result Details</h5>
+            <table class="table table-bordered">
+                <thead class="table-light">
+                    <tr><th>Parameter</th><th>Value</th></tr>
+                </thead>
+                <tbody>
+                    {% for key, value in result.result_data.items %}
+                    <tr>
+                        <td><strong>{{ key|title }}</strong></td>
+                        <td>{{ value }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            {% if result.result_file %}
+                <h5 class="mt-4">Attached File</h5>
+                <a href="{{ result.result_file.url }}" class="btn btn-outline-primary" target="_blank" download>
+                    <i class="bi bi-download"></i>
+                    Download Attached File
+                </a>
+            {% endif %}
+            
+            {% if result.interpretation %}
+                <h5 class="mt-4">Interpretation / Summary</h5>
+                <p>{{ result.interpretation|linebreaksbr }}</p>
+            {% endif %}
+
+            <div class="mt-4">
+                <p class="text-muted small">Result recorded by:
+                    {% if result.created_by.user_staff_profile %}
+                                        {{ result.created_by.user_staff_profile.staff|title }}
+                                    {% else %}
+                                        {{ result.created_by|title }}
+                                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

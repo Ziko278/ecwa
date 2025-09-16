@@ -10,11 +10,21 @@ from finance.models import PatientTransactionModel
 from insurance.models import PatientInsuranceModel, HMOCoveragePlanModel
 
 
-# 1. SPECIALIZATION (Moved from HR - makes more sense here)
+class SpecializationGroupModel(models.Model):
+    """General, ENT. specialization under same group can share same consultation payment"""
+    name = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name.title()
+
+
 class SpecializationModel(models.Model):
     """Medical specializations like Cardiology, Pediatrics, etc."""
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=10, unique=True, blank=True)
+    group = models.ForeignKey(SpecializationGroupModel, blank=True, null=True, on_delete=models.SET_NULL)
     description = models.TextField(blank=True)
 
     # Pricing
@@ -138,6 +148,10 @@ class ConsultationFeeModel(models.Model):
 
     # Validity
     is_active = models.BooleanField(default=True)
+    validity_in_days = models.PositiveIntegerField(
+        default=1,
+        help_text="Number of days this fee is valid after being applied."
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -155,6 +169,10 @@ class PatientQueueModel(models.Model):
     """Main patient queue - tracks patient journey"""
     patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE)
     payment = models.ForeignKey(PatientTransactionModel, on_delete=models.CASCADE)
+    specialization = models.ForeignKey(SpecializationModel, on_delete=models.SET_NULL,
+        null=True,  blank=True
+    )
+
     consultant = models.ForeignKey(ConsultantModel, on_delete=models.CASCADE, blank=True, null=True)
 
     # Queue position and status
@@ -197,6 +215,9 @@ class PatientQueueModel(models.Model):
         return f"Queue {self.queue_number}: {self.patient} ({self.status})"
 
     def save(self, *args, **kwargs):
+        if not self.specialization and self.payment and hasattr(self.payment, 'fee_structure'):
+            self.specialization = self.payment.fee_structure.specialization
+
         if not self.queue_number:
             # Generate queue number: CSL20241225001
 
@@ -277,6 +298,7 @@ class PatientVitalsModel(models.Model):
 
     # Nurse observations
     general_appearance = models.TextField(blank=True)
+    extra_note = models.TextField(blank=True)
     chief_complaint = models.TextField(blank=True, help_text="What patient is complaining of")
 
     # Tracking

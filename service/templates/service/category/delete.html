@@ -1,47 +1,36 @@
 {% extends 'admin_site/layout.html' %}
-{% block 'main' %}
 {% load static %}
+{% block 'main' %}
 
-<div class="pagetitle">
-    <h1>Delete Service Category</h1>
-    <nav>
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
-            <li class="breadcrumb-item">Services</li>
-            <li class="breadcrumb-item"><a href="{% url 'service_category_list' %}">Categories</a></li>
-            <li class="breadcrumb-item active">Delete</li>
-        </ol>
-    </nav>
-</div><!-- End Page Title -->
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Service Category</h4>
+            <hr>
+            <p>You are about to delete the following category:</p>
+            <ul>
+                <li><strong>Category Name:</strong> <i>{{ category.name|upper }}</i></li>
+                <li><strong>Category Type:</strong> <i>{{ category.get_category_type_display }}</i></li>
+            </ul>
 
-<section class="section">
-    <div class="row">
-        <div class="col-lg-6">
-            <div class="card border-danger">
-                <div class="card-body">
-                    <h5 class="card-title text-danger">Confirm Deletion</h5>
-
-                    <p>You are about to permanently delete the following service category:</p>
-                    <h4 class="text-center my-4">"{{ category.name }}"</h4>
-                    
-                    <div class="alert alert-danger" role="alert">
-                        <h4 class="alert-heading">Warning!</h4>
-                        <p>This action cannot be undone. Deleting this category will also permanently delete all services and items associated with it. Please be absolutely sure before you proceed.</p>
-                    </div>
-
-                    <form method="post">
-                        {% csrf_token %}
-                        <div class="text-center">
-                            <button type="submit" class="btn btn-danger">Yes, Delete This Category</button>
-                            <a href="{% url 'service_category_list' %}" class="btn btn-secondary">Cancel</a>
-                        </div>
-                    </form>
-
-                </div>
+            <div class="alert alert-danger">
+                <p class="fw-bold">Warning: This action is permanent and cannot be undone.</p>
+                {% with services_count=category.services.count items_count=category.service_items.count %}
+                    {% if services_count > 0 or items_count > 0 %}
+                        <p>Deleting this category will also delete <strong>{{ services_count }} service(s)</strong> and <strong>{{ items_count }} item(s)</strong> associated with it.</p>
+                    {% else %}
+                        <p>There are currently no services or items in this category.</p>
+                    {% endif %}
+                {% endwith %}
             </div>
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success">Proceed With Deletion</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'service_category_list' %}">Cancel</a>
         </div>
     </div>
-</section>
+</div>
 
 {% endblock %}
-

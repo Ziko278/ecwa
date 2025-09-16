@@ -88,6 +88,8 @@ class PatientTransactionModel(models.Model):
         ('scan_payment', 'SCAN PAYMENT'),
         ('admission_payment', 'ADMISSION PAYMENT'),
         ('surgery_payment', 'SURGERY PAYMENT'),
+        ('service', 'SERVICE'),
+        ('item', 'ITEM PURCHASE'),
         ('other_payment', 'OTHER PAYMENT'),
         ('drug_refund', 'DRUG REFUND'),
         ('lab_refund', 'LAB REFUND'),
@@ -107,6 +109,7 @@ class PatientTransactionModel(models.Model):
     lab_structure = models.ForeignKey('laboratory.LabTestOrderModel', on_delete=models.SET_NULL, null=True, blank=True)
     admission = models.ForeignKey('inpatient.Admission', on_delete=models.SET_NULL, null=True, blank=True)
     surgery = models.ForeignKey('inpatient.Surgery', on_delete=models.SET_NULL, null=True, blank=True)
+    service = models.ForeignKey('service.PatientServiceTransaction', on_delete=models.SET_NULL, null=True, blank=True)
     other_service = models.ForeignKey(OtherPaymentService, on_delete=models.SET_NULL, null=True, blank=True)
 
     amount = models.DecimalField(
@@ -147,6 +150,11 @@ class PatientTransactionModel(models.Model):
         null=True,
         blank=True,
         related_name='transactions'
+    )
+    valid_till = models.DateField(
+        null=True,
+        blank=True,
+        help_text="The date until which the paid service is valid (e.g., for consultations)."
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -253,6 +261,7 @@ class PatientTransactionModel(models.Model):
             models.Index(fields=['date']),
             models.Index(fields=['status']),
         ]
+
 
 class MoneyRemittance(models.Model):
     """

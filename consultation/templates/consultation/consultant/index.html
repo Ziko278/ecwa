@@ -16,7 +16,6 @@
             </ul>
         </div>
 
-
         <div class="card-body">
             <h5 class="card-title">List of Consultants</h5>
             {% include 'admin_site/partials/error.html' %}
@@ -27,6 +26,7 @@
                         <th scope="col">Consultant</th>
                         <th scope="col">Specialization</th>
                         <th scope="col">Room</th>
+                        <th scope="col">Queue</th>
                         <th class="text-center" scope="col">Availability</th>
                         <th scope="col" class="text-center">Action</th>
                     </tr>
@@ -38,17 +38,42 @@
                         <td><a href="{% url 'consultant_detail' consultant.id %}">Dr. {{ consultant.staff|title }}</a></td>
                         <td>{{ consultant.specialization.name|title }}</td>
                         <td>{% if consultant.assigned_room %}{{ consultant.assigned_room }}{% else %}Not Assigned{% endif %}</td>
-                        <td class="text-center">{% if consultant.is_available_for_consultation %} <i class="fs-2 bi bi-check-circle-fill text-success"></i> {% else %} <i class="fs-2 bi bi-x-circle-fill text-danger"></i> {% endif %}</td>
+                        <td>
+                            <span class="badge {% if consultant.active_patient_count > 5 %}bg-danger{% elif consultant.active_patient_count > 2 %}bg-warning{% else %}bg-success{% endif %} rounded-pill">
+                                {{ consultant.active_patient_count }}
+                            </span>
+                        </td>
                         <td class="text-center">
-                            <a title="Consultant Detail" href="{% url 'consultant_detail' consultant.id %}" class="btn btn-sm btn-primary"><i class="bi bi-eye"></i></a>
-                            <a title="Edit Consultant" href="{% url 'consultant_edit' consultant.id %}" class="btn btn-sm btn-warning"><i class="bi bi-pencil-square"></i></a>
+                            {% if consultant.is_available_for_consultation %}
+                                <i class="fs-2 bi bi-check-circle-fill text-success"></i>
+                            {% else %}
+                                <i class="fs-2 bi bi-x-circle-fill text-danger"></i>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a title="Consultant Detail" href="{% url 'consultant_detail' consultant.id %}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <a title="Edit Consultant" href="{% url 'consultant_edit' consultant.id %}" class="btn btn-sm btn-warning">
+                                <i class="bi bi-pencil-square"></i>
+                            </a>
+
+                            <!-- Manage Queue Button -->
+                            <a title="Manage Queue" href="{% url 'consultant_queue' consultant.id %}" class="btn btn-sm btn-info">
+                                <i class="bi bi-list-ul"></i>
+                            </a>
+
                             {% if consultant.is_available_for_consultation %}
                                 <button type="button" class="btn btn-sm btn-secondary" title="Make Unavailable"
                                         data-bs-toggle="modal"
                                         data-bs-target="#confirmationModal"
                                         data-url="{% url 'consultant_toggle_availability' consultant.pk %}"
                                         data-name="Dr. {{ consultant.staff|title }}"
-                                        data-action="make unavailable">
+                                        data-action="make unavailable"
+                                        data-consultant-id="{{ consultant.id }}"
+                                        data-active-patients="{{ consultant.active_patient_count }}"
+                                        data-can-disable="{{ consultant.can_be_disabled|yesno:'true,false' }}"
+                                        data-transfer-options="{{ consultant.transfer_options|length }}">
                                     <i class="bi bi-power"></i>
                                 </button>
                             {% else %}
@@ -57,11 +82,16 @@
                                         data-bs-target="#confirmationModal"
                                         data-url="{% url 'consultant_toggle_availability' consultant.pk %}"
                                         data-name="Dr. {{ consultant.staff|title }}"
-                                        data-action="make available">
+                                        data-action="make available"
+                                        data-consultant-id="{{ consultant.id }}"
+                                        data-active-patients="0">
                                     <i class="bi bi-check-circle"></i>
                                 </button>
                             {% endif %}
-                            <a title="Delete Consultant" href="{% url 'consultant_delete' consultant.id %}" class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></a>
+
+                            <a title="Delete Consultant" href="{% url 'consultant_delete' consultant.id %}" class="btn btn-sm btn-danger">
+                                <i class="bi bi-trash"></i>
+                            </a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -74,51 +104,171 @@
     </div>
 </div>
 
+<!-- Enhanced Confirmation Modal -->
 <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        Are you sure you want to <strong id="action-text"></strong> <strong id="consultant-name"></strong>?
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <form id="modal-confirm-form" method="POST" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-primary">Confirm</button>
-        </form>
-      </div>
+      <form id="modal-confirm-form" method="POST" class="d-inline">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="simple-confirmation">
+            Are you sure you want to <strong id="action-text"></strong> <strong id="consultant-name"></strong>?
+          </div>
+
+          <!-- Transfer Section (shown when needed) -->
+          <div id="transfer-section" style="display: none;">
+            <div class="alert alert-warning">
+              <i class="bi bi-exclamation-triangle"></i>
+              <strong id="consultant-name-transfer"></strong> has <strong id="active-patient-count"></strong> active patients.
+              You must transfer these patients to other available doctors before making the consultant unavailable.
+            </div>
+
+            <div id="transfer-options-section">
+              <h6 class="text-primary mb-3">Transfer Patients To:</h6>
+              <div id="available-doctors-list">
+                <!-- Will be populated dynamically (these inputs are now inside the form) -->
+              </div>
+              <!-- Hidden flag to indicate transfer was intended -->
+              <input type="hidden" name="transfer_patients" value="yes">
+            </div>
+
+            <div id="no-transfer-options" style="display: none;">
+              <div class="alert alert-danger">
+                <i class="bi bi-x-circle"></i>
+                No other doctors available in the same specialization. Cannot make consultant unavailable at this time.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="confirm-button">Confirm</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
 
+<!-- Hidden data for transfer options -->
+{% for consultant in consultant_list %}
+<script type="application/json" id="consultant-{{ consultant.id }}-data">
+{
+    "id": {{ consultant.id }},
+    "name": "Dr. {{ consultant.staff|title|escapejs }}",
+    "activePatients": {{ consultant.active_patient_count }},
+    "transferOptions": [
+        {% for doctor in consultant.transfer_options %}
+        {
+            "id": {{ doctor.id }},
+            "name": "Dr. {{ doctor.staff|title|escapejs }}",
+            "specialization": "{{ doctor.specialization.name|escapejs }}"
+        }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ]
+}
+</script>
+{% endfor %}
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const confirmationModal = document.getElementById('confirmationModal');
     if (confirmationModal) {
         confirmationModal.addEventListener('show.bs.modal', function (event) {
-            // Button that triggered the modal
             const button = event.relatedTarget;
-
-            // Extract info from data-* attributes
             const url = button.getAttribute('data-url');
             const name = button.getAttribute('data-name');
             const action = button.getAttribute('data-action');
+            const consultantId = button.getAttribute('data-consultant-id');
+            const activePatients = parseInt(button.getAttribute('data-active-patients') || '0');
+            const canDisable = button.getAttribute('data-can-disable') === 'true';
 
-            // Update the modal's content
+            // Update basic modal content
             const modalForm = confirmationModal.querySelector('#modal-confirm-form');
             const consultantNameSpan = confirmationModal.querySelector('#consultant-name');
             const actionTextSpan = confirmationModal.querySelector('#action-text');
+            const confirmButton = confirmationModal.querySelector('#confirm-button');
 
             modalForm.action = url;
             consultantNameSpan.textContent = name;
             actionTextSpan.textContent = action;
+
+            const simpleConfirmation = document.getElementById('simple-confirmation');
+            const transferSection = document.getElementById('transfer-section');
+
+            if (action === 'make unavailable' && activePatients > 0) {
+                // Show transfer section
+                simpleConfirmation.style.display = 'none';
+                transferSection.style.display = 'block';
+
+                // Load consultant data
+                const consultantDataScript = document.getElementById(`consultant-${consultantId}-data`);
+                if (consultantDataScript) {
+                    const consultantData = JSON.parse(consultantDataScript.textContent);
+
+                    document.getElementById('consultant-name-transfer').textContent = consultantData.name;
+                    document.getElementById('active-patient-count').textContent = consultantData.activePatients;
+
+                    const transferOptionsSection = document.getElementById('transfer-options-section');
+                    const noTransferOptions = document.getElementById('no-transfer-options');
+                    const availableDoctorsList = document.getElementById('available-doctors-list');
+
+                    if (consultantData.transferOptions.length > 0) {
+                        // Show transfer options
+                        transferOptionsSection.style.display = 'block';
+                        noTransferOptions.style.display = 'none';
+                        confirmButton.disabled = false;
+
+                        // Populate available doctors
+                        availableDoctorsList.innerHTML = '';
+                        consultantData.transferOptions.forEach(doctor => {
+                            const doctorDiv = document.createElement('div');
+                            doctorDiv.className = 'form-check';
+                            doctorDiv.innerHTML = `
+                              <input class="form-check-input" type="checkbox" name="transfer_doctor_${doctor.id}" id="doctor_${doctor.id}" checked value="on">
+                              <label class="form-check-label" for="doctor_${doctor.id}">
+                                <strong>${doctor.name}</strong>
+                                <small class="text-muted d-block">${doctor.specialization}</small>
+                              </label>
+                            `;
+
+                            availableDoctorsList.appendChild(doctorDiv);
+                        });
+
+                        // Add select all/none functionality
+                        const selectAllDiv = document.createElement('div');
+                        selectAllDiv.className = 'mt-2';
+                        selectAllDiv.innerHTML = `
+                            <button type="button" class="btn btn-sm btn-outline-primary me-2" onclick="selectAllDoctors(true)">Select All</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllDoctors(false)">Select None</button>
+                        `;
+                        availableDoctorsList.appendChild(selectAllDiv);
+
+                    } else {
+                        // No transfer options available
+                        transferOptionsSection.style.display = 'none';
+                        noTransferOptions.style.display = 'block';
+                        confirmButton.disabled = true;
+                    }
+                }
+            } else {
+                // Simple confirmation
+                simpleConfirmation.style.display = 'block';
+                transferSection.style.display = 'none';
+                confirmButton.disabled = false;
+            }
         });
     }
 });
+
+function selectAllDoctors(selectAll) {
+    const checkboxes = document.querySelectorAll('#available-doctors-list input[type="checkbox"]:not([name="transfer_patients"])');
+    checkboxes.forEach(cb => cb.checked = selectAll);
+}
 </script>
 {% endblock %}

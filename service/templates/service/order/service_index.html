@@ -1,0 +1,69 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="card-body">
+            <h5 class="card-title">Service Orders <span>| History & Results</span></h5>
+            {% include 'admin_site/partials/error.html' %}
+
+            <form method="get" class="row g-3 mb-4">
+                <div class="col-md-8">
+                    <input type="text" name="q" class="form-control" placeholder="Search by Patient, Service, Category, Card No..." value="{{ search_query }}">
+                </div>
+                <div class="col-md-3">
+                    <input type="date" name="date" class="form-control" value="{{ search_date }}">
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button>
+                </div>
+            </form>
+
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Patient</th>
+                        <th>Service</th>
+                        <th>Category</th>
+                        <th>Date</th>
+                        <th>Staff</th>
+                        <th class="text-center">Result Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in orders %}
+                    <tr>
+                        <td>{{ tx.patient|title }}<br><small class="text-muted">{{ tx.patient.card_number|upper }}</small></td>
+                        <td>{{ tx.service.name|title }}</td>
+                        <td>{{ tx.service.category.name|title }}</td>
+                        <td>{{ tx.created_at|date:"d M Y, P" }}</td>
+                        <td class="text-center fw-bold">
+                        {% if tx.performed_by.user_staff_profile %}
+                                        {{ tx.performed_by.user_staff_profile.staff|title }}
+                                    {% else %}
+                                        {{ tx.performed_by|title }}
+                                    {% endif %}</td>
+                        <td class="text-center">
+                            {% if tx.service.has_results %}
+                                {% with result=tx.result %}
+                                    {% if result %}
+                                        <a href="{% url 'service_result_detail' result.pk %}" class="btn btn-success btn-sm"><i class="bi bi-eye"></i> View Result</a>
+                                    {% else %}
+                                        <a href="{% url 'service_result_create' %}?transaction_id={{ tx.pk }}" class="btn btn-info btn-sm"><i class="bi bi-pencil-square"></i> Compute Result</a>
+                                    {% endif %}
+                                {% endwith %}
+                            {% else %}
+                                <span class="text-muted">N/A</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6" class="text-center">No service orders found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% include '_pagination.html' %}
+        </div>
+    </div>
+</div>
+{% endblock %}

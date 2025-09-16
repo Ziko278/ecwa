@@ -1,250 +1,215 @@
 {% extends 'admin_site/layout.html' %}
 {% block 'main' %}
 {% load static %}
+{% load humanize %}
 
-<div class="pagetitle">
-    <h1>Item Details: {{ service_item.name }}</h1>
-    <nav>
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
-            <li class="breadcrumb-item">Services</li>
-            <li class="breadcrumb-item"><a href="{% url 'service_item_list' %}">Inventory</a></li>
-            <li class="breadcrumb-item active">Details</li>
-        </ol>
-    </nav>
-</div><!-- End Page Title -->
+<div class="col-lg-12 grid-margin stretch-card">
+  <div class="card">
+    <div class="card-body">
+      <h4 class="card-title">ACTIONS:
+        <span class="card-description">Hover an Icon to reveal its function</span>
+      </h4>
 
-<section class="section profile">
-    <div class="row">
-        <div class="col-xl-4">
+      <a title="Edit Item Details" href="{% url 'service_item_edit' item.pk %}" class="btn btn-warning">
+        <i class="bi bi-pencil-square"></i>
+      </a>
 
-            <div class="card">
-                <div class="card-body profile-card pt-4 d-flex flex-column align-items-center">
-                    <i class="bi bi-box-seam" style="font-size: 64px; color: #012970;"></i>
-                    <h2 class="mt-2">{{ service_item.name }}</h2>
-                    <h3>{{ service_item.category.name }}</h3>
-                    <div class="mt-3">
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#manageStockModal">
-                            <i class="bi bi-gear"></i> Manage Stock
-                        </button>
-                        <a href="{% url 'service_item_edit' service_item.pk %}" class="btn btn-outline-secondary">
-                            <i class="bi bi-pencil"></i> Edit Item
-                        </a>
-                    </div>
-                </div>
-            </div>
+      <a title="Delete Item" href="{% url 'service_item_delete' item.pk %}" class="btn btn-danger">
+        <i class="bi bi-trash"></i>
+      </a>
 
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Stock Summary</h5>
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Current Stock
-                            <span class="badge {% if service_item.is_low_stock %}bg-danger{% else %}bg-success{% endif %} rounded-pill">{{ service_item.stock_quantity }}</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Reorder Point
-                            <span class="badge bg-secondary rounded-pill">{{ service_item.minimum_stock_level }}</span>
-                        </li>
-                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Unit
-                            <span class="text-muted">{{ service_item.get_unit_of_measure_display }}</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Status
-                            <span class="text-muted">{% if service_item.is_active %}Active{% else %}Inactive{% endif %}</span>
-                        </li>
-                    </ul>
-                </div>
-            </div>
+      <button type="button" class="btn btn-info"
+          data-bs-toggle="modal" data-bs-target="#stockOutModal"
+          title="Stock Out / Adjustment"><i class="bi bi-box-arrow-up"></i> Stock Out
+      </button>
 
-        </div>
-
-        <div class="col-xl-8">
-
-            <div class="card">
-                <div class="card-body pt-3">
-                    <!-- Bordered Tabs -->
-                    <ul class="nav nav-tabs nav-tabs-bordered">
-
-                        <li class="nav-item">
-                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#item-overview">Overview</button>
-                        </li>
-
-                        <li class="nav-item">
-                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stock-history">Stock History</button>
-                        </li>
-
-                    </ul>
-                    <div class="tab-content pt-2">
-
-                        <div class="tab-pane fade show active profile-overview" id="item-overview">
-
-                            <h5 class="card-title">Item Details</h5>
-
-                            <div class="row">
-                                <div class="col-lg-3 col-md-4 label ">Full Name</div>
-                                <div class="col-lg-9 col-md-8">{{ service_item.name }}</div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-lg-3 col-md-4 label">Category</div>
-                                <div class="col-lg-9 col-md-8">{{ service_item.category.name }}</div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-lg-3 col-md-4 label">Model / Brand</div>
-                                <div class="col-lg-9 col-md-8">{{ service_item.model_number|default:"N/A" }}</div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-lg-3 col-md-4 label">Description</div>
-                                <div class="col-lg-9 col-md-8">{{ service_item.description|default:"No description provided." }}</div>
-                            </div>
-
-                             <h5 class="card-title mt-3">Pricing</h5>
-
-                            <div class="row">
-                                <div class="col-lg-3 col-md-4 label">Selling Price</div>
-                                <div class="col-lg-9 col-md-8">{{ service_item.price }}</div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-lg-3 col-md-4 label">Cost Price</div>
-                                <div class="col-lg-9 col-md-8">{{ service_item.cost_price|default:"N/A" }}</div>
-                            </div>
-
-                            <h5 class="card-title mt-3">Additional Info</h5>
-                             <div class="row">
-                                <div class="col-lg-3 col-md-4 label">Expiry Date</div>
-                                <div class="col-lg-9 col-md-8">{{ service_item.expiry_date|date:"d M Y"|default:"N/A" }}</div>
-                            </div>
-                             <div class="row">
-                                <div class="col-lg-3 col-md-4 label">Prescription</div>
-                                <div class="col-lg-9 col-md-8">{% if service_item.is_prescription_required %}Required{% else %}Not Required{% endif %}</div>
-                            </div>
-                        </div>
-
-                        <div class="tab-pane fade pt-3" id="stock-history">
-                            <h5 class="card-title">Stock Movement History</h5>
-                            <p>A log of all additions, sales, and adjustments for this item.</p>
-
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Date</th>
-                                        <th scope="col">Type</th>
-                                        <th scope="col">Qty</th>
-                                        <th scope="col">Prev. Stock</th>
-                                        <th scope="col">New Stock</th>
-                                        <th scope="col">User</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for movement in stock_movements %}
-                                    <tr>
-                                        <td>{{ movement.created_at|date:"d M Y, H:i" }}</td>
-                                        <td>
-                                            {% if movement.movement_type == 'stock_in' %}
-                                                <span class="badge bg-success">{{ movement.get_movement_type_display }}</span>
-                                            {% elif movement.movement_type == 'sale' %}
-                                                <span class="badge bg-warning text-dark">{{ movement.get_movement_type_display }}</span>
-                                            {% elif movement.movement_type == 'return' %}
-                                                <span class="badge bg-info text-dark">{{ movement.get_movement_type_display }}</span>
-                                            {% else %}
-                                                <span class="badge bg-secondary">{{ movement.get_movement_type_display }}</span>
-                                            {% endif %}
-                                        </td>
-                                        <td><strong>{{ movement.quantity }}</strong></td>
-                                        <td>{{ movement.previous_stock }}</td>
-                                        <td>{{ movement.new_stock }}</td>
-                                        <td>{{ movement.created_by.username|default:"System" }}</td>
-                                    </tr>
-                                    {% empty %}
-                                    <tr>
-                                        <td colspan="6" class="text-center">No stock movement history found.</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-
-                        </div>
-
-                    </div><!-- End Bordered Tabs -->
-                </div>
-            </div>
-        </div>
+      <a onclick="window.history.back()" title="Go Back" style="float:right" class="btn btn-secondary text-white"><i class="bi bi-arrow-left"></i></a>
     </div>
-</section>
+  </div>
+</div>
 
-<!-- Manage Stock Modal -->
-<div class="modal fade" id="manageStockModal" tabindex="-1">
+<div class="row">
+  <div class="col-md-12">
+    <div class="card">
+      <div class="card-body pt-3">
+        <ul class="nav nav-tabs nav-tabs-bordered">
+          <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" data-bs-target="#item-details">Item Details</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" data-bs-target="#stock-levels">Stock Levels & Alerts</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" data-bs-target="#stock-movements">Stock Movements</a></li>
+        </ul>
+
+        <div class="tab-content pt-2">
+          <div class="tab-pane fade show active profile-overview" id="item-details">
+            <h5 class="card-title">Item Information</h5>
+            <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Item Name</div>
+              <div class="col-lg-8 col-md-8">{{ item.name|title }}</div>
+            </div>
+            <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Category</div>
+              <div class="col-lg-8 col-md-8">{{ item.category.name }}</div>
+            </div>
+             <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Unit of Measure</div>
+              <div class="col-lg-8 col-md-8">{{ item.get_unit_of_measure_display }}</div>
+            </div>
+            <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Description</div>
+              <div class="col-lg-8 col-md-8">{{ item.description|default:"---" }}</div>
+            </div>
+
+            <h5 class="card-title">Pricing</h5>
+             <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Cost Price</div>
+              <div class="col-lg-8 col-md-8">₦{{ item.cost_price|floatformat:2|intcomma }}</div>
+            </div>
+            <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Selling Price</div>
+              <div class="col-lg-8 col-md-8">₦{{ item.price|floatformat:2|intcomma }}</div>
+            </div>
+
+            <h5 class="card-title">Status & Timestamps</h5>
+             <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Is Active</div>
+              <div class="col-lg-8 col-md-8">
+                {% if item.is_active %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Yes</span>
+                {% else %}
+                  <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> No</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Created At</div>
+              <div class="col-lg-8 col-md-8">{{ item.created_at|date:"F d, Y P" }}</div>
+            </div>
+          </div>
+
+          <div class="tab-pane fade profile-overview" id="stock-levels">
+            <h5 class="card-title">Current Stock & Minimum Levels</h5>
+            <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Current Quantity in Stock</div>
+              <div class="col-lg-8 col-md-8 fs-4 fw-bold
+                {% if item.is_low_stock and item.stock_quantity > 0 %} text-warning
+                {% elif item.stock_quantity == 0 %} text-danger {% endif %}">
+                {{ item.stock_quantity|floatformat:0|intcomma }}
+              </div>
+            </div>
+            <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Minimum Stock Level</div>
+              <div class="col-lg-8 col-md-8">{{ item.minimum_stock_level|intcomma }}</div>
+            </div>
+             <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Stock Status</div>
+              <div class="col-lg-8 col-md-8">
+                {% if item.stock_quantity == 0 %}
+                    <span class="badge bg-danger fs-6">Out of Stock</span>
+                {% elif item.is_low_stock %}
+                    <span class="badge bg-warning text-dark fs-6">Low Stock</span>
+                {% else %}
+                    <span class="badge bg-success fs-6">In Stock</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-pane fade profile-overview" id="stock-movements">
+            <h5 class="card-title">Recent Stock Movements</h5>
+            <div class="table-responsive">
+                <table class="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Quantity</th>
+                            <th>Previous Stock</th>
+                            <th>New Stock</th>
+                            <th>Performed By</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for movement in stock_movements %}
+                        <tr>
+                            <td>{{ movement.created_at|date:"M d, Y H:i" }}</td>
+                            <td>
+                                <span class="badge
+                                    {% if movement.movement_type == 'stock_in' or movement.movement_type == 'return' %} bg-success
+                                    {% elif movement.movement_type == 'stock_out' or movement.movement_type == 'sale' or movement.movement_type == 'expired' %} bg-danger
+                                    {% else %} bg-secondary {% endif %}">
+                                    {{ movement.get_movement_type_display }}
+                                </span>
+                            </td>
+                            <td class="fw-bold {% if movement.quantity > 0 %} text-success {% else %} text-danger {% endif %}">
+                                {{ movement.quantity|intcomma }}
+                            </td>
+                            <td>{{ movement.previous_stock|intcomma }}</td>
+                            <td>{{ movement.new_stock|intcomma }}</td>
+                             <td>
+                                 {% if movement.created_by.user_staff_profile %}
+                                        {{ movement.created_by.user_staff_profile.staff|title }}
+                                    {% else %}
+                                        {{ movement.created_by|title }}
+                                    {% endif %}
+                             </td>
+                            <td>{{ movement.notes|default:"---" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center">No stock movements found for this item.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+          </div>
+
+        </div></div>
+    </div>
+  </div>
+</div>
+
+{# Stock Out/Adjustment Modal #}
+<div class="modal fade" id="stockOutModal" tabindex="-1" aria-labelledby="stockOutModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Manage Stock for {{ service_item.name }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form action="{% url 'manage_stock' service_item.pk %}" method="post">
+            <form method="post" class="p-3" action="{% url 'manage_stock' item.pk %}">
                 {% csrf_token %}
+
+                {# FIX #2: Add a hidden input to tell the form which item this is for. #}
+                <input type="hidden" name="service_item" value="{{ item.pk }}">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="stockOutModalLabel">Stock Out / Adjustment for {{ item.name|title }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
                 <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-12">
-                            <div class="form-floating">
-                                {{ stock_form.movement_type }}
-                                <label for="{{ stock_form.movement_type.id_for_label }}">Action Type</label>
-                            </div>
-                        </div>
-                        <div class="col-12">
-                            <div class="form-floating">
-                                {{ stock_form.quantity }}
-                                <label for="{{ stock_form.quantity.id_for_label }}">Quantity</label>
-                            </div>
-                            <div class="form-text">Enter a positive number for 'Stock In' or 'Return'. Enter a negative number for other adjustments.</div>
-                        </div>
-                        <div class="col-12" id="unitCostContainer" style="display: none;">
-                            <div class="form-floating">
-                                {{ stock_form.unit_cost }}
-                                <label for="{{ stock_form.unit_cost.id_for_label }}">Unit Cost Price</label>
-                            </div>
-                             <div class="form-text">Required for 'Stock In' to update the item's cost price.</div>
-                        </div>
-                        <div class="col-12">
-                             <div class="form-floating">
-                                {{ stock_form.notes }}
-                                <label for="{{ stock_form.notes.id_for_label }}">Notes / Reason</label>
-                            </div>
-                        </div>
+                    <p>Current Stock: <strong>{{ item.stock_quantity|intcomma }}</strong></p>
+
+                    <div class="form-floating mb-3">
+                        <select name="movement_type" id="movement_type" class="form-select" required>
+                            <option value="stock_out">Stock Out (Manual Removal)</option>
+                            <option value="expired">Expired / Damaged</option>
+                            <option value="adjustment">Stock Adjustment (Correction)</option>
+                        </select>
+                        <label for="movement_type">Reason for Stock Out</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        {# FIX #1: Add the 'max' attribute for browser-side validation. #}
+                        <input type="number" name="quantity" id="quantity" class="form-control" min="1" max="{{ item.stock_quantity }}" required>
+                        <label for="quantity">Quantity to Remove</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <textarea name="notes" id="notes" class="form-control" rows="3" placeholder="Notes"></textarea>
+                        <label for="notes">Notes / Remarks (Optional)</label>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Stock</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const movementTypeSelect = document.getElementById('{{ stock_form.movement_type.id_for_label }}');
-    const unitCostContainer = document.getElementById('unitCostContainer');
-
-    function toggleUnitCostField() {
-        if (movementTypeSelect.value === 'stock_in') {
-            unitCostContainer.style.display = 'block';
-        } else {
-            unitCostContainer.style.display = 'none';
-        }
-    }
-
-    // Initial check
-    toggleUnitCostField();
-
-    // Add event listener
-    movementTypeSelect.addEventListener('change', toggleUnitCostField);
-});
-</script>
-
 {% endblock %}

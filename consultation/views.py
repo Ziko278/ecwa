@@ -101,6 +101,8 @@ class SpecializationListView(LoginRequiredMixin, PermissionRequiredMixin, ListVi
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['form'] = SpecializationForm()
+        context['specialization_group_list'] = SpecializationGroupModel.objects.all()
+
         return context
 
 
@@ -146,11 +148,83 @@ class SpecializationDetailView(LoginRequiredMixin, PermissionRequiredMixin, Deta
         context = super().get_context_data(**kwargs)
         specialization = self.object
         context.update({
-            'consultants': ConsultantModel.objects.filter(specialization=specialization),
+            'specialization_group_list': SpecializationGroupModel.objects.all(),
+            'doctor_list': ConsultantModel.objects.filter(specialization=specialization),
             'fees': ConsultationFeeModel.objects.filter(specialization=specialization),
             'total_consultants': ConsultantModel.objects.filter(specialization=specialization).count(),
         })
         return context
+
+
+# -------------------------
+# 2. SPECIALIZATION GROUP VIEWS
+# -------------------------
+
+
+class SpecializationGroupCreateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    SuccessMessageMixin, CreateView
+):
+    model = SpecializationGroupModel
+    permission_required = 'consultation.add_specializationgroupmodel'
+    form_class = SpecializationGroupForm
+    template_name = 'consultation/specialization_group/index.html'
+    success_message = 'Specialization Group Successfully Registered'
+
+    def get_success_url(self):
+        return reverse('specialization_group_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('specialization_group_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class SpecializationGroupListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = SpecializationGroupModel
+    permission_required = 'consultation.view_specializationgroupmodel'
+    template_name = 'consultation/specialization_group/index.html'
+    context_object_name = "specialization_group_list"
+
+    def get_queryset(self):
+        return SpecializationGroupModel.objects.all().order_by('name')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['form'] = SpecializationGroupForm()
+        return context
+
+
+class SpecializationGroupUpdateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    SuccessMessageMixin, UpdateView
+):
+    model = SpecializationGroupModel
+    permission_required = 'consultation.change_specializationgroupmodel'
+    form_class = SpecializationGroupForm
+    template_name = 'consultation/specialization_group/index.html'
+    success_message = 'Specialization Group Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('specialization_group_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('specialization_group_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class SpecializationGroupDeleteView(
+    LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView
+):
+    model = SpecializationGroupModel
+    permission_required = 'consultation.delete_specializationgroupmodel'
+    template_name = 'consultation/specialization_group/delete.html'
+    context_object_name = "specialization_group"
+    success_message = 'Specialization Group Successfully Deleted'
+
+    def get_success_url(self):
+        return reverse('specialization_group_index')
 
 
 # -------------------------
@@ -335,6 +409,243 @@ class ConsultantListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
             'staff', 'specialization', 'assigned_room'
         ).order_by('specialization__name', 'staff__first_name')
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Add active patient counts and transfer data for each consultant
+        today = timezone.localdate()
+        for consultant in context['consultant_list']:
+            # Get active patients (not completed/cancelled)
+            active_patients = PatientQueueModel.objects.filter(
+                consultant=consultant,
+                status__in=['waiting_vitals', 'vitals_done', 'with_doctor', 'consultation_paused'],
+                joined_queue_at__date=today
+            ).select_related('patient')
+
+            consultant.active_patient_count = active_patients.count()
+            consultant.active_patients_list = list(active_patients)
+
+            # Get available doctors in same specialization for transfers
+            available_doctors = ConsultantModel.objects.filter(
+                specialization=consultant.specialization,
+                is_available_for_consultation=True
+            ).exclude(id=consultant.id).select_related('staff')
+
+            consultant.transfer_options = list(available_doctors)
+            consultant.can_be_disabled = consultant.active_patient_count == 0 or len(consultant.transfer_options) > 0
+
+        return context
+
+
+class ConsultantQueueView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """View to manage a specific consultant's queue"""
+    model = PatientQueueModel
+    permission_required = 'consultation.view_patientqueuemodel'
+    template_name = 'consultation/consultant/queue.html'
+    context_object_name = "queue_list"
+
+    def get_queryset(self):
+        self.consultant = get_object_or_404(ConsultantModel, pk=self.kwargs['pk'])
+        today = timezone.localdate()
+        return PatientQueueModel.objects.filter(
+            consultant=self.consultant,
+            status__in=['waiting_vitals', 'vitals_done', 'with_doctor', 'consultation_paused'],
+            joined_queue_at__date=today
+        ).select_related('patient').order_by('priority_level', 'joined_queue_at')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['consultant'] = self.consultant
+
+        # Get available doctors in same specialization for transfers
+        available_doctors = ConsultantModel.objects.filter(
+            specialization=self.consultant.specialization,
+            is_available_for_consultation=True
+        ).exclude(id=self.consultant.id).select_related('staff')
+
+        context['available_doctors'] = available_doctors
+        return context
+
+
+@login_required
+@permission_required('consultation.change_consultantmodel', raise_exception=True)
+def toggle_consultant_availability(request, pk):
+    """Enhanced toggle that handles patient transfers"""
+    if request.method == 'POST':
+        consultant = get_object_or_404(ConsultantModel, pk=pk)
+
+        # If making unavailable, check for active patients
+        if consultant.is_available_for_consultation:
+            today = timezone.localdate()
+            active_patients = PatientQueueModel.objects.filter(
+                consultant=consultant,
+                status__in=['waiting_vitals', 'vitals_done', 'with_doctor', 'consultation_paused'],
+                joined_queue_at__date=today
+            )
+
+            if active_patients.exists():
+                # Get transfer data from form
+                transfer_patients = request.POST.get('transfer_patients')
+
+                if transfer_patients:
+                    # Get selected doctors for transfer
+                    selected_doctors = []
+                    for key, value in request.POST.items():
+                        if key.startswith('transfer_doctor_') and value == 'on':
+                            doctor_id = key.replace('transfer_doctor_', '')
+                            selected_doctors.append(doctor_id)
+
+                    if selected_doctors:
+                        # Transfer patients to selected doctors in round-robin fashion
+                        try:
+                            with transaction.atomic():
+                                available_doctors = ConsultantModel.objects.filter(
+                                    id__in=selected_doctors,
+                                    is_available_for_consultation=True
+                                )
+
+                                if available_doctors.exists():
+                                    doctor_list = list(available_doctors)
+
+                                    for i, patient_queue in enumerate(active_patients):
+                                        # Assign to doctor using round-robin
+                                        target_doctor = doctor_list[i % len(doctor_list)]
+                                        patient_queue.consultant = target_doctor
+                                        patient_queue.save()
+
+                                    # Now make consultant unavailable
+                                    consultant.is_available_for_consultation = False
+                                    consultant.save(update_fields=['is_available_for_consultation'])
+
+                                    messages.success(request,
+                                                     f"Dr. {consultant.staff}'s status updated to unavailable. "
+                                                     f"{active_patients.count()} patients transferred to other doctors.")
+                                else:
+                                    messages.error(request, "Selected doctors are no longer available for transfer.")
+
+                        except Exception as e:
+                            messages.error(request, f"An error occurred during transfer: {e}")
+                    else:
+                        messages.error(request, "Please select at least one doctor for patient transfer.")
+                else:
+                    messages.error(request, "Cannot make consultant unavailable with active patients.")
+            else:
+                # No active patients, safe to toggle
+                consultant.is_available_for_consultation = False
+                consultant.save(update_fields=['is_available_for_consultation'])
+                messages.success(request, f"Dr. {consultant.staff}'s status updated to unavailable.")
+        else:
+            # Making available
+            consultant.is_available_for_consultation = True
+            consultant.save(update_fields=['is_available_for_consultation'])
+            messages.success(request, f"Dr. {consultant.staff}'s status updated to available.")
+
+    return redirect('consultant_list')
+
+
+@require_POST
+@login_required
+@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+def transfer_patient_ajax(request, queue_id, new_consultant_id):
+    """Transfer a single patient to another consultant via AJAX"""
+    try:
+        queue_entry = get_object_or_404(PatientQueueModel, pk=queue_id)
+        new_consultant = get_object_or_404(ConsultantModel, pk=new_consultant_id)
+
+        # Validation checks
+        if queue_entry.status in ['consultation_completed', 'cancelled']:
+            return JsonResponse({
+                'success': False,
+                'error': 'Cannot transfer completed/cancelled patients.'
+            }, status=400)
+
+        if not new_consultant.is_available_for_consultation:
+            return JsonResponse({
+                'success': False,
+                'error': 'Target consultant is not available.'
+            }, status=400)
+
+        # Check if same specialization
+        if queue_entry.specialization != new_consultant.specialization:
+            return JsonResponse({
+                'success': False,
+                'error': 'Cannot transfer to consultant with different specialization.'
+            }, status=400)
+
+        with transaction.atomic():
+            old_consultant_name = str(queue_entry.consultant) if queue_entry.consultant else "Unassigned"
+            queue_entry.consultant = new_consultant
+            queue_entry.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Patient transferred from {old_consultant_name} to Dr. {new_consultant.staff}',
+            'new_consultant': {
+                'id': new_consultant.id,
+                'name': str(new_consultant.staff),
+                'specialization': new_consultant.specialization.name
+            }
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Transfer failed: {str(e)}'
+        }, status=500)
+
+
+@require_POST
+@login_required
+@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+def bulk_transfer_patients_ajax(request):
+    """Transfer multiple patients at once"""
+    try:
+        queue_ids = request.POST.getlist('queue_ids[]')
+        target_doctors = request.POST.getlist('target_doctors[]')
+
+        if not queue_ids or not target_doctors:
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing queue IDs or target doctors'
+            }, status=400)
+
+        with transaction.atomic():
+            queue_entries = PatientQueueModel.objects.filter(
+                id__in=queue_ids,
+                status__in=['waiting_vitals', 'vitals_done', 'with_doctor', 'consultation_paused']
+            )
+
+            target_consultants = list(ConsultantModel.objects.filter(
+                id__in=target_doctors,
+                is_available_for_consultation=True
+            ))
+
+            if not target_consultants:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No available target consultants found'
+                }, status=400)
+
+            transferred_count = 0
+            for i, queue_entry in enumerate(queue_entries):
+                # Assign using round-robin
+                target_consultant = target_consultants[i % len(target_consultants)]
+                queue_entry.consultant = target_consultant
+                queue_entry.save()
+                transferred_count += 1
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Successfully transferred {transferred_count} patients',
+                'transferred_count': transferred_count
+            })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Bulk transfer failed: {str(e)}'
+        }, status=500)
+
 
 class ConsultantUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin,
@@ -429,29 +740,6 @@ class ConsultantDeleteView(
         return reverse('consultant_list')
 
 
-@login_required
-@permission_required('consultation.change_consultantmodel', raise_exception=True)
-def toggle_consultant_availability(request, pk):
-    """
-    Toggles the is_available_for_consultation status for a consultant.
-    """
-    # This action should only be performed via POST request for security
-    if request.method == 'POST':
-        consultant = get_object_or_404(ConsultantModel, pk=pk)
-        try:
-            # Toggle the boolean field
-            consultant.is_available_for_consultation = not consultant.is_available_for_consultation
-            consultant.save(update_fields=['is_available_for_consultation'])
-
-            # Prepare success message
-            status = "available" if consultant.is_available_for_consultation else "unavailable"
-            messages.success(request, f"Dr. {consultant.staff}'s status has been updated to {status}.")
-
-        except Exception as e:
-            messages.error(request, f"An error occurred while updating the consultant's status: {e}")
-
-    # Redirect back to the consultant list page
-    return redirect('consultant_list')
 
 
 # -------------------------
@@ -529,7 +817,6 @@ class ConsultationFeeDeleteView(
 # 6. CONSULTATION PAYMENTS (Multi-field)
 # -------------------------
 
-
 class ConsultationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = PatientTransactionModel
     permission_required = 'finance.add_patienttransactionmodel'
@@ -537,65 +824,67 @@ class ConsultationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin,
     template_name = 'consultation/payment/create.html'
 
     def get_success_url(self):
-        # Redirect to the patient queue list upon successful payment
-        return reverse('patient_queue_index')
+        view_queue_perm = 'patient_queue.view_patientqueuemodel'
+
+        if self.request.user.has_perm(view_queue_perm):
+            # If the user has permission, redirect to the queue index.
+            return reverse('patient_queue_index')
+
+        else:
+            # Otherwise, redirect back to the payment page to make another payment.
+            return reverse('consultation_payment_create')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Provide the list of specializations for the JavaScript to fetch fees
         context['specializations'] = SpecializationModel.objects.all()
         return context
 
     @transaction.atomic
     def form_valid(self, form):
-        """
-        This method is called when valid form data has been POSTed.
-        It handles the entire payment and queuing logic.
-        """
         try:
             patient = form.cleaned_data.get('patient')
             fee_structure = form.cleaned_data.get('fee_structure')
-
-            # Securely get the amount from the database, not the request
             amount_to_pay = fee_structure.amount
 
             # 1. Validate patient's wallet balance
-            if not hasattr(patient, 'wallet'):
-                messages.error(self.request, 'Patient does not have a wallet account.')
+            if not hasattr(patient, 'wallet') or patient.wallet.amount < amount_to_pay:
+                messages.error(self.request, 'Insufficient wallet balance.')
                 return self.form_invalid(form)
 
-            if patient.wallet.amount < amount_to_pay:
-                messages.error(
-                    self.request,
-                    f'Insufficient wallet balance. Available: ₦{patient.wallet.amount}, Required: ₦{amount_to_pay}'
-                )
-                return self.form_invalid(form)
-
-            # 2. Prepare the transaction record by populating fields not in the form
+            # 2. Prepare the transaction record
             transaction_record = form.save(commit=False)
             transaction_record.old_balance = patient.wallet.amount
             transaction_record.new_balance = patient.wallet.amount - amount_to_pay
-            transaction_record.date = date.today()  # Set the transaction date
+            transaction_record.date = date.today()
             transaction_record.amount = amount_to_pay
             transaction_record.received_by = self.request.user
             transaction_record.payment_method = 'wallet'
             transaction_record.transaction_type = 'consultation_payment'
-            transaction_record.transaction_direction = 'out'  # A payment FROM a wallet is a debit
+            transaction_record.transaction_direction = 'out'
             transaction_record.status = 'completed'
-            # The model's save() method will handle generating the transaction_id
-            transaction_record.save()
 
+            # Calculate 'valid_till' date
+            validity_days = fee_structure.validity_in_days
+            today = date.today()
+            cutoff_time = time(20, 0)  # 8:00 PM
+            start_date_for_validity = today if timezone.now().time() < cutoff_time else today + timedelta(days=1)
+            transaction_record.valid_till = start_date_for_validity + timedelta(days=validity_days - 1)
+
+            transaction_record.save()
             self.object = transaction_record
 
             # 3. Update the wallet balance
             patient.wallet.amount -= amount_to_pay
             patient.wallet.save()
 
-            # 4. Create the queue entry, linking it to the transaction
-            queue_entry = PatientQueueModel.objects.create(
+            specialization = fee_structure.specialization
+
+            # 4. Create the queue entry using the new helper function
+            queue_entry = _create_queue_entry_with_vitals_check(
                 patient=patient,
-                payment=self.object,
-                priority_level=0,  # Or add logic for emergency cases
+                payment_transaction=self.object,
+                specialization=fee_structure.specialization,
+                user=self.request.user
             )
 
             messages.success(
@@ -605,11 +894,8 @@ class ConsultationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin,
             return redirect(self.get_success_url())
 
         except Exception as e:
-            # It's good practice to log the full exception here
-            # logger.exception("Error processing consultation payment")
             messages.error(self.request, f"An unexpected error occurred: {str(e)}")
             return self.form_invalid(form)
-
 
 
 # AJAX endpoints for the wallet payment flow
@@ -1302,7 +1588,6 @@ def create_vitals_view(request, queue_pk):
             )
 
     except PatientQueueModel.DoesNotExist:
-        print('pppppppppppppp')
         return JsonResponse(
             {'success': False, 'error': 'Invalid queue entry.'},
             status=404
@@ -2163,6 +2448,8 @@ def get_patient_vitals_ajax(request, queue_pk):
                 'weight': str(vitals.weight) if vitals.weight else None,
                 'bmi': str(vitals.bmi) if vitals.bmi else None,
                 'chief_complaint': vitals.chief_complaint,
+                'general_appearance': vitals.general_appearance,
+                'extra_note': vitals.extra_note,
                 'recorded_at': vitals.recorded_at.strftime('%Y-%m-%d %H:%M'),
             })
         else:
@@ -2752,14 +3039,15 @@ def doctor_dashboard(request):
     # Get current consultation (if any)
     current_consultation = ConsultationSessionModel.objects.filter(
         queue_entry__consultant=consultant,
-        status='in_progress'
+        status='in_progress',
+        queue_entry__joined_queue_at__date=today
     ).select_related('queue_entry__patient').first() # Added select_related for efficiency
 
     # Recent consultations (last 7 days)
     week_ago = today - timedelta(days=7)
     recent_consultations = ConsultationSessionModel.objects.filter(
         queue_entry__consultant=consultant,
-        created_at__date__gte=week_ago
+        created_at__date=today
     ).select_related('queue_entry__patient').order_by('-created_at')[:10]
 
     context = {
@@ -2970,9 +3258,11 @@ def ajax_call_next_patient(request):
         consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user)
 
         # Check if doctor has an active consultation
+
         active_consultation = ConsultationSessionModel.objects.filter(
             queue_entry__consultant=consultant,
-            status='in_progress'
+            status='in_progress',
+            created_at__date=timezone.now().date()  # <-- This is the addition
         ).first()
 
         if active_consultation:
@@ -3035,7 +3325,8 @@ def ajax_start_consultation(request, queue_id):
         # Check for active consultation
         active_consultation = ConsultationSessionModel.objects.filter(
             queue_entry__consultant=consultant,
-            status='in_progress'
+            status='in_progress',
+            created_at__date=timezone.now().date()  # <-- This is the addition
         ).first()
 
         if active_consultation:
@@ -3786,7 +4077,8 @@ def ajax_create_consultation(request):
         # Check if doctor has an active consultation
         active_consultation = ConsultationSessionModel.objects.filter(
             queue_entry__consultant=consultant,
-            status='in_progress'
+            status='in_progress',
+            created_at__date=timezone.now().date()  # <-- This is the addition
         ).first()
 
         if active_consultation:
@@ -3824,6 +4116,171 @@ def ajax_create_consultation(request):
             'success': False,
             'error': f'Failed to create consultation: {str(e)}'
         })
+
+
+# --- Start: New Helper Function ---
+# In your views.py
+
+def _create_queue_entry_with_vitals_check(patient, payment_transaction, specialization, user):
+    """
+    Creates a PatientQueueModel entry.
+    Checks for the most recent queue entry on the same day to copy vitals
+    and set the queue status accordingly.
+    """
+    queue_status = 'waiting_vitals'
+    new_vitals_data = None
+
+    # --- Start: Updated Logic ---
+    # Find the most recent queue entry for this patient from today that has vitals recorded.
+    last_queue_entry_today = PatientQueueModel.objects.filter(
+        patient=patient,
+        joined_queue_at__date=date.today(),
+        vitals__isnull=False  # Check that vitals exist for this queue entry
+    ).order_by('-joined_queue_at').first()
+    # --- End: Updated Logic ---
+
+    if last_queue_entry_today:
+        queue_status = 'vitals_done'  # Skip vitals queue
+        old_vitals = last_queue_entry_today.vitals
+
+        new_vitals_data = {
+            'temperature': old_vitals.temperature,
+            'blood_pressure_systolic': old_vitals.blood_pressure_systolic,
+            'blood_pressure_diastolic': old_vitals.blood_pressure_diastolic,
+            'pulse_rate': old_vitals.pulse_rate,
+            'respiratory_rate': old_vitals.respiratory_rate,
+            'oxygen_saturation': old_vitals.oxygen_saturation,
+            'height': old_vitals.height,
+            'weight': old_vitals.weight,
+            'bmi': old_vitals.bmi,
+            'general_appearance': old_vitals.general_appearance,
+            'chief_complaint': f"(Copied from last visit) {old_vitals.chief_complaint}",
+            'notes': old_vitals.notes,
+            'recorded_by': user,
+        }
+
+    # Create the new queue entry
+    new_queue_entry = PatientQueueModel.objects.create(
+        patient=patient,
+        payment=payment_transaction,
+        specialization=specialization,
+        status=queue_status
+    )
+
+    # If there's vitals data to copy, create the new vitals record
+    if new_vitals_data:
+        PatientVitalsModel.objects.create(
+            queue_entry=new_queue_entry,
+            **new_vitals_data
+        )
+
+    return new_queue_entry
+
+
+# --- Start: New AJAX Views ---
+@login_required
+def get_consultation_status_ajax(request):
+    """
+    A powerful single-point checker for consultation status.
+    1. Checks if patient is already in an active queue (BLOCK).
+    2. Checks for valid, un-used payments (RE-USE).
+    3. Fetches the fee for a new payment (NEW).
+    """
+    patient_id = request.GET.get('patient_id')
+    specialization_id = request.GET.get('specialization_id')
+    today = date.today()
+
+    patient = get_object_or_404(PatientModel, pk=patient_id)
+    specialization = get_object_or_404(SpecializationModel, pk=specialization_id)
+
+    # --- Start: New, More Robust Check ---
+    # 1. Check if patient is already in an active queue for this specialization today.
+    # An active queue is one not marked as completed or cancelled.
+    active_queue_entry = PatientQueueModel.objects.filter(
+        patient=patient,
+        specialization=specialization,  # <-- The corrected line
+        joined_queue_at__date=today
+    ).exclude(
+        status__in=['consultation_completed', 'cancelled']
+    ).first()
+
+    if active_queue_entry:
+        return JsonResponse({
+            'status': 'block',
+            'reason': 'ACTIVE_QUEUE',
+            'message': f"Patient is already in the queue for {specialization.name}. Current status: '{active_queue_entry.get_status_display()}'."
+        })
+    # --- End: New Check ---
+
+    # 2. Check for a valid, un-used payment for this specialization's group
+    if specialization.group:
+        valid_payment = PatientTransactionModel.objects.filter(
+            patient=patient,
+            transaction_type='consultation_payment',
+            status='completed',
+            valid_till__gte=today,
+            fee_structure__specialization__group=specialization.group
+        ).exclude(
+            Q(patientqueuemodel__status='consultation_completed') | Q(patientqueuemodel__status='cancelled')
+        ).order_by('-created_at').first()
+
+        if valid_payment:
+            return JsonResponse({
+                'status': 'reuse_payment',
+                'reason': 'EXISTING_PAYMENT',
+                'message': f"Patient has a valid payment for the {specialization.group.name} group. You can add them to the queue directly.",
+                'payment_id': valid_payment.id
+            })
+
+    # 3. If neither of the above, fetch the fee for a new payment
+    fee = ConsultationFeeModel.objects.filter(
+        specialization=specialization,
+        patient_category='regular', # Adapt this as needed
+        is_active=True
+    ).first()
+
+    if not fee:
+        return JsonResponse({'status': 'block', 'reason': 'NO_FEE', 'message': f"No active consultation fee found for {specialization.name}."})
+
+    return JsonResponse({
+        'status': 'new_payment',
+        'fee': {
+            'id': fee.id,
+            'amount': float(fee.amount),
+            'formatted_amount': f'₦{fee.amount:,.2f}',
+            'patient_category': fee.get_patient_category_display(),
+        }
+    })
+
+
+@login_required
+@require_POST
+def create_queue_from_payment_ajax(request):
+    """Creates a queue entry using an existing valid payment."""
+    patient_id = request.POST.get('patient_id')
+    payment_id = request.POST.get('payment_id')
+    specialization_id = request.POST.get('specialization_id')
+
+    patient = get_object_or_404(PatientModel, pk=patient_id)
+    payment = get_object_or_404(PatientTransactionModel, pk=payment_id)
+    specialization = get_object_or_404(SpecializationModel, pk=specialization_id)
+
+    try:
+        with transaction.atomic():
+            # Use our helper function to create the queue entry
+            queue_entry = _create_queue_entry_with_vitals_check(patient, payment, specialization, request.user)
+
+        return JsonResponse({
+            'success': True,
+            'message': f"Patient added to queue successfully! Queue number is {queue_entry.queue_number}.",
+            'queue_number': queue_entry.queue_number,
+            'redirect_url': reverse('patient_queue_index')
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'An unexpected error occurred: {str(e)}'}, status=500)
+
+
+# --- End: New AJAX Views ---
 # -------------------------
 # END OF CONSULTATION VIEWS
 # -------------------------

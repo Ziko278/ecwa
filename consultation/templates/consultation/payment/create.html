@@ -7,117 +7,81 @@
         <div class="card-body">
             <h4 class="card-title">Process Consultation Payment</h4>
             <p class="card-description">
-                Verify patient and process their consultation payment from their wallet.
+                Verify patient and process their consultation payment or add them to the queue.
             </p>
 
-            <!-- Error Container -->
-            <div id="error-container" style="display: none;">
-                <div class="alert alert-danger d-flex align-items-center" role="alert">
-                    <i class="mdi mdi-alert-circle me-2"></i>
-                    <span id="error-message"></span>
-                    <button type="button" class="btn-close ms-auto" onclick="hideError()"></button>
-                </div>
-            </div>
+
 
             <form class="forms-sample" method="post" action="{% url 'consultation_payment_create' %}" id="payment-form">
                 {% csrf_token %}
 
-                <!-- Consultation Payment Section -->
-                <div id="consultation-payment-section">
-
-                    <!-- Step 1: Patient Verification -->
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5 class="mb-0">Step 1: Patient Verification {{ form.errors }}</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label for="card-number-input">Patient Card Number <span style="color:red"><b>*</b></span></label>
-                                        <div class="input-group">
-                                            <input type="text" id="card-number-input" class="form-control" placeholder="Enter patient card number..." autocomplete="off" required>
-                                            <button type="button" id="verify-patient-btn" class="btn btn-primary">
-                                                <i class="mdi mdi-account-search me-1"></i>Verify
-                                            </button>
-                                        </div>
-                                        <small class="text-muted">Enter the patient's card number to verify their details.</small>
+                <div class="card mb-4">
+                    <div class="card-header"><h5 class="mb-0">Step 1: Patient Verification</h5></div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="card-number-input">Patient Card Number <span style="color:red"><b>*</b></span></label>
+                                    <div class="input-group">
+                                        <input type="text" id="card-number-input" class="form-control" placeholder="Enter patient card number..." autocomplete="off" required>
+                                        <button type="button" id="verify-patient-btn" class="btn btn-primary"><i class="mdi mdi-account-search me-1"></i>Verify</button>
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- Patient Details Section (Hidden initially) -->
-                            <div id="patient-details-section" class="mt-3" style="display: none;">
-                                <div class="alert alert-success" role="alert">
-                                    <h6><i class="mdi mdi-check-circle me-2"></i>Patient Verified</h6>
-                                    <div id="patient-info"></div>
-                                    <br>
-                                    <h6><i class="mdi mdi-wallet me-2"></i>Wallet Information</h6>
-                                    <div id="wallet-info"></div>
-                                </div>
-
+                        </div>
+                        <div id="patient-details-section" class="mt-3" style="display: none;">
+                            <div class="alert alert-success" role="alert">
+                                <h6><i class="mdi mdi-check-circle me-2"></i>Patient Verified</h6>
+                                <div id="patient-info"></div><br>
+                                <h6><i class="mdi mdi-wallet me-2"></i>Wallet Information</h6>
+                                <div id="wallet-info"></div>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Step 2: Consultation Selection (Hidden initially) -->
-                    <div class="card mb-4" id="consultation-section" style="display: none;">
-                        <div class="card-header">
-                            <h5 class="mb-0">Step 2: Select Consultation</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label for="specialization-select">Specialization <span style="color:red"><b>*</b></span></label>
-                                        <select id="specialization-select" class="form-control" required>
-                                            <option value="">--- Consultation Type ---</option>
-                                            {% for spec in specializations %}
-                                                <option value="{{ spec.id }}">{{ spec.name }}</option>
-                                            {% endfor %}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Fee Information (Hidden initially) -->
-                            <div id="fee-info-section" class="mt-3" style="display: none;">
-                                <div class="alert alert-primary" role="alert">
-                                    <h6><i class="mdi mdi-cash me-2"></i>Consultation Fee</h6>
-                                    <div id="fee-details"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Step 3: Payment Confirmation (Hidden initially) -->
-                    <div class="card mb-4" id="payment-section" style="display: none;">
-                        <div class="card-header">
-                            <h5 class="mb-0">Step 3: Payment Confirmation</h5>
-                        </div>
-                        <div class="card-body">
-                            <div id="payment-summary"></div>
-
-                            <!-- Hidden form fields -->
-                            <input type="hidden" id="patient-id-field" name="patient">
-                            <input type="hidden" id="fee-structure-field" name="fee_structure">
-                            <input type="hidden" id="amount-due-field" name="amount_due">
-                            <input type="hidden" id="amount-paid-field" name="amount_paid">
-
-                            <div class="d-flex justify-content-between mt-4">
-                                <button type="button" id="fund-wallet-btn" class="btn btn-warning" style="display: none;">
-                                    <i class="mdi mdi-wallet-plus me-2"></i>Fund Wallet First
-                                </button>
-                                <div>
-                                    <button type="submit" id="process-payment-btn" class="btn btn-success me-2" disabled>
-                                        <i class="mdi mdi-credit-card-check me-2"></i>Process Payment
-                                    </button>
-                                    <a href="{% url 'consultation_payment_create' %}" class="btn btn-light">Cancel</a>
+                <div class="card mb-4" id="consultation-section" style="display: none;">
+                    <div class="card-header"><h5 class="mb-0">Step 2: Select Consultation</h5></div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="specialization-select">Specialization <span style="color:red"><b>*</b></span></label>
+                                    <select id="specialization-select" class="form-control" required>
+                                        <option value="">--- Select Specialization ---</option>
+                                        {% for spec in specializations %}
+                                            <option value="{{ spec.id }}">{{ spec.name }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <div class="card mb-4" id="action-section" style="display: none;">
+                    <div class="card-header"><h5 class="mb-0">Step 3: Confirmation</h5></div>
+                    <div class="card-body">
+                        <div id="action-summary"></div>
+                        <input type="hidden" id="patient-id-field" name="patient">
+                        <input type="hidden" id="fee-structure-field" name="fee_structure">
+
+                        <div class="d-flex justify-content-end mt-4">
+                            <button type="button" id="action-btn" class="btn btn-success me-2" disabled>
+                                <i class="mdi mdi-credit-card-check me-2"></i>Process
+                            </button>
+                            <a href="{% url 'consultation_payment_create' %}" class="btn btn-light">Cancel</a>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="message-container" style="display: none;">
+                <div id="message-box" class="alert d-flex align-items-center" role="alert">
+                    <i id="message-icon" class="mdi me-2"></i>
+                    <span id="message-text"></span>
+                    <button type="button" class="btn-close ms-auto" onclick="hideMessage()"></button>
+                </div>
+            </div>
             </form>
         </div>
     </div>
@@ -125,224 +89,177 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // DOM elements
+    // DOM Elements
     const cardNumberInput = document.getElementById('card-number-input');
     const verifyPatientBtn = document.getElementById('verify-patient-btn');
+    const specializationSelect = document.getElementById('specialization-select');
     const patientDetailsSection = document.getElementById('patient-details-section');
     const consultationSection = document.getElementById('consultation-section');
-    const paymentSection = document.getElementById('payment-section');
-    const specializationSelect = document.getElementById('specialization-select');
-    const feeInfoSection = document.getElementById('fee-info-section');
-    const processPaymentBtn = document.getElementById('process-payment-btn');
-    const fundWalletBtn = document.getElementById('fund-wallet-btn');
-    const errorContainer = document.getElementById('error-container');
-    const errorMessage = document.getElementById('error-message');
+    const actionSection = document.getElementById('action-section');
+    const actionBtn = document.getElementById('action-btn');
+    const messageContainer = document.getElementById('message-container');
+    const messageBox = document.getElementById('message-box');
+    const messageIcon = document.getElementById('message-icon');
+    const messageText = document.getElementById('message-text');
 
-    // Hidden form fields
+    // Hidden Form Fields
     const patientIdField = document.getElementById('patient-id-field');
     const feeStructureField = document.getElementById('fee-structure-field');
-    const amountDueField = document.getElementById('amount-due-field');
-    const amountPaidField = document.getElementById('amount-paid-field');
+    const paymentForm = document.getElementById('payment-form');
 
-    // Global variables
+    // Global State
     let currentPatient = null;
-    let currentFee = null;
     let walletBalance = 0;
+    let actionType = null; // 'new_payment' or 'reuse_payment'
+    let existingPaymentId = null;
+    let currentFee = null;
 
-    // Error handling function
-    function showError(message) {
-        errorMessage.innerHTML = `<strong>${message}</strong>`;
-        errorContainer.style.display = 'block';
-        errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // --- Message/Error Handling ---
+    function showMessage(message, type = 'danger') {
+        const iconClass = type === 'danger' ? 'mdi-alert-circle' : (type === 'success' ? 'mdi-check-circle' : 'mdi-information');
+        messageBox.className = `alert alert-${type} d-flex align-items-center`;
+        messageIcon.className = `mdi ${iconClass} me-2`;
+        messageText.innerHTML = `<strong>${message}</strong>`;
+        messageContainer.style.display = 'block';
+        messageContainer.scrollIntoView({ behavior: 'smooth' });
     }
+    window.hideMessage = () => { messageContainer.style.display = 'none'; };
 
-    window.hideError = function() {
-        errorContainer.style.display = 'none';
-    }
-
-    function resetForm() {
-        cardNumberInput.value = '';
-        cardNumberInput.disabled = false;
-        patientDetailsSection.style.display = 'none';
-        consultationSection.style.display = 'none';
-        paymentSection.style.display = 'none';
-        feeInfoSection.style.display = 'none';
-        specializationSelect.value = '';
-        processPaymentBtn.disabled = true;
-        currentPatient = null;
+    // --- State Reset Functions ---
+    function resetActionState() {
+        actionSection.style.display = 'none';
+        actionBtn.disabled = true;
+        actionType = null;
+        existingPaymentId = null;
         currentFee = null;
-        walletBalance = 0;
-        hideError();
     }
 
-    // Step 1: Patient Verification
+    // --- Event Listeners ---
     verifyPatientBtn.addEventListener('click', function() {
         const cardNumber = cardNumberInput.value.trim();
-        if (!cardNumber) {
-            showError('Please enter a patient card number');
-            return;
-        }
+        if (!cardNumber) return showMessage('Please enter a patient card number.');
 
         verifyPatientBtn.disabled = true;
-        verifyPatientBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-1"></i>Verifying...';
+        verifyPatientBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Verifying...';
 
         fetch(`{% url 'verify_patient_ajax' %}?card_number=${encodeURIComponent(cardNumber)}`)
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    currentPatient = data.patient;
-                    walletBalance = data.wallet.balance;
+                if (data.error) throw new Error(data.error);
 
-                    // Display patient information
-                    document.getElementById('patient-info').innerHTML = `
-                        <strong>${data.patient.full_name}</strong><br>
-                        <small>ID: ${data.patient.patient_id} | Phone: ${data.patient.phone} | Age: ${data.patient.age || 'N/A'}</small>
-                    `;
+                hideMessage();
+                currentPatient = data.patient;
+                walletBalance = data.wallet.balance;
+                patientIdField.value = currentPatient.id;
 
-                    // Display wallet information
-                    const walletClass = data.wallet.has_wallet ? (data.wallet.balance > 0 ? 'text-success' : 'text-warning') : 'text-danger';
-                    document.getElementById('wallet-info').innerHTML = `
-                        <span class="${walletClass}">
-                            ${data.wallet.has_wallet ? `Balance: ${data.wallet.formatted_balance}` : 'No wallet account found'}
-                        </span>
-                    `;
+                document.getElementById('patient-info').innerHTML = `<strong>${data.patient.full_name}</strong> (ID: ${data.patient.patient_id})`;
+                document.getElementById('wallet-info').innerHTML = `<span class="${data.wallet.balance > 0 ? 'text-success' : 'text-danger'}">${data.wallet.formatted_balance}</span>`;
 
-                    // Set patient ID in hidden field
-                    patientIdField.value = data.patient.id;
-
-                    // Show patient details and consultation section
-                    patientDetailsSection.style.display = 'block';
-                    consultationSection.style.display = 'block';
-
-                    // Disable card number input
-                    cardNumberInput.disabled = true;
-                    hideError();
-                } else {
-                    showError(data.error);
-                }
+                patientDetailsSection.style.display = 'block';
+                consultationSection.style.display = 'block';
+                cardNumberInput.disabled = true;
             })
-            .catch(error => {
-                console.error('Error:', error);
-                showError('Error verifying patient. Please try again.');
-            })
+            .catch(err => showMessage(err.message))
             .finally(() => {
                 verifyPatientBtn.disabled = false;
                 verifyPatientBtn.innerHTML = '<i class="mdi mdi-account-search me-1"></i>Verify';
             });
     });
 
-    // Step 2: Specialization Selection
     specializationSelect.addEventListener('change', function() {
         const specializationId = this.value;
+        resetActionState();
+        if (!specializationId) return;
 
-        if (!specializationId) {
-            feeInfoSection.style.display = 'none';
-            paymentSection.style.display = 'none';
-            return;
-        }
+        // The new powerful AJAX call
+        fetch(`{% url 'get_consultation_status_ajax' %}?patient_id=${currentPatient.id}&specialization_id=${specializationId}`)
+            .then(response => response.json())
+            .then(data => {
+                actionType = data.status;
 
-        // Load consultation fee
-        fetch(`{% url 'get_consultation_fees_ajax' %}?specialization_id=${specializationId}&patient_id=${currentPatient.id}`)
+                if (actionType === 'block') {
+                    throw new Error(data.message);
+                }
+
+                if (actionType === 'reuse_payment') {
+                    existingPaymentId = data.payment_id;
+                    updateActionSectionForReuse(data.message);
+                } else if (actionType === 'new_payment') {
+                    currentFee = data.fee;
+                    feeStructureField.value = currentFee.id;
+                    updateActionSectionForNewPayment();
+                }
+            })
+            .catch(err => showMessage(err.message));
+    });
+
+    actionBtn.addEventListener('click', function() {
+        actionBtn.disabled = true;
+        actionBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Processing...';
+
+        if (actionType === 'new_payment') {
+            paymentForm.submit();
+        } else if (actionType === 'reuse_payment') {
+            const formData = new FormData();
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            formData.append('patient_id', currentPatient.id);
+            formData.append('payment_id', existingPaymentId);
+            formData.append('specialization_id', specializationSelect.value);
+
+            fetch(`{% url 'create_queue_from_payment_ajax' %}`, {
+                method: 'POST',
+                body: formData,
+            })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    currentFee = data.fee;
-
-                    // Display fee information
-                    document.getElementById('fee-details').innerHTML = `
-                        <strong>Amount: ${data.fee.formatted_amount}</strong><br>
-                        <small>Duration: ${data.fee.duration_minutes} minutes | Category: ${data.fee.patient_category}</small>
-                    `;
-
-                    // Set fee fields
-                    feeStructureField.value = data.fee.id;
-                    amountDueField.value = data.fee.amount;
-                    amountPaidField.value = data.fee.amount;
-
-                    feeInfoSection.style.display = 'block';
-                    updatePaymentSection();
+                    showMessage(data.message, 'success');
+                    setTimeout(() => window.location.href = data.redirect_url, 2000);
                 } else {
-                    showError(data.error);
+                    throw new Error(data.error);
                 }
             })
-            .catch(error => {
-                console.error('Error:', error);
-                showError('Error loading consultation fees. Please try again.');
+            .catch(err => {
+                showMessage(err.message);
+                actionBtn.disabled = false;
+                actionBtn.innerHTML = '<i class="mdi mdi-account-plus me-1"></i> Join Queue';
             });
+        }
     });
 
-    function updatePaymentSection() {
-        if (!currentFee) return;
-
-        const feeAmount = currentFee.amount;
-        const canPay = walletBalance >= feeAmount;
-
-        let paymentHTML = `
-            <div class="row">
-                <div class="col-md-6">
-                    <h6>Patient: ${currentPatient.full_name}</h6>
-                    <p class="mb-1">Card Number: ${currentPatient.patient_id}</p>
-                    <p class="mb-1">Specialization: ${specializationSelect.options[specializationSelect.selectedIndex].text}</p>
-                </div>
-                <div class="col-md-6">
-                    <h6>Payment Details</h6>
-                    <p class="mb-1">Consultation Fee: <strong>${currentFee.formatted_amount}</strong></p>
-                    <p class="mb-1">Payment Method: <strong>Wallet</strong></p>
-                    <p class="mb-1">Wallet Balance: <strong class="${walletBalance >= feeAmount ? 'text-success' : 'text-danger'}">₦${walletBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}</strong></p>
-                </div>
+    // --- UI Update Functions ---
+    function updateActionSectionForReuse(message) {
+        document.getElementById('action-summary').innerHTML = `
+            <div class="alert alert-info">
+                <i class="mdi mdi-information me-2"></i> ${message}
             </div>
         `;
-
-        if (!canPay) {
-            const shortfall = feeAmount - walletBalance;
-            paymentHTML += `
-                <div class="alert alert-warning mt-3" role="alert">
-                    <i class="mdi mdi-alert me-2"></i>
-                    Insufficient wallet balance. You need an additional ₦${shortfall.toLocaleString('en-US', {minimumFractionDigits: 2})} to complete this payment.
-                </div>
-            `;
-            fundWalletBtn.style.display = 'block';
-            processPaymentBtn.disabled = true;
-        } else {
-            paymentHTML += `
-                <div class="alert alert-success mt-3" role="alert">
-                    <i class="mdi mdi-check-circle me-2"></i>
-                    Wallet has sufficient balance. Ready to process payment.
-                </div>
-            `;
-            fundWalletBtn.style.display = 'none';
-            processPaymentBtn.disabled = false;
-        }
-
-        document.getElementById('payment-summary').innerHTML = paymentHTML;
-        paymentSection.style.display = 'block';
+        actionBtn.innerHTML = '<i class="mdi mdi-account-plus me-1"></i> Join Queue';
+        actionBtn.disabled = false;
+        actionSection.style.display = 'block';
     }
 
-    // Fund wallet button
-    fundWalletBtn.addEventListener('click', function() {
-        // Redirect to wallet funding page
-        const shortfall = currentFee.amount - walletBalance;
-        window.open(`{% url 'patient_wallet_fund' %}?amount=${shortfall}&redirect=consultation_payment`, '_blank');
-    });
+    function updateActionSectionForNewPayment() {
+        const canPay = walletBalance >= currentFee.amount;
+        let summaryHTML = `
+            <p class="mb-1">Consultation Fee: <strong>${currentFee.formatted_amount}</strong></p>
+            <p>Wallet Balance: <strong class="${canPay ? 'text-success' : 'text-danger'}">${walletBalance.toLocaleString('en-US', {minimumFractionDigits: 2, style: 'currency', currency: 'NGN'})}</strong></p>
+        `;
 
-    // Form submission
-    document.getElementById('payment-form').addEventListener('submit', function(e) {
-        if (!currentPatient || !currentFee) {
-            e.preventDefault();
-            showError('Please complete all steps before processing payment');
-            return;
+        if (canPay) {
+            summaryHTML += `<div class="alert alert-success"><i class="mdi mdi-check-circle me-2"></i>Wallet has sufficient balance.</div>`;
+            actionBtn.innerHTML = '<i class="mdi mdi-credit-card-check me-1"></i> Process Payment';
+            actionBtn.disabled = false;
+        } else {
+            const shortfall = currentFee.amount - walletBalance;
+            summaryHTML += `<div class="alert alert-warning"><i class="mdi mdi-alert me-2"></i>Insufficient balance. Needs an additional ${shortfall.toLocaleString('en-US', {minimumFractionDigits: 2, style: 'currency', currency: 'NGN'})}.</div>`;
+            actionBtn.innerHTML = '<i class="mdi mdi-wallet-plus me-1"></i> Fund Wallet First';
+            actionBtn.disabled = true; // Button remains disabled, user must fund wallet
         }
 
-        if (walletBalance < currentFee.amount) {
-            e.preventDefault();
-            showError('Insufficient wallet balance. Please fund your wallet first.');
-            return;
-        }
-
-        processPaymentBtn.disabled = true;
-        processPaymentBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-2"></i>Processing...';
-    });
+        document.getElementById('action-summary').innerHTML = summaryHTML;
+        actionSection.style.display = 'block';
+    }
 });
 </script>
-
 {% endblock %}

@@ -205,38 +205,38 @@
     </li>
 
     <!-- Payroll -->
-    <li>
-      <a href="{% url 'process_payroll' %}">
-        <i class="bi bi-circle"></i><span>Process Salary</span>
-      </a>
-    </li>
-    <li>
-      <a href="{% url 'payroll_dashboard' %}">
-        <i class="bi bi-circle"></i><span>Salary Dashboard</span>
-      </a>
-    </li>
-    <li>
-      <a href="{% url 'salary_structure_index' %}">
-        <i class="bi bi-circle"></i><span>Salary Structures</span>
-      </a>
-    </li>
-     <li>
-      <a href="{% url 'staff_bank_detail_index' %}">
-        <i class="bi bi-circle"></i><span>Staff Bank Details</span>
-      </a>
-    </li>
+<!--    <li>-->
+<!--      <a href="{% url 'process_payroll' %}">-->
+<!--        <i class="bi bi-circle"></i><span>Process Salary</span>-->
+<!--      </a>-->
+<!--    </li>-->
+<!--    <li>-->
+<!--      <a href="{% url 'payroll_dashboard' %}">-->
+<!--        <i class="bi bi-circle"></i><span>Salary Dashboard</span>-->
+<!--      </a>-->
+<!--    </li>-->
+<!--    <li>-->
+<!--      <a href="{% url 'salary_structure_index' %}">-->
+<!--        <i class="bi bi-circle"></i><span>Salary Structures</span>-->
+<!--      </a>-->
+<!--    </li>-->
+<!--     <li>-->
+<!--      <a href="{% url 'staff_bank_detail_index' %}">-->
+<!--        <i class="bi bi-circle"></i><span>Staff Bank Details</span>-->
+<!--      </a>-->
+<!--    </li>-->
 
     <!-- Setup & Configuration -->
-    <li>
-      <a href="{% url 'income_category_index' %}">
-        <i class="bi bi-circle"></i><span>Income Categories</span>
-      </a>
-    </li>
-    <li>
-      <a href="{% url 'expense_category_index' %}">
-        <i class="bi bi-circle"></i><span>Expense Categories</span>
-      </a>
-    </li>
+<!--    <li>-->
+<!--      <a href="{% url 'income_category_index' %}">-->
+<!--        <i class="bi bi-circle"></i><span>Income Categories</span>-->
+<!--      </a>-->
+<!--    </li>-->
+<!--    <li>-->
+<!--      <a href="{% url 'expense_category_index' %}">-->
+<!--        <i class="bi bi-circle"></i><span>Expense Categories</span>-->
+<!--      </a>-->
+<!--    </li>-->
     <li>
       <a href="{% url 'finance_setting_detail' 1 %}">
         <i class="bi bi-circle"></i><span>Settings</span>
@@ -254,12 +254,7 @@
 
           <li>
             <a href="{% url 'consultation_payment_create' %}">
-              <i class="bi bi-circle"></i><span>New Consultation</span>
-            </a>
-          </li>
-          <li>
-            <a href="{% url 'doctor_dashboard' %}">
-              <i class="bi bi-circle"></i><span>Doctor List</span>
+              <i class="bi bi-circle"></i><span>Add to Queue</span>
             </a>
           </li>
           <li>
@@ -267,6 +262,12 @@
               <i class="bi bi-circle"></i><span>Waiting List</span>
             </a>
           </li>
+          <li>
+            <a href="{% url 'doctor_dashboard' %}">
+              <i class="bi bi-circle"></i><span>Doctor List</span>
+            </a>
+          </li>
+
           <li>
             <a href="{% url 'consultant_list' %}">
               <i class="bi bi-circle"></i><span>Consultants</span>
@@ -276,6 +277,12 @@
           <li>
             <a href="{% url 'specialization_index' %}">
               <i class="bi bi-circle"></i><span>Specialization</span>
+            </a>
+          </li>
+
+          <li>
+            <a href="{% url 'specialization_group_index' %}">
+              <i class="bi bi-circle"></i><span>Specialization Groups</span>
             </a>
           </li>
 
@@ -584,21 +591,47 @@
     <i class="bi bi-card-checklist"></i><span>Services & Inventory</span><i class="bi bi-chevron-down ms-auto"></i>
   </a>
   <ul id="services-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+
     <li>
-      <a href="{% url 'service_category_list' %}">
-        <i class="bi bi-circle"></i><span>Categories</span>
+      <a href="{% url 'patient_order_page' %}">
+        <i class="bi bi-circle"></i><span>New Order</span>
       </a>
     </li>
     <li>
-      <a href="{% url 'service_list' %}">
-        <i class="bi bi-circle"></i><span>Services</span>
+      <a href="{% url 'item_order_list' %}">
+        <i class="bi bi-circle"></i><span>Item Orders</span>
+      </a>
+    </li><li>
+      <a href="{% url 'service_order_list' %}">
+        <i class="bi bi-circle"></i><span>Service Orders</span>
       </a>
     </li>
+
     <li>
       <a href="{% url 'service_item_list' %}">
         <i class="bi bi-circle"></i><span>Inventory Items</span>
       </a>
     </li>
+
+    <li>
+      <a href="{% url 'service_dashboard' %}">
+        <i class="bi bi-circle"></i><span>Dashboard</span>
+      </a>
+    </li>
+
+    <li>
+      <a href="{% url 'service_item_batch_list' %}">
+        <i class="bi bi-circle"></i><span>Stock Batch</span>
+      </a>
+    </li>
+
+    <li>
+      <a href="{% url 'service_category_list' %}">
+        <i class="bi bi-circle"></i><span>Categories</span>
+      </a>
+    </li>
+
+
   </ul>
 </li>
 
