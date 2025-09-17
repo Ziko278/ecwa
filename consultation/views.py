@@ -1,4 +1,5 @@
 import csv
+import json
 import logging
 from datetime import datetime, date, time, timedelta
 from django.contrib import messages
@@ -10,6 +11,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render, redirect, get_object_or_404
+from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.timezone import now
@@ -27,7 +29,7 @@ from finance.models import PatientTransactionModel
 from laboratory.models import LabTestOrderModel, LabTestCategoryModel, LabTestTemplateModel, LabSettingModel
 from patient.models import PatientModel
 from human_resource.models import StaffModel
-from pharmacy.models import DrugOrderModel, DrugModel
+from pharmacy.models import DrugOrderModel, DrugModel, ExternalPrescription
 from scan.models import ScanOrderModel, ScanCategoryModel, ScanTemplateModel
 
 logger = logging.getLogger(__name__)
@@ -3047,7 +3049,7 @@ def doctor_dashboard(request):
     week_ago = today - timedelta(days=7)
     recent_consultations = ConsultationSessionModel.objects.filter(
         queue_entry__consultant=consultant,
-        created_at__date=today
+        created_at__date=today, status='completed'
     ).select_related('queue_entry__patient').order_by('-created_at')[:10]
 
     context = {
@@ -3074,6 +3076,19 @@ def consultation_page(request, consultation_id):
     except (ConsultantModel.DoesNotExist, ConsultationSessionModel.DoesNotExist):
         messages.error(request, "Consultation not found or access denied.")
         return redirect('doctor_dashboard')
+
+    if consultation.status == 'completed':
+        consultation.status = 'in_progress'
+        consultation.completed_at = None  # Clear the completion timestamp
+        consultation.save()
+
+        # Also update the related queue entry status
+        if consultation.queue_entry:
+            consultation.queue_entry.status = 'with_doctor'
+            consultation.queue_entry.save()
+
+        messages.info(request,
+                      f"Consultation has been reopened for editing.")
 
     # Get related data
     patient = consultation.queue_entry.patient
@@ -3104,6 +3119,7 @@ def consultation_page(request, consultation_id):
     # Get categories for dropdowns
     lab_categories = LabTestCategoryModel.objects.filter()
     scan_categories = ScanCategoryModel.objects.filter()
+    external_prescriptions = ExternalPrescription.objects.filter(consultation=consultation)
 
     context = {
         'consultant': consultant,
@@ -3112,6 +3128,7 @@ def consultation_page(request, consultation_id):
         'lab_tests': lab_tests,
         'scans': scans,
         'recent_consultations': recent_consultations,
+        'external_prescriptions': external_prescriptions,
         'lab_categories': lab_categories,
         'scan_categories': scan_categories,
     }
@@ -3247,6 +3264,64 @@ def consultation_history(request):
     }
 
     return render(request, 'consultation/doctor/history.html', context)
+
+
+def patient_history_view(request, patient_id):
+    """Renders the initial patient history page."""
+    patient = get_object_or_404(PatientModel, id=patient_id)
+
+    # Get all completed consultations for the patient, ordered by most recent
+    all_consultations = ConsultationSessionModel.objects.filter(
+        queue_entry__patient=patient,
+        status='completed'
+    ).order_by('-created_at').prefetch_related(
+        'drug_consultation_order',  # Renamed from drug_orders in DrugOrderModel
+        'external_prescriptions',
+        'lab_consultation_order',  # Renamed from lab_test_orders in LabTestOrderModel
+        'scan_consultation_order'  # Renamed from scan_orders in ScanOrderModel
+    )
+
+    # Paginate the results, 3 per page
+    paginator = Paginator(all_consultations, 3)
+    page_obj = paginator.get_page(1)  # Get the first page
+
+    context = {
+        'patient': patient,
+        'consultations_page': page_obj,
+    }
+    return render(request, 'consultation/history/patient_history.html', context)
+
+
+def patient_history_ajax(request, patient_id):
+    """Handles AJAX requests for subsequent pages of patient history."""
+    patient = get_object_or_404(PatientModel, id=patient_id)
+    page_number = request.GET.get('page', 1)
+
+    all_consultations = ConsultationSessionModel.objects.filter(
+        queue_entry__patient=patient,
+        status='completed'
+    ).order_by('-created_at').prefetch_related(
+        'drug_consultation_order',
+        'external_prescriptions',
+        'lab_consultation_order',
+        'scan_consultation_order'
+    )
+
+    paginator = Paginator(all_consultations, 3)
+    page_obj = paginator.get_page(page_number)
+
+    # Render just the partial template with the new consultations
+    html = render_to_string(
+        'consultation/history/partials/consultation_block.html',
+        {'consultations_page': page_obj},
+        request=request
+    )
+
+    return JsonResponse({
+        'html': html,
+        'has_next': page_obj.has_next()
+    })
+
 
 
 # AJAX Views
@@ -3389,6 +3464,7 @@ def ajax_pause_consultation(request, consultation_id):
         })
 
 
+
 @login_required
 @require_POST
 def ajax_resume_consultation(request, consultation_id):
@@ -3401,11 +3477,11 @@ def ajax_resume_consultation(request, consultation_id):
             queue_entry__consultant=consultant,
             status='paused'
         )
-
+        today = timezone.localdate()
         # Check for other active consultations
         active_consultation = ConsultationSessionModel.objects.filter(
             queue_entry__consultant=consultant,
-            status='in_progress'
+            status='in_progress', created_at__date=today
         ).first()
 
         if active_consultation:
@@ -3733,6 +3809,134 @@ def ajax_order_scan(request):
             'success': False,
             'error': f'Failed to order scan: {str(e)}'
         })
+
+
+@login_required
+def ajax_lab_templates_search(request):
+    """Search for lab test templates by name, optionally filtered by category."""
+    try:
+        query = request.GET.get('q', '')
+        category_id = request.GET.get('category_id')
+
+        templates = LabTestTemplateModel.objects.filter(is_active=True)
+
+        if category_id:
+            templates = templates.filter(category_id=category_id)
+
+        if len(query) >= 2:
+            templates = templates.filter(name__icontains=query)
+
+        templates = templates.order_by('name')[:15]  # Limit results
+
+        templates_data = [{
+            'id': t.id,
+            'name': t.name,
+            'price': float(t.price),
+        } for t in templates]
+
+        return JsonResponse({'templates': templates_data})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def ajax_imaging_templates_search(request):
+    """Search for imaging (scan) templates by name, optionally filtered by category."""
+    try:
+        query = request.GET.get('q', '')
+        category_id = request.GET.get('category_id')
+
+        templates = ScanTemplateModel.objects.filter(is_active=True)
+
+        if category_id:
+            templates = templates.filter(category_id=category_id)
+
+        if len(query) >= 2:
+            templates = templates.filter(name__icontains=query)
+
+        templates = templates.order_by('name')[:15]  # Limit results
+
+        templates_data = [{
+            'id': t.id,
+            'name': t.name,
+            'price': float(t.price),
+        } for t in templates]
+
+        return JsonResponse({'templates': templates_data})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# --- NEW MULTI-ORDER VIEWS ---
+
+@login_required
+@require_POST
+def ajax_order_multiple_lab_tests(request):
+    """Order multiple lab tests for a patient in a single transaction."""
+    try:
+        data = json.loads(request.body)
+        patient_id = data.get('patient_id')
+        consultation_id = data.get('consultation_id')
+        orders = data.get('orders', [])
+
+        if not all([patient_id, consultation_id, orders]):
+            return JsonResponse({'success': False, 'error': 'Missing required data.'}, status=400)
+
+        patient = get_object_or_404(PatientModel, id=patient_id)
+        consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
+
+        with transaction.atomic():
+            for order_data in orders:
+                template = get_object_or_404(LabTestTemplateModel, id=order_data.get('template_id'))
+                LabTestOrderModel.objects.create(
+                    patient=patient,
+                    consultation=consultation,
+                    template=template,
+                    ordered_by=request.user,
+                    special_instructions=order_data.get('instructions', ''),
+                    source='doctor',
+                )
+
+        return JsonResponse({'success': True, 'message': f'{len(orders)} lab test(s) ordered successfully.'})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def ajax_order_multiple_imaging(request):
+    """Order multiple imaging (scans) for a patient in a single transaction."""
+    try:
+        data = json.loads(request.body)
+        patient_id = data.get('patient_id')
+        consultation_id = data.get('consultation_id')
+        orders = data.get('orders', [])
+
+        if not all([patient_id, consultation_id, orders]):
+            return JsonResponse({'success': False, 'error': 'Missing required data.'}, status=400)
+
+        patient = get_object_or_404(PatientModel, id=patient_id)
+        consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
+
+        with transaction.atomic():
+            for order_data in orders:
+                template = get_object_or_404(ScanTemplateModel, id=order_data.get('template_id'))
+                ScanOrderModel.objects.create(
+                    patient=patient,
+                    consultation=consultation,
+                    template=template,
+                    ordered_by=request.user,
+                    clinical_indication=order_data.get('indication', ''),
+                    special_instructions=order_data.get('instructions', ''),
+                )
+
+        return JsonResponse({'success': True, 'message': f'{len(orders)} imaging request(s) ordered successfully.'})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 @login_required
@@ -4154,7 +4358,7 @@ def _create_queue_entry_with_vitals_check(patient, payment_transaction, speciali
             'weight': old_vitals.weight,
             'bmi': old_vitals.bmi,
             'general_appearance': old_vitals.general_appearance,
-            'chief_complaint': f"(Copied from last visit) {old_vitals.chief_complaint}",
+            'chief_complaint': f"{old_vitals.chief_complaint}",
             'notes': old_vitals.notes,
             'recorded_by': user,
         }
@@ -4220,8 +4424,6 @@ def get_consultation_status_ajax(request):
             status='completed',
             valid_till__gte=today,
             fee_structure__specialization__group=specialization.group
-        ).exclude(
-            Q(patientqueuemodel__status='consultation_completed') | Q(patientqueuemodel__status='cancelled')
         ).order_by('-created_at').first()
 
         if valid_payment:
@@ -4278,6 +4480,85 @@ def create_queue_from_payment_ajax(request):
         })
     except Exception as e:
         return JsonResponse({'success': False, 'error': f'An unexpected error occurred: {str(e)}'}, status=500)
+
+
+@login_required
+def update_patient_allergy(request, patient_id):
+    patient = get_object_or_404(PatientModel, id=patient_id)
+
+    # Try to get the existing allergy profile, or None if it doesn't exist
+    allergy_instance = Allergy.objects.filter(patient=patient).first()
+
+    if request.method == 'POST':
+        # The form needs an instance if we are updating, or no instance for creation
+        form = AllergyForm(request.POST, instance=allergy_instance)
+
+        if form.is_valid():
+            allergy = form.save(commit=False)
+            allergy.patient = patient
+            allergy.updated_by = request.user
+            allergy.save()
+
+            return JsonResponse({
+                'success': True,
+                'details': allergy.details,
+                'updated_by': allergy.updated_by.get_full_name() or allergy.updated_by.username,
+                'updated_at': allergy.updated_at.strftime('%b %d, %Y, %I:%M %p'),
+            })
+        else:
+            return JsonResponse({'success': False, 'errors': form.errors}, status=400)
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
+
+
+@login_required
+@require_POST
+def prescribe_multiple_view(request):
+    try:
+        data = json.loads(request.body)
+        patient_id = data.get('patient_id')
+        consultation_id = data.get('consultation_id')
+
+        available_drugs = data.get('available_drugs', [])
+        external_drugs = data.get('external_drugs', [])
+
+        patient = PatientModel.objects.get(id=patient_id)
+        consultation = ConsultationSessionModel.objects.get(id=consultation_id)
+
+        with transaction.atomic():
+            # Process drugs from inventory
+            for drug_data in available_drugs:
+                drug = DrugModel.objects.get(id=drug_data.get('drug_id'))
+                DrugOrderModel.objects.create(
+                    patient=patient,
+                    consultation=consultation,
+                    ordered_by=request.user,
+                    drug=drug,
+                    dosage_instructions=drug_data.get('dosage'),
+                    duration=drug_data.get('duration'),
+                    quantity_ordered=float(drug_data.get('quantity', 0)),
+                    notes=drug_data.get('notes'),
+                    status='pending',  # Default status
+                )
+
+            # Process drugs not in inventory
+            for drug_data in external_drugs:
+                ExternalPrescription.objects.create(
+                    patient=patient,
+                    consultation=consultation,
+                    ordered_by=request.user,
+                    drug_name=drug_data.get('drug_name'),
+                    dosage_instructions=drug_data.get('dosage'),
+                    duration=drug_data.get('duration'),
+                    quantity=drug_data.get('quantity'),
+                    notes=drug_data.get('notes'),
+                )
+
+        return JsonResponse({'success': True, 'message': 'Prescriptions saved successfully.'})
+
+    except Exception as e:
+        # Log the error e for debugging
+        return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=500)
 
 
 # --- End: New AJAX Views ---

@@ -493,7 +493,7 @@ class PatientVitalsForm(ModelForm):
 
     def clean_blood_pressure_diastolic(self):
         diastolic = self.cleaned_data.get('blood_pressure_diastolic')
-        if diastolic and (diastolic < 40 or diastolic > 150):
+        if diastolic and (diastolic < 10 or diastolic > 300):
             raise ValidationError("Diastolic BP must be between 40-150 mmHg.")
         return diastolic
 
@@ -745,3 +745,12 @@ class ConsultantStatusForm(forms.Form):
             'placeholder': 'Availability notes...'
         })
     )
+
+
+class AllergyForm(forms.ModelForm):
+    class Meta:
+        model = Allergy
+        fields = ['details']
+        widgets = {
+            'details': forms.Textarea(attrs={'rows': 4, 'class': 'form-control'}),
+        }

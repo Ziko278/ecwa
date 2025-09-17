@@ -1,0 +1,103 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-3">
+                    <div>
+                        <h4 class="card-title mb-1">
+                            Patient Clinical History: {{ patient|title }}
+                        </h4>
+                        <p class="card-description mb-0">
+                            ID: {{ patient.card_number|upper }} | {{ patient.age }} yrs, {{ patient.get_gender_display }}
+                        </p>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="window.history.back()">
+                        <i class="bi bi-arrow-left"></i> Back
+                    </button>
+                </div>
+
+                {% with allergy_profile=patient.allergy_profile %}
+                    {% if allergy_profile and allergy_profile.details %}
+                        <div id="history-allergy-display" class="alert alert-danger py-2" data-raw-allergies="{{ allergy_profile.details|default:'' }}">
+                            </div>
+                    {% endif %}
+                {% endwith %}
+
+                <div id="history-container">
+                    {% include 'consultation/history/partials/consultation_block.html' %}
+                </div>
+
+                <div id="pagination-controls" class="text-center mt-4">
+                    {% if consultations_page.has_next %}
+                        <button class="btn btn-primary" id="load-more-btn" data-next-page="{{ consultations_page.next_page_number }}">
+                            Load Older Consultations
+                        </button>
+                    {% endif %}
+                    <div id="loading-spinner" class="spinner-border text-primary d-none" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+    const allergyDisplay = document.getElementById('history-allergy-display');
+    if (allergyDisplay) {
+        const rawAllergies = allergyDisplay.getAttribute('data-raw-allergies');
+        if (rawAllergies && rawAllergies.trim() !== '') {
+            const formattedDetails = rawAllergies.trim().replace(/(\r\n|\n|\r)+/g, ', ');
+            allergyDisplay.innerHTML = `<strong>Allergies:</strong> ${formattedDetails}`;
+        }
+    }
+
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    const historyContainer = document.getElementById('history-container');
+    const paginationControls = document.getElementById('pagination-controls');
+    const loadingSpinner = document.getElementById('loading-spinner');
+
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', function() {
+            const nextPage = this.getAttribute('data-next-page');
+            
+            // Show spinner and hide button
+            loadMoreBtn.classList.add('d-none');
+            loadingSpinner.classList.remove('d-none');
+            
+            fetch(`/ajax/patient/{{ patient.id }}/history-page/?page=${nextPage}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Append new content
+                    historyContainer.insertAdjacentHTML('beforeend', data.html);
+
+                    if (data.has_next) {
+                        // Update button for the next page
+                        loadMoreBtn.setAttribute('data-next-page', parseInt(nextPage) + 1);
+                        loadMoreBtn.classList.remove('d-none');
+                    } else {
+                        // No more pages, remove the button
+                        loadMoreBtn.remove();
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to load patient history:', error);
+                    // Optionally show an error message
+                    paginationControls.innerHTML = '<p class="text-danger">Failed to load history.</p>';
+                })
+                .finally(() => {
+                    // Hide spinner
+                    loadingSpinner.classList.add('d-none');
+                });
+        });
+    }
+});
+</script>
+{% endblock %}

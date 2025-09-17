@@ -26,6 +26,29 @@
                     {{ consultation.queue_entry.patient.age }} yrs, {{ consultation.queue_entry.patient.gender|title }} |
                     Started: {{ consultation.created_at|date:"M d, H:i" }}
                 </p>
+
+                {% with allergy_profile=consultation.queue_entry.patient.allergy_profile %}
+                    <div id="allergy-display-container"
+                         class="d-flex justify-content-between align-items-center p-2 mt-2 rounded"
+                         style="background-color: #dc3545; color: white;"
+                         {% if allergy_profile and allergy_profile.updated_by %}
+                           title="Last updated by {{ allergy_profile.updated_by.get_full_name|default:allergy_profile.updated_by.username }} at {{ allergy_profile.updated_at|date:'M d, Y, P' }}"
+                         {% endif %}>
+
+                        <strong id="allergy-text" data-raw-details="{{ allergy_profile.details|default:'' }}">
+                            {% if allergy_profile and allergy_profile.details %}
+                                {{ allergy_profile.details }}
+                            {% else %}
+                                No allergies set for this patient.
+                            {% endif %}
+                        </strong>
+
+                        <button id="allergy-action-btn" class="btn btn-sm btn-light" onclick="openAllergyModal()">
+                            {% if allergy_profile %}Update{% else %}Set{% endif %}
+                        </button>
+                    </div>
+                    {% endwith %}
+
                 {% include 'admin_site/partials/error.html' %}
             </div>
         </div>
@@ -36,19 +59,7 @@
     <!-- Left Sidebar: Patient Info & Quick Actions -->
     <div class="col-lg-3">
         <!-- Patient Information -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <h5 class="mb-0">Patient Information</h5>
-            </div>
-            <div class="card-body">
-                <div class="patient-info">
-                    <strong>{{ consultation.queue_entry.patient|title }}</strong><br>
-                    <small class="text-muted">ID: {{ consultation.queue_entry.patient.card_number }}</small><br>
-                    <small>{{ consultation.queue_entry.patient.age }} years, {{ consultation.queue_entry.patient.gender|title }}</small><br>
-                    <small>Phone: {{ consultation.queue_entry.patient.phone_number|default:"Not provided" }}</small>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Vitals -->
         {% if consultation.queue_entry.vitals %}
@@ -104,8 +115,11 @@
                         <i class="bi bi-clipboard2-pulse"></i> Order Lab Test
                     </button>
                     <button class="btn btn-sm btn-warning" onclick="orderScan()">
-                        <i class="bi bi-camera"></i> Order Scan
+                        <i class="bi bi-camera"></i> order Image
                     </button>
+                    <a href="{% url 'patient_history_view' patient_id=consultation.queue_entry.patient.id %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-clock-history"></i> View Patient History
+                    </a>
 <!--                    <button class="btn btn-sm btn-success" onclick="viewPatientHistory()">-->
 <!--                        <i class="bi bi-clock-history"></i> Patient History-->
 <!--                    </button>-->
@@ -123,14 +137,19 @@
                     <div class="modal-body">
 
                         {% if consultation.queue_entry.patient.consultation_documents.all %}
-                            <ul>
-                                {% for patient_doc in consultation.queue_entry.patient.consultation_documents.all %}
-                                <li><a href="{{patient_doc.document.url}}" target="_blank">
-                                    {{patient_doc }}
-                                </a> </li>
-                                {% endfor %}
-                            </ul>
-                        {% else %}
+
+                        <div class="list-group">
+                            {% for patient_doc in consultation.queue_entry.patient.consultation_documents.all %}
+                            <a href="{{ patient_doc.document.url }}" target="_blank" class="list-group-item list-group-item-action">
+                                {% if patient_doc.title %}
+                                    {{ patient_doc.title|title }}
+                                {% else %}
+                                    {{ patient_doc|title }}
+                                {% endif %}
+                            </a>
+                            {% endfor %}
+                        </div>
+                                                {% else %}
                             <h3>No Past Document was uploaded for the patient</h3>
                         {% endif %}
 
@@ -227,9 +246,7 @@
                             </div>
 
                             <div class="d-flex justify-content-between">
-                                <button type="button" class="btn btn-secondary" onclick="saveDraft()">
-                                    <i class="bi bi-save"></i> Save Draft
-                                </button>
+
                                 <button type="submit" class="btn btn-success">
                                     <i class="bi bi-check"></i> Save & Continue
                                 </button>
@@ -241,7 +258,7 @@
                     <div class="tab-pane fade" id="prescriptions-pane" role="tabpanel">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h6>Prescribed Medications</h6>
-                            <button class="btn btn-sm btn-primary" onclick="prescribeDrug()">
+                            <button class="btn btn-sm btn-primary" id="add-drug-in-tab-btn">
                                 <i class="bi bi-plus"></i> Add Drug
                             </button>
                         </div>
@@ -288,6 +305,29 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        {% if external_prescriptions %}
+                            <h6 class="mt-4 mb-3">Unavailable / External Prescriptions</h6>
+                            <div class="list-group">
+                                {% for rx in external_prescriptions %}
+                                <div class="list-group-item">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h5 class="mb-1">{{ rx.drug_name|title }}</h5>
+                                        <small class="text-muted">{{ rx.ordered_at|date:"M d, Y" }}</small>
+                                    </div>
+                                    <p class="mb-1">
+                                        {% if rx.dosage_instructions %}
+                                            <strong>Dosage:</strong> {{ rx.dosage_instructions }}
+                                        {% endif %}
+                                        {% if rx.duration %}
+                                            <span class="ms-2"><strong>Duration:</strong> {{ rx.duration }}</span>
+                                        {% endif %}
+                                    </p>
+                                    <small class="text-muted"><strong>Quantity:</strong> {{ rx.quantity }}</small>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                     </div>
 
                     <!-- Tests & Scans Tab -->
@@ -296,27 +336,32 @@
                             <div class="col-md-6">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <h6>Lab Tests Ordered</h6>
-                                    <button class="btn btn-sm btn-info" onclick="orderLabTest()">
-                                        <i class="bi bi-plus"></i> Order Test
+                                    <button class="btn btn-sm btn-info" id="order-test-in-tab-btn">
+                                        <i class="bi bi-plus"></i> Order Lab Test
                                     </button>
                                 </div>
 
                                 <div class="list-group">
                                     {% for test in lab_tests %}
                                     <div class="list-group-item">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <strong>{{ test.template.name }}</strong>
-                                                <small class="text-muted d-block">{{ test.order_number }}</small>
-                                            </div>
-                                            <span class="badge bg-{{ test.status|yesno:'success,warning' }}">
-                                                {{ test.get_status_display }}
-                                            </span>
+                                        <div>
+                                            <strong>{{ test.template.name }}</strong>
+                                            <small class="text-muted d-block">{{ test.order_number }}</small>
                                         </div>
-                                        <div class="mt-2">
-                                            <button class="btn btn-xs btn-outline-primary" onclick="viewTestResult({{ test.id }})">
-                                                View Result
-                                            </button>
+                                        <div class="mt-2 d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-secondary">{{ test.get_status_display }}</span>
+
+                                            {% if test.status == 'completed' %}
+                                                {% if test.result and test.result.is_verified %}
+                                                    <button class="btn btn-xs btn-outline-primary" onclick="viewTestResult({{ test.id }})">
+                                                        View Result
+                                                    </button>
+                                                {% else %}
+                                                    <span class="badge bg-warning">Awaiting Verification</span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-light text-dark">Result Not Available</span>
+                                            {% endif %}
                                         </div>
                                     </div>
                                     {% empty %}
@@ -325,40 +370,43 @@
                                     </div>
                                     {% endfor %}
                                 </div>
+
                             </div>
 
                             <div class="col-md-6">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <h6>Scans Ordered</h6>
-                                    <button class="btn btn-sm btn-warning" onclick="orderScan()">
-                                        <i class="bi bi-plus"></i> Order Scan
+                                    <button class="btn btn-sm btn-warning" id="order-scan-in-tab-btn">
+                                        <i class="bi bi-plus"></i> Order Image
                                     </button>
                                 </div>
 
                                 <div class="list-group">
-                                    {% for scan in scans %}
-                                    <div class="list-group-item">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <strong>{{ scan.template.name }}</strong>
-                                                <small class="text-muted d-block">{{ scan.order_number }}</small>
-                                            </div>
-                                            <span class="badge bg-{{ scan.status|yesno:'success,warning' }}">
-                                                {{ scan.get_status_display }}
-                                            </span>
-                                        </div>
-                                        <div class="mt-2">
-                                            <button class="btn btn-xs btn-outline-primary" onclick="viewScanResult({{ scan.id }})">
-                                                View Result
-                                            </button>
-                                        </div>
-                                    </div>
-                                    {% empty %}
-                                    <div class="list-group-item text-center text-muted">
-                                        No scans ordered
-                                    </div>
-                                    {% endfor %}
-                                </div>
+            {% for scan in scans %}
+            <div class="list-group-item">
+                <div>
+                    <strong>{{ scan.template.name }}</strong>
+                    <small class="text-muted d-block">{{ scan.order_number }}</small>
+                </div>
+                 <div class="mt-2 d-flex justify-content-between align-items-center">
+                    <span class="badge bg-secondary">{{ scan.get_status_display }}</span>
+
+                    {% if scan.status == 'completed' %}
+                        <button class="btn btn-xs btn-outline-primary" onclick="viewScanResult({{ scan.id }})">
+                            View Result
+                        </button>
+                    {% else %}
+                         <span class="badge bg-light text-dark">Result Not Available</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="list-group-item text-center text-muted">
+                No imaging ordered
+            </div>
+            {% endfor %}
+        </div>
+
                             </div>
                         </div>
                     </div>
@@ -369,169 +417,291 @@
 </div>
 
 <!-- Drug Prescription Modal -->
-<div class="modal fade" id="drugPrescriptionModal" tabindex="-1">
+<div class="modal fade" id="drugPrescriptionModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Prescribe Medications</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="prescription-list">
+                    </div>
+
+                <div class="mt-3">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="add-drug-btn">
+                        <i class="bi bi-plus-circle"></i> Add Drug from Inventory
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="add-external-drug-btn">
+                        <i class="bi bi-journal-plus"></i> Add Unavailable Drug
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submit-prescriptions-btn">
+                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    Save Prescriptions
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<template id="available-drug-template">
+    <div class="card prescription-row mb-3" data-type="available">
+        <div class="card-body">
+            <div class="d-flex justify-content-end">
+                <button type="button" class="btn-close" onclick="removeDrugForm(this)" aria-label="Remove"></button>
+            </div>
+
+            <div class="row g-2 mb-2">
+                <div class="col-md-12 position-relative">
+                    <label class="form-label">Search Drug</label>
+                    <input type="text" class="form-control drug-search-input" placeholder="Start typing drug name..." required>
+                    <input type="hidden" class="drug-id-input" name="drug_id">
+                    <input type="hidden" class="drug-pack-size-input" name="pack_size">
+                    <div class="search-results list-group position-absolute w-100" style="z-index: 1050;"></div>
+                </div>
+            </div>
+
+            <div class="row g-2">
+                <div class="col-md-5">
+                    <label class="form-label">Dosage Instructions</label>
+                    <input type="text" class="form-control dosage-input" name="dosage" placeholder="e.g., 2 tablets twice daily" required>
+                </div>
+                 <div class="col-md-4">
+                    <label class="form-label">Duration</label>
+                    <input type="text" class="form-control duration-input" name="duration" placeholder="e.g., 7 days or 1 week">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Quantity (Packs)</label>
+                    <input type="number" class="form-control quantity-input" name="quantity" placeholder="Auto" min="1" required>
+                </div>
+            </div>
+             <div class="row g-2 mt-2">
+                <div class="col-md-12">
+                     <label class="form-label">Notes (Optional)</label>
+                    <input type="text" class="form-control notes-input" name="notes" placeholder="Additional instructions...">
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<template id="external-drug-template">
+    <div class="card prescription-row mb-3" data-type="external">
+        <div class="card-body bg-light">
+             <div class="d-flex justify-content-end">
+                <button type="button" class="btn-close" onclick="removeDrugForm(this)" aria-label="Remove"></button>
+            </div>
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label">Drug Name</label>
+                    <input type="text" class="form-control drug-name-input" name="drug_name" placeholder="Enter drug name" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Dosage Instructions</label>
+                    <input type="text" class="form-control dosage-input" name="dosage" placeholder="e.g., 1 tablet once daily">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Duration</label>
+                    <input type="text" class="form-control duration-input" name="duration" placeholder="e.g., 10 days">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Quantity</label>
+                    <input type="text" class="form-control quantity-input" name="quantity" placeholder="e.g., 1 Card" required>
+                </div>
+            </div>
+            <div class="row g-2 mt-2">
+                <div class="col-md-12">
+                    <label class="form-label">Notes (Optional)</label>
+                    <input type="text" class="form-control notes-input" name="notes" placeholder="e.g., Purchase from external pharmacy">
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Lab Test Modal -->
+<div class="modal fade" id="labTestModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Prescribe Medication</h5>
+                <h5 class="modal-title">Order Lab Tests</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="drugPrescriptionForm">
-                <div class="modal-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Search Drug</label>
-                                <input type="text" class="form-control" id="drugSearch" placeholder="Type drug name...">
-                                <select class="form-control mt-2" id="drugSelect" name="drug_id" required>
-                                    <option value="">Select a drug...</option>
-                                </select>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label">Quantity</label>
-                                <input type="number" class="form-control" name="quantity_ordered" min="1" required>
-                            </div>
-                        </div>
-
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Dosage Instructions</label>
-                                <textarea class="form-control" name="dosage_instructions" rows="3" placeholder="e.g., Take 1 tablet twice daily after meals"></textarea>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label">Duration</label>
-                                <input type="text" class="form-control" name="duration" placeholder="e.g., 7 days, 2 weeks">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Notes</label>
-                        <textarea class="form-control" name="notes" rows="2" placeholder="Additional instructions..."></textarea>
-                    </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Filter by Category (Optional)</label>
+                    <select class="form-select" id="testCategoryFilter">
+                        <option value="">Search all categories...</option>
+                        {% for category in lab_categories %}
+                        <option value="{{ category.id }}">{{ category.name }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Prescribe</button>
-                </div>
-            </form>
+                <hr>
+                <div id="lab-test-list">
+                    </div>
+                <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-lab-test-btn">
+                    <i class="bi bi-plus-circle"></i> Add Another Test
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-info" id="submit-lab-orders-btn">Order Tests</button>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Lab Test Modal -->
-<div class="modal fade" id="labTestModal" tabindex="-1">
-    <div class="modal-dialog">
+<div class="modal fade" id="scanModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Order Lab Test</h5>
+                <h5 class="modal-title">Order Imaging</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="labTestForm">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Test Category</label>
-                        <select class="form-control" id="testCategory" onchange="loadTestTemplates()">
-                            <option value="">Select category...</option>
-                            {% for category in lab_categories %}
-                            <option value="{{ category.id }}">{{ category.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Test</label>
-                        <select class="form-control" name="template_id" id="testTemplate" required>
-                            <option value="">Select test...</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Clinical Indication</label>
-                        <textarea class="form-control" name="special_instructions" rows="3" placeholder="Why is this test being ordered?"></textarea>
-                    </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Filter by Category (Optional)</label>
+                    <select class="form-select" id="imagingCategoryFilter">
+                        <option value="">Search all categories...</option>
+                        {% for category in scan_categories %}
+                        <option value="{{ category.id }}">{{ category.name }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-info">Order Test</button>
-                </div>
-            </form>
+                <hr>
+                <div id="imaging-list">
+                    </div>
+                <button type="button" class="btn btn-sm btn-outline-warning mt-2" id="add-imaging-btn">
+                    <i class="bi bi-plus-circle"></i> Add Another Image Request
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="submit-imaging-orders-btn">Order Imaging</button>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Scan Modal -->
-<div class="modal fade" id="scanModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Order Scan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="scanForm">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Scan Category</label>
-                        <select class="form-control" id="scanCategory" onchange="loadScanTemplates()">
-                            <option value="">Select category...</option>
-                            {% for category in scan_categories %}
-                            <option value="{{ category.id }}">{{ category.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Scan Type</label>
-                        <select class="form-control" name="template_id" id="scanTemplate" required>
-                            <option value="">Select scan...</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Clinical Indication</label>
-                        <textarea class="form-control" name="clinical_indication" rows="3" placeholder="Why is this scan being ordered?"></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Special Instructions</label>
-                        <textarea class="form-control" name="special_instructions" rows="2" placeholder="Any special instructions..."></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning">Order Scan</button>
-                </div>
-            </form>
+<template id="lab-test-row-template">
+    <div class="row g-2 align-items-center mb-3 order-row">
+        <div class="col-md-6 position-relative">
+            <input type="text" class="form-control search-input" placeholder="Search for a lab test...">
+            <input type="hidden" class="template-id-input" name="template_id">
+            <div class="search-results list-group position-absolute w-100" style="z-index: 1060;"></div>
+        </div>
+        <div class="col-md-5">
+            <input type="text" class="form-control instructions-input" name="special_instructions" placeholder="Clinical indication / Instructions (optional)">
+        </div>
+        <div class="col-md-1">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()">
+                <i class="bi bi-trash"></i>
+            </button>
         </div>
     </div>
-</div>
+</template>
+
+<template id="imaging-row-template">
+    <div class="row g-2 align-items-center mb-3 order-row">
+        <div class="col-md-6 position-relative">
+            <input type="text" class="form-control search-input" placeholder="Search for an imaging request...">
+            <input type="hidden" class="template-id-input" name="template_id">
+            <div class="search-results list-group position-absolute w-100" style="z-index: 1060;"></div>
+        </div>
+        <div class="col-md-5">
+            <input type="text" class="form-control indication-input" name="clinical_indication" placeholder="Clinical indication (optional)">
+        </div>
+        <div class="col-md-1">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    </div>
+</template>
 
 <script>
 const consultationId = {{ consultation.id }};
 let autoSaveTimer;
+
+// NEW: Variables for modal control
+let confirmationModal, messageModal;
+let confirmCallback = () => {};
+
+// NEW: Function to show the confirmation modal
+function showConfirmationModal(message, callback) {
+    document.getElementById('confirmationModalBody').textContent = message;
+    confirmCallback = callback;
+    confirmationModal.show();
+}
+
+let allergyModal;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize TinyMCE for text areas if available
     if (typeof tinymce !== 'undefined') {
         tinymce.init({
             selector: 'textarea[name="assessment"], textarea[name="treatment_plan"]',
-            height: 200,
-            plugins: 'lists',
-            toolbar: 'bold italic | bullist numlist | undo redo',
-            menubar: false
+            height: 250,
+             plugins: [
+            'lists',    // Keep existing list plugin
+            'table',    // Adds table creation features
+            'link',     // Adds ability to insert links
+            'image'     // Adds image upload/insert features
+        ],
+            toolbar: 'undo redo | styles | bold italic underline | bullist numlist | link | table',
+        menubar: false
+
         });
+    }
+
+    initializePrescriptionModal()
+    initializeOrderModals();
+
+   allergyModal = new bootstrap.Modal(document.getElementById('allergyModal')); // This was the missing line
+
+    // Setup for confirmation modal button
+    document.getElementById('confirmButton').addEventListener('click', function() {
+        if (typeof confirmCallback === 'function') {
+            confirmCallback();
+        }
+        confirmationModal.hide();
+    });
+
+    // Format the initial allergy text on page load
+    const allergyTextElem = document.getElementById('allergy-text');
+    const rawDetails = allergyTextElem.getAttribute('data-raw-details');
+
+    if (rawDetails && rawDetails.trim() !== '') {
+        const formattedDetails = rawDetails.trim().replace(/(\r\n|\n|\r)+/g, ', ');
+        allergyTextElem.innerHTML = `<strong>Allergies:</strong> ${formattedDetails}`;
+    } else {
+        allergyTextElem.textContent = 'No allergies set for this patient.';
     }
 
     // Auto-save every 30 seconds
     autoSaveTimer = setInterval(saveDraft, 30000);
+
+    // MODIFIED: Added modal initialization
+    confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+    messageModal = new bootstrap.Modal(document.getElementById('messageModal'));
+
+    document.getElementById('confirmButton').addEventListener('click', function() {
+        if (typeof confirmCallback === 'function') {
+            confirmCallback();
+        }
+        confirmationModal.hide();
+    });
 });
 
 // Consultation form submission
 document.getElementById('consultationForm').addEventListener('submit', function(e) {
     e.preventDefault();
-     tinymce.triggerSave();
+    if (typeof tinymce !== 'undefined') tinymce.triggerSave();
 
     const formData = new FormData(this);
     const submitBtn = this.querySelector('button[type="submit"]');
@@ -542,9 +712,7 @@ document.getElementById('consultationForm').addEventListener('submit', function(
 
     fetch(`/portal/consultation/ajax/save-consultation/${consultationId}/`, {
         method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken')
-        },
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
         body: formData
     })
     .then(response => response.json())
@@ -555,41 +723,101 @@ document.getElementById('consultationForm').addEventListener('submit', function(
             showAlert('Error: ' + (data.error || 'Failed to save'), 'danger');
         }
     })
-    .catch(error => {
-        showAlert('Error: ' + error.message, 'danger');
-    })
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'))
     .finally(() => {
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
     });
 });
 
-// Save draft function
-function saveDraft() {
-    const form = document.getElementById('consultationForm');
-    const formData = new FormData(form);
+function openAllergyModal() {
+    // Get the RAW, unformatted allergy details from the data attribute
+    const rawDetails = document.getElementById('allergy-text').getAttribute('data-raw-details');
+    const allergyTextarea = document.getElementById('allergyDetailsText');
 
-    fetch(`/portal/consultation/ajax/save-consultation/${consultationId}/`, {
+    // Populate the textarea with the raw details for editing
+    allergyTextarea.value = rawDetails;
+
+    allergyModal.show();
+}
+
+function saveAllergy() {
+    const patientId = {{ consultation.queue_entry.patient.id }};
+    const allergyDetails = document.getElementById('allergyDetailsText').value;
+    const csrfToken = getCookie('csrftoken'); // Assumes you have this function
+
+    const formData = new FormData();
+    formData.append('details', allergyDetails);
+
+    fetch(`/portal/consultation/ajax/update-allergy/${patientId}/`, {
         method: 'POST',
         headers: {
-            'X-CSRFToken': getCookie('csrftoken')
+            'X-CSRFToken': csrfToken
         },
         body: formData
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showAlert('Draft saved', 'info');
+            allergyModal.hide();
+            showAlert('Allergies updated successfully!', 'success');
+
+            // Update the display on the page dynamically
+            const allergyTextElem = document.getElementById('allergy-text');
+            const allergyContainer = document.getElementById('allergy-display-container');
+            const allergyBtn = document.getElementById('allergy-action-btn');
+
+            // --- START: MODIFIED LOGIC ---
+            if (data.details && data.details.trim() !== '') {
+                // Replace newlines with a comma and space for a single-line display
+                const formattedDetails = data.details.trim().replace(/(\r\n|\n|\r)+/g, ', ');
+                allergyTextElem.innerHTML = `<strong>Allergies:</strong> ${formattedDetails}`;
+            } else {
+                allergyTextElem.textContent = 'No allergies set for this patient.';
+            }
+            // --- END: MODIFIED LOGIC ---
+
+            const newTitle = `Last updated by ${data.updated_by} at ${data.updated_at}`;
+            allergyContainer.setAttribute('title', newTitle);
+            allergyBtn.textContent = 'Update';
+
+        } else {
+            showAlert('Error: Could not save allergies.', 'danger');
         }
+    })
+    .catch(error => {
+        showAlert('An unexpected network error occurred.', 'danger');
+        console.error('Allergy save error:', error);
+    });
+}
+
+// MODIFIED: Save draft function is now silent
+function saveDraft() {
+    if (typeof tinymce !== 'undefined') tinymce.triggerSave();
+    const form = document.getElementById('consultationForm');
+    const formData = new FormData(form);
+
+    fetch(`/portal/consultation/ajax/save-consultation/${consultationId}/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            console.error('Auto-save failed:', data.error);
+        }
+        // Success alert removed as requested
     })
     .catch(error => {
         console.error('Auto-save failed:', error);
     });
 }
 
-// Pause consultation
+// MODIFIED: Pause consultation now uses a modal
 function pauseConsultation() {
-    if (confirm('Are you sure you want to pause this consultation?')) {
+    const message = 'Are you sure you want to pause this consultation?';
+    showConfirmationModal(message, () => {
         fetch(`/portal/consultation/ajax/pause-consultation/${consultationId}/`, {
             method: 'POST',
             headers: {
@@ -600,21 +828,22 @@ function pauseConsultation() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showAlert('Consultation paused', 'info');
-                window.location.href = '/portal/consultation/doctor-dashboard';
+                showAlert('Consultation paused. Redirecting...', 'info');
+                setTimeout(() => {
+                    window.location.href = '{% url "doctor_dashboard" %}';
+                }, 1500);
             } else {
-                showAlert('Error: ' + (data.error || 'Failed to pause'), 'danger');
+                showAlert(data.error || 'Failed to pause', 'danger');
             }
         })
-        .catch(error => {
-            showAlert('Error: ' + error.message, 'danger');
-        });
-    }
+        .catch(error => showAlert('An unexpected error occurred.', 'danger'));
+    });
 }
 
-// Complete consultation
+// MODIFIED: Complete consultation now uses a modal
 function completeConsultation() {
-    if (confirm('Are you sure you want to complete this consultation?')) {
+    const message = 'Are you sure you want to complete this consultation?';
+    showConfirmationModal(message, () => {
         // First save current form data
         saveDraft();
 
@@ -630,18 +859,17 @@ function completeConsultation() {
             .then(data => {
                 if (data.success) {
                     showAlert('Consultation completed successfully', 'success');
+                    clearInterval(autoSaveTimer); // Stop auto-saving
                     setTimeout(() => {
-                        window.location.href = '/portal/consultation/doctor-dashboard';
+                        window.location.href = '{% url "doctor_dashboard" %}';
                     }, 1500);
                 } else {
-                    showAlert('Error: ' + (data.error || 'Failed to complete'), 'danger');
+                    showAlert(data.error || 'Failed to complete', 'danger');
                 }
             })
-            .catch(error => {
-                showAlert('Error: ' + error.message, 'danger');
-            });
-        }, 1000);
-    }
+            .catch(error => showAlert('An unexpected error occurred.', 'danger'));
+        }, 500);
+    });
 }
 
 // Drug prescription functions
@@ -651,7 +879,6 @@ function prescribeDrug() {
     modal.show();
 }
 
-// Drug search functionality
 document.getElementById('drugSearch').addEventListener('input', function() {
     const query = this.value;
     if (query.length >= 2) {
@@ -660,33 +887,25 @@ document.getElementById('drugSearch').addEventListener('input', function() {
         .then(data => {
             const select = document.getElementById('drugSelect');
             select.innerHTML = '<option value="">Select a drug...</option>';
-
             data.drugs.forEach(drug => {
                 const option = document.createElement('option');
                 option.value = drug.id;
                 option.textContent = `${drug.brand_name || drug.generic_name} - ${drug.formulation}`;
                 select.appendChild(option);
             });
-        })
-        .catch(error => {
-            console.error('Drug search failed:', error);
         });
     }
 });
 
-// Drug prescription form submission
 document.getElementById('drugPrescriptionForm').addEventListener('submit', function(e) {
     e.preventDefault();
-
     const formData = new FormData(this);
     formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
-    formData.append('consultation_id', consultationId); // <-- ADD THIS LINE
+    formData.append('consultation_id', consultationId);
 
     fetch('/portal/consultation/ajax/prescribe-drug/', {
         method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken')
-        },
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
         body: formData
     })
     .then(response => response.json())
@@ -694,63 +913,27 @@ document.getElementById('drugPrescriptionForm').addEventListener('submit', funct
         if (data.success) {
             bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
             showAlert('Drug prescribed successfully', 'success');
-            // Refresh prescriptions tab
-            location.reload();
+            setTimeout(() => location.reload(), 1000);
         } else {
-            showAlert('Error: ' + (data.error || 'Failed to prescribe'), 'danger');
+            showAlert(data.error || 'Failed to prescribe', 'danger');
         }
     })
-    .catch(error => {
-        showAlert('Error: ' + error.message, 'danger');
-    });
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
 });
 
 // Lab test functions
-function orderLabTest() {
-    const modal = new bootstrap.Modal(document.getElementById('labTestModal'));
-    document.getElementById('labTestForm').reset();
-    modal.show();
-}
 
-function loadTestTemplates() {
-    const categoryId = document.getElementById('testCategory').value;
-    const select = document.getElementById('testTemplate');
 
-    if (!categoryId) {
-        select.innerHTML = '<option value="">Select test...</option>';
-        return;
-    }
 
-    fetch(`/portal/consultation/ajax/lab-templates/?category_id=${categoryId}`)
-    .then(response => response.json())
-    .then(data => {
-        select.innerHTML = '<option value="">Select test...</option>';
-
-        data.templates.forEach(template => {
-            const option = document.createElement('option');
-            option.value = template.id;
-            option.textContent = `${template.name} - ₦${template.price}`;
-            select.appendChild(option);
-        });
-    })
-    .catch(error => {
-        console.error('Failed to load test templates:', error);
-    });
-}
-
-// Lab test form submission
 document.getElementById('labTestForm').addEventListener('submit', function(e) {
     e.preventDefault();
-
     const formData = new FormData(this);
     formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
-    formData.append('consultation_id', consultationId); // <-- ADD THIS LINE
+    formData.append('consultation_id', consultationId);
 
     fetch('/portal/consultation/ajax/order-lab-test/', {
         method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken')
-        },
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
         body: formData
     })
     .then(response => response.json())
@@ -758,62 +941,25 @@ document.getElementById('labTestForm').addEventListener('submit', function(e) {
         if (data.success) {
             bootstrap.Modal.getInstance(document.getElementById('labTestModal')).hide();
             showAlert('Lab test ordered successfully', 'success');
-            location.reload();
+            setTimeout(() => location.reload(), 1000);
         } else {
-            showAlert('Error: ' + (data.error || 'Failed to order test'), 'danger');
+            showAlert(data.error || 'Failed to order test', 'danger');
         }
     })
-    .catch(error => {
-        showAlert('Error: ' + error.message, 'danger');
-    });
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
 });
 
-// Scan functions
-function orderScan() {
-    const modal = new bootstrap.Modal(document.getElementById('scanModal'));
-    document.getElementById('scanForm').reset();
-    modal.show();
-}
 
-function loadScanTemplates() {
-    const categoryId = document.getElementById('scanCategory').value;
-    const select = document.getElementById('scanTemplate');
 
-    if (!categoryId) {
-        select.innerHTML = '<option value="">Select scan...</option>';
-        return;
-    }
-
-    fetch(`/portal/consultation/ajax/scan-templates/?category_id=${categoryId}`)
-    .then(response => response.json())
-    .then(data => {
-        select.innerHTML = '<option value="">Select scan...</option>';
-
-        data.templates.forEach(template => {
-            const option = document.createElement('option');
-            option.value = template.id;
-            option.textContent = `${template.name} - ₦${template.price}`;
-            select.appendChild(option);
-        });
-    })
-    .catch(error => {
-        console.error('Failed to load scan templates:', error);
-    });
-}
-
-// Scan form submission
 document.getElementById('scanForm').addEventListener('submit', function(e) {
     e.preventDefault();
-
     const formData = new FormData(this);
     formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
-    formData.append('consultation_id', consultationId); // <-- ADD THIS LINE
+    formData.append('consultation_id', consultationId);
 
     fetch('/portal/consultation/ajax/order-scan/', {
         method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken')
-        },
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
         body: formData
     })
     .then(response => response.json())
@@ -821,23 +967,17 @@ document.getElementById('scanForm').addEventListener('submit', function(e) {
         if (data.success) {
             bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
             showAlert('Scan ordered successfully', 'success');
-            location.reload();
+            setTimeout(() => location.reload(), 1000);
         } else {
-            showAlert('Error: ' + (data.error || 'Failed to order scan'), 'danger');
+            showAlert(data.error || 'Failed to order Image', 'danger');
         }
     })
-    .catch(error => {
-        showAlert('Error: ' + error.message, 'danger');
-    });
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
 });
 
 // View functions
 function viewPatientHistory() {
     window.open(`/portal/consultation/patient/${{ consultation.queue_entry.patient.id }}/history/`, '_blank');
-}
-
-function viewPrescription(prescriptionId) {
-    window.open(`/portal/consultation/prescription/${prescriptionId}/`, '_blank');
 }
 
 function viewTestResult(testId) {
@@ -864,22 +1004,429 @@ function getCookie(name) {
     return cookieValue;
 }
 
-function showAlert(message, type) {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
+// --- NEW COMPREHENSIVE SCRIPT FOR LAB & IMAGING ORDERS ---
 
-    const main = document.querySelector('.col-lg-12.grid-margin .card-body');
-    main.insertBefore(alertDiv, main.firstChild);
+function initializeOrderModals() {
+    // --- Lab Test Modal Setup ---
+    const labModalEl = document.getElementById('labTestModal');
+    const labQuickActionButton = document.querySelector('button[onclick="orderLabTest()"]');
+    const labTabButton = document.getElementById('order-test-in-tab-btn');
 
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.remove();
+    const openLabModalAction = (e) => {
+        e.preventDefault();
+        document.getElementById('lab-test-list').innerHTML = ''; // Clear previous
+        addOrderForm('lab');
+        new bootstrap.Modal(labModalEl).show();
+    };
+
+    if (labQuickActionButton) labQuickActionButton.addEventListener('click', openLabModalAction);
+    if (labTabButton) labTabButton.addEventListener('click', openLabModalAction);
+
+    document.getElementById('add-lab-test-btn').addEventListener('click', () => addOrderForm('lab'));
+    document.getElementById('submit-lab-orders-btn').addEventListener('click', () => submitOrders('lab'));
+    document.getElementById('testCategoryFilter').addEventListener('change', () => {
+        labModalEl.querySelectorAll('.search-input').forEach(input => {
+            if(input.value) input.dispatchEvent(new Event('input'));
+        });
+    });
+
+    // --- Imaging Modal Setup ---
+    const scanModalEl = document.getElementById('scanModal');
+    const scanQuickActionButton = document.querySelector('button[onclick="orderScan()"]');
+    const scanTabButton = document.getElementById('order-scan-in-tab-btn');
+
+    const openScanModalAction = (e) => {
+        e.preventDefault();
+        document.getElementById('imaging-list').innerHTML = ''; // Clear previous
+        addOrderForm('imaging');
+        new bootstrap.Modal(scanModalEl).show();
+    };
+
+    if (scanQuickActionButton) scanQuickActionButton.addEventListener('click', openScanModalAction);
+    if (scanTabButton) scanTabButton.addEventListener('click', openScanModalAction);
+
+    document.getElementById('add-imaging-btn').addEventListener('click', () => addOrderForm('imaging'));
+    document.getElementById('submit-imaging-orders-btn').addEventListener('click', () => submitOrders('imaging'));
+    document.getElementById('imagingCategoryFilter').addEventListener('change', () => {
+        scanModalEl.querySelectorAll('.search-input').forEach(input => {
+            if(input.value) input.dispatchEvent(new Event('input'));
+        });
+    });
+}
+
+function addOrderForm(type) {
+    const isLab = type === 'lab';
+    const templateId = isLab ? 'lab-test-row-template' : 'imaging-row-template';
+    const listId = isLab ? 'lab-test-list' : 'imaging-list';
+
+    const template = document.getElementById(templateId);
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    document.getElementById(listId).appendChild(clone);
+
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, type));
+}
+
+function handleOrderSearch(inputEl, type) {
+    const isLab = type === 'lab';
+    const query = inputEl.value;
+    const categoryId = document.getElementById(isLab ? 'testCategoryFilter' : 'imagingCategoryFilter').value;
+    const resultsContainer = inputEl.parentElement.querySelector('.search-results');
+    const searchUrl = isLab ? "{% url 'ajax_lab_templates_search' %}" : "{% url 'ajax_imaging_templates_search' %}";
+
+    if (query.length < 2) {
+        resultsContainer.innerHTML = '';
+        return;
+    }
+
+    fetch(`${searchUrl}?q=${encodeURIComponent(query)}&category_id=${categoryId}`)
+        .then(response => response.json())
+        .then(data => {
+            resultsContainer.innerHTML = '';
+            if (data.templates.length > 0) {
+                data.templates.forEach(template => {
+                    const item = document.createElement('a');
+                    item.href = '#';
+                    item.className = 'list-group-item list-group-item-action';
+                    item.textContent = `${template.name} - ₦${template.price}`;
+                    item.addEventListener('click', e => {
+                        e.preventDefault();
+                        const formRow = inputEl.closest('.order-row');
+                        formRow.querySelector('.search-input').value = template.name;
+                        formRow.querySelector('.template-id-input').value = template.id;
+                        resultsContainer.innerHTML = '';
+                    });
+                    resultsContainer.appendChild(item);
+                });
+            } else {
+                resultsContainer.innerHTML = '<span class="list-group-item">No results found</span>';
+            }
+        });
+}
+
+function submitOrders(type) {
+    const isLab = type === 'lab';
+    const modalId = isLab ? 'labTestModal' : 'scanModal';
+    const listId = isLab ? 'lab-test-list' : 'imaging-list';
+    const submitUrl = isLab ? "{% url 'order_multiple_lab_tests' %}" : "{% url 'order_multiple_imaging' %}";
+
+    const payload = {
+        patient_id: {{ consultation.queue_entry.patient.id }},
+        consultation_id: {{ consultation.id }},
+        orders: []
+    };
+
+    let isValid = true;
+    document.getElementById(listId).querySelectorAll('.order-row').forEach(row => {
+        const templateId = row.querySelector('.template-id-input').value;
+        if (!templateId) {
+            isValid = false;
+            row.querySelector('.search-input').classList.add('is-invalid');
+            return;
         }
-    }, 5000);
+
+        const orderData = { template_id: templateId };
+        if (isLab) {
+            orderData.instructions = row.querySelector('.instructions-input').value;
+        } else {
+            orderData.indication = row.querySelector('.indication-input').value;
+        }
+        payload.orders.push(orderData);
+    });
+
+    if (!isValid) {
+        showAlert('Please select a valid test/image for all rows.', 'warning');
+        return;
+    }
+    if (payload.orders.length === 0) {
+        showAlert(`Please add at least one ${isLab ? 'test' : 'image request'}.`, 'info');
+        return;
+    }
+
+    fetch(submitUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById(modalId)).hide();
+            showAlert(data.message, 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showAlert(data.error || 'An unknown error occurred.', 'danger');
+        }
+    })
+    .catch(error => showAlert('A network error occurred. Please try again.', 'danger'));
+}
+
+
+// --- NEW COMPREHENSIVE PRESCRIPTION SCRIPT ---
+
+// Call this function from your main DOMContentLoaded listener
+function initializePrescriptionModal() {
+    // Find both "Add Drug" buttons (from Quick Actions and the Prescriptions Tab)
+    const quickActionButton = document.querySelector('button[onclick="prescribeDrug()"]');
+    const tabButton = document.getElementById('add-drug-in-tab-btn');
+
+    const openModalAction = (e) => {
+        e.preventDefault();
+        const modal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+
+        // Clear any previous forms
+        document.getElementById('prescription-list').innerHTML = '';
+        addDrugForm(); // Add one empty form to start
+
+        modal.show();
+    };
+
+    // Attach the event listener to both buttons if they exist
+    if (quickActionButton) {
+        quickActionButton.addEventListener('click', openModalAction);
+    }
+    if (tabButton) {
+        tabButton.addEventListener('click', openModalAction);
+    }
+
+    // Button listeners within the modal
+    document.getElementById('add-drug-btn').addEventListener('click', addDrugForm);
+    document.getElementById('add-external-drug-btn').addEventListener('click', addExternalDrugForm);
+    document.getElementById('submit-prescriptions-btn').addEventListener('click', submitPrescriptions);
+}
+
+function addDrugForm() {
+    const template = document.getElementById('available-drug-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.prescription-row');
+    document.getElementById('prescription-list').appendChild(clone);
+
+    // Attach event listeners to the new row
+    const searchInput = formRow.querySelector('.drug-search-input');
+    const dosageInput = formRow.querySelector('.dosage-input');
+    const durationInput = formRow.querySelector('.duration-input');
+
+    searchInput.addEventListener('input', () => handleDrugSearch(searchInput));
+    dosageInput.addEventListener('input', () => calculateQuantity(formRow));
+    durationInput.addEventListener('input', () => calculateQuantity(formRow));
+}
+
+function addExternalDrugForm() {
+    const template = document.getElementById('external-drug-template');
+    const clone = template.content.cloneNode(true);
+    document.getElementById('prescription-list').appendChild(clone);
+}
+
+function removeDrugForm(buttonEl) {
+    buttonEl.closest('.prescription-row').remove();
+}
+
+function handleDrugSearch(inputEl) {
+    const query = inputEl.value;
+    const resultsContainer = inputEl.parentElement.querySelector('.search-results');
+
+    if (query.length < 2) {
+        resultsContainer.innerHTML = '';
+        return;
+    }
+
+    fetch(`/portal/consultation/ajax/search-drugs/?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+            resultsContainer.innerHTML = '';
+            if (data.drugs.length > 0) {
+                data.drugs.forEach(drug => {
+                    const item = document.createElement('a');
+                    item.href = '#';
+                    item.className = 'list-group-item list-group-item-action';
+                    item.textContent = `${drug.brand_name || drug.generic_name} (${drug.formulation}) - Stock: ${drug.pharmacy_quantity}`;
+
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const formRow = inputEl.closest('.prescription-row');
+                        formRow.querySelector('.drug-search-input').value = item.textContent;
+                        formRow.querySelector('.drug-id-input').value = drug.id;
+                        formRow.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
+                        resultsContainer.innerHTML = '';
+                        calculateQuantity(formRow); // Recalculate if needed
+                    });
+                    resultsContainer.appendChild(item);
+                });
+            } else {
+                resultsContainer.innerHTML = '<span class="list-group-item">No drugs found</span>';
+            }
+        });
+}
+
+function calculateQuantity(formRowEl) {
+    const dosageText = formRowEl.querySelector('.dosage-input').value.toLowerCase();
+    const durationText = formRowEl.querySelector('.duration-input').value.toLowerCase();
+    const packSize = parseInt(formRowEl.querySelector('.drug-pack-size-input')?.value || '1') || 1;
+    const quantityInput = formRowEl.querySelector('.quantity-input');
+
+    if (!quantityInput) return; // Only applies to available drugs with this input
+
+    let dailyDose = 0;
+    let durationDays = 0;
+
+    // 1. Parse Dosage
+    const doseMatch = dosageText.match(/^(\d+(\.\d+)?)/); // "2 tablets..." -> 2
+    if (doseMatch) {
+        const dose = parseFloat(doseMatch[1]);
+        let frequency = 1; // Default to once daily
+        if (dosageText.includes('twice') || dosageText.includes('bd')) frequency = 2;
+        else if (dosageText.includes('thrice') || dosageText.includes('tds')) frequency = 3;
+        else if (dosageText.includes('four times')) frequency = 4;
+
+        // Handle "x times daily"
+        const timesMatch = dosageText.match(/(\d+)\s*time/);
+        if (timesMatch) frequency = parseInt(timesMatch[1]);
+
+        // Handle "x/x/x" format
+        const slashMatch = dosageText.match(/\//g);
+        if (slashMatch) frequency = slashMatch.length + 1;
+
+        dailyDose = dose * frequency;
+    }
+
+    // 2. Parse Duration
+    const durationMatch = durationText.match(/^(\d+)/); // "7 days" -> 7
+    if (durationMatch) {
+        const num = parseInt(durationMatch[1]);
+        if (durationText.includes('week') || durationText.includes('w')) {
+            durationDays = num * 7;
+        } else if (durationText.includes('month') || durationText.includes('m')) {
+            durationDays = num * 30;
+        } else {
+            durationDays = num; // Assume days
+        }
+    }
+
+    // 3. Calculate and set quantity
+    if (dailyDose > 0 && durationDays > 0) {
+        const totalUnits = dailyDose * durationDays;
+        const requiredPacks = Math.ceil(totalUnits / packSize);
+        quantityInput.value = requiredPacks;
+    }
+}
+
+function submitPrescriptions() {
+    const submitBtn = document.getElementById('submit-prescriptions-btn');
+    const spinner = submitBtn.querySelector('.spinner-border');
+
+    const payload = {
+        patient_id: {{ consultation.queue_entry.patient.id }},
+        consultation_id: {{ consultation.id }},
+        available_drugs: [],
+        external_drugs: []
+    };
+
+    const forms = document.querySelectorAll('.prescription-row');
+    let isValid = true;
+
+    forms.forEach(form => {
+        const type = form.dataset.type;
+        if (type === 'available') {
+            const drugId = form.querySelector('.drug-id-input').value;
+            if (!drugId) {
+                isValid = false;
+                form.querySelector('.drug-search-input').classList.add('is-invalid');
+                return;
+            }
+            payload.available_drugs.push({
+                drug_id: drugId,
+                dosage: form.querySelector('.dosage-input').value,
+                duration: form.querySelector('.duration-input').value,
+                quantity: form.querySelector('.quantity-input').value,
+                notes: form.querySelector('.notes-input').value
+            });
+        } else if (type === 'external') {
+             const drugName = form.querySelector('.drug-name-input').value;
+             if (!drugName) {
+                isValid = false;
+                form.querySelector('.drug-name-input').classList.add('is-invalid');
+                return;
+             }
+             payload.external_drugs.push({
+                drug_name: drugName,
+                dosage: form.querySelector('.dosage-input').value,
+                duration: form.querySelector('.duration-input').value,
+                quantity: form.querySelector('.quantity-input').value,
+                notes: form.querySelector('.notes-input').value
+             });
+        }
+    });
+
+    if (!isValid) {
+        showAlert('Please select a drug for all inventory items or provide a name for unavailable drugs.', 'warning');
+        return;
+    }
+    if (payload.available_drugs.length === 0 && payload.external_drugs.length === 0) {
+        showAlert('Please add at least one medication to prescribe.', 'info');
+        return;
+    }
+
+    submitBtn.disabled = true;
+    spinner.classList.remove('d-none');
+
+    fetch("{% url 'prescribe_multiple' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+            showAlert(data.message, 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showAlert(data.error || 'An unknown error occurred.', 'danger');
+        }
+    })
+    .catch(error => showAlert('A network error occurred. Please try again.', 'danger'))
+    .finally(() => {
+        submitBtn.disabled = false;
+        spinner.classList.add('d-none');
+    });
+}
+
+
+
+// REPLACED: showAlert now uses the central modal
+function showAlert(message, type) {
+    const modalHeader = document.getElementById('messageModalHeader');
+    const modalTitle = document.getElementById('messageModalLabel');
+    document.getElementById('messageModalBody').textContent = message;
+
+    modalHeader.className = 'modal-header text-white'; // Reset class
+
+    switch (type) {
+        case 'success':
+            modalTitle.textContent = 'Success';
+            modalHeader.classList.add('bg-success');
+            break;
+        case 'danger':
+            modalTitle.textContent = 'Error';
+            modalHeader.classList.add('bg-danger');
+            break;
+        case 'warning':
+            modalTitle.textContent = 'Warning';
+            modalHeader.classList.add('bg-warning');
+            break;
+        default:
+            modalTitle.textContent = 'Information';
+            modalHeader.classList.add('bg-info');
+            break;
+    }
+    messageModal.show();
 }
 
 // Cleanup on page unload
@@ -889,4 +1436,58 @@ window.addEventListener('beforeunload', function() {
     }
 });
 </script>
+<div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="confirmationModalBody">
+        Are you sure you want to proceed?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmButton">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header text-white" id="messageModalHeader">
+        <h5 class="modal-title" id="messageModalLabel">Notification</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="messageModalBody">
+        </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="allergyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Set/Update Patient Allergies</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="allergyForm">
+                    <p class="text-muted">List all known allergies, each on a new line. If none, leave it blank.</p>
+                    <textarea id="allergyDetailsText" name="details" class="form-control" rows="5"></textarea>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveAllergy()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -130,7 +130,6 @@ class ScanTemplateModel(models.Model):
         return len([img for img in self.expected_images if img.get('required', True)])
 
 
-# Separate model for actual scan images
 class ScanImageModel(models.Model):
     """Individual images from scan results"""
     scan_result = models.ForeignKey(

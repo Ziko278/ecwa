@@ -138,6 +138,10 @@ class DrugModel(models.Model):
     pharmacy_quantity = models.FloatField(default=0, help_text="Quantity in pharmacy counter")
     minimum_stock_level = models.IntegerField(default=10)
     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
+    pack_size = models.PositiveIntegerField(
+        default=1, null=True, blank=True,
+        help_text="Number of units in a single sellable pack (e.g., 12 tablets per card)."
+    )
 
     # Status
     is_active = models.BooleanField(default=True)
@@ -548,6 +552,61 @@ class DrugOrderModel(models.Model):
     @property
     def remaining_to_dispense(self):
         return self.quantity_ordered - self.quantity_dispensed
+
+
+class ExternalPrescription(models.Model):
+    """
+    Represents a prescription for a drug not available in the local inventory.
+    """
+    patient = models.ForeignKey(
+        'patient.PatientModel',
+        on_delete=models.CASCADE,
+        related_name='external_prescriptions'
+    )
+    consultation = models.ForeignKey(
+        'consultation.ConsultationSessionModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='external_prescriptions',
+    )
+    admission = models.ForeignKey(
+        'inpatient.Admission',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='external_prescriptions'
+    )
+    surgery = models.ForeignKey(
+        'inpatient.Surgery',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='external_prescriptions'
+    )
+    ordered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='prescribed_external_drugs'
+    )
+
+    drug_name = models.CharField(max_length=255, help_text="Name of the prescribed drug not in inventory.")
+    dosage_instructions = models.TextField(blank=True)
+    duration = models.CharField(max_length=100, blank=True)
+    quantity = models.CharField(max_length=100, help_text="Manually entered quantity (e.g., '1 Bottle', '2 Packs').")
+    notes = models.TextField(blank=True)
+
+    ordered_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'external_prescriptions'
+        ordering = ['-ordered_at']
+        verbose_name = 'External Prescription'
+        verbose_name_plural = 'External Prescriptions'
+
+    def __str__(self):
+        return f"External Rx for {self.patient}: {self.drug_name}"
 
 
 class DispenseRecord(models.Model):

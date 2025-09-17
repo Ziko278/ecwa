@@ -69,4 +69,8 @@ urlpatterns = [
     path('surgeries/<int:pk>/add-service/', add_service_order_to_surgery, name='add_service_order_to_surgery'),
     path('surgeries/<int:pk>/remove-service/<int:order_id>/', remove_service_order_from_surgery, name='remove_service_order_from_surgery'),
 
+    path('ajax/surgery/prescribe-multiple/', surgery_prescribe_multiple, name='surgery_prescribe_multiple'),
+    path('ajax/surgery/order-lab-tests/', surgery_order_multiple_labs, name='surgery_order_multiple_labs'),
+    path('ajax/surgery/order-imaging/', surgery_order_multiple_imaging, name='surgery_order_multiple_imaging'),
+
 ]

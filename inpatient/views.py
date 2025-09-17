@@ -1,7 +1,10 @@
+import json
+
 from django.db import transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.views.decorators.http import require_POST
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
 from django.http import JsonResponse
 from django.urls import reverse, reverse_lazy
@@ -13,9 +16,9 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 import logging
 
-from laboratory.models import LabTestOrderModel, LabTestTemplateModel
-from pharmacy.models import DrugOrderModel, DrugModel
-from scan.models import ScanOrderModel, ScanTemplateModel
+from laboratory.models import LabTestOrderModel, LabTestTemplateModel, LabTestCategoryModel
+from pharmacy.models import DrugOrderModel, DrugModel, ExternalPrescription
+from scan.models import ScanOrderModel, ScanTemplateModel, ScanCategoryModel
 from .models import (
     InpatientSettings, Ward, Bed, SurgeryType, SurgeryDrug, SurgeryLab, SurgeryScan,
     Admission, Surgery
@@ -643,14 +646,19 @@ class SurgeryDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
         context = super().get_context_data(**kwargs)
         surgery = self.object
 
-        # CORRECTED: Fetch the actual live orders linked to this specific surgery instance,
-        # not the static items from the surgery type's package.
+        # Fetch existing orders related to the surgery
         context['drug_orders'] = surgery.drug_orders.all().select_related('drug', 'ordered_by')
         context['lab_orders'] = surgery.lab_test_orders.all().select_related('template', 'ordered_by')
         context['scan_orders'] = surgery.scan_orders.all().select_related('template', 'ordered_by')
 
-        # This part remains the same
+        # Form for updating surgery details
         context['update_form'] = SurgeryUpdateForm(instance=surgery)
+
+        # --- START: New context data for modals ---
+        # Add the categories needed to populate the filter dropdowns in the order modals.
+        context['lab_categories'] = LabTestCategoryModel.objects.all()
+        context['scan_categories'] = ScanCategoryModel.objects.all()
+        # --- END: New context data ---
 
         return context
 
@@ -1276,4 +1284,99 @@ def remove_service_order_from_surgery(request, pk, order_id):
 
     except Exception as e:
         logger.exception("Error removing service order from surgery")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def surgery_prescribe_multiple(request):
+    """Handles multi-drug prescription submissions linked to a surgery."""
+    try:
+        data = json.loads(request.body)
+        patient_id = data.get('patient_id')
+        surgery_id = data.get('surgery_id')
+
+        available_drugs = data.get('available_drugs', [])
+        external_drugs = data.get('external_drugs', [])
+
+        patient = get_object_or_404(PatientModel, id=patient_id)
+        surgery = get_object_or_404(Surgery, id=surgery_id)
+
+        with transaction.atomic():
+            # Process drugs from inventory
+            for drug_data in available_drugs:
+                drug = get_object_or_404(DrugModel, id=drug_data.get('drug_id'))
+                DrugOrderModel.objects.create(
+                    patient=patient, surgery=surgery, ordered_by=request.user, drug=drug,
+                    dosage_instructions=drug_data.get('dosage'), duration=drug_data.get('duration'),
+                    quantity_ordered=float(drug_data.get('quantity', 1)), notes=drug_data.get('notes'),
+                    status='pending',
+                )
+
+            # Process drugs not in inventory
+            for drug_data in external_drugs:
+                ExternalPrescription.objects.create(
+                    patient=patient, surgery=surgery, ordered_by=request.user,
+                    drug_name=drug_data.get('drug_name'), dosage_instructions=drug_data.get('dosage'),
+                    duration=drug_data.get('duration'), quantity=drug_data.get('quantity'),
+                    notes=drug_data.get('notes'),
+                )
+
+        return JsonResponse({'success': True, 'message': 'Prescriptions saved successfully.'})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def surgery_order_multiple_labs(request):
+    """Handles multi-lab test order submissions linked to a surgery."""
+    try:
+        data = json.loads(request.body)
+        patient_id = data.get('patient_id')
+        surgery_id = data.get('surgery_id')
+        orders = data.get('orders', [])
+
+        patient = get_object_or_404(PatientModel, id=patient_id)
+        surgery = get_object_or_404(Surgery, id=surgery_id)
+
+        with transaction.atomic():
+            for order_data in orders:
+                template = get_object_or_404(LabTestTemplateModel, id=order_data.get('template_id'))
+                LabTestOrderModel.objects.create(
+                    patient=patient, surgery=surgery, template=template, ordered_by=request.user,
+                    special_instructions=order_data.get('instructions', ''), source='doctor', status='pending',
+                )
+
+        return JsonResponse({'success': True, 'message': f'{len(orders)} lab test(s) ordered.'})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def surgery_order_multiple_imaging(request):
+    """Handles multi-imaging order submissions linked to a surgery."""
+    try:
+        data = json.loads(request.body)
+        patient_id = data.get('patient_id')
+        surgery_id = data.get('surgery_id')
+        orders = data.get('orders', [])
+
+        patient = get_object_or_404(PatientModel, id=patient_id)
+        surgery = get_object_or_404(Surgery, id=surgery_id)
+
+        with transaction.atomic():
+            for order_data in orders:
+                template = get_object_or_404(ScanTemplateModel, id=order_data.get('template_id'))
+                ScanOrderModel.objects.create(
+                    patient=patient, surgery=surgery, template=template, ordered_by=request.user,
+                    clinical_indication=order_data.get('indication', ''), status='pending',
+                )
+
+        return JsonResponse({'success': True, 'message': f'{len(orders)} imaging request(s) ordered.'})
+
+    except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)

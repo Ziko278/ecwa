@@ -111,6 +111,9 @@
                 </h4>
 
                 {% include 'admin_site/partials/error.html' %}
+                <div class="my-3">
+                    <input type="text" id="patientSearchInput" class="form-control" placeholder="🔍 Search by patient name or card number...">
+                </div>
 
                 <div class="table-responsive mt-3">
                     <table class="table table-hover">
@@ -262,11 +265,11 @@
                             <div class="row">
                                 <div class="col-6">
                                     <label class="form-label">BP Systolic<span style="color:red">*</span></label>
-                                    <input type="number" class="form-control" required name="blood_pressure_systolic" placeholder="120">
+                                    <input type="number" class="form-control"  name="blood_pressure_systolic" placeholder="120">
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label">BP Diastolic<span style="color:red">*</span></label>
-                                    <input type="number" class="form-control" required name="blood_pressure_diastolic" placeholder="80">
+                                    <input type="number" class="form-control" name="blood_pressure_diastolic" placeholder="80">
                                 </div>
                             </div>
                             <div class="mt-3">
@@ -366,6 +369,9 @@ let hasVital = false;
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     initializeCheckboxes();
+    scrollToFirstActionablePatient();
+     document.getElementById('patientSearchInput').addEventListener('input', filterPatientTable);
+
 });
 
 // Checkbox handling
@@ -428,7 +434,7 @@ function loadQuickActions() {
         actionSelect.innerHTML = '<option value="">Select Action...</option>';
 
         // Add available actions based on status
-        if (status === 'waiting_vitals' || status === 'vitals_done') {
+        if (status === 'waiting_vitals' || status === 'vitals_done' || status === 'with_doctor') {
             actionSelect.innerHTML += '<option value="update_vitals">Update Vitals</option>';
         }
         if (status === 'vitals_done' || status === 'consultation_paused') {
@@ -501,6 +507,68 @@ function executeQuickAction() {
             return;
         }
         changeDoctorForPatient(patientId, newDoctorId);
+    }
+}
+
+// This is the new function to find and scroll to the patient
+function scrollToFirstActionablePatient() {
+    // Find the first patient row that contains a button in its action cell.
+    // The :has() pseudo-class is perfect for this.
+    const firstActionableRow = document.querySelector('tr.queue-row:has(button)');
+
+    if (firstActionableRow) {
+        // Scroll that row into the middle of the viewport smoothly.
+        firstActionableRow.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
+
+        // (Optional) Add a temporary highlight to the row for better visibility.
+        firstActionableRow.classList.add('table-info'); // A temporary Bootstrap highlight class
+        setTimeout(() => {
+            firstActionableRow.classList.remove('table-info');
+        }, 3000); // Remove the highlight after 3 seconds
+    }
+}
+
+// New function to handle the live search
+function filterPatientTable() {
+    const filter = document.getElementById('patientSearchInput').value.toLowerCase();
+    const tableRows = document.querySelectorAll('tbody tr.queue-row');
+    let visibleRows = 0;
+
+    tableRows.forEach(row => {
+        // The second cell (index 1) contains the patient's name and card number
+        const patientCell = row.cells[1];
+        if (patientCell) {
+            const cellText = patientCell.textContent || patientCell.innerText;
+
+            if (cellText.toLowerCase().includes(filter)) {
+                row.style.display = ""; // Show the row
+                visibleRows++;
+            } else {
+                row.style.display = "none"; // Hide the row
+            }
+        }
+    });
+
+    // Optional: Show a "No Results" message
+    const tbody = document.querySelector('.table tbody');
+    let noResultsRow = tbody.querySelector('.no-results');
+
+    // Remove existing "no results" message if any
+    if (noResultsRow) {
+        noResultsRow.remove();
+    }
+
+    // Add a "no results" message if no rows are visible and the table is not empty
+    if (visibleRows === 0 && tableRows.length > 0) {
+        noResultsRow = tbody.insertRow();
+        noResultsRow.className = 'no-results';
+        const cell = noResultsRow.insertCell();
+        cell.colSpan = 5; // Match the number of columns
+        cell.className = 'text-center text-muted py-4';
+        cell.textContent = 'No matching patients found.';
     }
 }
 
@@ -736,11 +804,11 @@ function showAlert(message, type) {
     }, 5000);
 }
 
-// Auto-refresh every 45 seconds
+// Auto-refresh every 60 seconds
 setInterval(() => {
     if (!document.querySelector('.modal.show')) {
         location.reload();
     }
-}, 45000);
+}, 60000);
 </script>
 {% endblock %}

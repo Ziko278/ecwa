@@ -1,0 +1,154 @@
+{% for consultation in consultations_page %}
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">
+            Consultation Date: {{ consultation.created_at|date:"F d, Y @ P" }}
+        </h5>
+        <small class="text-muted">
+            Consultant: {{ consultation.queue_entry.consultant.staff|title }}
+        </small>
+    </div>
+    <div class="card-body">
+
+        {% with vitals=consultation.queue_entry.vitals %}
+            {% if vitals %}
+            <div class="mb-4">
+                <h6 class="text-primary">Vitals Recorded</h6>
+                <div class="row">
+                    <div class="col-6 col-md-3 mb-2">
+                        <small class="text-muted">Blood Pressure</small><br>
+                        <strong>{{ vitals.blood_pressure|default:"-- " }}</strong>
+                    </div>
+                    <div class="col-6 col-md-3 mb-2">
+                        <small class="text-muted">Pulse Rate</small><br>
+                        <strong>{{ vitals.pulse_rate|default:"--" }} bpm</strong>
+                    </div>
+                    <div class="col-6 col-md-3 mb-2">
+                        <small class="text-muted">Temperature</small><br>
+                        <strong>{{ vitals.temperature|default:"--" }} °C</strong>
+                    </div>
+                    <div class="col-6 col-md-3 mb-2">
+                        <small class="text-muted">SpO2</small><br>
+                        <strong>{{ vitals.oxygen_saturation|default:"--" }} %</strong>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        {% endwith %}
+        
+        <div class="mb-4">
+            <h6 class="text-primary">Clinical Notes</h6>
+            <p><strong>Chief Complaint:</strong> {{ consultation.chief_complaint|default:"N/A" }}</p>
+            <p><strong>Diagnosis:</strong> {{ consultation.diagnosis|default:"N/A" }}</p>
+            <div class="border rounded p-3">
+                <p><strong>Assessment:</strong></p>
+                {{ consultation.assessment|safe|linebreaks }}
+            </div>
+        </div>
+
+
+        {% with all_prescriptions=consultation.drug_consultation_order.all external_prescriptions=consultation.external_prescriptions.all %}
+            {% if all_prescriptions or external_prescriptions %}
+                <div class="mb-4">
+                    <h6 class="text-primary">Prescriptions</h6>
+                    <ul class="list-group">
+                        {% for rx in all_prescriptions %}
+                            <li class="list-group-item">
+                                <strong>{{ rx.drug.brand_name|default:rx.drug.generic_name }}</strong>
+                                <small class="d-block text-muted">{{ rx.dosage_instructions }} | Duration: {{ rx.duration }}</small>
+                                <small>Qty Ordered: {{ rx.quantity_ordered }} | Qty Dispensed: {{ rx.quantity_dispensed }}</small>
+                            </li>
+                        {% endfor %}
+                        {% for rx in external_prescriptions %}
+                            <li class="list-group-item">
+                                <strong>{{ rx.drug_name }} (External)</strong>
+                                <small class="d-block text-muted">{{ rx.dosage_instructions }} | Duration: {{ rx.duration }}</small>
+                                <small>Qty: {{ rx.quantity }}</small>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% if consultation.lab_consultation_order.all %}
+            <div class="mb-4">
+                <h6 class="text-primary">Lab Tests</h6>
+                {% for test_order in consultation.lab_consultation_order.all %}
+                    <div class="border rounded p-3 mb-2">
+                        <strong>{{ test_order.template.name }}</strong> - 
+                        <span class="badge bg-secondary">{{ test_order.get_status_display }}</span>
+                        
+                        {% if test_order.status == 'completed' and test_order.result %}
+                            <div class="mt-3">
+                                <table class="table table-bordered table-sm">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Parameter</th>
+                                            <th>Result</th>
+                                            <th>Unit</th>
+                                            <th>Normal Range</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for result_item in test_order.result.results_data.results %}
+                                            <tr>
+                                                <td>{{ result_item.parameter_name }}</td>
+                                                <td class="fw-bold">{{ result_item.value }}</td>
+                                                <td>{{ result_item.unit|default:"-" }}</td>
+                                                <td>{{ result_item.normal_range|default:"-" }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                                {% if test_order.result.technician_comments %}
+                                    <p class="mb-1 mt-2"><small><strong>Technician Comments:</strong> {{ test_order.result.technician_comments }}</small></p>
+                                {% endif %}
+                                {% if test_order.result.pathologist_comments %}
+                                    <p class="mb-0"><small><strong>Pathologist Comments:</strong> {{ test_order.result.pathologist_comments }}</small></p>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% if consultation.scan_consultation_order.all %}
+            <div>
+                <h6 class="text-primary">Imaging</h6>
+                {% for scan_order in consultation.scan_consultation_order.all %}
+                    <div class="border rounded p-3 mb-2">
+                        <strong>{{ scan_order.template.name }}</strong> - 
+                        <span class="badge bg-secondary">{{ scan_order.get_status_display }}</span>
+                        
+                        {% if scan_order.status == 'completed' and scan_order.result %}
+                            <div class="mt-3">
+                                {% with result=scan_order.result %}
+                                    {% if result.findings %}<p class="mb-1"><strong>Findings:</strong> {{ result.findings|linebreaksbr }}</p>{% endif %}
+                                    {% if result.impression %}<p class="mb-1"><strong>Impression:</strong> {{ result.impression|linebreaksbr }}</p>{% endif %}
+                                    {% if result.recommendations %}<p class="mb-1"><strong>Recommendations:</strong> {{ result.recommendations|linebreaksbr }}</p>{% endif %}
+                                    
+                                    {% if result.images.all %}
+                                        <p class="mt-2 mb-1"><strong>Images:</strong></p>
+                                        <ul class="list-inline">
+                                            {% for img in result.images.all %}
+                                                <li class="list-inline-item">
+                                                    <a href="{{ img.image.url }}" target="_blank" class="btn btn-sm btn-outline-info">
+                                                        View Image {{ forloop.counter }}
+                                                    </a>
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% endif %}
+                                {% endwith %}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endfor %}

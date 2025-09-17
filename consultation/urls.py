@@ -160,6 +160,9 @@ urlpatterns = [
     path('consultation/<int:consultation_id>/', consultation_page, name='consultation_page'),
     path('consultations/history/', consultation_history, name='consultation_history'),
 
+    path('patient/<int:patient_id>/history/', patient_history_view, name='patient_history_view'),
+    path('ajax/patient/<int:patient_id>/history-page/', patient_history_ajax, name='patient_history_ajax'),
+
     # AJAX endpoints for queue management
     path('ajax/call-next-patient/', ajax_call_next_patient, name='ajax_call_next_patient'),
     path('ajax/start-consultation/<int:queue_id>/', ajax_start_consultation, name='ajax_start_consultation'),
@@ -187,6 +190,14 @@ urlpatterns = [
     path('ajax/scan-templates/', ajax_scan_templates, name='ajax_scan_templates'),
     path('ajax/order-scan/', ajax_order_scan, name='ajax_order_scan'),
 
+    path('ajax/consultation/search-lab-templates/', ajax_lab_templates_search, name='ajax_lab_templates_search'),
+    path('ajax/consultation/search-imaging-templates/', ajax_imaging_templates_search,
+         name='ajax_imaging_templates_search'),
+
+    # Add new multi-order URLs
+    path('ajax/consultation/order-lab-tests/', ajax_order_multiple_lab_tests, name='order_multiple_lab_tests'),
+    path('ajax/consultation/order-imaging/', ajax_order_multiple_imaging, name='order_multiple_imaging'),
+
     # Additional views for patient history, prescriptions, etc.
     path('patient/<int:patient_id>/history/', patient_history, name='patient_history'),
     path('patient/<int:patient_id>/prescriptions/', patient_prescriptions, name='patient_prescriptions'),
@@ -200,5 +211,7 @@ urlpatterns = [
     # New consultation (for walk-ins or special cases)
     path('consultation/new/', new_consultation, name='new_consultation'),
     path('ajax/create-consultation/', ajax_create_consultation, name='ajax_create_consultation'),
+    path('ajax/update-allergy/<int:patient_id>/', update_patient_allergy, name='update_patient_allergy'),
+    path('ajax/prescribe-multiple/', prescribe_multiple_view, name='prescribe_multiple'),
 
 ]

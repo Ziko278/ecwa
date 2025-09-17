@@ -72,9 +72,7 @@
                     <button class="btn btn-primary" onclick="viewConsultationHistory()">
                         <i class="bi bi-clock-history"></i> View History
                     </button>
-                    <button class="btn btn-outline-info" onclick="createNewConsultation()">
-                        <i class="bi bi-plus-circle"></i> New Consultation
-                    </button>
+
                 </div>
 
                 <hr class="my-4">
@@ -108,6 +106,9 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">My Patient Queue</h5>
+                 <div class="my-3">
+                    <input type="text" id="queueSearchInput" class="form-control" placeholder="🔍 Search by patient name or ID...">
+                </div>
 
                 <div class="table-responsive">
                     <table class="table table-hover">
@@ -157,20 +158,20 @@
                                             <button class="btn btn-sm btn-success" onclick="startConsultation({{ queue.id }})">
                                                 <i class="bi bi-play"></i> Start
                                             </button>
-                                        {% elif queue.status == 'with_doctor' %}
+                                        {% elif queue.status == 'with_doctor' or queue.status == 'consultation_completed' %}
                                             <button class="btn btn-sm btn-primary" onclick="openConsultation({{ queue.consultation.id }})">
                                                 <i class="bi bi-file-medical"></i> Open
                                             </button>
+                                            {% if queue.status == 'with_doctor' %} {# Keep pause button only for active sessions #}
                                             <button class="btn btn-sm btn-warning" onclick="pauseConsultation({{ queue.consultation.id }})">
                                                 <i class="bi bi-pause"></i>
                                             </button>
+                                            {% endif %}
                                         {% elif queue.status == 'consultation_paused' %}
                                             <button class="btn btn-sm btn-info" onclick="resumeConsultation({{ queue.consultation.id }})">
                                                 <i class="bi bi-play"></i> Resume
                                             </button>
                                         {% endif %}
-
-
                                     </div>
                                 </td>
                             </tr>
@@ -195,7 +196,7 @@
     <div class="col-lg-12 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Recent Consultations (Last 7 Days)</h5>
+                <h5 class="card-title">Completed Consultations (Today)</h5>
                 <div class="table-responsive">
                     <table class="table table-striped">
                         <thead>
@@ -245,17 +246,73 @@
 </div>
 
 <script>
-// Global variables
-let currentConsultationId = null;
+// --- START: NEW MODAL LOGIC ---
+let confirmationModal, messageModal;
+let confirmCallback = () => {};
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Auto-refresh every 60 seconds
-    setInterval(() => {
-        if (!document.querySelector('.modal.show')) {
-            location.reload();
+    // Initialize Bootstrap modals
+    confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+    messageModal = new bootstrap.Modal(document.getElementById('messageModal'));
+
+    // Set up a single click listener for the confirm button
+    document.getElementById('confirmButton').addEventListener('click', function() {
+        if (typeof confirmCallback === 'function') {
+            confirmCallback();
         }
-    }, 60000);
+        confirmationModal.hide();
+    });
+
+    document.getElementById('queueSearchInput').addEventListener('input', filterQueueTable);
+    scrollToFirstActionablePatient();
 });
+
+/**
+ * Shows a confirmation modal and sets a callback for the confirm action.
+ * @param {string} message The question to ask the user.
+ * @param {function} callback The function to execute if the user confirms.
+ */
+function showConfirmationModal(message, callback) {
+    document.getElementById('confirmationModalBody').textContent = message;
+    confirmCallback = callback;
+    confirmationModal.show();
+}
+
+/**
+ * Replaces the old alert system with a central modal.
+ * @param {string} message The message to display.
+ * @param {string} type The type of message (e.g., 'success', 'danger', 'info').
+ */
+function showAlert(message, type) {
+    const modalHeader = document.getElementById('messageModalHeader');
+    const modalTitle = document.getElementById('messageModalLabel');
+    document.getElementById('messageModalBody').textContent = message;
+
+    // Reset header class
+    modalHeader.className = 'modal-header text-white';
+
+    switch (type) {
+        case 'success':
+            modalTitle.textContent = 'Success';
+            modalHeader.classList.add('bg-success');
+            break;
+        case 'danger':
+            modalTitle.textContent = 'Error';
+            modalHeader.classList.add('bg-danger');
+            break;
+        case 'warning':
+            modalTitle.textContent = 'Warning';
+            modalHeader.classList.add('bg-warning');
+            break;
+        default:
+            modalTitle.textContent = 'Information';
+            modalHeader.classList.add('bg-info');
+            break;
+    }
+    messageModal.show();
+}
+// --- END: NEW MODAL LOGIC ---
+
 
 // Call next patient
 function callNextPatient() {
@@ -271,19 +328,79 @@ function callNextPatient() {
         if (data.success) {
             showAlert(data.message, 'success');
             if (data.consultation_id) {
-                // Open consultation immediately
-                window.location.href = `/portal/consultation/consultation/${data.consultation_id}/`;
-
+                // Using a timeout to allow the user to read the success message before redirecting
+                setTimeout(() => {
+                   window.location.href = `/portal/consultation/consultation/${data.consultation_id}/`;
+                }, 1500);
             } else {
-                location.reload();
+                setTimeout(() => location.reload(), 1500);
             }
         } else {
-            showAlert('Error: ' + (data.error || 'No patients available'), 'warning');
+            showAlert(data.error || 'No patients available', 'warning');
         }
     })
-    .catch(error => {
-        showAlert('Error: ' + error.message, 'danger');
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
+}
+
+/**
+ * NEW: Filters the patient queue table based on user input.
+ */
+function filterQueueTable() {
+    const filter = document.getElementById('queueSearchInput').value.toLowerCase();
+    const tableBody = document.querySelector('.table-responsive tbody');
+    const tableRows = tableBody.querySelectorAll('tr.queue-row');
+    let visibleRows = 0;
+
+    tableRows.forEach(row => {
+        const patientCell = row.cells[0]; // First cell contains name and ID
+        if (patientCell) {
+            const cellText = patientCell.textContent || patientCell.innerText;
+
+            if (cellText.toLowerCase().includes(filter)) {
+                row.style.display = ""; // Show the row
+                visibleRows++;
+            } else {
+                row.style.display = "none"; // Hide the row
+            }
+        }
     });
+
+    // Handle the "No Results" message
+    let noResultsRow = tableBody.querySelector('.no-results');
+    if (noResultsRow) {
+        noResultsRow.remove();
+    }
+    if (visibleRows === 0 && tableRows.length > 0) {
+        noResultsRow = tableBody.insertRow();
+        noResultsRow.className = 'no-results';
+        const cell = noResultsRow.insertCell();
+        cell.colSpan = 4; // Match the number of columns in your table
+        cell.className = 'text-center text-muted py-4';
+        cell.textContent = 'No matching patients found.';
+    }
+}
+
+/**
+ * NEW: Scrolls the view to the first patient who is not yet completed.
+ */
+function scrollToFirstActionablePatient() {
+    const tableRows = document.querySelectorAll('.table-responsive tbody tr.queue-row');
+    for (const row of tableRows) {
+        const statusBadge = row.cells[1]?.querySelector('.badge');
+        // Find the first patient whose status is NOT "Completed"
+        if (statusBadge && statusBadge.textContent.trim().toLowerCase() !== 'completed') {
+            row.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+            // Add a temporary highlight for better visibility
+            row.classList.add('table-info');
+            setTimeout(() => {
+                row.classList.remove('table-info');
+            }, 3000);
+            break; // Stop after finding and scrolling to the first one
+        }
+    }
 }
 
 // Start consultation
@@ -298,28 +415,23 @@ function startConsultation(queueId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showAlert('Consultation started', 'success');
-            // Redirect to consultation page
             window.location.href = `/portal/consultation/consultation/${data.consultation_id}/`;
         } else {
-            showAlert('Error: ' + (data.error || 'Failed to start consultation'), 'danger');
+            showAlert(data.error || 'Failed to start consultation', 'danger');
         }
     })
-    .catch(error => {
-        showAlert('Error: ' + error.message, 'danger');
-    });
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
 }
 
 // Open existing consultation
-function openConsultation(queueId) {
-
-    window.location.href = `/portal/consultation/consultation/${queueId}/`;
-
+function openConsultation(consultationId) {
+    window.location.href = `/portal/consultation/consultation/${consultationId}/`;
 }
 
-// Pause consultation
+// Pause consultation - NOW USES MODAL
 function pauseConsultation(consultationId) {
-    if (confirm('Are you sure you want to pause this consultation?')) {
+    const message = 'Are you sure you want to pause this consultation?';
+    showConfirmationModal(message, () => {
         fetch(`/portal/consultation/ajax/pause-consultation/${consultationId}/`, {
             method: 'POST',
             headers: {
@@ -330,16 +442,14 @@ function pauseConsultation(consultationId) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showAlert('Consultation paused', 'info');
-                location.reload();
+                showAlert('Consultation paused.', 'info');
+                setTimeout(() => location.reload(), 1500);
             } else {
-                showAlert('Error: ' + (data.error || 'Failed to pause'), 'danger');
+                showAlert(data.error || 'Failed to pause consultation', 'danger');
             }
         })
-        .catch(error => {
-            showAlert('Error: ' + error.message, 'danger');
-        });
-    }
+        .catch(error => showAlert('An unexpected error occurred.', 'danger'));
+    });
 }
 
 // Resume consultation
@@ -354,20 +464,18 @@ function resumeConsultation(consultationId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showAlert('Consultation resumed', 'success');
             window.location.href = `/portal/consultation/consultation/${consultationId}/`;
         } else {
-            showAlert('Error: ' + (data.error || 'Failed to resume'), 'danger');
+            showAlert(data.error || 'Failed to resume consultation', 'danger');
         }
     })
-    .catch(error => {
-        showAlert('Error: ' + error.message, 'danger');
-    });
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
 }
 
-// Complete consultation
+// Complete consultation - NOW USES MODAL
 function completeConsultation(consultationId) {
-    if (confirm('Are you sure you want to complete this consultation?')) {
+    const message = 'Are you sure you want to complete this consultation?';
+    showConfirmationModal(message, () => {
         fetch(`/portal/consultation/ajax/complete-consultation/${consultationId}/`, {
             method: 'POST',
             headers: {
@@ -378,40 +486,34 @@ function completeConsultation(consultationId) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showAlert('Consultation completed successfully', 'success');
-                location.reload();
+                showAlert('Consultation completed successfully.', 'success');
+                setTimeout(() => location.reload(), 1500);
             } else {
-                showAlert('Error: ' + (data.error || 'Failed to complete'), 'danger');
+                showAlert(data.error || 'Failed to complete consultation', 'danger');
             }
         })
-        .catch(error => {
-            showAlert('Error: ' + error.message, 'danger');
-        });
-    }
+        .catch(error => showAlert('An unexpected error occurred.', 'danger'));
+    });
 }
 
-// View consultation history
+// Other functions
 function viewConsultationHistory() {
     window.location.href = '/portal/consultation/consultations/history/';
 }
 
-// Create new consultation
 function createNewConsultation() {
     window.location.href = '/portal/consultation/consultation/new/';
 }
 
-// View consultation detail
 function viewConsultationDetail(consultationId) {
     window.location.href = `/portal/consultation/consultation/${consultationId}/view/`;
 }
 
-// View patient profile
 function viewPatientProfile(patientId) {
     window.open(`/patient/${patientId}/detail/`, '_blank');
-
 }
 
-// Utility functions
+// Utility function
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
@@ -426,23 +528,38 @@ function getCookie(name) {
     }
     return cookieValue;
 }
-
-function showAlert(message, type) {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-
-    const main = document.querySelector('.col-lg-12.grid-margin .card-body');
-    main.insertBefore(alertDiv, main.firstChild);
-
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.remove();
-        }
-    }, 5000);
-}
 </script>
+<div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="confirmationModalBody">
+        Are you sure you want to proceed?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmButton">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header text-white" id="messageModalHeader">
+        <h5 class="modal-title" id="messageModalLabel">Notification</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="messageModalBody">
+        </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

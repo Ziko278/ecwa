@@ -285,8 +285,8 @@ class PatientVitalsModel(models.Model):
 
     # Basic vitals
     temperature = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True, help_text="°C")
-    blood_pressure_systolic = models.IntegerField()
-    blood_pressure_diastolic = models.IntegerField()
+    blood_pressure_systolic = models.IntegerField(null=True, blank=True)
+    blood_pressure_diastolic = models.IntegerField(null=True, blank=True)
     pulse_rate = models.IntegerField(null=True, blank=True, help_text="BPM")
     respiratory_rate = models.IntegerField(null=True, blank=True, help_text="per minute")
     oxygen_saturation = models.IntegerField(null=True, blank=True, help_text="SpO2 %")
@@ -517,3 +517,26 @@ class ConsultationSettingsModel(models.Model):
 
     def __str__(self):
         return "Consultation Settings"
+
+
+class Allergy(models.Model):
+    patient = models.OneToOneField(
+        'patient.PatientModel',
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name='allergy_profile'
+    )
+    details = models.TextField(
+        blank=True,
+        help_text="Details of the patient's allergies."
+    )
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Allergy profile for {self.patient}"
