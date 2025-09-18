@@ -1,0 +1,29 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Miscellaneous Service</h4>
+            <hr>
+            <p>You are about to permanently delete the following service:</p>
+            <ul>
+                <li><strong>Service Name:</strong> <i>{{ service.name|upper }}</i></li>
+                <li><strong>Category:</strong> <i>{{ service.get_category_display }}</i></li>
+            </ul>
+
+            <div class="alert alert-danger">
+                <p class="fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Warning: This action cannot be undone.</p>
+                <p class="mb-0">Deleting this service may affect historical financial records that are linked to it.</p>
+            </div>
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success">Proceed With Deletion</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'other_payment_service_detail' service.pk %}">Cancel</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

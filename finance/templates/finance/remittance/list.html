@@ -28,7 +28,7 @@
                                 <option value="">All Staff</option>
                                 {% for staff in staff_list %}
                                 <option value="{{ staff.id }}" {% if request.GET.staff_id|add:"0" == staff.id %}selected{% endif %}>
-                                    {{ staff.get_full_name|title }}
+                                    {{ staff.user_staff_profile|title }}
                                 </option>
                                 {% endfor %}
                             </select>
@@ -67,7 +67,7 @@
                     {% for remit in remittance_list %}
                     <tr>
                         <td><strong>{{ remit.remittance_id }}</strong></td>
-                        <td>{{ remit.remitted_by.get_full_name|title }}</td>
+                        <td style="min-width:150px">{{ remit.remitted_by.user_staff_profile.staff|title }}</td>
                         <td class="text-end">₦{{ remit.total_cash_expected|intcomma }}</td>
                         <td class="text-end">₦{{ remit.amount_remitted_cash|intcomma }}</td>
                         <td class="text-end {% if remit.cash_discrepancy != 0 %}text-danger fw-bold{% endif %}">

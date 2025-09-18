@@ -1,0 +1,65 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="col-12">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Actions</h5>
+                <div>
+                    <a href="{% url 'other_payment_service_list' %}" class="btn btn-secondary btn-sm"><i class="bi bi-list-ul"></i> Back to List</a>
+                    <a href="{% url 'other_payment_service_edit' service.pk %}" class="btn btn-warning btn-sm"><i class="bi bi-pencil-square"></i> Edit</a>
+                    <a href="{% url 'other_payment_service_delete' service.pk %}" class="btn btn-danger btn-sm"><i class="bi bi-trash"></i> Delete</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Service Details: {{ service.name|title }}</h5>
+            <hr>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <dl class="row">
+                        <dt class="col-sm-4">Service Name</dt>
+                        <dd class="col-sm-8">{{ service.name }}</dd>
+
+                        <dt class="col-sm-4">Category</dt>
+                        <dd class="col-sm-8">{{ service.get_category_display }}</dd>
+
+                        <dt class="col-sm-4">Default Amount</dt>
+                        <dd class="col-sm-8">{% if service.default_amount %}₦{{ service.default_amount|floatformat:2|intcomma }}{% else %}N/A{% endif %}</dd>
+                    </dl>
+                </div>
+                <div class="col-md-6">
+                     <dl class="row">
+                        <dt class="col-sm-4">Amount is Fixed</dt>
+                        <dd class="col-sm-8">{% if service.is_fixed_amount %}Yes{% else %}No{% endif %}</dd>
+
+                        <dt class="col-sm-4">Status</dt>
+                        <dd class="col-sm-8">
+                            {% if service.is_active %}
+                                <span class="badge bg-success">Active</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </dd>
+
+                        <dt class="col-sm-4">Created By</dt>
+                        <dd class="col-sm-8">{{ service.created_by.user_staff_profile.staff|default:service.created_by.username|default:"N/A" }}</dd>
+                    </dl>
+                </div>
+                <div class="col-12">
+                    <dt>Description</dt>
+                    <dd>{{ service.description|linebreaksbr|default:"No description provided." }}</dd>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

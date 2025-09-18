@@ -1,0 +1,183 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="container mt-4">
+  <div class="card">
+    <div class="card-header"><h4><i class="bi bi-wallet2"></i> Other Payments</h4></div>
+    <div class="card-body">
+      <div id="verify-section" class="mb-4">
+        <form id="patient-verify-form" class="row g-2">
+          <div class="col-md-8"><label class="form-label">Patient Card Number</label><input id="card_number" class="form-control form-control-lg" required></div>
+          <div class="col-md-4 d-flex align-items-end"><button type="submit" id="btn-verify" class="btn btn-primary w-100"><i class="bi bi-search"></i> Verify</button></div>
+        </form>
+      </div>
+
+      <form id="payment-form" class="hidden" method="POST">
+        {% csrf_token %}
+        <div id="patient-summary" class="mb-3"></div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="id_other_service" class="form-label">Service</label>
+
+                {# We build the dropdown manually and embed data directly into the options #}
+                <select name="other_service" id="id_other_service" class="form-select form-select-lg" required>
+                    <option value="">--- Select a Service ---</option>
+                    {% for service in services %}
+                        <option value="{{ service.pk }}"
+                                data-amount="{{ service.default_amount|default_if_none:'' }}"
+                                data-fixed="{{ service.is_fixed_amount|yesno:'true,false' }}">
+                            {{ service.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Amount (₦)</label>
+                {{ form.amount }}
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Payment Method</label>
+                {{ form.payment_method }}
+            </div>
+        </div>
+        <div class="d-flex justify-content-between">
+          <div id="selected-summary" class="align-self-center text-muted">Select a service to proceed</div>
+          <div>
+            <button id="btn-back" type="button" class="btn btn-secondary me-2">Back</button>
+            <button id="btn-pay" type="submit" class="btn btn-success" disabled>Pay From Wallet</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="notificationModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title" id="notificationModalTitle">Notification</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body" id="notificationModalBody"></div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const notificationModal = new bootstrap.Modal(document.getElementById('notificationModal'));
+    let currentPatient = null;
+    let walletBalance = 0;
+
+    const verifySection = document.getElementById('verify-section');
+    const paymentForm = document.getElementById('payment-form');
+    const patientSummary = document.getElementById('patient-summary');
+    const serviceSelect = document.getElementById('id_other_service');
+    const amountInput = document.getElementById('id_amount');
+    const summaryText = document.getElementById('selected-summary');
+    const payBtn = document.getElementById('btn-pay');
+
+    // --- HELPER FUNCTIONS ---
+    function showNotification(message, title = 'Notification', isError = false) {
+        document.getElementById('notificationModalTitle').textContent = title;
+        document.getElementById('notificationModalBody').innerHTML = message;
+        document.getElementById('notificationModalTitle').className = `modal-title ${isError ? 'text-danger' : 'text-success'}`;
+        notificationModal.show();
+    }
+
+    function formatFormErrors(errors) {
+        let errorHtml = '<ul class="list-unstyled mb-0">';
+        for (const field in errors) {
+            const fieldName = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const errorMessages = errors[field].map(e => `<li>${e}</li>`).join('');
+            errorHtml += `<li><strong>${fieldName}:</strong><ul>${errorMessages}</ul></li>`;
+        }
+        errorHtml += '</ul>';
+        return errorHtml;
+    }
+
+    function updateSummary() {
+        const amount = parseFloat(amountInput.value) || 0;
+        payBtn.disabled = true;
+
+        if (!serviceSelect.value) {
+            summaryText.textContent = 'Select a service to proceed';
+            return;
+        }
+        if (amount <= 0) {
+            summaryText.textContent = 'Please enter a valid amount.';
+            return;
+        }
+        if (amount > walletBalance) {
+            summaryText.innerHTML = `<span class="text-danger">Insufficient funds. Needs ₦${amount.toLocaleString()}.</span>`;
+        } else {
+            summaryText.textContent = `Ready to pay ₦${amount.toLocaleString()} from wallet.`;
+            payBtn.disabled = false;
+        }
+    }
+
+    // --- EVENT LISTENERS ---
+    document.getElementById('patient-verify-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const card = document.getElementById('card_number').value.trim();
+        fetch(`{% url 'finance_verify_patient_ajax' %}?card_number=${card}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) { throw new Error(data.error); }
+                currentPatient = data.patient;
+                walletBalance = data.wallet.balance;
+                patientSummary.innerHTML = `<div class="alert alert-success"><h5>${currentPatient.full_name}</h5><div><strong>Wallet:</strong> ${data.wallet.formatted_balance}</div></div>`;
+                verifySection.classList.add('hidden');
+                paymentForm.classList.remove('hidden');
+                updateSummary();
+            }).catch(err => showNotification(err.message, 'Verification Error', true));
+    });
+
+    serviceSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        if (!this.value) {
+            amountInput.value = '';
+            amountInput.readOnly = false;
+        } else {
+            const amount = selectedOption.dataset.amount;
+            const isFixed = selectedOption.dataset.fixed === 'true';
+            amountInput.value = amount;
+            amountInput.readOnly = isFixed;
+        }
+        updateSummary();
+    });
+
+    amountInput.addEventListener('input', updateSummary);
+
+    paymentForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.append('patient_id', currentPatient.id);
+
+        fetch(`{% url 'ajax_process_other_payment' %}`, {
+            method: 'POST',
+            body: formData,
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(data.message, 'Success');
+                setTimeout(() => { window.location.href = data.redirect_url; }, 1500);
+            } else {
+                const errorMessage = data.errors ? formatFormErrors(data.errors) : data.error;
+                throw new Error(errorMessage);
+            }
+        })
+        .catch(err => showNotification(err.message, 'Payment Failed', true));
+    });
+
+    document.getElementById('btn-back').addEventListener('click', () => {
+        paymentForm.classList.add('hidden');
+        verifySection.classList.remove('hidden');
+        document.getElementById('patient-verify-form').reset();
+    });
+});
+</script>
+{% endblock %}

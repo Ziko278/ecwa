@@ -1,22 +1,24 @@
 # views.py
+import calendar
 from datetime import timedelta, date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.models import User
 from django.contrib.messages.views import SuccessMessageMixin
+from django.core import serializers
 from django.db import transaction
 from django import forms
 from django.db.models.functions import TruncMonth
 from django.forms import modelformset_factory
 from django.shortcuts import redirect, get_object_or_404, render
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.timezone import now
 from django.views.decorators.http import require_http_methods
-from django.views.generic import CreateView, ListView, DetailView, UpdateView, DeleteView
+from django.views.generic import CreateView, ListView, DetailView, UpdateView, DeleteView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.db.models import Q, Sum, Avg, F, Count
+from django.db.models import Q, Sum, Avg, F, Count, ExpressionWrapper, DecimalField
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
@@ -26,11 +28,12 @@ from admin_site.models import SiteInfoModel
 from consultation.models import ConsultationFeeModel, SpecializationModel, PatientQueueModel
 from finance.forms import FinanceSettingForm, ExpenseCategoryForm, \
     SalaryStructureForm, StaffBankDetailForm, IncomeForm, IncomeCategoryForm, \
-    ExpenseForm, PaysheetRowForm, MoneyRemittanceForm
+    ExpenseForm, PaysheetRowForm, MoneyRemittanceForm, OtherPaymentServiceForm, OtherPaymentForm
 from finance.models import PatientTransactionModel, FinanceSettingModel, ExpenseCategory, SalaryStructure, \
-    StaffBankDetail, SalaryRecord, Income, IncomeCategory, Expense, MoneyRemittance
+    StaffBankDetail, SalaryRecord, Income, IncomeCategory, Expense, MoneyRemittance, OtherPaymentService
 from human_resource.models import DepartmentModel, StaffModel
 from human_resource.views import FlashFormErrorsMixin
+from inpatient.models import Admission, Surgery
 from insurance.models import PatientInsuranceModel
 from laboratory.models import LabTestOrderModel
 from patient.forms import RegistrationPaymentForm
@@ -308,6 +311,19 @@ def verify_patient_ajax(request):
         # Calculate grand total
         grand_total = drug_total + lab_total + scan_total
 
+        active_admissions = Admission.objects.filter(
+            patient=patient,
+            status='active'
+        )
+        admission_count = active_admissions.count()
+
+        # Find active surgeries (scheduled or in progress)
+        active_surgeries = Surgery.objects.filter(
+            patient=patient,
+            status__in=['scheduled', 'in_progress']
+        )
+        surgery_count = active_surgeries.count()
+
         return JsonResponse({
             'success': True,
             'patient': {
@@ -345,6 +361,9 @@ def verify_patient_ajax(request):
                     'total': float(scan_total),
                     'count': len(scan_items)
                 },
+                'admissions': {'count': admission_count, 'total': 0},  # Total is not applicable on this screen
+                'surgeries': {'count': surgery_count, 'total': 0},
+
                 'grand_total': float(grand_total),
                 'formatted_grand_total': f'₦{grand_total:,.2f}'
             }
@@ -429,6 +448,7 @@ def process_wallet_funding(request):
                     'lab': reverse('finance_laboratory_patient_payment', args=[patient.id]),
                     'scan': reverse('finance_scan_patient_payment', args=[patient.id]),
                     'drug': reverse('finance_pharmacy_patient_payment', args=[patient.id]),
+                    'inpatient': reverse('finance_admission_funding', args=[patient.id]),
                 }
 
                 redirect_url = redirect_urls.get(payment_type)
@@ -929,6 +949,296 @@ def finance_verify_patient_ajax(request):
     })
 
 
+class OtherPaymentView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    template_name = 'finance/payment/other_payment.html'
+    permission_required = 'finance.add_patienttransactionmodel'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # We pass the empty form for the other fields (like amount)
+        context['form'] = OtherPaymentForm()
+        # We also pass the list of all active services directly
+        context['services'] = OtherPaymentService.objects.filter(is_active=True)
+        return context
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+def process_other_payment_ajax(request):
+    if request.method == 'POST':
+        patient_id = request.POST.get('patient_id')
+        patient = get_object_or_404(PatientModel, pk=patient_id)
+
+        form = OtherPaymentForm(request.POST)
+
+        if form.is_valid():
+            # ... (successful payment logic remains the same) ...
+            service = form.cleaned_data['other_service']
+            amount = form.cleaned_data['amount']
+
+            if service.is_fixed_amount and service.default_amount != amount:
+                return JsonResponse({'success': False, 'error': 'The amount for this service is fixed.'}, status=400)
+
+            wallet = get_object_or_404(PatientWalletModel, patient=patient)
+            if wallet.amount < amount:
+                return JsonResponse({'success': False, 'error': 'Insufficient wallet balance.'}, status=400)
+
+            try:
+                with transaction.atomic():
+                    old_balance = wallet.amount
+                    wallet.deduct_funds(amount)
+                    new_transaction = PatientTransactionModel.objects.create(
+                        patient=patient,
+                        transaction_type='other_payment',
+                        transaction_direction='out',
+                        other_service=service,
+                        amount=amount,
+                        old_balance=old_balance,
+                        new_balance=wallet.amount,
+                        date=timezone.now().date(),
+                        received_by=request.user,
+                        payment_method='wallet',
+                        status='completed'
+                    )
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Payment successful!',
+                    'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': new_transaction.pk})
+                })
+            except Exception as e:
+                return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=400)
+
+        else:
+            # THIS IS THE CHANGE: Return a structured error response
+            return JsonResponse({
+                'success': False,
+                'error': 'Please correct the errors below.',
+                'errors': form.errors
+            }, status=400)
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
+
+
+from django.db.models import ExpressionWrapper, DecimalField, Sum, F
+
+
+# Other necessary imports...
+
+class AdmissionSurgeryFundingView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    template_name = 'finance/payment/admission_surgery.html'
+    permission_required = 'finance.add_patienttransactionmodel'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        patient = get_object_or_404(PatientModel, pk=self.kwargs.get('patient_id'))
+        context['patient'] = patient
+        context['wallet'], _ = PatientWalletModel.objects.get_or_create(patient=patient)
+
+        funding_targets = []
+
+        paid_statuses_drug = ['paid', 'partially_dispensed', 'dispensed']
+        paid_statuses_lab_scan = ['paid', 'collected', 'processing', 'completed']
+
+        # --- 1. Get and process active admissions ---
+        active_admissions = Admission.objects.filter(patient=patient, status='active')
+        for admission in active_admissions:
+            drug_orders = admission.drug_orders.all()
+            lab_orders = admission.lab_test_orders.all()
+            scan_orders = admission.scan_orders.all()
+            other_services = admission.service_drug_orders.all()
+
+            # --- THIS IS THE FIX ---
+            # Apply ExpressionWrapper to the drug cost calculation
+            drug_costs = drug_orders.aggregate(
+                total=Sum(
+                    ExpressionWrapper(F('quantity_ordered') * F('drug__selling_price'), output_field=DecimalField()))
+            )['total'] or 0
+
+            lab_costs = lab_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
+            scan_costs = scan_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
+            other_services_costs = other_services.aggregate(total=Sum('total_amount'))['total'] or 0
+
+            base_fee = (admission.admission_fee_charged or 0) + (admission.bed_fee_charged or 0)
+            total_bill = base_fee + drug_costs + lab_costs + scan_costs + other_services_costs
+
+            total_paid = PatientTransactionModel.objects.filter(
+                admission=admission, status='completed',
+            ).aggregate(total=Sum('amount'))['total'] or 0
+
+            # The calculation was also missing here
+            total_paid += sum(order.drug.selling_price * Decimal(order.quantity_ordered) for order in drug_orders if
+                              order.status in paid_statuses_drug)
+            total_paid += sum(order.amount_charged for order in lab_orders if order.status in paid_statuses_lab_scan)
+            total_paid += sum(order.amount_charged for order in scan_orders if order.status in paid_statuses_lab_scan)
+            total_paid += sum(service.total_amount for service in other_services if
+                              service.status in ['paid', 'fully_dispensed', 'partially_dispensed'])
+
+            balance = total_paid - total_bill
+
+            funding_targets.append({
+                'record': admission, 'type': 'Admission', 'identifier': admission.admission_number,
+                'base_fee': base_fee,
+                'drugs': {'total': drug_costs},
+                'labs': {'total': lab_costs},
+                'scans': {'total': scan_costs},
+                'others': {'total': other_services_costs},
+                'total_bill': total_bill, 'total_paid': total_paid,
+                'balance': balance, 'abs_balance': abs(balance)
+            })
+
+        # --- 2. Get and process active surgeries (with the same fix) ---
+        active_surgeries = Surgery.objects.filter(patient=patient, status__in=['scheduled', 'in_progress'])
+        for surgery in active_surgeries:
+            drug_orders = surgery.drug_orders.all()
+            lab_orders = surgery.lab_test_orders.all()
+            scan_orders = surgery.scan_orders.all()
+            other_services = surgery.service_drug_orders.all()
+
+            # --- APPLY THE SAME FIX HERE ---
+            drug_costs = drug_orders.aggregate(
+                total=Sum(
+                    ExpressionWrapper(F('quantity_ordered') * F('drug__selling_price'), output_field=DecimalField()))
+            )['total'] or 0
+
+            lab_costs = lab_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
+            scan_costs = scan_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
+            other_services_costs = other_services.aggregate(total=Sum('total_amount'))['total'] or 0
+
+            base_fee = surgery.total_surgery_cost
+            total_bill = base_fee + drug_costs + lab_costs + scan_costs + other_services_costs
+
+            total_paid = PatientTransactionModel.objects.filter(
+                surgery=surgery, status='completed',
+            ).aggregate(total=Sum('amount'))['total'] or 0
+
+            total_paid += sum(order.drug.selling_price * Decimal(order.quantity_ordered) for order in drug_orders if
+                              order.status in paid_statuses_drug)
+            total_paid += sum(order.amount_charged for order in lab_orders if order.status in paid_statuses_lab_scan)
+            total_paid += sum(order.amount_charged for order in scan_orders if order.status in paid_statuses_lab_scan)
+            total_paid += sum(service.total_amount for service in other_services if
+                              service.status in ['paid', 'fully_dispensed', 'partially_dispensed'])
+
+            balance = total_paid - total_bill
+
+            funding_targets.append({
+                'record': surgery, 'type': 'Surgery', 'identifier': surgery.surgery_number,
+                'base_fee': base_fee,
+                'drugs': {'total': drug_costs},
+                'labs': {'total': lab_costs},
+                'scans': {'total': scan_costs},
+                'others': {'total': other_services_costs},
+                'total_bill': total_bill, 'total_paid': total_paid,
+                'balance': balance, 'abs_balance': abs(balance)
+            })
+
+        context['funding_targets'] = funding_targets
+        return context
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+def ajax_process_admission_funding(request):
+    if request.method == 'POST':
+        try:
+            patient_id = request.POST.get('patient_id')
+            admission_id = request.POST.get('admission_id')
+            # surgery_id = request.POST.get('surgery_id') # For when you add surgery
+            amount = Decimal(request.POST.get('amount', '0'))
+            payment_method = request.POST.get('payment_method', 'cash')
+
+            patient = get_object_or_404(PatientModel, pk=patient_id)
+            admission = get_object_or_404(Admission, pk=admission_id) if admission_id else None
+
+            if amount <= 0:
+                return JsonResponse({'success': False, 'error': 'Amount must be positive.'}, status=400)
+
+            with transaction.atomic():
+                # Unlike other payments, funding an admission does not use the wallet.
+                # It's a direct payment record linked to the admission.
+                PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='admission_payment',
+                    transaction_direction='in',  # This is a credit/deposit
+                    admission=admission,
+                    amount=amount,
+                    old_balance=0,  # Not wallet-based
+                    new_balance=0,  # Not wallet-based
+                    date=timezone.now().date(),
+                    received_by=request.user,
+                    payment_method=payment_method,
+                    status='completed'
+                )
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Successfully deposited ₦{amount:,.2f} for admission {admission.admission_number}.'
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+def ajax_process_admission_funding(request):
+    if request.method == 'POST':
+        try:
+            patient_id = request.POST.get('patient_id')
+            admission_id = request.POST.get('admission_id')
+            surgery_id = request.POST.get('surgery_id')
+            amount = Decimal(request.POST.get('amount', '0'))
+
+            if amount <= 0:
+                return JsonResponse({'success': False, 'error': 'Amount must be a positive number.'}, status=400)
+
+            patient = get_object_or_404(PatientModel, pk=patient_id)
+            wallet = get_object_or_404(PatientWalletModel, patient=patient)
+
+            # Check for sufficient wallet balance
+            if wallet.amount < amount:
+                return JsonResponse({'success': False, 'error': 'Insufficient wallet balance.'}, status=400)
+
+            admission = get_object_or_404(Admission, pk=admission_id) if admission_id else None
+            surgery = get_object_or_404(Surgery, pk=surgery_id) if surgery_id else None
+
+            with transaction.atomic():
+                old_balance = wallet.amount
+
+                # Deduct funds from the wallet
+                wallet.amount -= amount
+                wallet.save()
+
+                new_balance = wallet.amount
+
+                PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='admission_payment' if admission else 'surgery_payment',
+                    transaction_direction='out',  # Direction is now 'out'
+                    admission=admission,
+                    surgery=surgery,
+                    amount=amount,
+                    old_balance=old_balance,  # Record old wallet balance
+                    new_balance=new_balance,  # Record new wallet balance
+                    date=timezone.now().date(),
+                    received_by=request.user,
+                    payment_method='wallet',  # Payment is from the wallet
+                    status='completed'
+                )
+
+            record_identifier = admission.admission_number if admission else surgery.surgery_number
+            success_message = f'Successfully paid ₦{amount:,.2f} for {record_identifier} from wallet.'
+
+            return JsonResponse({
+                'success': True,
+                'message': success_message
+            })
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
+
+
 @login_required
 def get_consultation_fees_ajax(request):
     """
@@ -1030,15 +1340,14 @@ def finance_consultation_patient_payment(request, patient_id):
     patient = get_object_or_404(PatientModel, id=patient_id)
 
     if request.method == 'GET':
-        # Get specializations
+        # ... (GET request logic is unchanged)
         specializations = SpecializationModel.objects.all().order_by('name')
-
         return render(request, 'finance/payment/consultation.html', {
             'patient': patient,
             'specializations': specializations
         })
 
-    # POST: process consultation payment
+    # --- POST: process consultation payment ---
     fee_id = request.POST.get('fee_structure') or request.POST.get('fee_structure_id')
     amount_paid = _to_decimal(request.POST.get('amount_paid') or request.POST.get('amount_due') or '0')
 
@@ -1046,33 +1355,28 @@ def finance_consultation_patient_payment(request, patient_id):
         return JsonResponse({'success': False, 'error': 'Invalid payment amount.'}, status=400)
 
     try:
+        # --- THIS IS THE FIX ---
+        # 1. Fetch the ConsultationFeeModel instance using the fee_id
+        fee_structure = get_object_or_404(ConsultationFeeModel, id=fee_id)
+
         with transaction.atomic():
-            # Get wallet with lock
-            wallet_qs = PatientWalletModel.objects.select_for_update().filter(patient=patient)
-            if wallet_qs.exists():
-                wallet = wallet_qs.first()
-            else:
-                wallet = PatientWalletModel.objects.create(patient=patient, amount=Decimal('0.00'))
-
+            # ... (wallet logic is unchanged)
+            wallet = get_object_or_404(PatientWalletModel, patient=patient)
             if wallet.amount < amount_paid:
-                shortfall = _quantize_money(amount_paid - wallet.amount)
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Insufficient wallet balance.',
-                    'shortfall': float(shortfall),
-                    'formatted_shortfall': f'₦{shortfall:,.2f}'
-                }, status=400)
+                return JsonResponse({'success': False, 'error': 'Insufficient wallet balance.'}, status=400)
 
-            # Deduct from wallet
-            wallet.amount = _quantize_money(wallet.amount - amount_paid)
+            old_balance = wallet.amount
+            wallet.amount -= amount_paid
             wallet.save()
 
+            # 2. Link the fee_structure to the new transaction
             payment = PatientTransactionModel.objects.create(
                 patient=patient,
                 transaction_type='consultation_payment',
                 transaction_direction='out',
+                fee_structure=fee_structure,  # Link the fee structure here
                 amount=amount_paid,
-                old_balance=wallet.amount + amount_paid,
+                old_balance=old_balance,
                 new_balance=wallet.amount,
                 date=timezone.now().date(),
                 received_by=request.user,
@@ -1080,9 +1384,11 @@ def finance_consultation_patient_payment(request, patient_id):
                 status='completed'
             )
 
+            # 3. Create the queue entry
             PatientQueueModel.objects.create(
                 patient=patient,
                 payment=payment,
+                specialization=fee_structure.specialization, # Use the specialization from the fee object
                 status='waiting_vitals'
             )
 
@@ -1094,9 +1400,10 @@ def finance_consultation_patient_payment(request, patient_id):
             'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.id})
         })
 
+    except ConsultationFeeModel.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Invalid fee structure selected.'}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'}, status=500)
-
 
 # The existing pharmacy, lab, and scan payment views remain the same
 @login_required
@@ -1452,12 +1759,22 @@ def finance_scan_patient_payment(request, patient_id):
     return finance_generic_order_payment(request, patient_id, 'scan')
 
 
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
+
+
 class PatientTransactionListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = PatientTransactionModel
-    template_name = "finance/payment/index.html"  # Assumed template path
+    template_name = "finance/payment/index.html"
     context_object_name = "transactions"
-    permission_required = "finance.view_patienttransactionmodel"  # Replace 'app_name'
-    paginate_by = 20  # Optional: Adds pagination
+    permission_required = "finance.view_patienttransactionmodel"
+    paginate_by = 20
+
+    def get(self, request, *args, **kwargs):
+        """Override get method to handle Excel download requests"""
+        if request.GET.get('download') == 'excel':
+            return self.download_excel()
+        return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
         """
@@ -1524,6 +1841,99 @@ class PatientTransactionListView(LoginRequiredMixin, PermissionRequiredMixin, Li
 
         return context
 
+    def download_excel(self):
+        """
+        Generate and download Excel file with the same filtered transactions
+        """
+        # Get all transactions with the same filters (no pagination for Excel)
+        transactions = self.get_queryset()
+
+        # Create Excel workbook and worksheet
+        workbook = openpyxl.Workbook()
+        worksheet = workbook.active
+        worksheet.title = "Patient Transactions"
+
+        # Define styles for headers
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        center_alignment = Alignment(horizontal="center")
+
+        # Define column headers
+        headers = [
+            "S/N", "Patient Name", "Transaction ID", "Transaction Type",
+            "Direction", "Amount (₦)", "Old Balance (₦)", "New Balance (₦)",
+            "Date", "Time", "Status", "Received By"
+        ]
+
+        # Write headers to first row
+        for col_num, header in enumerate(headers, 1):
+            cell = worksheet.cell(row=1, column=col_num)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_alignment
+
+        # Write transaction data
+        for row_num, transaction in enumerate(transactions, 2):
+            worksheet.cell(row=row_num, column=1, value=row_num - 1)  # Serial Number
+            worksheet.cell(row=row_num, column=2, value=str(transaction.patient) if transaction.patient else "N/A")
+            worksheet.cell(row=row_num, column=3, value=transaction.transaction_id)
+            worksheet.cell(row=row_num, column=4, value=transaction.get_transaction_type_display())
+            worksheet.cell(row=row_num, column=5,
+                           value="Credit" if transaction.transaction_direction == 'in' else "Debit")
+            worksheet.cell(row=row_num, column=6, value=float(transaction.amount))
+            worksheet.cell(row=row_num, column=7, value=float(transaction.old_balance))
+            worksheet.cell(row=row_num, column=8, value=float(transaction.new_balance))
+            worksheet.cell(row=row_num, column=9, value=transaction.date.strftime('%d %b %Y'))
+            worksheet.cell(row=row_num, column=10, value=transaction.created_at.strftime('%H:%M'))
+            worksheet.cell(row=row_num, column=11, value=transaction.status.title())
+            worksheet.cell(row=row_num, column=12,
+                           value=str(transaction.received_by) if transaction.received_by else "System")
+
+        # Add summary section if there are transactions
+        if transactions:
+            summary_row = len(transactions) + 3
+
+            # Calculate summary totals
+            total_inflow = sum(float(t.amount) for t in transactions if t.transaction_direction == 'in')
+            total_outflow = sum(float(t.amount) for t in transactions if t.transaction_direction == 'out')
+
+            # Add summary data
+            worksheet.cell(row=summary_row, column=1, value="SUMMARY").font = Font(bold=True, size=12)
+            worksheet.cell(row=summary_row + 1, column=1, value="Total Transactions:")
+            worksheet.cell(row=summary_row + 1, column=2, value=len(transactions))
+            worksheet.cell(row=summary_row + 2, column=1, value="Total Inflow (Credit):")
+            worksheet.cell(row=summary_row + 2, column=2, value=total_inflow)
+            worksheet.cell(row=summary_row + 3, column=1, value="Total Outflow (Debit):")
+            worksheet.cell(row=summary_row + 3, column=2, value=total_outflow)
+            worksheet.cell(row=summary_row + 4, column=1, value="Net Amount:")
+            worksheet.cell(row=summary_row + 4, column=2, value=total_inflow - total_outflow)
+
+        # Auto-adjust column widths
+        column_widths = [8, 25, 20, 18, 12, 15, 18, 18, 12, 10, 12, 20]
+        for col_num, width in enumerate(column_widths, 1):
+            column_letter = openpyxl.utils.get_column_letter(col_num)
+            worksheet.column_dimensions[column_letter].width = width
+
+        # Generate filename based on applied filters
+        start_date = self.request.GET.get("start_date")
+        end_date = self.request.GET.get("end_date")
+
+        if start_date and end_date:
+            filename = f"Patient_Transactions_{start_date}_to_{end_date}.xlsx"
+        else:
+            today = now().date().strftime('%Y-%m-%d')
+            filename = f"Patient_Transactions_{today}.xlsx"
+
+        # Prepare HTTP response for file download
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        # Save workbook to response
+        workbook.save(response)
+        return response
 
 class PatientTransactionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     # Specifies the model this view will operate on.
@@ -1885,6 +2295,87 @@ class IncomeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     permission_required = 'finance.view_income'
     template_name = 'finance/income/detail.html'
     context_object_name = "income"
+
+
+class OtherPaymentServiceListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = OtherPaymentService
+    permission_required = 'service.view_otherpaymentservice'
+    template_name = 'finance/other_payment/index.html'
+    context_object_name = "service_list"
+    paginate_by = 20
+
+    def get_queryset(self):
+        queryset = OtherPaymentService.objects.select_related('created_by').order_by('name')
+
+        # Filter and search functionality
+        category = self.request.GET.get('category')
+        if category:
+            queryset = queryset.filter(category=category)
+
+        search = self.request.GET.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(description__icontains=search)
+            )
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Pass category choices to the template for the filter dropdown
+        context['categories'] = OtherPaymentService._meta.get_field('category').choices
+        return context
+
+
+class OtherPaymentServiceCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = OtherPaymentService
+    permission_required = 'service.add_otherpaymentservice'
+    form_class = OtherPaymentServiceForm
+    template_name = 'finance/other_payment/create.html'
+
+    def form_valid(self, form):
+        """Set the creator of the service to the current user."""
+        form.instance.created_by = self.request.user
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        """Redirect to the detail page of the newly created service."""
+        # You might want to add a success message here as well
+        # messages.success(self.request, 'Service created successfully.')
+        return reverse('other_payment_service_detail', kwargs={'pk': self.object.pk})
+
+
+class OtherPaymentServiceDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = OtherPaymentService
+    permission_required = 'service.view_otherpaymentservice'
+    template_name = 'finance/other_payment/detail.html'
+    context_object_name = "service"
+
+
+class OtherPaymentServiceUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    model = OtherPaymentService
+    permission_required = 'service.change_otherpaymentservice'
+    form_class = OtherPaymentServiceForm
+    template_name = 'finance/other_payment/edit.html'
+    context_object_name = "service"
+
+    def get_success_url(self):
+        """Redirect to the detail page of the updated service."""
+        # messages.success(self.request, 'Service updated successfully.')
+        return reverse('other_payment_service_detail', kwargs={'pk': self.object.pk})
+
+
+class OtherPaymentServiceDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+    model = OtherPaymentService
+    permission_required = 'service.delete_otherpaymentservice'
+    template_name = 'finance/other_payment/delete.html'
+    context_object_name = "service"
+
+    def get_success_url(self):
+        """Redirect back to the list view after deletion."""
+        # messages.success(self.request, 'Service deleted successfully.')
+        return reverse_lazy('other_payment_service_list')
 
 
 # -------------------------
@@ -2468,218 +2959,223 @@ class RemittanceDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVi
         return redirect('remittance_detail', pk=remittance.pk)
 
 
+# Add this new view to your views.py file
 @login_required
+@permission_required('finance.view_moneyremittance')
+def staff_remittance_detail_view(request, staff_id):
+    staff = get_object_or_404(User, pk=staff_id)
+
+    unremitted_transactions = PatientTransactionModel.objects.filter(
+        received_by=staff,
+        transaction_type='wallet_funding',
+        remittance__isnull=True
+    ).select_related('patient').order_by('-created_at')
+
+    # Calculate totals for each payment method
+    summary = unremitted_transactions.aggregate(
+        cash_total=Sum('amount', filter=Q(payment_method__iexact='cash')),
+        transfer_total=Sum('amount', filter=Q(payment_method__iexact='transfer')),
+        card_total=Sum('amount', filter=Q(payment_method__iexact='card'))
+    )
+
+    cash = summary.get('cash_total') or 0
+    transfer = summary.get('transfer_total') or 0
+    card = summary.get('card_total') or 0
+
+    context = {
+        'staff_member': staff,
+        'transactions': unremitted_transactions,
+        'cash_total': cash,
+        'transfer_total': transfer,
+        'card_total': card,
+        'grand_total': cash + transfer + card, # The overall total
+    }
+    return render(request, 'finance/remittance/staff_detail.html', context)
+
+
+@login_required
+@permission_required('finance.view_patienttransactionmodel', raise_exception=True)
 def finance_dashboard(request):
-    """Main finance dashboard view with comprehensive statistics"""
+    """Finance dashboard showing patient transaction analytics and wallet data"""
 
-    # Get date ranges
     today = timezone.now().date()
-    start_of_month = today.replace(day=1)
-    start_of_year = today.replace(month=1, day=1)
-    week_start = today - timedelta(days=today.weekday())
-    last_month = (start_of_month - timedelta(days=1)).replace(day=1)
+    current_month_start = today.replace(day=1)
+    last_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
+    last_month_end = current_month_start - timedelta(days=1)
+    thirty_days_ago = today - timedelta(days=30)
 
-    # Transaction Statistics
+    # Basic transaction metrics
     total_transactions = PatientTransactionModel.objects.filter(status='completed')
-    transactions_today = total_transactions.filter(date=today)
-    transactions_week = total_transactions.filter(date__gte=week_start)
-    transactions_month = total_transactions.filter(date__gte=start_of_month)
 
-    # Revenue Statistics (all inbound transactions)
+    # Revenue calculations (all inflow transactions)
     revenue_transactions = total_transactions.filter(transaction_direction='in')
-    total_revenue = revenue_transactions.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-    revenue_today = transactions_today.filter(transaction_direction='in').aggregate(total=Sum('amount'))[
-                        'total'] or Decimal('0.00')
-    revenue_week = transactions_week.filter(transaction_direction='in').aggregate(total=Sum('amount'))[
-                       'total'] or Decimal('0.00')
-    revenue_month = transactions_month.filter(transaction_direction='in').aggregate(total=Sum('amount'))[
-                        'total'] or Decimal('0.00')
+    total_revenue = revenue_transactions.aggregate(
+        total=Sum('amount')
+    )['total'] or Decimal('0.00')
 
-    # Calculate previous month revenue for growth percentage
-    prev_month_revenue = revenue_transactions.filter(
-        date__gte=last_month,
-        date__lt=start_of_month
+    # Current month revenue
+    revenue_month = revenue_transactions.filter(
+        date__gte=current_month_start
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
-    revenue_growth = 0
-    if prev_month_revenue > 0:
-        revenue_growth = float(((revenue_month - prev_month_revenue) / prev_month_revenue) * 100)
+    # Last month revenue for growth calculation
+    revenue_last_month = revenue_transactions.filter(
+        date__range=[last_month_start, last_month_end]
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
-    # Expense Statistics
-    expenses = Expense.objects.all()
-    total_expenses = expenses.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-    expenses_today = expenses.filter(date=today).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-    expenses_month = expenses.filter(date__gte=start_of_month).aggregate(total=Sum('amount'))['total'] or Decimal(
-        '0.00')
+    # Calculate revenue growth
+    if revenue_last_month > 0:
+        revenue_growth = float(((revenue_month - revenue_last_month) / revenue_last_month) * 100)
+        revenue_growth = round(revenue_growth, 1)
+    else:
+        revenue_growth = 0 if revenue_month == 0 else 100
 
-    # Income Statistics (separate from patient transactions)
-    incomes = Income.objects.all()
-    total_income = incomes.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-    income_today = incomes.filter(date=today).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-    income_month = incomes.filter(date__gte=start_of_month).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    # Today's metrics
+    revenue_today = revenue_transactions.filter(
+        date=today
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
-    # Net Profit Calculation
-    total_inflow = total_revenue + total_income
-    net_profit = total_inflow - total_expenses
-    net_profit_month = (revenue_month + income_month) - expenses_month
+    transactions_today_count = total_transactions.filter(date=today).count()
 
-    # Pending Transactions and Remittances
+    # Total wallet balances (current patient wallet funds)
+    total_wallet_balance = PatientWalletModel.objects.aggregate(
+        total=Sum('amount')
+    )['total'] or Decimal('0.00')
+
+    # Outflow calculations (all outflow transactions - payments made by patients)
+    outflow_transactions = total_transactions.filter(transaction_direction='out')
+    total_outflow = outflow_transactions.aggregate(
+        total=Sum('amount')
+    )['total'] or Decimal('0.00')
+
+    outflow_today = outflow_transactions.filter(
+        date=today
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    # Net revenue (inflow - outflow)
+    net_revenue = total_revenue - total_outflow
+
+    # Pending actions
     pending_transactions = PatientTransactionModel.objects.filter(status='pending').count()
     pending_remittances = MoneyRemittance.objects.filter(status='PENDING').count()
     discrepancy_remittances = MoneyRemittance.objects.filter(status='DISCREPANCY').count()
 
-    # Top Transaction Types
-    transaction_types = PatientTransactionModel.objects.filter(
-        status='completed',
-        date__gte=start_of_month
+    # Daily revenue data for chart (last 30 days)
+    daily_revenue_data = []
+    for i in range(30):
+        date_point = today - timedelta(days=29 - i)
+        daily_revenue = revenue_transactions.filter(
+            date=date_point
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        daily_revenue_data.append({
+            'date': date_point.strftime('%Y-%m-%d'),
+            'revenue': float(daily_revenue)
+        })
+
+    # Monthly comparison data (last 12 months)
+    monthly_comparison_data = []
+    for i in range(12):
+        # Calculate the first day of the month for i months ago
+        target_date = today.replace(day=1) - timedelta(days=i * 30)
+        # Adjust to actual first day of that month
+        month_start = target_date.replace(day=1)
+        # Get last day of the month
+        last_day = calendar.monthrange(month_start.year, month_start.month)[1]
+        month_end = month_start.replace(day=last_day)
+
+        monthly_revenue = revenue_transactions.filter(
+            date__range=[month_start, month_end]
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        monthly_outflow = outflow_transactions.filter(
+            date__range=[month_start, month_end]
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        monthly_comparison_data.insert(0, {
+            'month': month_start.strftime('%b %Y'),
+            'revenue': float(monthly_revenue),
+            'outflow': float(monthly_outflow),
+            'net': float(monthly_revenue - monthly_outflow)
+        })
+
+    # Transaction types analysis (current month)
+    transaction_types = total_transactions.filter(
+        date__gte=current_month_start
     ).values('transaction_type').annotate(
         count=Count('id'),
         total=Sum('amount')
-    ).order_by('-total')[:5]
+    ).order_by('-total')[:10]
 
-    # Daily Revenue Trend (Last 30 days)
-    thirty_days_ago = today - timedelta(days=30)
-    daily_revenue = []
-
-    for i in range(30):
-        date_check = thirty_days_ago + timedelta(days=i)
-        revenue = revenue_transactions.filter(date=date_check).aggregate(
-            total=Sum('amount')
-        )['total'] or Decimal('0.00')
-        daily_revenue.append({
-            'date': date_check.strftime('%Y-%m-%d'),
-            'revenue': float(revenue)
-        })
-
-    # Monthly Revenue vs Expenses (Last 12 months)
-    monthly_comparison = []
-    for i in range(12):
-        month_date = (today.replace(day=1) - timedelta(days=32 * i)).replace(day=1)
-        month_end = (month_date.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-
-        month_revenue = revenue_transactions.filter(
-            date__gte=month_date,
-            date__lte=month_end
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-
-        month_income = incomes.filter(
-            date__gte=month_date,
-            date__lte=month_end
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-
-        month_expenses = expenses.filter(
-            date__gte=month_date,
-            date__lte=month_end
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-
-        monthly_comparison.append({
-            'month': month_date.strftime('%b %Y'),
-            'revenue': float(month_revenue),
-            'income': float(month_income),
-            'expenses': float(month_expenses),
-            'profit': float((month_revenue + month_income) - month_expenses)
-        })
-
-    monthly_comparison.reverse()  # Show chronologically
-
-    # Expense Categories Distribution
-    expense_categories = ExpenseCategory.objects.annotate(
-        total_amount=Sum('expense__amount'),
-        count=Count('expense')
-    ).filter(total_amount__gt=0).order_by('-total_amount')
-
-    expense_category_data = [
-        {
-            'name': category.name,
-            'value': float(category.total_amount or 0)
-        }
-        for category in expense_categories
-    ]
-
-    # Payment Methods Distribution (for completed transactions)
-    payment_methods = PatientTransactionModel.objects.filter(
-        status='completed',
-        date__gte=start_of_month
+    # Payment methods analysis (current month)
+    payment_methods = total_transactions.filter(
+        date__gte=current_month_start,
+        payment_method__isnull=False
     ).exclude(payment_method='').values('payment_method').annotate(
         count=Count('id'),
         total=Sum('amount')
-    ).order_by('-total')
+    ).order_by('-total')[:10]
 
-    # Recent Large Transactions
-    recent_large_transactions = PatientTransactionModel.objects.filter(
-        status='completed',
-        amount__gte=10000  # Transactions above 10,000
-    ).select_related('patient').order_by('-created_at')[:10]
+    # Recent large transactions (≥ ₦10,000)
+    recent_large_transactions = total_transactions.filter(
+        amount__gte=Decimal('10000.00')
+    ).select_related('patient')[:20]
 
-    # Salary Payments Statistics
-    unpaid_salaries = SalaryRecord.objects.filter(is_paid=False).count()
-    partially_paid_salaries = SalaryRecord.objects.filter(
-        amount_paid__gt=0,
-        is_paid=False
-    ).count()
+    # Wallet analytics
+    active_wallets_count = PatientWalletModel.objects.filter(amount__gt=0).count()
+    average_wallet_balance = PatientWalletModel.objects.filter(
+        amount__gt=0
+    ).aggregate(avg=Avg('amount'))['avg'] or Decimal('0.00')
 
-    total_salary_debt = SalaryRecord.objects.filter(
-        is_paid=False
-    ).aggregate(
-        debt=Sum(F('basic_salary') + F('housing_allowance') + F('transport_allowance') +
-                 F('medical_allowance') + F('other_allowances') + F('bonus') -
-                 F('tax_amount') - F('pension_amount') - F('other_deductions') - F('amount_paid'))
-    )['debt'] or Decimal('0.00')
+    # Top wallet balances
+    top_wallet_holders = PatientWalletModel.objects.filter(
+        amount__gt=0
+    ).select_related('patient').order_by('-amount')[:10]
 
-    # Financial Settings
-    finance_settings = FinanceSettingModel.objects.first()
+    # Service popularity (from other payment services)
+    popular_services = total_transactions.filter(
+        other_service__isnull=False,
+        date__gte=current_month_start
+    ).values('other_service__name', 'other_service__category').annotate(
+        count=Count('id'),
+        total=Sum('amount')
+    ).order_by('-count')[:10]
 
     context = {
-        # Main Statistics
-        'total_transactions_count': total_transactions.count(),
-        'transactions_today_count': transactions_today.count(),
-        'transactions_month_count': transactions_month.count(),
-
-        # Revenue
+        # Main metrics
         'total_revenue': total_revenue,
-        'revenue_today': revenue_today,
-        'revenue_week': revenue_week,
         'revenue_month': revenue_month,
-        'revenue_growth': round(revenue_growth, 1),
+        'revenue_growth': revenue_growth,
+        'revenue_today': revenue_today,
+        'total_outflow': total_outflow,
+        'outflow_today': outflow_today,
+        'net_revenue': net_revenue,
+        'transactions_today_count': transactions_today_count,
 
-        # Expenses
-        'total_expenses': total_expenses,
-        'expenses_today': expenses_today,
-        'expenses_month': expenses_month,
+        # Wallet metrics
+        'total_wallet_balance': total_wallet_balance,
+        'active_wallets_count': active_wallets_count,
+        'average_wallet_balance': average_wallet_balance,
+        'top_wallet_holders': top_wallet_holders,
 
-        # Income
-        'total_income': total_income,
-        'income_today': income_today,
-        'income_month': income_month,
-
-        # Profit
-        'net_profit': net_profit,
-        'net_profit_month': net_profit_month,
-        'total_inflow': total_inflow,
-
-        # Pending Items
+        # Pending actions
         'pending_transactions': pending_transactions,
         'pending_remittances': pending_remittances,
         'discrepancy_remittances': discrepancy_remittances,
 
-        # Salary
-        'unpaid_salaries': unpaid_salaries,
-        'partially_paid_salaries': partially_paid_salaries,
-        'total_salary_debt': total_salary_debt,
-
-        # Charts Data
-        'daily_revenue_data': json.dumps(daily_revenue),
-        'monthly_comparison_data': json.dumps(monthly_comparison),
-        'expense_category_data': json.dumps(expense_category_data),
+        # Analytics data
         'transaction_types': transaction_types,
         'payment_methods': payment_methods,
         'recent_large_transactions': recent_large_transactions,
+        'popular_services': popular_services,
 
-        # Settings
-        'finance_settings': finance_settings,
+        # Chart data (JSON serialized)
+        'daily_revenue_data': json.dumps(daily_revenue_data),
+        'monthly_comparison_data': json.dumps(monthly_comparison_data),
 
-        # Current date
-        'current_date': today,
+        # Additional context
+        'current_month': current_month_start.strftime('%B %Y'),
+        'today': today,
     }
 
     return render(request, 'finance/dashboard.html', context)

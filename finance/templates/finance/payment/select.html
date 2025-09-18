@@ -4,10 +4,9 @@
 <div class="container mt-4">
   <div class="card">
     <div class="card-header">
-      <h4><i class="fas fa-money-check-alt"></i> Finance — Payment</h4>
+      <h4><i class="fas fa-money-check-alt"></i> Finance — Payment Selection</h4>
     </div>
     <div class="card-body">
-      <!-- Step 1: Verify Patient -->
       <div id="verify-section" class="mb-4">
         <form id="patient-verify-form" class="row g-2">
           {% csrf_token %}
@@ -23,22 +22,25 @@
         </form>
       </div>
 
-      <!-- Step 2: Options (hidden until verified) -->
       <div id="options-section" class="hidden">
         <div id="patient-summary" class="mb-3">
-          <!-- will be populated -->
-        </div>
+          </div>
 
         <div class="card mb-3">
           <div class="card-body">
-            <h5>Select Payment Type</h5>
-            <div class="form-check">
-              <input class="form-check-input payment-option" type="radio" name="payment_type" id="opt_consultation" value="consultation">
-              <label class="form-check-label" for="opt_consultation">
-                Consultation <small class="text-muted">(open consultation flow)</small>
+            <h5>Select Action</h5>
+
+            {# --- NEW: Admission and Surgery Funding --- #}
+            <div class="form-check mt-2">
+              <input class="form-check-input payment-option" type="radio" name="payment_type" id="opt_admission" value="admission">
+              <label class="form-check-label" for="opt_admission">
+                Admission / Surgery Funding <span id="admission-count" class="badge bg-success">0</span>
               </label>
-              <div class="small text-muted ms-4" id="consultation-info">Open consultation payment flow (check available fee in next screen).</div>
+              <div class="small text-muted ms-4" id="admission-info">Make a deposit for an ongoing admission or surgery</div>
             </div>
+
+            <hr>
+            <h5 class="mt-3">Pay Pending Bills</h5>
 
             <div class="form-check mt-2">
               <input class="form-check-input payment-option" type="radio" name="payment_type" id="opt_drug" value="drug">
@@ -67,30 +69,25 @@
         </div>
 
         <div class="d-flex justify-content-between">
-          <div id="selected-summary" class="align-self-center text-muted">Select a payment type to proceed</div>
+          <div id="selected-summary" class="align-self-center text-muted">Select an option to proceed</div>
           <div>
             <button id="btn-back" class="btn btn-secondary me-2">Back</button>
             <button id="btn-proceed" class="btn btn-success" disabled>Proceed</button>
           </div>
-        </div>
-
-        <div id="no-payments-alert" class="alert alert-info mt-3 hidden">
-          This patient has no pending payments (last 30 days) for Pharmacy, Laboratory, or Scans. You can still process consultation payments.
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Include jQuery if not already -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <script>
 (function($){
   const verifyUrl = "{% url 'finance_verify_patient_ajax' %}";
-  // pre-generate target URLs with placeholder 0; we'll replace 0 with real patient id
+  // Pre-generate target URLs with a placeholder for the patient ID
   const targetUrls = {
-    consultation: "{% url 'finance_consultation_patient_payment' 0 %}",
+    admission: "{% url 'finance_admission_funding' 0 %}", // We will create this URL
     drug: "{% url 'finance_pharmacy_patient_payment' 0 %}",
     lab: "{% url 'finance_laboratory_patient_payment' 0 %}",
     scan: "{% url 'finance_scan_patient_payment' 0 %}"
@@ -105,9 +102,9 @@
     $('#drug-count').text('0'); $('#drug-info').text('');
     $('#lab-count').text('0'); $('#lab-info').text('');
     $('#scan-count').text('0'); $('#scan-info').text('');
-    $('#selected-summary').text('Select a payment type to proceed');
+    $('#admission-count').text('0');
+    $('#selected-summary').text('Select an option to proceed');
     $('#btn-proceed').prop('disabled', true);
-    $('#no-payments-alert').addClass('hidden');
     $('input.payment-option').prop('checked', false);
     currentPatient = null;
     pending = null;
@@ -117,26 +114,20 @@
     currentPatient = resp.patient;
     pending = resp.pending_payments || {};
 
-    // Display patient information
-    let insuranceInfo = '';
-    if (resp.insurance && resp.insurance.has_insurance) {
-      insuranceInfo = `<div class="mt-1"><small class="text-info"><i class="fas fa-shield-alt"></i> ${resp.insurance.hmo_name} - ${resp.insurance.plan_name}</small></div>`;
-    }
-
     $('#patient-summary').html(`
       <div class="alert alert-success">
         <h5>${resp.patient.full_name}</h5>
-        <div class="small text-muted">Card: ${resp.patient.card_number} | Phone: ${resp.patient.phone || 'N/A'}</div>
-        ${insuranceInfo}
+        <div class="small text-muted">Card: ${resp.patient.card_number}</div>
         <div class="mt-2"><strong>Wallet:</strong> ${resp.wallet.formatted_balance}</div>
       </div>
     `);
 
-    // drugs/labs/scans totals and counts
     const drugs = pending.drugs || {count:0, total:0};
     const labs  = pending.labs  || {count:0, total:0};
     const scans = pending.scans || {count:0, total:0};
-    const grand = pending.grand_total || 0;
+    const admissions = pending.admissions || {count:0};
+    const surgeries = pending.surgeries || {count:0};
+    const totalActiveInpatient = admissions.count + surgeries.count;
 
     $('#drug-count').text(drugs.count || 0);
     $('#drug-info').text(drugs.count ? `Total: ₦${Number(drugs.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'No pending medication orders');
@@ -147,17 +138,11 @@
     $('#scan-count').text(scans.count || 0);
     $('#scan-info').text(scans.count ? `Total: ₦${Number(scans.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'No pending scans');
 
-    // If there are no pending payments for pharmacy, lab, or scan
-    if (!(drugs.count || labs.count || scans.count)) {
-      $('#no-payments-alert').removeClass('hidden');
-    } else {
-      $('#no-payments-alert').addClass('hidden');
-    }
+    // Update admission/surgery counts
+    $('#admission-count').text(totalActiveInpatient);
 
-    // show options section
     $('#options-section').removeClass('hidden');
 
-    // Set up event handlers for radio buttons
     $('input.payment-option').off('change').on('change', function(){
       if ($(this).is(':checked')) {
         const val = $(this).val();
@@ -170,23 +155,23 @@
     $('#btn-proceed').prop('disabled', true);
     $('#selected-summary').text('');
 
-    // counts
     const counts = {
-      drug: (pending && pending.drugs && pending.drugs.count) || 0,
-      lab: (pending && pending.labs && pending.labs.count) || 0,
-      scan: (pending && pending.scans && pending.scans.count) || 0
+      drug: (pending.drugs && pending.drugs.count) || 0,
+      lab: (pending.labs && pending.labs.count) || 0,
+      scan: (pending.scans && pending.scans.count) || 0,
+      admission: ((pending.admissions && pending.admissions.count) || 0) + ((pending.surgeries && pending.surgeries.count) || 0),
     };
 
-    if (type === 'consultation') {
-      // consultation flow may not require pending payments from verify endpoint
-      $('#selected-summary').text('Proceed to consultation payment flow');
-      $('#btn-proceed').prop('disabled', false);
+    if (type === 'admission') {
+        if (counts.admission > 0) {
+            $('#selected-summary').text(`Patient has ${counts.admission} active admission/surgery. Proceed to view details and make a deposit.`);
+            $('#btn-proceed').prop('disabled', false);
+        } else {
+            $('#selected-summary').text('This patient has no active admissions or surgeries.');
+            $('#btn-proceed').prop('disabled', true);
+        }
     } else if (counts[type] && counts[type] > 0) {
-      let totals = {
-        drug: pending.drugs.total || 0,
-        lab: pending.labs.total || 0,
-        scan: pending.scans.total || 0
-      };
+      let totals = { drug: pending.drugs.total || 0, lab: pending.labs.total || 0, scan: pending.scans.total || 0 };
       $('#selected-summary').text(`${counts[type]} item(s) selected — Total: ₦${Number(totals[type]).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`);
       $('#btn-proceed').prop('disabled', false);
     } else {
@@ -195,37 +180,29 @@
     }
   }
 
-  // form submit -> verify via AJAX
+  // Form submit -> verify via AJAX
   $('#patient-verify-form').on('submit', function(e){
     e.preventDefault();
     const card = $('#card_number').val().trim();
-    if (!card) {
-      alert('Please enter patient card number');
-      return;
-    }
+    if (!card) return;
 
-    // show loading UI
     $('#btn-verify').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Verifying...');
     resetOptions();
 
     $.get(verifyUrl, {card_number: card})
       .done(function(data){
-        $('#btn-verify').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
         if (data && data.success) {
           showOptionsFromResponse(data);
         } else {
-          alert(data.error || 'Patient not found / no response');
-          $('#card_number').focus();
+          alert(data.error || 'Patient not found');
         }
       })
       .fail(function(xhr) {
-        $('#btn-verify').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
-        let err = 'Error verifying patient';
-        try {
-          err = (xhr.responseJSON && xhr.responseJSON.error) || err;
-        } catch(e){}
+        let err = (xhr.responseJSON && xhr.responseJSON.error) || 'Error verifying patient';
         alert(err);
-        $('#card_number').focus();
+      })
+      .always(function() {
+        $('#btn-verify').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
       });
   });
 
@@ -235,33 +212,19 @@
     $('#card_number').val('').focus();
   });
 
-  // Proceed button: replace the 0 patient id in url with real id
+  // Proceed button
   $('#btn-proceed').on('click', function(){
     const selected = $('input.payment-option:checked').val();
-    if (!selected) {
-      alert('Choose a payment type');
-      return;
-    }
-    if (!currentPatient || !currentPatient.id) {
-      alert('No patient selected');
-      return;
-    }
-
+    if (!selected || !currentPatient || !currentPatient.id) return;
     const templateUrl = targetUrls[selected];
-    if (!templateUrl) {
-      alert('Invalid payment type');
-      return;
-    }
+    if (!templateUrl) return;
 
-    // replace '/0/' or '/0' occurrences with actual id
-    const pid = String(currentPatient.id);
-    const dest = templateUrl.replace(/\/0(\/|$)/, '/' + pid + '$1');
-
-    // navigate
+    // Replace placeholder '/0' with the actual patient ID
+    const dest = templateUrl.replace('/0', '/' + String(currentPatient.id));
     window.location.href = dest;
   });
 
-  // Focus on card number input when page loads
+  // Focus on card number input on page load
   $(document).ready(function(){
     $('#card_number').focus();
   });
@@ -270,38 +233,12 @@
 </script>
 
 <style>
-.hidden {
-  display: none !important;
-}
-
-.badge {
-  font-size: 0.75em;
-}
-
-.form-check {
-  padding: 0.75rem;
-  border: 1px solid #e3e6f0;
-  border-radius: 0.35rem;
-  margin-bottom: 0.5rem;
-}
-
-.form-check:hover {
-  background-color: #f8f9fc;
-}
-
-.form-check-input:checked + .form-check-label {
-  font-weight: 500;
-  color: #5a5c69;
-}
-
-#selected-summary {
-  font-size: 0.9rem;
-}
-
-.alert-success {
-  border-left: 4px solid #1cc88a;
-}
+.hidden { display: none !important; }
+.badge { font-size: 0.75em; }
+.form-check { padding: 0.75rem; border: 1px solid #e3e6f0; border-radius: 0.35rem; margin-bottom: 0.5rem; }
+.form-check:hover { background-color: #f8f9fc; cursor: pointer;}
+.form-check-input:checked + .form-check-label { font-weight: 500; }
+#selected-summary { font-size: 0.9rem; }
+.alert-success { border-left: 4px solid #1cc88a; }
 </style>
 {% endblock %}
-
-

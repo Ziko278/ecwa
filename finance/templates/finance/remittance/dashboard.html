@@ -80,7 +80,15 @@
                                 <td>{% if balance.staff.user_staff_profile %} {{ balance.staff.user_staff_profile.staff|title }} {% else %} {{ balance.staff|title }} {% endif %}</td>
                                 <td class="text-end fw-bold text-danger">₦{{ balance.cash_outstanding|intcomma }}</td>
                                 <td class="text-center">
-                                    <a href="{% url 'remittance_create' %}" class="btn btn-sm btn-primary">Record Remittance</a>
+                                    <div class="btn-group">
+                                      <button type="button" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Actions
+                                      </button>
+                                      <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item" href="{% url 'remittance_create' %}?staff_id={{ balance.staff.id }}">Record Remittance</a></li>
+                                        <li><a class="dropdown-item" href="{% url 'staff_remittance_detail' balance.staff.id %}">View Details</a></li>
+                                      </ul>
+                                    </div>
                                 </td>
                             </tr>
                             {% empty %}

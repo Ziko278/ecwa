@@ -48,6 +48,7 @@
                             <th>Amount</th>
                             <th>Method</th>
                             <th>Date/Time</th>
+                            <th>Cashier</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -86,6 +87,11 @@
                                 <div>{{ p.date|date:"d M Y" }}</div>
                                 <small class="text-muted">{{ p.created_at|date:"H:i" }}</small>
                             </td>
+                            <td>{% if p.created_by.user_staff_profile.staff %}
+                <span>{{ p.created_by.user_staff_profile.staff|title|default:"SYSTEM" }}</span>
+                {% else %}
+                <span>{{ p.created_by|upper|default:"SYSTEM" }}</span>
+                {% endif %}</td>
                             <td>
                                 <div class="btn-group" role="group">
                                     <a href="{% url 'registration_payment_detail' p.pk %}"

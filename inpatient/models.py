@@ -368,6 +368,14 @@ class Admission(models.Model):
     admission_date = models.DateTimeField(default=timezone.now)
     expected_discharge_date = models.DateField(null=True, blank=True)
     actual_discharge_date = models.DateTimeField(null=True, blank=True)
+    admission_fee_charged = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="The admission fee charged at the time of admission."
+    )
+    bed_fee_charged = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="The daily or one-time bed fee charged."
+    )
 
     # Staff assignments
     attending_doctor = models.ForeignKey(

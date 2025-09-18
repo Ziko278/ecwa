@@ -65,7 +65,9 @@ from .views import (
     process_payroll_view,
     export_payroll_to_excel, payroll_dashboard_view, remittance_dashboard_view, create_remittance_view,
     RemittanceDetailView, RemittanceListView, get_staff_remittance_details_ajax, finance_dashboard,
-    finance_dashboard_print,
+    finance_dashboard_print, OtherPaymentServiceListView, OtherPaymentServiceCreateView, OtherPaymentServiceDetailView,
+    OtherPaymentServiceUpdateView, OtherPaymentServiceDeleteView, process_other_payment_ajax, OtherPaymentView,
+    ajax_process_admission_funding, AdmissionSurgeryFundingView, staff_remittance_detail_view,
 )
 
 urlpatterns = [
@@ -87,6 +89,11 @@ urlpatterns = [
     path('payment/scan/<int:patient_id>/', finance_scan_patient_payment, name='finance_scan_patient_payment'),
     path('transactions/', PatientTransactionListView.as_view(), name='patient_transaction_index'),
     path('transactions/<int:pk>/', PatientTransactionDetailView.as_view(), name='patient_transaction_detail'),
+    path('payment/other/', OtherPaymentView.as_view(), name='finance_other_payment'),
+    path('ajax/payment/other/process/', process_other_payment_ajax, name='ajax_process_other_payment'),
+    path('funding/admission/<int:patient_id>/', AdmissionSurgeryFundingView.as_view(), name='finance_admission_funding'),
+    path('ajax/funding/process/', ajax_process_admission_funding, name='ajax_process_admission_funding'),
+
 
     # Finance Settings
     path('setting/create/', FinanceSettingCreateView.as_view(), name='finance_setting_create'),
@@ -118,6 +125,13 @@ urlpatterns = [
     path('income/<int:pk>/', IncomeDetailView.as_view(), name='income_detail'),
     path('income/<int:pk>/edit/', IncomeUpdateView.as_view(), name='income_update'),
 
+    path('other-services/', OtherPaymentServiceListView.as_view(), name='other_payment_service_list'),
+    path('other-services/create/', OtherPaymentServiceCreateView.as_view(), name='other_payment_service_create'),
+    path('other-services/<int:pk>/', OtherPaymentServiceDetailView.as_view(), name='other_payment_service_detail'),
+    path('other-services/<int:pk>/edit/', OtherPaymentServiceUpdateView.as_view(), name='other_payment_service_edit'),
+    path('other-services/<int:pk>/delete/', OtherPaymentServiceDeleteView.as_view(),
+         name='other_payment_service_delete'),
+
     # Staff Bank Details
     path('staff-bank-details/', StaffBankDetailListView.as_view(), name='staff_bank_detail_index'),
     path('staff-bank-details/create/', StaffBankDetailCreateView.as_view(), name='staff_bank_detail_create'),
@@ -139,6 +153,7 @@ urlpatterns = [
     path('remittance/create/', create_remittance_view, name='remittance_create'),
     path('remittance/list/', RemittanceListView.as_view(), name='remittance_list'),
     path('remittance/<int:pk>/', RemittanceDetailView.as_view(), name='remittance_detail'),
+    path('remittance/staff-detail/<int:staff_id>/', staff_remittance_detail_view, name='staff_remittance_detail'),
 
     # AJAX Helper URL
     path('ajax/get-remittance-details/', get_staff_remittance_details_ajax, name='get_staff_remittance_details_ajax'),

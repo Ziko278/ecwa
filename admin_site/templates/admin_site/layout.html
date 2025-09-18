@@ -155,8 +155,18 @@
 
     <!-- Patient Finance -->
     <li>
+      <a href="{% url 'patient_funding' %}">
+        <i class="bi bi-circle"></i><span>Fund and Pay</span>
+      </a>
+    </li>
+    <li>
       <a href="{% url 'finance_payment_select' %}">
         <i class="bi bi-circle"></i><span>Make Payment</span>
+      </a>
+    </li>
+    <li>
+      <a href="{% url 'finance_other_payment' %}">
+        <i class="bi bi-circle"></i><span>Make Other Payment</span>
       </a>
     </li>
     <li>
@@ -169,9 +179,10 @@
         <i class="bi bi-circle"></i><span>All Payments</span>
       </a>
     </li>
+
     <li>
-      <a href="{% url 'patient_funding' %}">
-        <i class="bi bi-circle"></i><span>Wallet Funding</span>
+      <a href="{% url 'registration_payment_create' %}">
+        <i class="bi bi-circle"></i><span>New Registration Payments</span>
       </a>
     </li>
     <li>
@@ -179,19 +190,24 @@
         <i class="bi bi-circle"></i><span>Registration Payments</span>
       </a>
     </li>
+    <li>
+      <a href="{% url 'other_payment_service_list' %}">
+        <i class="bi bi-circle"></i><span>Other Payments</span>
+      </a>
+    </li>
 
     <!-- Operational Finance -->
 
-    <li>
-      <a href="{% url 'income_index' %}">
-        <i class="bi bi-circle"></i><span>Income Records</span>
-      </a>
-    </li>
-    <li>
-      <a href="{% url 'expense_index' %}">
-        <i class="bi bi-circle"></i><span>Expense Records</span>
-      </a>
-    </li>
+<!--    <li>-->
+<!--      <a href="{% url 'income_index' %}">-->
+<!--        <i class="bi bi-circle"></i><span>Income Records</span>-->
+<!--      </a>-->
+<!--    </li>-->
+<!--    <li>-->
+<!--      <a href="{% url 'expense_index' %}">-->
+<!--        <i class="bi bi-circle"></i><span>Expense Records</span>-->
+<!--      </a>-->
+<!--    </li>-->
 
     <li>
       <a href="{% url 'remittance_dashboard' %}">

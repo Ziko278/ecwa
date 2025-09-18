@@ -63,7 +63,7 @@
                                         </dd>
 
                                         <dt class="col-sm-5">Processed By:</dt>
-                                        <dd class="col-sm-7">{{ transaction.received_by.get_full_name|default:"SYSTEM"|title }}</dd>
+                                        <dd class="col-sm-7">{{ transaction.received_by.user_staff_profile.staff|default:"SYSTEM"|title }}</dd>
                                     </dl>
                                 </div>
                             </div>
@@ -89,6 +89,24 @@
                         </div>
                     </div>
                     {% endif %}
+
+                    {# In templates/finance/transaction/detail.html, after the Patient Information card #}
+                        {% if transaction.other_service %}
+                        <div class="card mt-4">
+                            <div class="card-header bg-secondary text-white">
+                                <h5 class="card-title mb-0"><i class="bi bi-tag-fill"></i> Service Details</h5>
+                            </div>
+                            <div class="card-body">
+                                <dl class="row mb-0">
+                                    <dt class="col-sm-3">Service Name:</dt>
+                                    <dd class="col-sm-9">{{ transaction.other_service.name }}</dd>
+
+                                    <dt class="col-sm-3">Category:</dt>
+                                    <dd class="col-sm-9">{{ transaction.other_service.get_category_display }}</dd>
+                                </dl>
+                            </div>
+                        </div>
+                        {% endif %}
                 </div>
 
                 <div class="col-md-4">

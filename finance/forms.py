@@ -5,6 +5,8 @@ from django.contrib.auth.models import User
 from datetime import datetime, date
 from decimal import Decimal
 import re
+
+from patient.models import PatientModel
 from .models import *
 from human_resource.models import DepartmentModel, StaffModel
 
@@ -334,6 +336,75 @@ class IncomeForm(forms.ModelForm):
             raise ValidationError("Income date cannot be more than 1 year ago.")
 
         return income_date
+
+
+class OtherPaymentServiceForm(forms.ModelForm):
+    class Meta:
+        model = OtherPaymentService
+        fields = [
+            'name', 'description', 'category', 'default_amount',
+            'is_fixed_amount', 'is_active'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Medical Report Fee'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'category': forms.Select(attrs={'class': 'form-control'}),
+            'default_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'is_fixed_amount': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set empty label for the category dropdown
+        self.fields['category'].empty_label = "Select Category"
+
+    def clean_name(self):
+        name = self.cleaned_data.get('name')
+        if not name:
+            raise ValidationError("Service name is required.")
+
+        # Sanitize input by removing leading/trailing space and collapsing internal spaces
+        name = ' '.join(name.strip().split())
+
+        if len(name) < 3:
+            raise ValidationError("Service name must be at least 3 characters long.")
+
+        # Check for uniqueness (case-insensitive)
+        existing = OtherPaymentService.objects.filter(name__iexact=name)
+        if self.instance.pk:
+            existing = existing.exclude(pk=self.instance.pk)
+
+        if existing.exists():
+            raise ValidationError(f"A service with the name '{name}' already exists.")
+
+        return name
+
+    def clean_default_amount(self):
+        amount = self.cleaned_data.get('default_amount')
+
+        # This field is optional, so only validate if a value is provided
+        if amount is not None:
+            if amount < 0:
+                raise ValidationError("Amount cannot be negative.")
+            if amount > Decimal('9999999.99'):
+                raise ValidationError("Amount is too large.")
+
+        return amount
+
+
+class OtherPaymentForm(forms.Form):
+    # REMOVED: The 'patient' field is no longer here.
+    other_service = forms.ModelChoiceField(
+        queryset=OtherPaymentService.objects.filter(is_active=True),
+        empty_label="--- Select a Service ---",
+        widget=forms.Select(attrs={'class': 'form-select form-select-lg'})
+    )
+    amount = forms.DecimalField(
+        max_digits=10, decimal_places=2,
+        widget=forms.NumberInput(attrs={'class': 'form-control form-control-lg', 'step': '0.01'})
+    )
+
 
 
 #------------------- SALARY MANAGEMENT FORMS --------------------

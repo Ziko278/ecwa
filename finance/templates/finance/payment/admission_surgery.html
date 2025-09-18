@@ -1,0 +1,138 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+{% block 'main' %}
+
+<div class="container-fluid mt-4">
+    <div class="card">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+            <h4><i class="bi bi-hospital"></i> Admission & Surgery Funding</h4>
+            <a href="{% url 'finance_payment_select' %}" class="btn btn-light btn-sm"><i class="bi bi-arrow-left"></i> Back to Selection</a>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-primary mt-3">
+                <h5>{{ patient }}</h5>
+                <div class="small">Card: {{ patient.patient_id }} | Wallet Balance: <strong>₦{{ wallet.amount|intcomma }}</strong></div>
+            </div>
+
+            {% if not funding_targets %}
+                <div class="alert alert-info text-center">This patient has no active admissions or surgeries.</div>
+            {% endif %}
+
+            <div class="accordion" id="fundingAccordion">
+                {% for target in funding_targets %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading{{ target.type }}{{ target.record.id }}">
+                        <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ target.type }}{{ target.record.id }}">
+                            <div class="w-100 d-flex justify-content-between">
+                                {# CORRECTED: Use the generic 'identifier' from the view #}
+                                <span><strong>{{ target.type }}:</strong> {{ target.identifier }}</span>
+                                {% if target.balance < 0 %}
+                                <span class="badge bg-danger">Amount Owed: ₦{{ target.abs_balance|intcomma }}</span>
+                                {% else %}
+                                <span class="badge bg-success">Credit Balance: ₦{{ target.balance|intcomma }}</span>
+                                {% endif %}
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="collapse{{ target.type }}{{ target.record.id }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" data-bs-parent="#fundingAccordion">
+                        <div class="accordion-body">
+                            <div class="row">
+                                <div class="col-md-7 border-end">
+                                    <h5>Itemized Bill</h5>
+                                    <table class="table table-sm">
+                                        {# CORRECTED: Dynamic base fee label #}
+                                        <tr>
+                                            <td>Base Fee ({{ target.type }})</td>
+                                            <td class="text-end">₦{{ target.base_fee|intcomma }}</td>
+                                        </tr>
+                                        <tr><td>Drugs</td><td class="text-end">₦{{ target.drugs.total|intcomma }}</td></tr>
+                                        <tr><td>Lab Tests</td><td class="text-end">₦{{ target.labs.total|intcomma }}</td></tr>
+                                        <tr><td>Scans</td><td class="text-end">₦{{ target.scans.total|intcomma }}</td></tr>
+                                        <tr><td>Other Services</td><td class="text-end">₦{{ target.others.total|intcomma }}</td></tr>
+                                        <tr class="table-light fs-6"><th>Total Bill</th><th class="text-end">₦{{ target.total_bill|intcomma }}</th></tr>
+                                        <tr class="fs-6"><th>Total Paid</th><th class="text-end">₦{{ target.total_paid|intcomma }}</th></tr>
+                                        <tr class="fw-bold fs-5 {% if target.balance < 0 %}table-danger{% else %}table-success{% endif %}">
+                                            <td>Current Balance</td><td class="text-end">₦{{ target.balance|intcomma }}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <div class="col-md-5">
+                                    <h5>Make a Deposit</h5>
+                                    <form class="funding-form" method="POST" action="{% url 'ajax_process_admission_funding' %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="patient_id" value="{{ patient.id }}">
+
+                                        {# CORRECTED: Conditionally include admission_id or surgery_id #}
+                                        {% if target.type == 'Admission' %}
+                                        <input type="hidden" name="admission_id" value="{{ target.record.id }}">
+                                        {% elif target.type == 'Surgery' %}
+                                        <input type="hidden" name="surgery_id" value="{{ target.record.id }}">
+                                        {% endif %}
+
+                                        <div class="mb-3">
+                                            <label class="form-label">Amount to Deposit (₦)</label>
+                                            <input type="number" name="amount" class="form-control form-control-lg" required min="1">
+                                        </div>
+
+                                        <button type="submit" class="btn btn-success w-100">Submit Deposit</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="notificationModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="notificationModalTitle"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="notificationModalBody"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>
+
+<script>
+    // The JavaScript does not need any changes, as it is already generic.
+    // The fixes are all in the HTML template's logic.
+    document.addEventListener('DOMContentLoaded', function() {
+        const notificationModal = new bootstrap.Modal(document.getElementById('notificationModal'));
+
+        function showNotification(message, title = 'Notification', isError = false) {
+            document.getElementById('notificationModalTitle').textContent = title;
+            document.getElementById('notificationModalBody').innerHTML = message;
+            document.getElementById('notificationModalTitle').className = `modal-title ${isError ? 'text-danger' : 'text-success'}`;
+            notificationModal.show();
+        }
+
+        document.querySelectorAll('.funding-form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.disabled = true;
+                submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Processing...`;
+
+                const formData = new FormData(form);
+
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showNotification(data.message, 'Success');
+                        setTimeout(() => { window.location.reload(); }, 2000);
+                    } else {
+                        throw new Error(data.error);
+                    }
+                })
+                .catch(err => {
+                    showNotification(err.message, 'Deposit Failed', true);
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = 'Submit Deposit';
+                });
+            });
+        });
+    });
+</script>
+{% endblock %}

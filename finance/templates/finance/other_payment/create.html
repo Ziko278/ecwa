@@ -1,0 +1,67 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Create New Miscellaneous Service</h4>
+            <p class="card-description">
+                Define a new billable service not covered by the main modules.
+            </p>
+
+            {% include 'admin_site/partials/error.html' %}
+
+            <form class="forms-sample" method="post" action="{% url 'other_payment_service_create' %}">
+                {% csrf_token %}
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.name }}
+                            <label for="{{ form.name.id_for_label }}">Service Name <span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating mb-3">
+                            {{ form.category }}
+                            <label for="{{ form.category.id_for_label }}">Category <span class="text-danger">*</span></label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-floating mb-3">
+                    {{ form.description }}
+                    <label for="{{ form.description.id_for_label }}">Description</label>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                         <div class="form-floating mb-3">
+                            {{ form.default_amount }}
+                            <label for="{{ form.default_amount.id_for_label }}">Default Amount (₦)</label>
+                        </div>
+                    </div>
+                     <div class="col-md-6 d-flex align-items-center px-5">
+                        <div class="form-check form-switch p-3 ">
+                            {{ form.is_fixed_amount }}
+                            <label class="form-check-label" for="{{ form.is_fixed_amount.id_for_label }}">
+                                <strong>Amount is fixed (cannot be changed at payment)</strong>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-check form-switch mb-4">
+                    {{ form.is_active }}
+                    <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Is Active</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary me-2">Save Service</button>
+                <a href="{% url 'other_payment_service_list' %}" class="btn btn-light">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

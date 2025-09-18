@@ -1,0 +1,98 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Actions" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li>
+                    {# This button now links to the create page, not a modal #}
+                    <a class="dropdown-item" href="{% url 'other_payment_service_create' %}">
+                        <button title="Add New Service" type="button" style="width:100%" class="btn btn-sm btn-primary">
+                            <i class="bi bi-plus-circle"></i> Add New Service
+                        </button>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">Other Payment Services</h5>
+            {% include 'admin_site/partials/error.html' %}
+            
+            <form method="get" class="row g-3 mb-4">
+                <div class="col-md-8">
+                    <input type="text" name="search" class="form-control" placeholder="Search by name or description..." value="{{ request.GET.search }}">
+                </div>
+                <div class="col-md-3">
+                    <select name="category" class="form-select">
+                        <option value="">All Categories</option>
+                        {% for value, text in categories %}
+                            <option value="{{ value }}" {% if request.GET.category == value %}selected{% endif %}>{{ text }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button>
+                </div>
+            </form>
+
+            <table class="table table-hover">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Service Name</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Default Amount (₦)</th>
+                    <th class="text-center" scope="col">Status</th>
+                    <th scope="col" class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for service in service_list %}
+                <tr>
+                    <th scope="row">{{ forloop.counter }}</th>
+                    <td>
+                        <a href="{% url 'other_payment_service_detail' service.pk %}">
+                            <strong>{{ service.name|title }}</strong>
+                        </a>
+                    </td>
+                    <td>{{ service.get_category_display }}</td>
+                    <td>{{ service.default_amount|intcomma|default:"N/A" }}</td>
+                    <td class="text-center">
+                        {% if service.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <a title="Edit Service" href="{% url 'other_payment_service_edit' service.id %}" class="btn btn-warning btn-sm">
+                            <i class="bi bi-pencil-square"></i>
+                        </a>
+                        <a title="Delete Service" href="{% url 'other_payment_service_delete' service.id %}" class="btn btn-danger btn-sm">
+                            <i class="bi bi-trash"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% if not service_list %}
+                 <h3 class="text-center py-5 text-muted">No Other Payment Services Found</h3>
+            {% endif %}
+
+            {% include '_pagination.html' %}
+        </div>
+    </div>
+</div>
+
+{# NO MODALS NEEDED on this page for Create/Edit #}
+
+{% endblock %}
