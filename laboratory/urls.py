@@ -51,6 +51,7 @@ urlpatterns = [
 
     # AJAX endpoints
     path('results/<int:pk>/verify/', verify_result, name='verify_result'),
+    path('results/<int:pk>/unverify/', unverify_result, name='unverify_result'),
     path('orders/<int:order_id>/process-for-results/', process_to_result_entry, name='process_to_result_entry'),
 
     # Equipment

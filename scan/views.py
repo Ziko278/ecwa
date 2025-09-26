@@ -25,6 +25,7 @@ from insurance.models import InsuranceClaimModel
 from patient.models import PatientModel, PatientWalletModel
 from .models import *
 from .forms import *
+from django.utils.text import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,36 @@ class ScanTemplateDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detail
         return context
 
 
+class ScanTemplateUpdateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
+):
+    model = ScanTemplateModel
+    permission_required = 'scan.change_scantemplatemodel'
+    form_class = ScanTemplateForm
+    template_name = 'scan/template/edit.html'
+    success_message = 'Scan Template Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('scan_template_detail', kwargs={'pk': self.object.pk})
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['category_list'] = ScanCategoryModel.objects.all().order_by('name')
+        context['template'] = self.object
+        return context
+
+
+class ScanTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+    model = ScanTemplateModel
+    permission_required = 'scan.delete_scantemplatemodel'
+    template_name = 'scan/template/delete.html'
+    context_object_name = "template"
+    success_message = 'Scan Template Successfully Deleted'
+
+    def get_success_url(self):
+        return reverse('scan_template_index')
+
+
 # -------------------------
 # Scan Entry Point - Patient Verification
 # -------------------------
@@ -236,39 +267,6 @@ def verify_scan_patient_ajax(request):
         })
 
 
-# -------------------------
-# Missing Scan Template Views
-# -------------------------
-class ScanTemplateUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
-):
-    model = ScanTemplateModel
-    permission_required = 'scan.change_scantemplatemodel'
-    form_class = ScanTemplateForm
-    template_name = 'scan/template/edit.html'
-    success_message = 'Scan Template Successfully Updated'
-
-    def get_success_url(self):
-        return reverse('scan_template_detail', kwargs={'pk': self.object.pk})
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['category_list'] = ScanCategoryModel.objects.all().order_by('name')
-        context['template'] = self.object
-        return context
-
-
-class ScanTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
-    model = ScanTemplateModel
-    permission_required = 'scan.delete_scantemplatemodel'
-    template_name = 'scan/template/delete.html'
-    context_object_name = "template"
-    success_message = 'Scan Template Successfully Deleted'
-
-    def get_success_url(self):
-        return reverse('scan_template_index')
-
-
 class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ScanOrderModel
     permission_required = 'scan.view_scanordermodel'
@@ -282,27 +280,43 @@ class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
             'patient', 'template', 'ordered_by'
         ).order_by('-ordered_at')
 
-        # Filter by status if provided
+        # Get filter values from the request
         status = self.request.GET.get('status')
+        template_id = self.request.GET.get('template')
+        search_query = self.request.GET.get('search', '').strip()
+
+        # Filter by status if provided
         if status:
             queryset = queryset.filter(status=status)
 
-        # Filter by patient if provided (though not used in the template, the logic is here)
-        patient = self.request.GET.get('patient')
-        if patient:
-            queryset = queryset.filter(patient__id=patient)
-
         # Filter by template if provided
-        template = self.request.GET.get('template')
-        if template:
-            queryset = queryset.filter(template__id=template)
+        if template_id:
+            queryset = queryset.filter(template__id=template_id)
+
+        # Apply search query filter across multiple fields
+        if search_query:
+            # Annotate queryset to create a searchable full_name field
+            queryset = queryset.annotate(
+                patient_full_name=Concat(
+                    'patient__first_name', Value(' '), 'patient__last_name'
+                )
+            ).filter(
+                Q(patient_full_name__icontains=search_query) |
+                Q(patient__card_number__icontains=search_query) |
+                Q(order_number__icontains=search_query)
+            )
 
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+
+        # Pass the search query back to the template to keep it in the search box
+        context['search_query'] = self.request.GET.get('search', '').strip()
+
         # Use a slice to exclude 'pending' and 'cancelled' from the filter dropdown
-        context['status_choices'] = [choice for choice in ScanOrderModel.STATUS_CHOICES if choice[0] not in ['pending', 'cancelled']]
+        context['status_choices'] = [choice for choice in ScanOrderModel.STATUS_CHOICES if
+                                     choice[0] not in ['pending', 'cancelled']]
         context['template_list'] = ScanTemplateModel.objects.filter(is_active=True).order_by('name')
 
         # Add counts for the dashboard summary cards
@@ -315,7 +329,6 @@ class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
         }
 
         return context
-
 
 class ScanOrderUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, UpdateView
@@ -853,7 +866,9 @@ class ScanResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVi
                 measured_values = {'measurements': []}
 
                 for measurement in measurements:
-                    param_code = measurement.get('code', '')
+                    # After
+                    param_name = measurement.get('name', '')
+                    param_code = slugify(param_name)
                     value = self.request.POST.get(f'measurement_{param_code}', '').strip()
                     comment = self.request.POST.get(f'measurement_{param_code}_comment', '').strip()
 
@@ -950,82 +965,68 @@ class ScanResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """List all scan results with filtering options"""
     model = ScanResultModel
     permission_required = 'scan.view_scanresultmodel'
-    template_name = 'radiology/result/index.html'  # Adapted path for scan app
+    template_name = 'scan/result/index.html'
     context_object_name = 'results'
     paginate_by = 20
 
     def get_queryset(self):
-        # Get all filter values from the request (logic is identical to lab view)
         verified_filter = self.request.GET.get('verified', '')
         search_query = self.request.GET.get('search', '')
         start_date_str = self.request.GET.get('start_date')
         end_date_str = self.request.GET.get('end_date')
 
-        # Base queryset using ScanResultModel
         queryset = ScanResultModel.objects.select_related(
             'order__patient', 'order__template', 'verified_by'
         ).order_by('-created_at')
 
-        # Apply verified filter (logic is identical)
         if verified_filter == 'verified':
             queryset = queryset.filter(is_verified=True)
         elif verified_filter == 'unverified':
             queryset = queryset.filter(is_verified=False)
 
-        # Apply date range filter (logic is identical)
         if start_date_str and end_date_str:
             try:
                 start_date = date.fromisoformat(start_date_str)
                 end_date = date.fromisoformat(end_date_str)
                 queryset = queryset.filter(created_at__date__range=[start_date, end_date])
             except (ValueError, TypeError):
-                # Ignore invalid date formats gracefully
                 pass
 
-        # Apply search query filter (logic is identical, adapted for scan relationships)
         if search_query:
             queryset = queryset.annotate(
                 search_full_name=Concat(
                     'order__patient__first_name', Value(' '), 'order__patient__last_name'
                 )
             ).filter(
+                # Searches metadata
                 Q(search_full_name__icontains=search_query) |
                 Q(order__order_number__icontains=search_query) |
                 Q(order__template__name__icontains=search_query) |
-                Q(order__patient__card_number__icontains=search_query)
+                Q(order__patient__card_number__icontains=search_query) |
+
+                # --- NEW: Search the report content itself ---
+                Q(findings__icontains=search_query) |
+                Q(impression__icontains=search_query)
             )
 
         return queryset
 
     def get_context_data(self, **kwargs):
+        # ... your get_context_data method remains the same ...
         context = super().get_context_data(**kwargs)
-
-        # Get the filtered queryset to make stats dynamic (pattern is identical to lab view)
         filtered_queryset = self.get_queryset()
-
-        # Calculate stats based on the filtered queryset
         context['total_results'] = filtered_queryset.count()
         context['verified_results'] = filtered_queryset.filter(is_verified=True).count()
         context['pending_verification'] = filtered_queryset.filter(is_verified=False).count()
-
-        # Get current filter values to maintain state in the template
         context['current_verified'] = self.request.GET.get('verified', '')
         context['search_query'] = self.request.GET.get('search', '')
-
-        # Set default dates and maintain state for date filters
         today_str = date.today().isoformat()
         context['start_date'] = self.request.GET.get('start_date', today_str)
         context['end_date'] = self.request.GET.get('end_date', today_str)
-
-        # Filter choices for the template dropdown
         context['verified_choices'] = [
-            ('', 'All Statuses'),
-            ('verified', 'Verified Only'),
-            ('unverified', 'Unverified Only')
+            ('', 'All Statuses'), ('verified', 'Verified Only'), ('unverified', 'Unverified Only')
         ]
-
         return context
-
 
 class ScanResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     model = ScanResultModel
@@ -1044,13 +1045,34 @@ class ScanResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVi
 
         return super().dispatch(request, *args, **kwargs)
 
+    # After
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+
+        # Get the definitions and existing values
+        measurement_definitions = self.order.template.scan_parameters.get('measurements', [])
+        existing_values_list = self.object.measured_values.get('measurements', [])
+
+        # Create a dictionary for quick lookups of existing values
+        existing_values_map = {item['code']: item for item in existing_values_list}
+
+        # Combine the definitions with the existing values
+        combined_measurements = []
+        for definition in measurement_definitions:
+            slugified_name = slugify(definition.get('name', ''))
+            existing_data = existing_values_map.get(slugified_name, {})
+
+            # Merge definition with existing data
+            combined = definition.copy()
+            combined['value'] = existing_data.get('value', '')
+            combined['comment'] = existing_data.get('comment', '')
+            combined_measurements.append(combined)
+
         context.update({
             'order': self.order,
             'patient': self.order.patient,
             'template': self.order.template,
-            'measurements': self.order.template.scan_parameters.get('measurements', []),
+            'measurements': combined_measurements,  # Use the new combined list
             'existing_images': self.object.images.all().order_by('sequence_number'),
         })
         return context
@@ -1065,11 +1087,14 @@ class ScanResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVi
 
         # Create a lookup dictionary for existing values
         measurement_values = {}
+        # After
         for measurement in existing_measurements:
-            code = measurement.get('code', '')
-            if code:
-                measurement_values[f'measurement_{code}'] = measurement.get('value', '')
-                measurement_values[f'measurement_{code}_comment'] = measurement.get('comment', '')
+            # Get the name from the saved data and slugify it
+            name = measurement.get('name', '')
+            if name:
+                slugified_name = slugify(name)
+                measurement_values[f'measurement_{slugified_name}'] = measurement.get('value', '')
+                measurement_values[f'measurement_{slugified_name}_comment'] = measurement.get('comment', '')
 
         initial.update(measurement_values)
         return initial
@@ -1094,7 +1119,9 @@ class ScanResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVi
                 measured_values = {'measurements': []}
 
                 for measurement in measurements:
-                    param_code = measurement.get('code', '')
+                    # After
+                    param_name = measurement.get('name', '')
+                    param_code = slugify(param_name)
                     value = self.request.POST.get(f'measurement_{param_code}', '').strip()
                     comment = self.request.POST.get(f'measurement_{param_code}_comment', '').strip()
 
@@ -1191,57 +1218,6 @@ class ScanResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVi
 
     def get_success_url(self):
         return reverse('scan_result_detail', kwargs={'pk': self.object.pk})
-
-
-class ScanResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
-    """List all scan results with filtering options"""
-    model = ScanResultModel
-    permission_required = 'scan.view_scanresultmodel'
-    template_name = 'scan/result/index.html'
-    context_object_name = 'results'
-    paginate_by = 20
-
-    def get_queryset(self):
-        verified_filter = self.request.GET.get('verified', '')
-        search_query = self.request.GET.get('search', '')
-
-        queryset = ScanResultModel.objects.select_related(
-            'order__patient', 'order__template', 'verified_by'
-        ).order_by('-created_at')
-
-        if verified_filter == 'verified':
-            queryset = queryset.filter(is_verified=True)
-        elif verified_filter == 'unverified':
-            queryset = queryset.filter(is_verified=False)
-
-        if search_query:
-            queryset = queryset.filter(
-                Q(order__patient__first_name__icontains=search_query) |
-                Q(order__patient__last_name__icontains=search_query) |
-                Q(order__order_number__icontains=search_query) |
-                Q(order__template__name__icontains=search_query)
-            )
-
-        return queryset
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        # Summary stats
-        context['pending_verification'] = ScanResultModel.objects.filter(is_verified=False).count()
-        context['total_results'] = ScanResultModel.objects.count()
-        context['verified_results'] = ScanResultModel.objects.filter(is_verified=True).count()
-
-        # Filter options
-        context['verified_choices'] = [
-            ('', 'All Results'),
-            ('verified', 'Verified Only'),
-            ('unverified', 'Unverified Only')
-        ]
-        context['current_verified'] = self.request.GET.get('verified', '')
-        context['search_query'] = self.request.GET.get('search', '')
-
-        return context
 
 
 class ScanResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
@@ -1362,15 +1338,16 @@ def verify_scan_result(request, pk):
             }, status=400)
 
         # Optional radiologist comments
-        radiologist_comments = request.POST.get('doctor_interpretation', '').strip()
+        radiologist_comments = request.POST.get('radiologist_comments', '').strip()
 
         with transaction.atomic():
             result.is_verified = True
             result.verified_by = request.user
             result.verified_at = now()
+
             if radiologist_comments:
-                result.technician_comments = radiologist_comments
-            result.save(update_fields=['is_verified', 'verified_by', 'verified_at', 'technician_comments'])
+                result.radiologist_comments = radiologist_comments
+            result.save(update_fields=['is_verified', 'verified_by', 'verified_at', 'radiologist_comments'])
 
         return JsonResponse({
             'success': True,
@@ -1384,6 +1361,50 @@ def verify_scan_result(request, pk):
         return JsonResponse({
             'success': False,
             'error': 'An error occurred while verifying result. Please contact administrator.'
+        }, status=500)
+
+
+@login_required
+@permission_required('scan.change_scanresultmodel', raise_exception=True)
+def unverify_scan_result(request, pk):
+    """AJAX endpoint to un-verify a scan result."""
+    # 1. We must check that this is a POST request
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    try:
+        result = get_object_or_404(ScanResultModel, pk=pk)
+
+        # 2. Check if the result is already unverified and return an error
+        if not result.is_verified:
+            return JsonResponse({
+                'success': False,
+                'error': 'This result is already unverified.'
+            }, status=400)
+
+        # 3. The core logic is wrapped in a database transaction for safety
+        with transaction.atomic():
+            result.is_verified = False
+            result.verified_by = None
+            result.verified_at = None
+
+            # 4. Clear the comments that were added during verification
+            result.radiologist_comments = ''  # Clearing the field used for radiologist comments
+
+            result.save(update_fields=['is_verified', 'verified_by', 'verified_at', 'radiologist_comments'])
+
+        # 5. Return a success JSON response
+        return JsonResponse({
+            'success': True,
+            'message': 'Scan result has been unverified successfully.'
+        })
+
+    except Exception as e:
+        # 6. Catch any errors and return a server error JSON response
+        logger.exception("Error unverifying scan result id=%s", pk)
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected error occurred. Please contact support.'
         }, status=500)
 
 

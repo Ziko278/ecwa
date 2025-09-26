@@ -57,7 +57,7 @@
                                 <div class="card p-2">
                                     <div class="d-flex justify-content-between">
                                         <div>
-                                            <h6 class="mb-1">{{ img.view|default:img.name|default:"Unnamed View" }}</h6>
+                                            <h6 class="mb-1">{{ img.view|default:"Unnamed View" }}</h6>
                                             <p class="mb-0 small text-muted">{{ img.description|default:"No description" }}</p>
                                         </div>
                                         <div class="text-end">
@@ -88,8 +88,7 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th>Name</th>
-                                        <th>Code</th>
-                                        <th>Type</th>
+\                                        <th>Type</th>
                                         <th>Unit</th>
                                         <th>Normal Range</th>
                                         <th>Options</th>
@@ -99,7 +98,6 @@
                                     {% for m in template.scan_parameters.measurements %}
                                     <tr>
                                         <td><strong>{{ m.name }}</strong></td>
-                                        <td><span class="text-secondary">{{ m.code|default:"-" }}</span></td>
                                         <td>
                                             <span class="text-{% if m.type == 'numeric' %}primary{% elif m.type == 'select' %}warning{% else %}dark{% endif %}">
                                                 {{ m.type|capfirst }}
@@ -186,7 +184,7 @@
                                                 <i class="mdi mdi-image-outline" style="font-size:32px;"></i>
                                             </div>
                                             <div class="mt-2">
-                                                <strong>{{ img.view|default:img.name|default:"View" }}</strong><br>
+                                                <strong>{{ img.view|default:"View" }}</strong><br>
                                                 <small class="text-muted">{{ img.description|default:"-" }}</small>
                                             </div>
                                         </div>

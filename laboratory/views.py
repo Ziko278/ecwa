@@ -677,33 +677,54 @@ class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
     paginate_by = 20
 
     def get_queryset(self):
-        queryset = LabTestOrderModel.objects.exclude(status='pending').select_related(
+        queryset = LabTestOrderModel.objects.select_related(
             'patient', 'template', 'ordered_by'
         ).order_by('-ordered_at')
 
-        # Filter by status if provided
+        # Get filter values from the request
         status = self.request.GET.get('status')
+        template_id = self.request.GET.get('template')
+        search_query = self.request.GET.get('search', '').strip()
+
+        # Filter by status if provided
         if status:
             queryset = queryset.filter(status=status)
 
-        # Filter by patient if provided
-        patient = self.request.GET.get('patient')
-        if patient:
-            queryset = queryset.filter(patient__id=patient)
-
         # Filter by template if provided
-        template = self.request.GET.get('template')
-        if template:
-            queryset = queryset.filter(template__id=template)
+        if template_id:
+            queryset = queryset.filter(template__id=template_id)
+
+        # Apply search query filter across multiple fields
+        if search_query:
+            # Annotate queryset to create a searchable full_name field
+            queryset = queryset.annotate(
+                patient_full_name=Concat(
+                    'patient__first_name', Value(' '), 'patient__last_name'
+                )
+            ).filter(
+                Q(patient_full_name__icontains=search_query) |
+                Q(patient__card_number__icontains=search_query) |
+                Q(order_number__icontains=search_query) |
+                Q(sample_label__icontains=search_query)  # Search by sample number/label
+            )
+
+        # Note: The original exclude(status='pending') is removed to allow searching all orders.
+        # If you still want to exclude them by default, you can add it back:
+        # queryset = queryset.exclude(status='pending')
 
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+
+        # Pass the current search query to the template to keep it in the search box
+        context['search_query'] = self.request.GET.get('search', '').strip()
+
         context['status_choices'] = LabTestOrderModel.STATUS_CHOICES
         context['template_list'] = LabTestTemplateModel.objects.filter(is_active=True).order_by('name')
 
         # Add counts for dashboard
+        # These counts are for all orders, not just the filtered ones.
         context['status_counts'] = {
             'pending': LabTestOrderModel.objects.filter(status='pending').count(),
             'paid': LabTestOrderModel.objects.filter(status='paid').count(),
@@ -713,7 +734,6 @@ class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
         }
 
         return context
-
 
 class LabTestOrderDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = LabTestOrderModel
@@ -1186,7 +1206,6 @@ class LabTestResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListVie
             )
 
         return queryset
-
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -1833,6 +1852,44 @@ def verify_result(request, pk):
     except Exception as e:
         # 5. Catch any errors and return a server error JSON response
         logger.exception("Error verifying result id=%s: %s", pk, e)
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected error occurred. Please contact support.'
+        }, status=500)
+
+
+@login_required
+@permission_required('laboratory.change_labtestresultmodel', raise_exception=True)
+def unverify_result(request, pk):
+    # 1. We must check that this is a POST request
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    result = get_object_or_404(LabTestResultModel, pk=pk)
+
+    # 2. Check if already verified and return a JSON error
+    if not result.is_verified:
+        return JsonResponse({'success': False, 'error': 'This result has not yet been verified.'})
+
+    try:
+        # The core logic remains inside a transaction
+        with transaction.atomic():
+            result.is_verified = False
+            result.verified_by = None
+            result.verified_at = None
+
+            # 3. Get pathologist comments from the AJAX request
+            result.pathologist_comments = ''
+
+            result.save()
+
+        # 4. Return a success JSON response
+        message = f"Result unverified for order {result.order.order_number}"
+        return JsonResponse({'success': True, 'message': message})
+
+    except Exception as e:
+        # 5. Catch any errors and return a server error JSON response
+        logger.exception("Error unverifying result id=%s: %s", pk, e)
         return JsonResponse({
             'success': False,
             'error': 'An unexpected error occurred. Please contact support.'

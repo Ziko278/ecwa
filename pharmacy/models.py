@@ -127,7 +127,7 @@ class DrugModel(models.Model):
     """The actual drug product in your inventory"""
     # Core relationships
     formulation = models.ForeignKey(DrugFormulationModel, on_delete=models.CASCADE, related_name='products')
-    manufacturer = models.ForeignKey(ManufacturerModel, on_delete=models.CASCADE, related_name='products')
+    manufacturer = models.ForeignKey(ManufacturerModel, on_delete=models.CASCADE, related_name='products', blank=True, null=True)
 
     # Product identification
     brand_name = models.CharField(max_length=200, blank=True, help_text="Commercial/Brand name")
@@ -250,6 +250,7 @@ class DrugStockModel(models.Model):
     # Location and dates
     location = models.CharField(max_length=20, choices=LOCATION_CHOICES, default='store')
     expiry_date = models.DateField(blank=True, null=True)
+    batch_number = models.CharField(max_length=100, blank=True, default='')
 
     # Status and tracking
     status = models.CharField(

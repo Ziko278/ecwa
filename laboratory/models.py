@@ -252,6 +252,10 @@ class LabTestResultModel(models.Model):
     class Meta:
         db_table = 'lab_test_results'
 
+        permissions = [
+            ("can_verify_lab_result", "Can verify lab test result"),
+        ]
+
     def __str__(self):
         return f"Results: {self.order}"
 

@@ -101,9 +101,9 @@ class RegistrationPaymentModel(models.Model):
 class PatientModel(models.Model):
     """This model handles patient"""
     first_name = models.CharField(max_length=50)
-    middle_name = models.CharField(max_length=50, null=True, blank=True, default='')
+    middle_name = models.CharField(max_length=50, blank=True, default='')
     last_name = models.CharField(max_length=50)
-    card_number = models.CharField(max_length=50, unique=True, blank=True, null=True, db_index=True)
+    card_number = models.CharField(max_length=50, unique=True, blank=True, default='', db_index=True)
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=10, choices=GENDER)
     occupation = models.CharField(max_length=100, blank=True, null=True, default='')
@@ -133,6 +133,11 @@ class PatientModel(models.Model):
                                    related_name='patient_created_by')
     created_at = models.DateTimeField(auto_now_add=True, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, blank=True, null=True)
+
+    class Meta:
+        permissions = [
+            ("can_view_patient_dashboard", "Can view Patient Dashboard"),
+        ]
 
     def __str__(self):
         if self.middle_name:

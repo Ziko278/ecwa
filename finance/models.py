@@ -265,6 +265,10 @@ class PatientTransactionModel(models.Model):
         ]
 
 
+class PatientRefundModel(models.Model):
+    patient = models.ForeignKey('patient.PatientModel', on_delete=models.SET_NULL, null=True)
+
+
 class MoneyRemittance(models.Model):
     """
     Represents a batch of funds remitted by a staff member to the finance department.

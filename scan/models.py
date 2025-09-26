@@ -318,6 +318,8 @@ class ScanResultModel(models.Model):
     impression = models.TextField(blank=True, help_text="Clinical impression/diagnosis")
     recommendations = models.TextField(blank=True, help_text="Follow-up recommendations")
     technician_comments = models.TextField(blank=True, help_text="Technical notes")
+    radiologist_comments = models.TextField(blank=True,
+                                            help_text="Interpretation and comments from the verifying radiologist")
 
     # === TIMING ===
     performed_at = models.DateTimeField()
@@ -344,6 +346,7 @@ class ScanResultModel(models.Model):
     ]
     status = models.CharField(
         max_length=20,
+        blank=True,
         choices=STATUS_CHOICES,
         default='draft'
     )
@@ -423,6 +426,10 @@ class ScanResultModel(models.Model):
         db_table = 'scan_results'
         ordering = ['-performed_at']
 
+        permissions = [
+            ("can_verify_scan_result", "Can verify Image result"),
+        ]
+
     def __str__(self):
         return f"{self.order.template.name} - {self.performed_at.date()}"
 
@@ -450,7 +457,6 @@ class ScanResultModel(models.Model):
         if 'measurements' not in data:
             data['measurements'] = []
         return data
-
 
     def needs_extraction(self):
         """Check if report image exists but extraction not done"""

@@ -88,21 +88,29 @@
             </div>
 
             <form method="get" class="row g-3 mb-4 align-items-center">
-                <div class="col-md-6">
-                    <select name="status" class="form-select" onchange="this.form.submit()">
-                        <option value="">Filter by Status...</option>
+                <div class="col-md-5">
+                    <input type="text" name="search" class="form-control"
+                           placeholder="Search Patient Name, Card #, Order #"
+                           value="{{ search_query }}">
+                </div>
+                <div class="col-md-3">
+                    <select name="status" class="form-select">
+                        <option value="">All Statuses</option>
                         {% for code, name in status_choices %}
                         <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>{{ name }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-6">
-                    <select name="template" class="form-select" onchange="this.form.submit()">
-                        <option value="">Filter by Scan Type...</option>
+                <div class="col-md-3">
+                    <select name="template" class="form-select">
+                        <option value="">All Scan Types</option>
                         {% for template in template_list %}
                         <option value="{{ template.id }}" {% if request.GET.template|add:"0" == template.id %}selected{% endif %}>{{ template.name }}</option>
                         {% endfor %}
                     </select>
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100">Filter</button>
                 </div>
             </form>
 
@@ -137,19 +145,19 @@
                             <td>{{ order.ordered_at|date:"d M Y, h:i A" }}</td>
                             <td class="text-center">
                                 {% if order.status == 'paid' or order.status == 'scheduled' %}
-                                    <a href="{% url 'patient_scans' order.patient.id %}" class="btn btn-info btn-sm" title="Go to Patient's Page to Schedule/Start">
+                                    <a href="{% url 'patient_scan_orders' order.patient.id %}" class="btn btn-info btn-sm" title="Go to Patient's Page to Schedule/Start">
                                         <i class="bi bi-calendar-event"></i> Manage
                                     </a>
                                 {% elif order.status == 'in_progress' %}
                                     <a href="{% url 'scan_result_create_for_order' order.id %}" class="btn btn-dark btn-sm" title="Input Scan Results">
                                         <i class="bi bi-keyboard"></i> Input Result
                                     </a>
-                                {% elif order.status == 'completed' %}
+                                {% elif order.status == 'completed' and order.result %}
                                     <a href="{% url 'scan_result_detail' order.result.id %}" class="btn btn-success btn-sm" title="View Scan Results">
                                         <i class="bi bi-eye"></i> View Result
                                     </a>
                                 {% endif %}
-                                <a href="{ url 'scan_order_detail' order.id %}" class="btn btn-light btn-sm" title="View Order Details">
+                                <a href="{% url 'scan_order_detail' order.id %}" class="btn btn-light btn-sm" title="View Order Details">
                                     <i class="bi bi-three-dots"></i>
                                 </a>
                             </td>

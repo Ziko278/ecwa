@@ -54,6 +54,14 @@
                                     </span>
                                 </div>
                             </div>
+
+                            <div class="row">
+                                <div class="col-lg-3 col-md-4 label">Sample Label</div>
+                                <div class="col-lg-9 col-md-8">
+                                    {{ order.sample_label|upper }}
+                                </div>
+                            </div>
+
                             <div class="row">
                                 <div class="col-lg-3 col-md-4 label">Order Source</div>
                                 <div class="col-lg-9 col-md-8">{{ order.get_source_display }} </div>
@@ -97,7 +105,7 @@
                             </div>
                             <div class="row">
                                 <div class="col-lg-3 col-md-4 label">Payment Processed By</div>
-                                <div class="col-lg-9 col-md-8">{{ order.payment_by.get_full_name|default:order.payment_by.username }}</div>
+                                <div class="col-lg-9 col-md-8">{{ order.payment_by.user_staff_profile.staff|default:order.payment_by.username }}</div>
                             </div>
                             {% endif %}
 

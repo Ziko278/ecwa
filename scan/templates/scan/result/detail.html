@@ -24,18 +24,22 @@
                 </div>
 
                 <div>
-                    {% if can_edit %}
-                        <a href="{% url 'scan_result_edit' pk=result.pk %}" class="btn btn-warning btn-sm me-2">
-                            <i class="mdi mdi-pencil"></i> Edit
-                        </a>
-                    {% endif %}
-                    {% if can_verify %}
-                        <button type="button" class="btn btn-success btn-sm me-2" id="verify-btn"
-                                data-result-id="{{ result.id }}" data-scan-name="{{ template.name }}">
-                            <i class="mdi mdi-check-circle"></i> Verify
-                        </button>
-                    {% endif %}
+                    {% if result.is_verified %}
+                            <button type="button" class="btn btn-danger btn-sm me-2" id="unverify-btn"
+                                    data-result-id="{{ result.id }}" data-scan-name="{{ template.name }}">
+                                <i class="mdi mdi-close-circle-outline"></i> Unverify
+                            </button>
+                    {% else %}
 
+                            <a href="{% url 'scan_result_edit' pk=result.pk %}" class="btn btn-warning btn-sm me-2">
+                                <i class="mdi mdi-pencil"></i> Edit
+                            </a>
+
+                            <button type="button" class="btn btn-success btn-sm me-2" id="verify-btn"
+                                    data-result-id="{{ result.id }}" data-scan-name="{{ template.name }}">
+                                <i class="mdi mdi-check-circle"></i> Verify
+                            </button>
+                    {% endif %}
                     <button class="btn btn-info btn-sm" onclick="printResult()">
                         <i class="mdi mdi-printer"></i> Print
                     </button>
@@ -66,7 +70,7 @@
                     </div>
 
                     <!-- Patient & Scan Info -->
-                    <div class="row mb-4">
+                    <div class="row mb-4 print-flex-row">
                         <div class="col-md-6">
                             <table class="table table-borderless table-sm">
                                 <tr>
@@ -163,7 +167,7 @@
                     </div>
 
                     <!-- Core Findings / Impression / Recommendations -->
-                    <div class="row mb-4">
+                    <div class="row mb-4 print-flex-row">
                         <div class="col-md-6">
                             <div class="border p-3">
                                 <h6>Findings</h6>
@@ -214,12 +218,12 @@
                     {% endif %}
 
                     <!-- Scan Images Gallery -->
-                    <div class="mb-4">
-                        <h6>Scan Images</h6>
+                    <div class="mb-4 no-print">
+                        <h6 class="no-print">Scan Images</h6>
                         {% if scan_images %}
                             <div class="row g-2">
                                 {% for img in scan_images %}
-                                <div class="col-md-4">
+                                <div class="col-md-4 no-print">
                                     <div class="card">
                                         <div class="card-body p-2">
                                             <a href="{{ img.image.url }}" target="_blank" class="d-block text-center">
@@ -245,6 +249,27 @@
                             </div>
                         {% endif %}
                     </div>
+
+                    {% if result.technician_comments or result.pathologist_comments %}
+                    <div class="row mb-4 print-flex-row">
+                        {% if result.technician_comments %}
+                        <div class="col-md-6">
+                            <div class="border-top pt-3">
+                                <p><strong>Technician Comments:</strong></p>
+                                <p class="text-muted">{{ result.technician_comments }}</p>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if result.radiologist_comments %}
+                        <div class="col-md-6">
+                            <div class="border-top pt-3">
+                                <p><strong>Radiologist Comments:</strong></p>
+                                <p class="text-muted">{{ result.radiologist_comments }}</p>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
 
                     <!-- Signatures / Verification -->
                     <div class="row mt-4">
@@ -350,7 +375,7 @@
                     </div>
                     <div class="mb-3">
                         <label for="radiologist-comments">Radiologist Comments (Optional)</label>
-                        <textarea id="radiologist-comments" class="form-control" rows="3"
+                        <textarea id="radiologist-comments" name="radiologist_comments" class="form-control" rows="3"
                                   placeholder="Enter any additional comments or observations..."></textarea>
                     </div>
                     <div class="alert alert-info">
@@ -369,7 +394,68 @@
     </div>
 </div>
 
+<div class="modal fade" id="unverificationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirm Unverify</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="unverification-form">
+                <div class="modal-body">
+                    <p>Are you sure you want to unverify this report?</p>
+                    <p class="text-muted small">This action will revert the status to "Unverified".</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="mdi mdi-close-circle-outline me-2"></i>Confirm Unverify
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="actionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="actionModalTitle">Confirm Action</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="action-form">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Scan Name</label>
+                        <input type="text" id="action-scan-name" class="form-control" readonly>
+                    </div>
+                    <div id="comments-group" class="mb-3">
+                        <label for="doctor-interpretation">Radiologist Interpretation/Comments (Optional)</label>
+                        <textarea id="doctor-interpretation" class="form-control" rows="4"
+                                  placeholder="Enter interpretation or verification comments..."></textarea>
+                    </div>
+                    <div id="modal-alert" class="alert">
+                        <i class="mdi mdi-information me-2"></i>
+                        <strong id="modal-alert-text"></strong>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="action-submit-btn" class="btn">
+                        <i id="action-submit-icon" class="me-2"></i>
+                        <span id="action-submit-text">Submit</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <style>
+    .no-print {
+        display: none !important;
+    }
 .toast-container { z-index: 1055; }
 .table-borderless td { padding: .25rem .5rem; }
 .img-thumbnail { border-radius: .25rem; }
@@ -377,6 +463,14 @@
     .card, .btn, .border { border: none !important; box-shadow: none !important; }
     .no-print { display: none !important; }
     #printableReport { background-color: white !important; }
+     .print-flex-row {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+        }
+        .print-flex-row .col-md-6 {
+            width: 50% !important;
+            flex: 0 0 50% !important;
+        }
 }
 </style>
 
@@ -386,6 +480,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const verificationModalEl = document.getElementById('verificationModal');
     const verificationModal = verificationModalEl ? new bootstrap.Modal(verificationModalEl) : null;
     const verificationForm = document.getElementById('verification-form');
+
+    // ADD THESE LINES
+    const unverifyBtn = document.getElementById('unverify-btn');
+    const unverificationModalEl = document.getElementById('unverificationModal');
+    const unverificationModal = unverificationModalEl ? new bootstrap.Modal(unverificationModalEl) : null;
+    const unverificationForm = document.getElementById('unverification-form');
 
     function showNotification(message, type = 'info', autoReload = false) {
         const toastContainer = document.getElementById('notification-toast');
@@ -426,6 +526,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    if (unverifyBtn) {
+        unverifyBtn.addEventListener('click', function() {
+            const resultId = this.dataset.resultId;
+            // Attach the resultId to the modal instance for the form handler to use
+            unverificationModal._resultId = resultId;
+            unverificationModal.show();
+        });
+    }
+
     if (verificationForm) {
         verificationForm.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -462,22 +571,85 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     }
+
+    // ADD THIS BLOCK TO HANDLE THE UNVERIFY FORM SUBMISSION
+    if (unverificationForm) {
+        unverificationForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const resultId = unverificationModal._resultId;
+            const submitBtn = this.querySelector('button[type="submit"]');
+
+            submitBtn.classList.add('btn-loading');
+            submitBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+            // Note the URL is changed to the 'unverify' endpoint
+
+            fetch(`/portal/scan/results/${resultId}/unverify/`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.success) {
+                    unverificationModal.hide();
+                    showNotification(data.message || 'Report unverified', 'success', true);
+                } else {
+                    showNotification(data.error || 'Unverification failed', 'error');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showNotification('An error occurred while unverifying the report', 'error');
+            })
+            .finally(() => {
+                submitBtn.classList.remove('btn-loading');
+                submitBtn.disabled = false;
+            });
+        });
+    }
+
 });
 
 function printResult() {
+    // 1. Get the HTML content of the report.
     const reportContent = document.getElementById('printableReport').innerHTML;
-    const printWindow = window.open('', '_blank', 'width=900,height=700');
+
+    // 2. Open a new window for printing.
+    const printWindow = window.open('', '_blank', 'width=1000,height=800');
+
+    // 3. Write a complete HTML document into the new window.
     printWindow.document.write(`
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Scan Report - {{ template.name }}</title>
+            <title>Print Report - {{ order.order_number }}</title>
+
+            <link
+                href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+                rel="stylesheet"
+            >
+
             <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-                th, td { padding: 8px; border: 1px solid #ddd; text-align: left; }
-                th { background-color: #f8f9fa; }
-                .text-center { text-align: center; }
+                body {
+                    margin: 20px;
+                }
+                .table-borderless td {
+                    padding: .25rem .5rem;
+                }
+
+                /* This is the fix to keep columns side-by-side */
+                .row {
+                    display: flex !important;
+                    flex-wrap: nowrap !important;
+                }
+                .col-md-6 {
+                    width: 50% !important;
+                    flex: 0 0 50% !important;
+                }
             </style>
         </head>
         <body>
@@ -485,9 +657,16 @@ function printResult() {
         </body>
         </html>
     `);
+
+    // 6. Finalize the document, print it, and then close the temporary window.
     printWindow.document.close();
     printWindow.focus();
-    setTimeout(() => { printWindow.print(); printWindow.close(); }, 300);
+
+    // Use a timeout to ensure content has time to render before printing
+    setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+    }, 400);
 }
 </script>
 {% endblock %}

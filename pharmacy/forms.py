@@ -463,7 +463,7 @@ class DrugBatchForm(ModelForm):
 class DrugStockForm(ModelForm):
     class Meta:
         model = DrugStockModel
-        fields = ['drug', 'batch', 'quantity_bought', 'unit_cost_price', 'selling_price', 'location', 'expiry_date']
+        fields = ['drug', 'batch', 'batch_number', 'quantity_bought', 'unit_cost_price', 'selling_price', 'location', 'expiry_date']
         widgets = {
             'expiry_date': forms.DateInput(attrs={'type': 'date'}),
             'batch': forms.HiddenInput(),  # Hidden since we'll set it in view

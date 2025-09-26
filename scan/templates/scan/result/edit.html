@@ -77,7 +77,7 @@
                                     Find existing value for this measurement code
                                     {% endcomment %}
                                     {% for existing in object.measurements_data.measurements %}
-                                        {% if existing.code == measurement.code %}
+                                        {% if existing.code == measurement.name|slugify %}
                                             {% with existing_value=existing.value existing_comment=existing.comment %}
                                             <tr>
                                                 <td>
@@ -87,27 +87,27 @@
                                                 <td>
                                                     {% if measurement.type == 'numeric' %}
                                                         <input type="number"
-                                                               name="measurement_{{ measurement.code }}"
+                                                               name="measurement_{{ measurement.name|slugify }}"
                                                                class="form-control"
                                                                step="0.01"
                                                                value="{{ existing_value }}"
                                                                placeholder="Enter value">
                                                     {% elif measurement.type == 'select' %}
-                                                        <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                        <select name="measurement_{{ measurement.name|slugify }}" class="form-control">
                                                             <option value="">Select...</option>
                                                             {% for option in measurement.options %}
                                                                 <option value="{{ option }}" {% if existing_value == option %}selected{% endif %}>{{ option }}</option>
                                                             {% endfor %}
                                                         </select>
                                                     {% elif measurement.type == 'boolean' %}
-                                                        <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                        <select name="measurement_{{ measurement.name|slugify }}" class="form-control">
                                                             <option value="">Select...</option>
                                                             <option value="Normal" {% if existing_value == "Normal" %}selected{% endif %}>Normal</option>
                                                             <option value="Abnormal" {% if existing_value == "Abnormal" %}selected{% endif %}>Abnormal</option>
                                                         </select>
                                                     {% else %}
                                                         <input type="text"
-                                                               name="measurement_{{ measurement.code }}"
+                                                               name="measurement_{{ measurement.name|slugify }}"
                                                                class="form-control"
                                                                value="{{ existing_value }}"
                                                                placeholder="Enter value">
@@ -129,7 +129,7 @@
                                                 </td>
                                                 <td>
                                                     <input type="text"
-                                                           name="measurement_{{ measurement.code }}_comment"
+                                                           name="measurement_{{ measurement.name|slugify }}_comment"
                                                            class="form-control form-control-sm"
                                                            value="{{ existing_comment }}"
                                                            placeholder="Optional comment">
@@ -147,26 +147,26 @@
                                             <td>
                                                 {% if measurement.type == 'numeric' %}
                                                     <input type="number"
-                                                           name="measurement_{{ measurement.code }}"
+                                                           name="measurement_{{ measurement.name|slugify }}"
                                                            class="form-control"
                                                            step="0.01"
                                                            placeholder="Enter value">
                                                 {% elif measurement.type == 'select' %}
-                                                    <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                    <select name="measurement_{{ measurement.name|slugify }}" class="form-control">
                                                         <option value="">Select...</option>
                                                         {% for option in measurement.options %}
                                                             <option value="{{ option }}">{{ option }}</option>
                                                         {% endfor %}
                                                     </select>
                                                 {% elif measurement.type == 'boolean' %}
-                                                    <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                    <select name="measurement_{{ measurement.name|slugify }}" class="form-control">
                                                         <option value="">Select...</option>
                                                         <option value="Normal">Normal</option>
                                                         <option value="Abnormal">Abnormal</option>
                                                     </select>
                                                 {% else %}
                                                     <input type="text"
-                                                           name="measurement_{{ measurement.code }}"
+                                                           name="measurement_{{ measurement.name|slugify }}"
                                                            class="form-control"
                                                            placeholder="Enter value">
                                                 {% endif %}
@@ -187,7 +187,7 @@
                                             </td>
                                             <td>
                                                 <input type="text"
-                                                       name="measurement_{{ measurement.code }}_comment"
+                                                       name="measurement_{{ measurement.name|slugify }}_comment"
                                                        class="form-control form-control-sm"
                                                        placeholder="Optional comment">
                                             </td>
@@ -290,29 +290,6 @@
                         </div>
                     </div>
 
-                    <!-- Report Status & Date -->
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="status" class="form-label">Report Status</label>
-                                <select name="status" id="status" class="form-control">
-                                    <option value="draft" {% if object.status == 'draft' %}selected{% endif %}>Draft</option>
-                                    <option value="pending_review" {% if object.status == 'pending_review' %}selected{% endif %}>Pending Review</option>
-                                    <option value="reviewed" {% if object.status == 'reviewed' %}selected{% endif %}>Reviewed</option>
-                                    <option value="finalized" {% if object.status == 'finalized' %}selected{% endif %}>Finalized</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="report_date" class="form-label">Report Date</label>
-                                <input type="datetime-local" name="report_date" id="report_date"
-                                       class="form-control"
-                                       value="{{ object.report_date|date:'Y-m-d\TH:i' }}">
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Current Radiology Report Image -->
                     {% if object.radiology_report_image %}
                     <div class="mb-4">
@@ -345,9 +322,7 @@
                             </a>
                         </div>
                         <div>
-                            <button type="button" class="btn btn-outline-primary me-2" onclick="validateForm()">
-                                <i class="mdi mdi-check me-2"></i>Validate
-                            </button>
+
                             <button type="submit" class="btn btn-success">
                                 <i class="mdi mdi-content-save me-2"></i>Update Results
                             </button>
@@ -392,12 +367,12 @@
                     </div>
                     <div class="timeline-item">
                         <small class="text-muted">Performed By:</small>
-                        <p>{{ object.performed_by.get_full_name|default:object.performed_by.username }}</p>
+                        <p>{{ object.performed_by.user_staff_profile.staff|default:object.performed_by.username }}</p>
                     </div>
                     {% if object.verified_by %}
                     <div class="timeline-item">
                         <small class="text-muted">Verified By:</small>
-                        <p>{{ object.verified_by.get_full_name|default:object.verified_by.username }}</p>
+                        <p>{{ object.verified_by.user_staff_profile.staff|default:object.verified_by.username }}</p>
                         <small class="text-muted">{{ object.verified_at|date:"M d, Y H:i" }}</small>
                     </div>
                     {% endif %}
@@ -410,20 +385,18 @@
             <div class="card-body">
                 <h5 class="card-title">Quick Actions</h5>
                 <div class="d-grid gap-2">
-                    <a href="{ url 'patient_scan_history' patient_id=patient.id %}" class="btn btn-outline-primary">
+                    <a href="{% url 'patient_scan_orders' patient_id=patient.id %}" class="btn btn-outline-primary">
                         <i class="mdi mdi-account"></i> View Patient Scans
                     </a>
-                    <button class="btn btn-outline-info" onclick="previewReport()">
-                        <i class="mdi mdi-printer"></i> Preview Report
-                    </button>
+
                     <a href="{% url 'scan_result_detail' pk=object.pk %}" class="btn btn-outline-success">
                         <i class="mdi mdi-eye"></i> View Report
                     </a>
-                    {% if object.status != 'finalized' %}
-                    <button class="btn btn-outline-warning" onclick="finalizeReport()">
-                        <i class="mdi mdi-lock"></i> Finalize Report
-                    </button>
-                    {% endif %}
+<!--                    {% if object.status != 'finalized' %}-->
+<!--                    <button class="btn btn-outline-warning" onclick="finalizeReport()">-->
+<!--                        <i class="mdi mdi-lock"></i> Finalize Report-->
+<!--                    </button>-->
+<!--                    {% endif %}-->
                 </div>
             </div>
         </div>
@@ -594,7 +567,6 @@ function previewReport() {
             <div class="patient-info">
                 <strong>Patient:</strong> {{ patient|title }}<br>
                 <strong>Card Number:</strong> {{ patient.card_number|upper }}<br>
-                <strong>Report Date:</strong> ${new Date(reportDate).toLocaleString()}
             </div>
             <div class="section">
                 <div class="label">Clinical Findings:</div>

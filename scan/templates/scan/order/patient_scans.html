@@ -267,6 +267,16 @@
 </style>
 
 <script>
+    function getFormattedNow() {
+        const now = new Date();
+        const year = now.getFullYear();
+        // getMonth() is 0-indexed, so we add 1. Pad with '0' if it's a single digit.
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const day = now.getDate().toString().padStart(2, '0');
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
 document.addEventListener('DOMContentLoaded', function() {
     // ================================== DOM ELEMENTS ==================================
     const statusFilter = document.getElementById('status-filter');
@@ -383,14 +393,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    scheduleScanBtns.forEach(btn => {
+     scheduleScanBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             currentOrderId = this.dataset.orderId;
             document.getElementById('schedule-scan-name').value = this.dataset.scanName;
-            document.getElementById('schedule-date').value = '';
+            // *** THIS IS THE MODIFIED LINE ***
+            document.getElementById('schedule-date').value = getFormattedNow();
             scheduleScanModal.show();
         });
     });
+
 
     if (scheduleScanForm) {
         scheduleScanForm.addEventListener('submit', function(e) {

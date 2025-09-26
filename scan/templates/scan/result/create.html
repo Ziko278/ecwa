@@ -128,26 +128,26 @@
                                             <td>
                                                 {% if measurement.type == 'numeric' %}
                                                     <input type="number"
-                                                           name="measurement_{{ measurement.code }}"
+                                                           name="measurement_{{ measurement.name|slugify }}"
                                                            class="form-control"
                                                            step="0.01"
                                                            placeholder="Enter value">
                                                 {% elif measurement.type == 'select' %}
-                                                    <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                    <select name="measurement_{{ measurement.name|slugify }}" class="form-control">
                                                         <option value="">Select...</option>
                                                         {% for option in measurement.options %}
                                                             <option value="{{ option }}">{{ option }}</option>
                                                         {% endfor %}
                                                     </select>
                                                 {% elif measurement.type == 'boolean' %}
-                                                    <select name="measurement_{{ measurement.code }}" class="form-control">
+                                                    <select name="measurement_{{ measurement.name|slugify }}" class="form-control">
                                                         <option value="">Select...</option>
                                                         <option value="Normal">Normal</option>
                                                         <option value="Abnormal">Abnormal</option>
                                                     </select>
                                                 {% else %}
                                                     <input type="text"
-                                                           name="measurement_{{ measurement.code }}"
+                                                           name="measurement_{{ measurement.name|slugify }}"
                                                            class="form-control"
                                                            placeholder="Enter value">
                                                 {% endif %}
@@ -168,7 +168,7 @@
                                             </td>
                                             <td>
                                                 <input type="text"
-                                                       name="measurement_{{ measurement.code }}_comment"
+                                                       name="measurement_{{ measurement.name|slugify }}_comment"
                                                        class="form-control form-control-sm"
                                                        placeholder="Optional comment">
                                             </td>
@@ -248,27 +248,7 @@
                             </div>
                         </div>
 
-                        <!-- Report Status & Date -->
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="status" class="form-label">Report Status</label>
-                                    <select name="status" id="status" class="form-control">
-                                        <option value="draft">Draft</option>
-                                        <option value="pending_review">Pending Review</option>
-                                        <option value="reviewed">Reviewed</option>
-                                        <option value="finalized">Finalized</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="report_date" class="form-label">Report Date</label>
-                                    <input type="datetime-local" name="report_date" id="report_date"
-                                           class="form-control">
-                                </div>
-                            </div>
-                        </div>
+
 
                         <!-- Form Actions -->
                         <div class="d-flex justify-content-between">
@@ -276,9 +256,7 @@
                                 <i class="mdi mdi-arrow-left me-2"></i>Back to Dashboard
                             </a>
                             <div>
-                                <button type="button" class="btn btn-outline-primary me-2" onclick="validateForm()">
-                                    <i class="mdi mdi-check me-2"></i>Validate
-                                </button>
+
                                 <button type="submit" class="btn btn-success">
                                     <i class="mdi mdi-content-save me-2"></i>Save Results
                                 </button>
@@ -337,15 +315,15 @@
                 <div class="card-body">
                     <h5 class="card-title">Quick Actions</h5>
                     <div class="d-grid gap-2">
-                        <a href="{url 'patient_scan_history' patient_id=patient.id %}" class="btn btn-outline-primary">
+                        <a href="{% url 'patient_scan_orders' patient_id=patient.id %}" class="btn btn-outline-primary">
                             <i class="mdi mdi-account"></i> View Patient Scans
                         </a>
-                        <button class="btn btn-outline-info" onclick="previewReport()">
-                            <i class="mdi mdi-printer"></i> Preview Report
-                        </button>
-                        <a href="{% url 'scan_image_upload' result_id=0 %}" class="btn btn-outline-success" style="display: none;" id="upload-images-btn">
-                            <i class="mdi mdi-camera"></i> Upload Images
-                        </a>
+<!--                        <button class="btn btn-outline-info" onclick="previewReport()">-->
+<!--                            <i class="mdi mdi-printer"></i> Preview Report-->
+<!--                        </button>-->
+<!--                        <a href="{% url 'scan_image_upload' result_id=0 %}" class="btn btn-outline-success" style="display: none;" id="upload-images-btn">-->
+<!--                            <i class="mdi mdi-camera"></i> Upload Images-->
+<!--                        </a>-->
                     </div>
                 </div>
             </div>

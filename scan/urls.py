@@ -62,6 +62,7 @@ urlpatterns = [
     path('results/<int:pk>/', ScanResultDetailView.as_view(), name='scan_result_detail'),
     path('results/<int:pk>/edit/', ScanResultUpdateView.as_view(), name='scan_result_edit'),
     path('results/<int:pk>/verify/', verify_scan_result, name='verify_scan_result'),
+    path('results/<int:pk>/unverify/', unverify_scan_result, name='unverify_scan_result'),
 
     # -------------------------
     # Image Management

@@ -152,8 +152,8 @@
                 </div>
 
                 <!-- Hidden fields for JSON -->
-                <input type="hidden" id="id_expected_views" name="expected_images" value='{{ form.expected_images.value|default:"[]" }}'>
-                <input type="hidden" id="id_expected_measurements" name="expected_measurements" value='{{ form.scan_parameters.value|default:"[]" }}'>
+                <input type="hidden" id="id_expected_images" name="expected_images" value='{{ form.expected_images.value|default:"[]" }}'>
+                <input type="hidden" id="id_scan_parameters" name="scan_parameters" value='{{ form.scan_parameters.value|default:"{}"|safe }}'>
 
                 <!-- Change Log -->
                 <div class="mb-4">
@@ -170,7 +170,7 @@
                                 <div class="col-md-6">
                                     <small class="text-muted">
                                         <strong>Total Orders:</strong> <span id="totalOrders">{{ total_orders|default:0 }}</span><br>
-                                        <strong>Required images:</strong> { template.required_images_count }}
+                                        <strong>Required images:</strong> {{ template.required_images_count }}
                                     </small>
                                 </div>
                             </div>
@@ -447,8 +447,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const addMeasurementBtn = $('addMeasurementBtn');
     const viewTemplate = $('viewTemplate');
     const measurementTemplate = $('measurementTemplate');
-    const hiddenViewsInput = $('id_expected_views');
-    const hiddenMeasurementsInput = $('id_expected_measurements');
+    const hiddenViewsInput = $('id_expected_images');
+    const hiddenMeasurementsInput = $('id_scan_parameters');
     const viewsCountBadge = $('viewsCount');
     const measurementsCountBadge = $('measurementsCount');
 
@@ -621,11 +621,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateMeasurementsJSON() {
-        if (!measurementsContainer || !hiddenMeasurementsInput) return;
-        const items = measurementsContainer.querySelectorAll('.measurement-item');
-        const arr = Array.from(items).map(it => getMeasurementData(it));
-        hiddenMeasurementsInput.value = JSON.stringify(arr, null, 2);
-    }
+    if (!measurementsContainer || !hiddenMeasurementsInput) return;
+    const items = measurementsContainer.querySelectorAll('.measurement-item');
+    const arr = Array.from(items).map(it => getMeasurementData(it));
+    // Store in scan_parameters format to match the model
+    hiddenMeasurementsInput.value = JSON.stringify({ measurements: arr }, null, 2);
+}
 
     /* ----- Counts & Utilities ----- */
     function updateCounts() {
@@ -748,29 +749,52 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Load existing JSON content into UI on page load
+    // Load existing JSON content into UI on page load
     function loadExisting() {
         // Views
         try {
             const existingViews = JSON.parse(hiddenViewsInput.value || '[]');
             if (Array.isArray(existingViews) && existingViews.length) {
-                existingViews.forEach(v => addView({ view: v.view || v.name, description: v.description, required: v.required }));
+                existingViews.forEach(v => addView({
+                    view: v.view || v.name,
+                    description: v.description,
+                    required: v.required
+                }));
             }
-        } catch (e) { console.warn('Error parsing existing views', e); }
+        } catch (e) {
+            console.warn('Error parsing existing views', e);
+        }
 
-        // Measurements
+        // Measurements - Fix the parsing logic
         try {
-            const existingMeasurements = JSON.parse(hiddenMeasurementsInput.value || '[]');
-            if (Array.isArray(existingMeasurements) && existingMeasurements.length) {
-                alert(existingMeasurements)
-                existingMeasurements.forEach(m => addMeasurement(m));
-            } else if (template && template.scan_parameters && template.scan_parameters.measurements) {
-                // fallback: if server stored measurements inside scan_parameters
-                try {
-                    const fromScanParams = template.scan_parameters.measurements || [];
-                    fromScanParams.forEach(m => addMeasurement(m));
-                } catch (e) { /* ignore */ }
+            // First try to parse from the hidden measurements input
+            let existingMeasurements = [];
+            const measurementsValue = hiddenMeasurementsInput.value || '[]';
+
+            // Check if it's a string that looks like scan_parameters format
+            if (measurementsValue.includes('measurements')) {
+                // It's in scan_parameters format: {"measurements": [...]}
+                const scanParams = JSON.parse(measurementsValue);
+                existingMeasurements = scanParams.measurements || [];
+            } else {
+                // It's a direct array: [...]
+                existingMeasurements = JSON.parse(measurementsValue);
             }
-        } catch (e) { console.warn('Error parsing existing measurements', e); }
+
+            if (Array.isArray(existingMeasurements) && existingMeasurements.length) {
+                existingMeasurements.forEach(m => addMeasurement(m));
+            }
+        } catch (e) {
+            console.warn('Error parsing existing measurements', e);
+            // Fallback: try to get from window.template if available
+            try {
+                if (typeof template !== 'undefined' && template.scan_parameters && template.scan_parameters.measurements) {
+                    template.scan_parameters.measurements.forEach(m => addMeasurement(m));
+                }
+            } catch (fallbackError) {
+                console.warn('Fallback parsing also failed', fallbackError);
+            }
+        }
 
         updateCounts();
     }

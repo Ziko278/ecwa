@@ -19,16 +19,44 @@
                 <div id="form-container">
                     {# Loop through existing forms in the formset (if any) #}
                     {% for form in formset %}
-                        <div class="stock-item-form card p-4 mb-4 border border-secondary">
-                            <h6 class="mb-3">Drug Stock Entry #{{ forloop.counter }}</h6>
+                        <div class="stock-item-form card p-4 mb-4 border border-secondary position-relative">
+                            <h6 class="mb-3">Drug Stock Entry #<span class="form-counter">{{ forloop.counter }}</span></h6>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <div class="form-floating">
-                                        {{ form.drug }}
-                                        <label for="{{ form.drug.id_for_label }}">{{ form.drug.label }} </label>
-                                        {% if form.drug.errors %}<div class="text-danger">{{ form.drug.errors }}</div>{% endif %}
+                                        {# --- Hidden original select kept for submission --- #}
+                                        <div class="drug-search-wrapper">
+                                            {{ form.drug }} {# keep this — we'll hide it via CSS so names/ids remain intact #}
+
+                                            {# Visible search input #}
+                                            <input
+                                                type="text"
+                                                class="form-control form-control-sm drug-search"
+                                                placeholder="Search drugs by brand, generic or manufacturer..."
+                                                autocomplete="off"
+                                                aria-label="Search drug"
+                                            />
+
+                                            {# Selected drug label / change button area #}
+                                            <div class="selected-drug mt-2" aria-live="polite">
+                                                {# We'll populate this with JS from the select's option text. For now show a placeholder. #}
+                                                {% if form.drug.value %}
+                                                    <small class="text-muted">Loading selected drug...</small>
+                                                {% else %}
+                                                    <small class="text-muted">No drug selected</small>
+                                                {% endif %}
+                                            </div>
+
+                                            {# Results dropdown (positioned absolutely) #}
+                                            <div class="drug-results dropdown-menu" style="display:none; position: absolute;"></div>
+
+                                            {% if form.drug.errors %}
+                                                <div class="text-danger">{{ form.drug.errors }}</div>
+                                            {% endif %}
+                                        </div>
                                     </div>
                                 </div>
+
                                 <div class="col-md-6 mb-3">
                                     <div class="form-floating">
                                         {{ form.quantity_bought }}
@@ -36,6 +64,7 @@
                                         {% if form.quantity_bought.errors %}<div class="text-danger">{{ form.quantity_bought.errors }}</div>{% endif %}
                                     </div>
                                 </div>
+
                                 <div class="col-md-6 mb-3">
                                     <div class="form-floating">
                                         {{ form.unit_cost_price }}
@@ -43,6 +72,7 @@
                                         {% if form.unit_cost_price.errors %}<div class="text-danger">{{ form.unit_cost_price.errors }}</div>{% endif %}
                                     </div>
                                 </div>
+
                                 <div class="col-md-6 mb-3">
                                     <div class="form-floating">
                                         {{ form.selling_price }}
@@ -50,6 +80,7 @@
                                         {% if form.selling_price.errors %}<div class="text-danger">{{ form.selling_price.errors }}</div>{% endif %}
                                     </div>
                                 </div>
+
                                 <div class="col-md-6 mb-3">
                                     <div class="form-floating">
                                         {{ form.location }}
@@ -57,6 +88,7 @@
                                         {% if form.location.errors %}<div class="text-danger">{{ form.location.errors }}</div>{% endif %}
                                     </div>
                                 </div>
+
                                 <div class="col-md-6 mb-3">
                                     <div class="form-floating">
                                         {{ form.expiry_date }}
@@ -64,6 +96,15 @@
                                         {% if form.expiry_date.errors %}<div class="text-danger">{{ form.expiry_date.errors }}</div>{% endif %}
                                     </div>
                                 </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-floating">
+                                        {{ form.batch_number }}
+                                        <label for="{{ form.batch_number.id_for_label }}">{{ form.batch_number.label }}</label>
+                                        {% if form.batch_number.errors %}<div class="text-danger">{{ form.batch_number.errors }}</div>{% endif %}
+                                    </div>
+                                </div>
+
                                 {% if forloop.counter > 1 %}
                                 <div class="col-12 mb-3">
                                     <button type="button" class="btn btn-danger btn-sm remove-form">
@@ -93,15 +134,30 @@
 
 {# Hidden template for new forms - Django's empty_form #}
 <div id="empty-form-template" style="display: none;">
-    <div class="stock-item-form card p-4 mb-4 border border-secondary">
+    <div class="stock-item-form card p-4 mb-4 border border-secondary position-relative">
         <h6 class="mb-3">Drug Stock Entry #<span class="form-counter"></span></h6>
         <div class="row">
             <div class="col-md-6 mb-3">
                 <div class="form-floating">
-                    {{ formset.empty_form.drug }}
-                    <label for="{{ formset.empty_form.drug.id_for_label }}">{{ formset.empty_form.drug.label }}</label>
+                    <div class="drug-search-wrapper">
+                        {{ formset.empty_form.drug }}
+                        <input
+                            type="text"
+                            class="form-control form-control-sm drug-search"
+                            placeholder="Search drugs by brand, generic or manufacturer..."
+                            autocomplete="off"
+                            aria-label="Search drug"
+                        />
+
+                        <div class="selected-drug mt-2" aria-live="polite">
+                            <small class="text-muted">No drug selected</small>
+                        </div>
+
+                        <div class="drug-results dropdown-menu" style="display:none; position: absolute;"></div>
+                    </div>
                 </div>
             </div>
+
             <div class="col-md-6 mb-3">
                 <div class="form-floating">
                     {{ formset.empty_form.quantity_bought }}
@@ -132,6 +188,13 @@
                     <label for="{{ formset.empty_form.expiry_date.id_for_label }}">{{ formset.empty_form.expiry_date.label }}</label>
                 </div>
             </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-floating">
+                    {{ formset.empty_form.batch_number }}
+                    <label for="{{ formset.empty_form.batch_number.id_for_label }}">{{ formset.empty_form.batch_number.label }}</label>
+                </div>
+            </div>
+
             <div class="col-12 mb-3">
                 <button type="button" class="btn btn-danger btn-sm remove-form">
                     <i class="bi bi-trash me-1"></i> Remove This Entry
@@ -142,80 +205,288 @@
     </div>
 </div>
 
+{# ===== CSS ===== #}
+<style>
+/* hide the original select inputs for drug but keep them in DOM for form submission */
+.drug-search-wrapper select,
+.drug-search-wrapper input[type="hidden"],
+.drug-search-wrapper select.form-select {
+    display: none !important;
+}
+
+/* styling the result dropdown to look like bootstrap dropdown-menu */
+.drug-results {
+    max-height: 260px;
+    overflow: auto;
+    min-width: 320px;
+    z-index: 2000;
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+}
+
+/* single result row */
+.drug-result-item {
+    cursor: pointer;
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+}
+.drug-result-item:hover {
+    background: #f8f9fa;
+}
+
+/* make sure dropdown is above other elements when absolutely positioned */
+.stock-item-form { position: relative; }
+.drug-results { position: absolute; left: 0; top: calc(100% + 6px); }
+</style>
+
+{# ===== JavaScript ===== #}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const formContainer = document.getElementById('form-container');
-        const addAnotherBtn = document.getElementById('add-another-stock');
-        const totalForms = document.querySelector('#id_{{ formset.prefix }}-TOTAL_FORMS');
-        const emptyFormTemplate = document.getElementById('empty-form-template');
+document.addEventListener('DOMContentLoaded', function() {
+    const formContainer = document.getElementById('form-container');
+    const addAnotherBtn = document.getElementById('add-another-stock');
+    const totalForms = document.querySelector('#id_{{ formset.prefix }}-TOTAL_FORMS');
+    const emptyFormTemplate = document.getElementById('empty-form-template');
 
-        function updateFormNumbers() {
-            const forms = formContainer.querySelectorAll('.stock-item-form');
-            forms.forEach((form, index) => {
-                const counter = form.querySelector('.form-counter');
-                if (counter) {
-                    counter.textContent = index + 1;
-                }
-                // Update h6 text for forms that don't use the counter span
-                const h6 = form.querySelector('h6');
-                if (h6 && !counter) {
-                    h6.textContent = `Drug Stock Entry #${index + 1}`;
-                }
-            });
-        }
+    // --- utility: debounce ---
+    function debounce(fn, wait) {
+        let t;
+        return function(...args) {
+            clearTimeout(t);
+            t = setTimeout(() => fn.apply(this, args), wait);
+        };
+    }
 
-        function addRemoveHandlers() {
-            document.querySelectorAll('.remove-form').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const form = this.closest('.stock-item-form');
-                    form.remove();
+    // --- escape helper to avoid html injection ---
+    function escapeHtml(unsafe) {
+        if (unsafe === null || unsafe === undefined) return '';
+        return String(unsafe)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+    }
 
-                    // Update total forms count
-                    const currentCount = parseInt(totalForms.value);
-                    totalForms.value = currentCount - 1;
+    // --- update display numbers for forms ---
+    function updateFormNumbers() {
+        const forms = formContainer.querySelectorAll('.stock-item-form');
+        forms.forEach((form, index) => {
+            const counter = form.querySelector('.form-counter');
+            if (counter) counter.textContent = index + 1;
 
-                    updateFormNumbers();
-                });
-            });
-        }
+            const h6 = form.querySelector('h6');
+            if (h6 && !counter) h6.textContent = `Drug Stock Entry #${index + 1}`;
+        });
+    }
 
-        addAnotherBtn.addEventListener('click', function() {
-            const currentFormCount = parseInt(totalForms.value);
-
-            // Clone the empty form template
-            const newFormHtml = emptyFormTemplate.innerHTML;
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = newFormHtml;
-
-            // Replace __prefix__ with the current form count
-            tempDiv.innerHTML = tempDiv.innerHTML.replace(/__prefix__/g, currentFormCount);
-
-            // Update the counter
-            const counter = tempDiv.querySelector('.form-counter');
-            if (counter) {
-                counter.textContent = currentFormCount + 1;
-            }
-
-            // Append the new form
-            while (tempDiv.firstChild) {
-                formContainer.appendChild(tempDiv.firstChild);
-            }
-
-            // Update total forms count
-            totalForms.value = currentFormCount + 1;
-
-            // Add remove handlers to new form
-            addRemoveHandlers();
+    // --- attach remove handlers (works for dynamically added forms) ---
+    function addRemoveHandlers() {
+        // remove previous listeners by replacing nodes (simple approach)
+        formContainer.querySelectorAll('.remove-form').forEach(btn => {
+            btn.replaceWith(btn.cloneNode(true));
         });
 
-        // Initialize remove handlers for existing forms
-        addRemoveHandlers();
+        formContainer.querySelectorAll('.remove-form').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const form = this.closest('.stock-item-form');
+                if (!form) return;
+                form.remove();
 
-        // Initialize at least one form if none are present
-        if (parseInt(totalForms.value) === 0) {
-            addAnotherBtn.click();
+                // Update total forms count
+                const currentCount = parseInt(totalForms.value);
+                totalForms.value = Math.max(0, currentCount - 1);
+
+                updateFormNumbers();
+            });
+        });
+    }
+
+    // --- Create and attach search behaviour for a single .drug-search input ---
+    function attachDrugSearchBehavior(wrapper) {
+        if (!wrapper) return;
+
+        const searchInput = wrapper.querySelector('.drug-search');
+        const resultsBox = wrapper.querySelector('.drug-results');
+        // find the original field (select or hidden input) inside wrapper
+        const hiddenField = wrapper.querySelector('select, input[type="hidden"], select.form-select');
+        const selectedLabelContainer = wrapper.querySelector('.selected-drug');
+
+        if (!searchInput || !hiddenField || !resultsBox) return;
+
+        // Position results box width to match the wrapper
+        function positionResults() {
+            const rect = searchInput.getBoundingClientRect();
+            resultsBox.style.minWidth = Math.max(rect.width, 320) + 'px';
         }
+
+        // Render results
+        function showResults(items) {
+            resultsBox.innerHTML = '';
+            if (!items || items.length === 0) {
+                resultsBox.style.display = 'none';
+                return;
+            }
+
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'drug-result-item';
+                // display using the format: BrandName (Formulation) - Manufacturer
+                const displayText = `${item.brand_name} (${item.formulation}) - ${item.manufacturer}`;
+                el.innerHTML = `<div><strong>${escapeHtml(displayText)}</strong></div>
+                                <div class="small text-muted">${escapeHtml(item.generic_name)} • ₦${Number(item.price).toFixed(2)}</div>`;
+                el.dataset.drugId = item.id;
+                el.dataset.displayText = displayText;
+                el.addEventListener('click', function() {
+                    const chosenId = this.dataset.drugId;
+                    const chosenText = this.dataset.displayText;
+
+                    // set the hidden select/input to chosen id
+                    if (hiddenField.tagName.toLowerCase() === 'select') {
+                        // try to find existing option
+                        let opt = hiddenField.querySelector(`option[value="${chosenId}"]`);
+                        if (!opt) {
+                            opt = document.createElement('option');
+                            opt.value = chosenId;
+                            opt.text = chosenText;
+                            hiddenField.appendChild(opt);
+                        } else {
+                            // update option text if it's different
+                            opt.text = chosenText;
+                        }
+                        hiddenField.value = chosenId;
+
+                        // trigger change event (if any listeners)
+                        try {
+                            const event = new Event('change', { bubbles: true });
+                            hiddenField.dispatchEvent(event);
+                        } catch (e) { /* ignore */ }
+                    } else {
+                        hiddenField.value = chosenId;
+                    }
+
+                    // update visible selected label
+                    if (selectedLabelContainer) {
+                        selectedLabelContainer.innerHTML =
+                          `<span class="badge bg-primary selected-drug-label">${escapeHtml(chosenText)}</span>
+                           <button type="button" class="btn btn-sm btn-outline-light ms-2 edit-selected-drug">Change</button>`;
+                        // add edit behaviour
+                        const editBtn = selectedLabelContainer.querySelector('.edit-selected-drug');
+                        if (editBtn) {
+                            editBtn.addEventListener('click', function() {
+                                searchInput.focus();
+                                searchInput.value = '';
+                                resultsBox.style.display = 'none';
+                            });
+                        }
+                    }
+
+                    // hide results
+                    resultsBox.style.display = 'none';
+                });
+                resultsBox.appendChild(el);
+            });
+
+            positionResults();
+            resultsBox.style.display = 'block';
+        }
+
+        // AJAX search function (uses fetch)
+        const doSearch = debounce(function(term) {
+            if (!term || term.length < 2) {
+                resultsBox.style.display = 'none';
+                return;
+            }
+            const url = `{% url 'ajax_search_drugs' %}?q=` + encodeURIComponent(term);
+            fetch(url, { credentials: 'same-origin' })
+                .then(resp => resp.json())
+                .then(data => {
+                    if (data && data.drugs) {
+                        showResults(data.drugs);
+                    } else {
+                        showResults([]);
+                    }
+                })
+                .catch(err => {
+                    console.error('Drug search error', err);
+                    showResults([]);
+                });
+        }, 250);
+
+        // input handlers
+        searchInput.addEventListener('input', function(e) {
+            const term = this.value.trim();
+            doSearch(term);
+        });
+
+        // hide results when clicking outside
+        document.addEventListener('click', function(ev) {
+            if (!wrapper.contains(ev.target)) {
+                resultsBox.style.display = 'none';
+            }
+        });
+
+        // If the hidden select has a selected option, display its text (use option text which should reflect __str__)
+        if (hiddenField.tagName.toLowerCase() === 'select' && hiddenField.value) {
+            const opt = hiddenField.querySelector(`option[value="${hiddenField.value}"]`);
+            const label = opt ? opt.text : `Selected (ID: ${hiddenField.value})`;
+            if (selectedLabelContainer) {
+                selectedLabelContainer.innerHTML = `<span class="badge bg-secondary selected-drug-label">${escapeHtml(label)}</span>`;
+            }
+        } else if (hiddenField.value && selectedLabelContainer) {
+            // fallback: show id
+            selectedLabelContainer.innerHTML = `<span class="badge bg-secondary selected-drug-label">Selected (ID: ${escapeHtml(hiddenField.value)})</span>`;
+        }
+    }
+
+    // --- Attach behaviour to all present wrappers ---
+    function attachAllSearches() {
+        const wrappers = formContainer.querySelectorAll('.drug-search-wrapper');
+        wrappers.forEach(w => attachDrugSearchBehavior(w));
+    }
+
+    // --- Add another form action (keeps your existing clone logic) ---
+    addAnotherBtn.addEventListener('click', function() {
+        const currentFormCount = parseInt(totalForms.value);
+
+        // Clone the empty form template
+        const newFormHtml = emptyFormTemplate.innerHTML;
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = newFormHtml;
+
+        // Replace __prefix__ with the current form count
+        tempDiv.innerHTML = tempDiv.innerHTML.replace(/__prefix__/g, currentFormCount);
+
+        // Update the counter
+        const counter = tempDiv.querySelector('.form-counter');
+        if (counter) {
+            counter.textContent = currentFormCount + 1;
+        }
+
+        // Append the new form
+        while (tempDiv.firstChild) {
+            formContainer.appendChild(tempDiv.firstChild);
+        }
+
+        // Update total forms count
+        totalForms.value = currentFormCount + 1;
+
+        // Re-attach handlers
+        addRemoveHandlers();
+        attachAllSearches();
+        updateFormNumbers();
     });
+
+    // Initialize remove handlers + searches for existing forms
+    addRemoveHandlers();
+    attachAllSearches();
+
+    // Initialize at least one form if none are present
+    if (parseInt(totalForms.value) === 0) {
+        addAnotherBtn.click();
+    }
+
+    // Re-run update numbers once DOM stabilized
+    updateFormNumbers();
+});
 </script>
 
 {% endblock %}

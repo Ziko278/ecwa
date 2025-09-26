@@ -86,6 +86,20 @@
                 {% endif %}
               </div>
             </div>
+
+              <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Selling Price</div>
+              <div class="col-lg-8 col-md-8">
+                  ₦{{ drug.selling_price|floatformat:2|intcomma }}
+              </div>
+            </div>
+
+              <div class="row mb-2">
+              <div class="col-lg-4 col-md-4 label fw-bold">Pack Size</div>
+              <div class="col-lg-8 col-md-8">
+                {{ drug.pack_size }}
+              </div>
+            </div>
             <div class="row mb-2">
               <div class="col-lg-4 col-md-4 label fw-bold">Is Active</div>
               <div class="col-lg-8 col-md-8">
