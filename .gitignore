@@ -1,0 +1,5 @@
+# Database file
+db.sqlite3
+
+# Project Secrets
+ecwa_hms/settings.py
