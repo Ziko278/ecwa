@@ -65,6 +65,16 @@
               </label>
               <div class="small text-muted ms-4" id="scan-info"></div>
             </div>
+
+            {# --- NEW: Service/Item Payment Option --- #}
+            <div class="form-check mt-2">
+              <input class="form-check-input payment-option" type="radio" name="payment_type" id="opt_service" value="service">
+              <label class="form-check-label" for="opt_service">
+                Services & Items <span id="service-count" class="badge bg-info">0</span>
+              </label>
+              <div class="small text-muted ms-4" id="service-info"></div>
+            </div>
+
           </div>
         </div>
 
@@ -85,12 +95,15 @@
 <script>
 (function($){
   const verifyUrl = "{% url 'finance_verify_patient_ajax' %}";
-  // Pre-generate target URLs with a placeholder for the patient ID
+
+  // 1. ADD NEW URL TARGET
+  // NOTE: You must have a URL named 'finance_service_patient_payment' defined in your urls.py
   const targetUrls = {
-    admission: "{% url 'finance_admission_funding' 0 %}", // We will create this URL
+    admission: "{% url 'finance_admission_funding' 0 %}",
     drug: "{% url 'finance_pharmacy_patient_payment' 0 %}",
     lab: "{% url 'finance_laboratory_patient_payment' 0 %}",
-    scan: "{% url 'finance_scan_patient_payment' 0 %}"
+    scan: "{% url 'finance_scan_patient_payment' 0 %}",
+    service: "{% url 'finance_service_patient_payment' 0 %}" // NEW URL
   };
 
   let currentPatient = null;
@@ -102,12 +115,18 @@
     $('#drug-count').text('0'); $('#drug-info').text('');
     $('#lab-count').text('0'); $('#lab-info').text('');
     $('#scan-count').text('0'); $('#scan-info').text('');
+    // 2. CLEAR SERVICE/ITEM ELEMENTS
+    $('#service-count').text('0'); $('#service-info').text('');
     $('#admission-count').text('0');
     $('#selected-summary').text('Select an option to proceed');
     $('#btn-proceed').prop('disabled', true);
     $('input.payment-option').prop('checked', false);
     currentPatient = null;
     pending = null;
+  }
+
+  function formatCurrency(amount) {
+      return `₦${Number(amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   }
 
   function showOptionsFromResponse(resp) {
@@ -119,24 +138,31 @@
         <h5>${resp.patient.full_name}</h5>
         <div class="small text-muted">Card: ${resp.patient.card_number}</div>
         <div class="mt-2"><strong>Wallet:</strong> ${resp.wallet.formatted_balance}</div>
+        ${resp.insurance.has_insurance ? `<div class="small text-info mt-1">Insured: ${resp.insurance.hmo_name} (${resp.insurance.policy_number})</div>` : ''}
       </div>
     `);
 
     const drugs = pending.drugs || {count:0, total:0};
     const labs  = pending.labs  || {count:0, total:0};
     const scans = pending.scans || {count:0, total:0};
+    // 3. GET SERVICE/ITEM DATA
+    const services = pending.services || {count:0, total:0};
     const admissions = pending.admissions || {count:0};
     const surgeries = pending.surgeries || {count:0};
     const totalActiveInpatient = admissions.count + surgeries.count;
 
     $('#drug-count').text(drugs.count || 0);
-    $('#drug-info').text(drugs.count ? `Total: ₦${Number(drugs.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'No pending medication orders');
+    $('#drug-info').text(drugs.count ? `Total: ${formatCurrency(drugs.total)}` : 'No pending medication orders');
 
     $('#lab-count').text(labs.count || 0);
-    $('#lab-info').text(labs.count ? `Total: ₦${Number(labs.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'No pending lab tests');
+    $('#lab-info').text(labs.count ? `Total: ${formatCurrency(labs.total)}` : 'No pending lab tests');
 
     $('#scan-count').text(scans.count || 0);
-    $('#scan-info').text(scans.count ? `Total: ₦${Number(scans.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'No pending scans');
+    $('#scan-info').text(scans.count ? `Total: ${formatCurrency(scans.total)}` : 'No pending scans');
+
+    // 3. UPDATE SERVICE/ITEM COUNTS AND TOTALS
+    $('#service-count').text(services.count || 0);
+    $('#service-info').text(services.count ? `Total: ${formatCurrency(services.total)}` : 'No pending service/item payments');
 
     // Update admission/surgery counts
     $('#admission-count').text(totalActiveInpatient);
@@ -159,6 +185,8 @@
       drug: (pending.drugs && pending.drugs.count) || 0,
       lab: (pending.labs && pending.labs.count) || 0,
       scan: (pending.scans && pending.scans.count) || 0,
+      // 4. ADD SERVICE/ITEM COUNT
+      service: (pending.services && pending.services.count) || 0,
       admission: ((pending.admissions && pending.admissions.count) || 0) + ((pending.surgeries && pending.surgeries.count) || 0),
     };
 
@@ -168,11 +196,29 @@
             $('#btn-proceed').prop('disabled', false);
         } else {
             $('#selected-summary').text('This patient has no active admissions or surgeries.');
+            $('#btn-proceed').prop('disabled', false); // Allow funding even if count is zero
+        }
+    // 4. ADD SERVICE/ITEM LOGIC
+    } else if (type === 'service') {
+        if (counts.service > 0) {
+            let total = pending.services.total || 0;
+            $('#selected-summary').text(`${counts.service} item(s) selected — Total: ${formatCurrency(total)}`);
+            $('#btn-proceed').prop('disabled', false);
+        } else {
+            $('#selected-summary').text('No payable services/items for the selected type. Please choose another option.');
+            // Allow user to proceed, e.g., to create a new ServiceTransaction if necessary,
+            // though typically payment screen relies on existing pending transactions.
             $('#btn-proceed').prop('disabled', true);
         }
-    } else if (counts[type] && counts[type] > 0) {
-      let totals = { drug: pending.drugs.total || 0, lab: pending.labs.total || 0, scan: pending.scans.total || 0 };
-      $('#selected-summary').text(`${counts[type]} item(s) selected — Total: ₦${Number(totals[type]).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`);
+    }
+    // 4. Update existing logic for drug/lab/scan
+    else if (counts[type] && counts[type] > 0) {
+      let totals = {
+        drug: pending.drugs.total || 0,
+        lab: pending.labs.total || 0,
+        scan: pending.scans.total || 0
+      };
+      $('#selected-summary').text(`${counts[type]} item(s) selected — Total: ${formatCurrency(totals[type])}`);
       $('#btn-proceed').prop('disabled', false);
     } else {
       $('#selected-summary').text('No payable items for the selected type. Please choose another option.');
@@ -198,7 +244,7 @@
         }
       })
       .fail(function(xhr) {
-        let err = (xhr.responseJSON && xhr.responseJSON.error) || 'Error verifying patient';
+        let err = (xhr.responseJSON && xhr.responseJSON.error) || 'Error verifying patient. Check server logs.';
         alert(err);
       })
       .always(function() {

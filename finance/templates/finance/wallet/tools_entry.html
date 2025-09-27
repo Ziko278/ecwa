@@ -1,0 +1,127 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% block 'main' %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4><i class="fas fa-tools"></i> Patient Wallet Tools & Administration</h4>
+        </div>
+        <div class="card-body">
+            
+            <div id="verify-section" class="mb-4">
+                <form id="patient-verify-form" class="row g-2">
+                    {% csrf_token %}
+                    <div class="col-md-8">
+                        <label class="form-label">Patient Card Number</label>
+                        <input id="card_number" name="card_number" class="form-control form-control-lg" placeholder="Enter patient card number" required>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" id="btn-verify" class="btn btn-primary w-100">
+                            <i class="fas fa-search"></i> Verify Patient
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="options-section" class="hidden">
+                <div id="patient-summary" class="alert alert-success"></div>
+                
+                <h5 class="mb-3">Select Action for <span id="patient-name" class="fw-bold"></span>:</h5>
+                
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <a href="#" id="btn-refund" class="btn btn-info btn-lg w-100">
+                            <i class="fas fa-undo"></i> Refund Paid Items
+                        </a>
+                        <small class="text-muted d-block mt-1">Return money for paid but unused services/drugs.</small>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="#" id="btn-withdrawal" class="btn btn-danger btn-lg w-100">
+                            <i class="fas fa-sign-out-alt"></i> Wallet Withdrawal
+                        </a>
+                        <small class="text-muted d-block mt-1">Cash out funds from the patient's wallet.</small>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="#" id="btn-history" class="btn btn-secondary btn-lg w-100">
+                            <i class="fas fa-history"></i> View History
+                        </a>
+                        <small class="text-muted d-block mt-1">View all funding, payment, refund, and withdrawal events.</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+(function($){
+    // NOTE: This URL must be correctly defined in your urls.py
+    const verifyUrl = "{% url 'finance_verify_patient_ajax' %}"; 
+    
+    // URL templates for button hrefs
+    const urlTemplates = {
+        refund: "{% url 'finance_process_refund' 0 %}",
+        withdrawal: "{% url 'finance_wallet_withdrawal' 0 %}",
+        history: "{% url 'finance_wallet_history' 0 %}"
+    };
+    
+    let currentPatientId = null;
+
+    function resetOptions() {
+        $('#options-section').addClass('hidden');
+        $('#patient-summary').empty();
+        currentPatientId = null;
+    }
+
+    // Form submit -> verify via AJAX
+    $('#patient-verify-form').on('submit', function(e){
+        e.preventDefault();
+        const card = $('#card_number').val().trim();
+        if (!card) return;
+
+        $('#btn-verify').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Verifying...');
+        resetOptions();
+
+        $.get(verifyUrl, {card_number: card})
+            .done(function(data){
+                if (data && data.success) {
+                    currentPatientId = data.patient.id;
+                    const name = data.patient.full_name;
+                    const balance = data.wallet.formatted_balance;
+
+                    $('#patient-summary').html(`
+                        <strong>Patient:</strong> ${name} (${data.patient.card_number}) | 
+                        <strong>Balance:</strong> ${balance}
+                    `);
+                    $('#patient-name').text(name);
+
+                    // Set URLs for the buttons
+                    const patientId = currentPatientId;
+                    
+                    $('#btn-refund').attr('href', urlTemplates.refund.replace('/0', '/' + patientId));
+                    $('#btn-withdrawal').attr('href', urlTemplates.withdrawal.replace('/0', '/' + patientId));
+                    $('#btn-history').attr('href', urlTemplates.history.replace('/0', '/' + patientId));
+
+                    $('#options-section').removeClass('hidden');
+
+                } else {
+                    alert(data.error || 'Patient not found');
+                }
+            })
+            .fail(function(xhr) {
+                let err = (xhr.responseJSON && xhr.responseJSON.error) || 'Error verifying patient';
+                alert(err);
+            })
+            .always(function() {
+                $('#btn-verify').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
+            });
+    });
+
+    // Focus on card number input on page load
+    $(document).ready(function(){
+        $('#card_number').focus();
+    });
+})(jQuery);
+</script>
+{% endblock %}

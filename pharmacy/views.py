@@ -24,6 +24,7 @@ from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
 
+from finance.models import PatientTransactionModel
 from patient.models import PatientModel, PatientWalletModel
 from pharmacy.forms import (
     DrugCategoryForm, GenericDrugForm, DrugFormulationForm, ManufacturerForm,
@@ -1894,6 +1895,20 @@ def process_dispense_ajax(request):
                 order.save()
 
                 paid_count += 1
+
+                PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='drug_payment',  # Or specific type if payment is split by order
+                    transaction_direction='out',
+                    amount=order_total,
+                    old_balance=wallet.amount + order_total,
+                    new_balance=wallet.amount,
+                    date=timezone.now().date(),
+                    received_by=request.user,
+                    payment_method='wallet',
+                    status='completed',
+                    # You may want to link the drug order here (requires a FK on PatientTransactionModel)
+                )
 
             wallet.save()
 

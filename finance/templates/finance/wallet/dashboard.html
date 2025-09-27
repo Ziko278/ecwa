@@ -146,7 +146,7 @@
                                         <small class="text-muted">
                                             {{ transaction.created_at|date:"M d, Y - H:i" }}
                                             {% if transaction.received_by %}
-                                                by {{ transaction.received_by }}
+                                                by {{ transaction.received_by.user_staff_profile.staff|title }}
                                             {% endif %}
                                         </small>
                                     </div>

@@ -1,0 +1,187 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+{% block 'main' %}
+<div class="container-fluid">
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">
+                Payment for Services & Items: {{ patient }}
+            </h6>
+            {% if insurance %}
+            <p class="mb-0 small text-info">
+                Insurance: {{ insurance.hmo.name }} ({{ insurance.coverage_plan.name }})
+            </p>
+            {% endif %}
+        </div>
+        <div class="card-body">
+
+            <form id="payment-form" method="POST">
+                {% csrf_token %}
+
+                <div id="payment-feedback-area" class="mb-3"></div>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="select-all"></th>
+                                <th>Item/Service</th>
+                                <th>Quantity</th>
+                                <th>Date</th>
+                                <th>Base Amount</th>
+                                <th>Patient Pays</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr data-id="{{ item.id }}" data-amount="{{ item.patient_amount }}">
+                                <td>
+                                    <input type="checkbox" name="selected_items" value="{{ item.id }}" class="item-checkbox" checked>
+                                </td>
+                                <td>
+                                    {{ item.name }}
+                                    {% if item.insurance_covered %}
+                                        <span class="badge bg-success small ms-2">Insured</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.ordered_date }}</td>
+                                <td>₦{{ item.base_amount|default:0|floatformat:2|intcomma }}</td>
+                                <td class="item-total-amount">{{ item.formatted_patient_amount }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center">No pending services or items found for this patient.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-end align-items-center mt-3">
+                    <h5 class="me-3">Total Payable: <span id="final-total" class="text-danger">₦{{ total|floatformat:2|intcomma }}</span></h5>
+                    <button type="submit" id="btn-pay" class="btn btn-success btn-lg" {% if not items %}disabled{% endif %}>
+                        <i class="fas fa-wallet"></i> Pay from Wallet
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function() {
+    const $selectAll = $('#select-all');
+    const $itemCheckboxes = $('.item-checkbox');
+    const $finalTotalSpan = $('#final-total');
+    const $paymentForm = $('#payment-form');
+    const $feedbackArea = $('#payment-feedback-area');
+
+    // Helper function to format currency client-side
+    function formatCurrency(amount) {
+        if (typeof amount === 'number') {
+            return '₦' + amount.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+        return '₦0.00';
+    }
+
+    function updateTotals() {
+        let currentTotal = 0;
+        $itemCheckboxes.each(function() {
+            if ($(this).is(':checked')) {
+                // Ensure amount is read as a float
+                const amount = parseFloat($(this).closest('tr').data('amount'));
+                if (!isNaN(amount)) {
+                    currentTotal += amount;
+                }
+            }
+        });
+
+        $finalTotalSpan.text(formatCurrency(currentTotal));
+
+        // Enable/disable pay button
+        $('#btn-pay').prop('disabled', currentTotal <= 0);
+    }
+
+    $selectAll.on('change', function() {
+        $itemCheckboxes.prop('checked', $(this).is(':checked'));
+        updateTotals();
+    });
+
+    $itemCheckboxes.on('change', function() {
+        if (!$(this).is(':checked')) {
+            $selectAll.prop('checked', false);
+        } else if ($itemCheckboxes.length > 0 && $itemCheckboxes.length === $itemCheckboxes.filter(':checked').length) {
+            $selectAll.prop('checked', true);
+        }
+        updateTotals();
+    });
+
+    // Initial total calculation
+    updateTotals();
+
+    // --- IMPROVED AJAX SUBMISSION AND ERROR HANDLING ---
+    $paymentForm.on('submit', function(e) {
+        e.preventDefault();
+        $feedbackArea.empty(); // Clear previous messages
+
+        const $btn = $('#btn-pay');
+        const originalText = $btn.html();
+
+        if ($itemCheckboxes.filter(':checked').length === 0) {
+             $feedbackArea.html('<div class="alert alert-warning">Please select at least one item to pay.</div>');
+             return;
+        }
+
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+
+        $.ajax({
+            url: window.location.href,
+            type: 'POST',
+            data: $paymentForm.serialize(),
+            success: function(response) {
+                // Success message
+                $feedbackArea.html(`<div class="alert alert-success">
+                    ${response.message} <br>New Wallet Balance: ${response.formatted_new_balance}
+                </div>`);
+
+                // Delay redirect for a better user experience of seeing the success message
+                setTimeout(function() {
+                    if (response.redirect_url) {
+                        window.location.href = response.redirect_url;
+                    } else {
+                        window.location.reload();
+                    }
+                }, 2000);
+            },
+            error: function(xhr) {
+                // --- FIX: Extract human-readable error and shortfall ---
+                let errorMsg = 'An unknown server error occurred.';
+                const response = xhr.responseJSON;
+
+                if (response && response.error) {
+                    errorMsg = response.error;
+                    if (response.shortfall && response.formatted_shortfall) {
+                        // Display the specific insufficient balance error clearly
+                        errorMsg = `Insufficient wallet balance. You need ${response.formatted_shortfall} more to complete this payment.`;
+                    }
+                } else if (xhr.responseText) {
+                    // Fallback for non-JSON errors
+                    errorMsg = 'Server Error: Check network logs.';
+                }
+
+                $feedbackArea.html(`<div class="alert alert-danger">${errorMsg}</div>`);
+
+                // Re-enable button
+                $btn.html(originalText).prop('disabled', false);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

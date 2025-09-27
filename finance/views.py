@@ -30,7 +30,8 @@ from finance.forms import FinanceSettingForm, ExpenseCategoryForm, \
     SalaryStructureForm, StaffBankDetailForm, IncomeForm, IncomeCategoryForm, \
     ExpenseForm, PaysheetRowForm, MoneyRemittanceForm, OtherPaymentServiceForm, OtherPaymentForm
 from finance.models import PatientTransactionModel, FinanceSettingModel, ExpenseCategory, SalaryStructure, \
-    StaffBankDetail, SalaryRecord, Income, IncomeCategory, Expense, MoneyRemittance, OtherPaymentService
+    StaffBankDetail, SalaryRecord, Income, IncomeCategory, Expense, MoneyRemittance, OtherPaymentService, \
+    WalletWithdrawalRecord
 from human_resource.models import DepartmentModel, StaffModel
 from human_resource.views import FlashFormErrorsMixin
 from inpatient.models import Admission, Surgery
@@ -45,6 +46,7 @@ import uuid
 
 from pharmacy.models import DrugOrderModel
 from scan.models import ScanOrderModel
+from service.models import PatientServiceTransaction
 
 
 class RegistrationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
@@ -174,6 +176,15 @@ def patient_wallet_funding(request):
     return render(request, 'finance/wallet/funding.html', context)
 
 
+def calculate_insurance_amount(base_amount, coverage_percentage):
+    """Calculate patient's portion after insurance"""
+    if coverage_percentage and coverage_percentage > 0:
+        covered_amount = base_amount * (coverage_percentage / 100)
+        # Ensure result is rounded correctly and not negative
+        return max(Decimal('0.00'), base_amount - covered_amount).quantize(Decimal('0.01'))
+    return base_amount
+
+
 @login_required
 def verify_patient_ajax(request):
     """Verify patient by card number and return wallet details with pending payments"""
@@ -187,6 +198,7 @@ def verify_patient_ajax(request):
         patient = PatientModel.objects.get(card_number__iexact=card_number)
 
         # Get or create wallet
+        # NOTE: PatientWalletModel is assumed to be defined and imported
         wallet, created = PatientWalletModel.objects.get_or_create(
             patient=patient,
             defaults={'amount': Decimal('0.00')}
@@ -195,28 +207,44 @@ def verify_patient_ajax(request):
         # Calculate pending payments for last 30 days
         thirty_days_ago = timezone.now() - timedelta(days=30)
 
-        # Get pending drug orders
+        # --- QUERIES ---
+
+        # 1. Get pending Service/Item Transactions
+        pending_services_items = PatientServiceTransaction.objects.filter(
+            patient=patient,
+            status='pending_payment',
+            created_at__gte=thirty_days_ago
+        ).select_related(
+            'service', 'service__category',
+            'service_item', 'service_item__category'
+        ).only(
+            'id', 'service__name', 'service__category__name',
+            'service_item__name', 'service_item__category__name',
+            'total_amount', 'quantity', 'status', 'created_at'
+        )
+
+        # 2. Get pending drug orders
         pending_drugs = DrugOrderModel.objects.filter(
             patient=patient,
             status__in=['pending'],
             ordered_at__gte=thirty_days_ago
-        ).select_related('drug')
+        ).select_related('drug')  # Drug model assumed to have selling_price
 
-        # Get pending lab orders
+        # 3. Get pending lab orders
         pending_labs = LabTestOrderModel.objects.filter(
             patient=patient,
             status__in=['pending'],
             ordered_at__gte=thirty_days_ago
-        ).select_related('template')
+        ).select_related('template')  # Template model assumed to have price
 
-        # Get pending scan orders
+        # 4. Get pending scan orders
         pending_scans = ScanOrderModel.objects.filter(
             patient=patient,
             status__in=['pending'],
             ordered_at__gte=thirty_days_ago
-        ).select_related('template')
+        ).select_related('template')  # Template model assumed to have price
 
-        # Check for active insurance
+        # --- INSURANCE CHECK ---
         active_insurance = None
         if hasattr(patient, 'insurance_policies'):
             active_insurance = patient.insurance_policies.filter(
@@ -224,21 +252,61 @@ def verify_patient_ajax(request):
                 valid_to__gte=date.today()
             ).select_related('hmo', 'coverage_plan').first()
 
-        # Calculate totals with insurance consideration
-        def calculate_insurance_amount(base_amount, coverage_percentage):
-            """Calculate patient's portion after insurance"""
-            if coverage_percentage and coverage_percentage > 0:
-                covered_amount = base_amount * (coverage_percentage / 100)
-                return base_amount - covered_amount
-            return base_amount
+        # --- PROCESSING ---
 
-        # Process drug orders
+        # 1. Process Service/Item Orders
+        service_items_list = []
+        service_total = Decimal('0.00')
+
+        for transaction in pending_services_items:
+            # Determine the name, category, and coverage check
+            category_obj = None
+            if transaction.service:
+                name = transaction.service.name
+                category_obj = transaction.service.category
+            elif transaction.service_item:
+                name = transaction.service_item.name
+                category_obj = transaction.service_item.category
+            else:
+                continue
+
+            base_amount = transaction.total_amount
+            patient_amount = base_amount
+
+            # Apply insurance
+            if active_insurance and category_obj:
+                coverage_plan = active_insurance.coverage_plan
+
+                # IMPORTANT: Assumes CoveragePlan has these methods for Service Categories
+                if hasattr(coverage_plan, 'is_service_category_covered') and \
+                        coverage_plan.is_service_category_covered(category_obj):
+                    # Assumes CoveragePlan has a 'service_coverage_percentage' attribute
+                    coverage_percentage = getattr(coverage_plan, 'service_coverage_percentage', 0)
+                    patient_amount = calculate_insurance_amount(
+                        base_amount,
+                        coverage_percentage
+                    )
+
+            service_items_list.append({
+                'id': transaction.id,
+                'name': f"{category_obj.name} - {name}",
+                'quantity': transaction.quantity,
+                'base_amount': float(base_amount),
+                'patient_amount': float(patient_amount),
+                'status': transaction.status,
+                'ordered_date': transaction.created_at.strftime('%Y-%m-%d')
+            })
+            service_total += patient_amount
+
+        # 2. Process drug orders (Original Logic)
         drug_items = []
         drug_total = Decimal('0.00')
         for order in pending_drugs:
-            base_amount = order.drug.selling_price
+            base_amount = order.drug.selling_price if hasattr(order.drug, 'selling_price') else Decimal('0.00')
 
-            if active_insurance and active_insurance.coverage_plan.is_drug_covered(order.drug):
+            if active_insurance and hasattr(active_insurance.coverage_plan,
+                                            'is_drug_covered') and active_insurance.coverage_plan.is_drug_covered(
+                    order.drug):
                 patient_amount = calculate_insurance_amount(
                     base_amount,
                     active_insurance.coverage_plan.drug_coverage_percentage
@@ -248,7 +316,7 @@ def verify_patient_ajax(request):
 
             drug_items.append({
                 'id': order.id,
-                'name': f"{order.drug.brand_name or order.drug.generic_name}",
+                'name': f"{getattr(order.drug, 'brand_name', 'Drug')} (x{float(order.quantity_ordered)})",
                 'quantity': float(order.quantity_ordered),
                 'base_amount': float(base_amount),
                 'patient_amount': float(patient_amount),
@@ -258,13 +326,15 @@ def verify_patient_ajax(request):
             })
             drug_total += patient_amount
 
-        # Process lab orders
+        # 3. Process lab orders (Original Logic)
         lab_items = []
         lab_total = Decimal('0.00')
         for order in pending_labs:
             base_amount = order.amount_charged or order.template.price
 
-            if active_insurance and active_insurance.coverage_plan.is_lab_covered(order.template):
+            if active_insurance and hasattr(active_insurance.coverage_plan,
+                                            'is_lab_covered') and active_insurance.coverage_plan.is_lab_covered(
+                    order.template):
                 patient_amount = calculate_insurance_amount(
                     base_amount,
                     active_insurance.coverage_plan.lab_coverage_percentage
@@ -283,13 +353,15 @@ def verify_patient_ajax(request):
             })
             lab_total += patient_amount
 
-        # Process scan orders
+        # 4. Process scan orders (Original Logic)
         scan_items = []
         scan_total = Decimal('0.00')
         for order in pending_scans:
             base_amount = order.amount_charged or order.template.price
 
-            if active_insurance and active_insurance.coverage_plan.is_radiology_covered(order.template):
+            if active_insurance and hasattr(active_insurance.coverage_plan,
+                                            'is_radiology_covered') and active_insurance.coverage_plan.is_radiology_covered(
+                    order.template):
                 patient_amount = calculate_insurance_amount(
                     base_amount,
                     active_insurance.coverage_plan.radiology_coverage_percentage
@@ -309,15 +381,15 @@ def verify_patient_ajax(request):
             scan_total += patient_amount
 
         # Calculate grand total
-        grand_total = drug_total + lab_total + scan_total
+        grand_total = drug_total + lab_total + scan_total + service_total
 
+        # Active Admissions and Surgeries (Original Logic)
         active_admissions = Admission.objects.filter(
             patient=patient,
             status='active'
         )
         admission_count = active_admissions.count()
 
-        # Find active surgeries (scheduled or in progress)
         active_surgeries = Surgery.objects.filter(
             patient=patient,
             status__in=['scheduled', 'in_progress']
@@ -361,7 +433,13 @@ def verify_patient_ajax(request):
                     'total': float(scan_total),
                     'count': len(scan_items)
                 },
-                'admissions': {'count': admission_count, 'total': 0},  # Total is not applicable on this screen
+                # --- NEW: Service/Item Data in response ---
+                'services': {
+                    'items': service_items_list,
+                    'total': float(service_total),
+                    'count': len(service_items_list)
+                },
+                'admissions': {'count': admission_count, 'total': 0},
                 'surgeries': {'count': surgery_count, 'total': 0},
 
                 'grand_total': float(grand_total),
@@ -375,7 +453,7 @@ def verify_patient_ajax(request):
         }, status=404)
     except Exception as e:
         return JsonResponse({
-            'error': f'Error verifying patient: {str(e)}'
+            'error': f'Error verifying patient: {type(e).__name__}: {str(e)}'
         }, status=500)
 
 
@@ -449,6 +527,7 @@ def process_wallet_funding(request):
                     'scan': reverse('finance_scan_patient_payment', args=[patient.id]),
                     'drug': reverse('finance_pharmacy_patient_payment', args=[patient.id]),
                     'inpatient': reverse('finance_admission_funding', args=[patient.id]),
+                    'service': reverse('finance_service_patient_payment', args=[patient.id]),
                 }
 
                 redirect_url = redirect_urls.get(payment_type)
@@ -1405,6 +1484,7 @@ def finance_consultation_patient_payment(request, patient_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'}, status=500)
 
+
 # The existing pharmacy, lab, and scan payment views remain the same
 @login_required
 @require_http_methods(["GET", "POST"])
@@ -1566,6 +1646,223 @@ def finance_pharmacy_patient_payment(request, patient_id):
         return JsonResponse({
             'success': True,
             'message': f'Payment successful. ₦{total_amount:,.2f} deducted from wallet.',
+            'new_balance': float(wallet.amount),
+            'formatted_new_balance': f'₦{wallet.amount:,.2f}',
+            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}),
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'}, status=500)
+
+
+# Re-define insurance calculation helper (using the provided logic)
+def _calculate_insurance_amount(base_amount, coverage_percentage):
+    """Calculate patient's portion after insurance, ensuring correct rounding."""
+    base_amount = _to_decimal(base_amount)
+    coverage_percentage = _to_decimal(coverage_percentage)
+    if coverage_percentage and coverage_percentage > Decimal('0'):
+        covered = base_amount * (coverage_percentage / Decimal('100'))
+        return _quantize_money(base_amount - covered)
+    return _quantize_money(base_amount)
+
+
+# Re-define insurance query helper (using the provided logic)
+def _get_active_insurance(patient):
+    """Attempts to find the active insurance policy for the patient."""
+    try:
+        policies_qs = patient.insurance_policies.all()
+    except Exception:
+        try:
+            policies_qs = patient.insurancepolicy_set.all()
+        except:
+            # Assuming PatientInsuranceModel is the correct model if lookups fail
+            policies_qs = PatientInsuranceModel.objects.none()
+
+    return policies_qs.filter(
+        is_active=True,
+        valid_to__gte=timezone.now().date()
+    ).select_related('hmo', 'coverage_plan').first()
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def finance_service_patient_payment(request, patient_id):
+    """
+    Service/Item payment UI + processing:
+    - GET: render list of pending PatientServiceTransaction orders (last 30 days)
+    - POST: process selected transactions, deduct wallet, mark paid
+    """
+    patient = get_object_or_404(PatientModel, id=patient_id)
+    thirty_days_ago = timezone.now() - timedelta(days=THIRTY_DAYS)
+
+    # Pre-fetch the insurance once
+    active_insurance = _get_active_insurance(patient)
+
+    if request.method == 'GET':
+        # Get pending transactions (pending_payment status is assumed from your model)
+        pending_transactions = PatientServiceTransaction.objects.filter(
+            patient=patient,
+            status='pending_payment',
+            created_at__gte=thirty_days_ago
+        ).select_related(
+            'service', 'service__category',
+            'service_item', 'service_item__category'
+        )
+
+        items = []
+        total = Decimal('0.00')
+
+        for t in pending_transactions:
+            # Determine item name, base amount, and category for insurance logic
+            if t.service:
+                name = f"Service: {t.service.name}"
+                category_obj = t.service.category
+            elif t.service_item:
+                name = f"Item: {t.service_item.name}"
+                category_obj = t.service_item.category
+            else:
+                continue  # Skip malformed transaction
+
+            base_amount = t.total_amount
+            patient_amount = base_amount
+
+            # Apply insurance logic based on category
+            if active_insurance and category_obj:
+                coverage_plan = active_insurance.coverage_plan
+
+                # IMPORTANT: Assuming CoveragePlan has these methods/attributes for Service Categories
+                if hasattr(coverage_plan, 'is_service_category_covered'):
+                    try:
+                        if coverage_plan.is_service_category_covered(category_obj):
+                            pct = _to_decimal(getattr(coverage_plan, 'service_coverage_percentage', 0))
+                            patient_amount = _calculate_insurance_amount(base_amount, pct)
+                    except Exception:
+                        patient_amount = base_amount
+
+            patient_amount = _quantize_money(patient_amount)
+
+            items.append({
+                'id': t.id,
+                'name': name,
+                'quantity': t.quantity,
+                'unit_price': float(t.unit_price),
+                'discount': float(t.discount),
+                'base_amount': float(base_amount),
+                'patient_amount': float(patient_amount),
+                'formatted_patient_amount': f'₦{patient_amount:,.2f}',
+                'status': t.status,
+                'ordered_date': t.created_at.date().isoformat(),
+                'insurance_covered': patient_amount < base_amount
+            })
+            total += patient_amount
+
+        context = {
+            'patient': patient,
+            'items': items,
+            'total': _quantize_money(total),
+            'insurance': active_insurance
+        }
+        return render(request, 'finance/payment/service.html', context)
+
+    # POST - process payment
+    selected_ids = request.POST.getlist('selected_items[]') or request.POST.getlist('selected_items')
+    if not selected_ids:
+        return JsonResponse({'success': False, 'error': 'No items selected for payment.'}, status=400)
+
+    try:
+        # Re-fetch the selected transactions and compute final sum (server-side authority)
+        selected_transactions = list(
+            PatientServiceTransaction.objects.filter(
+                id__in=selected_ids,
+                patient=patient,
+                status='pending_payment'
+            ).select_related('service', 'service__category', 'service_item', 'service_item__category')
+        )
+
+        if not selected_transactions:
+            return JsonResponse({'success': False, 'error': 'Selected transactions not found or already paid.'},
+                                status=404)
+
+        total_amount = Decimal('0.00')
+
+        # Compute patient portion for each
+        for t in selected_transactions:
+            if t.created_at < thirty_days_ago:
+                return JsonResponse({'success': False,
+                                     'error': 'One or more selected items are older than 30 days and cannot be paid here.'},
+                                    status=400)
+
+            # Determine category for insurance
+            category_obj = t.service.category if t.service else t.service_item.category
+            base_amount = t.total_amount
+            patient_amount = base_amount
+
+            # Re-apply insurance logic
+            if active_insurance and category_obj:
+                coverage_plan = active_insurance.coverage_plan
+                if hasattr(coverage_plan, 'is_service_category_covered'):
+                    try:
+                        if coverage_plan.is_service_category_covered(category_obj):
+                            pct = _to_decimal(getattr(coverage_plan, 'service_coverage_percentage', 0))
+                            patient_amount = _calculate_insurance_amount(base_amount, pct)
+                    except Exception:
+                        patient_amount = base_amount
+
+            total_amount += _quantize_money(patient_amount)
+
+        # process wallet deduction inside a transaction with row lock
+        with transaction.atomic():
+            wallet_qs = PatientWalletModel.objects.select_for_update().filter(patient=patient)
+            if wallet_qs.exists():
+                wallet = wallet_qs.first()
+            else:
+                # create if missing
+                wallet = PatientWalletModel.objects.create(patient=patient, amount=Decimal('0.00'))
+
+            if wallet.amount < total_amount:
+                shortfall = _quantize_money(total_amount - wallet.amount)
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Insufficient wallet balance.',
+                    'shortfall': float(shortfall),
+                    'formatted_shortfall': f'₦{shortfall:,.2f}'
+                }, status=400)
+
+            # deduct
+            old_balance = wallet.amount
+            wallet.amount = _quantize_money(wallet.amount - total_amount)
+            wallet.save()
+
+            # mark transactions as paid
+            for t in selected_transactions:
+                # Note: Setting status to 'paid' may trigger stock deduction in the transaction's save method
+                # based on your PatientServiceTransaction.save() logic.
+                t.status = 'paid'
+                t.amount_paid = t.total_amount  # Mark as fully paid
+                t.save(update_fields=['status', 'amount_paid'])
+
+            # Create transaction record
+            payment = PatientTransactionModel.objects.create(
+                patient=patient,
+                # Decide if 'service' or 'item' is more appropriate, or use a new type
+                transaction_type='service',
+                transaction_direction='out',
+                amount=total_amount,
+                old_balance=old_balance,
+                new_balance=wallet.amount,
+                date=timezone.now().date(),
+                received_by=request.user,
+                payment_method='wallet',
+                status='completed',
+                # You might want to link one of the transactions, or none
+                # Linking is complex for multiple items, but we link the first one for reference
+                service=selected_transactions[0] if selected_transactions else None
+            )
+
+        # success
+        return JsonResponse({
+            'success': True,
+            'message': f'Payment successful. {total_amount:,.2f} deducted from wallet.',
             'new_balance': float(wallet.amount),
             'formatted_new_balance': f'₦{wallet.amount:,.2f}',
             'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}),
@@ -3230,3 +3527,335 @@ def finance_dashboard_print(request):
     }
 
     return render(request, 'finance/dashboard_print.html', context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def finance_wallet_withdrawal(request, patient_id):
+    """Handles patient wallet withdrawal."""
+    patient = get_object_or_404(PatientModel, id=patient_id)
+    wallet = get_object_or_404(PatientWalletModel, patient=patient)
+
+    if request.method == 'POST':
+        try:
+            amount_to_withdraw = _to_decimal(request.POST.get('amount'))
+            notes = request.POST.get('notes', '')
+
+            if amount_to_withdraw <= Decimal('0.00'):
+                return JsonResponse({'success': False, 'error': 'Amount must be positive.'}, status=400)
+
+            with transaction.atomic():
+                # Re-fetch and lock wallet
+                wallet_qs = PatientWalletModel.objects.select_for_update().filter(patient=patient)
+                wallet = wallet_qs.first()
+
+                if wallet.amount < amount_to_withdraw:
+                    shortfall = _quantize_money(amount_to_withdraw - wallet.amount)
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Insufficient wallet balance for withdrawal.',
+                        'shortfall': float(shortfall),
+                        'formatted_shortfall': f'₦{shortfall:,.2f}'
+                    }, status=400)
+
+                # Deduct
+                old_balance = wallet.amount
+                wallet.amount = _quantize_money(wallet.amount - amount_to_withdraw)
+                wallet.save()
+
+                # 1. Create OUT transaction (Wallet Deduction)
+                transaction_out = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='wallet_withdrawal',
+                    transaction_direction='out',
+                    amount=amount_to_withdraw,
+                    old_balance=old_balance,
+                    new_balance=wallet.amount,
+                    date=timezone.now().date(),
+                    received_by=request.user,
+                    payment_method='cash',  # Assuming cash
+                    status='completed'
+                )
+
+                # 2. Create Withdrawal Record
+                WalletWithdrawalRecord.objects.create(
+                    patient=patient,
+                    transaction=transaction_out,
+                    amount=amount_to_withdraw,
+                    withdrawn_by=request.user,
+                    notes=notes
+                )
+
+                return JsonResponse({
+                    'success': True,
+                    'message': f"Successfully withdrew ₦{amount_to_withdraw:,.2f}.",
+                    'new_balance': float(wallet.amount),
+                    'redirect_url': reverse('patient_wallet_dashboard', args=[patient.id])
+                })
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f'Error processing withdrawal: {str(e)}'}, status=500)
+
+    context = {
+        'patient': patient,
+        'wallet_balance': wallet.amount
+    }
+    return render(request, 'finance/wallet/withdrawal.html', context)
+
+
+REFUNDABLE_STATUSES = ['paid', 'partially_dispensed']
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def finance_process_refund(request, patient_id):
+    """
+    Handles refunds for paid items/services that have not been fully consumed/rendered.
+    """
+    patient = get_object_or_404(PatientModel, id=patient_id)
+
+    # Helper to get name from order/transaction (Moved here for scope)
+    def get_item_name(item):
+        if hasattr(item,
+                   'drug'): return f"{getattr(item.drug, 'brand_name', 'Drug')} ({getattr(item.drug, 'generic_name', 'N/A')})"
+        if hasattr(item, 'template'): return item.template.name
+        if hasattr(item, 'service') and item.service: return item.service.name
+        if hasattr(item, 'service_item') and item.service_item: return item.service_item.name
+        return "Unknown Item"
+
+    # --- GET LOGIC (No changes needed here, only in POST) ---
+    if request.method == 'GET':
+        # ... (GET logic remains the same) ...
+        one_year_ago = timezone.now() - timedelta(days=365)
+
+        # Drug Orders: Paid but not fully dispensed
+        refundable_drugs = DrugOrderModel.objects.filter(
+            patient=patient,
+            status__in=REFUNDABLE_STATUSES,
+            quantity_dispensed__lt=F('quantity_ordered'),
+            ordered_at__gte=one_year_ago
+        ).select_related('drug')
+
+        # Lab/Scan Orders: Paid but awaiting results/processing ('paid' or 'collected')
+        refundable_labs = LabTestOrderModel.objects.filter(
+            patient=patient,
+            status__in=['paid', 'collected'],
+            ordered_at__gte=one_year_ago
+        ).select_related('template')
+
+        refundable_scans = ScanOrderModel.objects.filter(
+            patient=patient,
+            status__in=['paid', 'collected'],
+            ordered_at__gte=one_year_ago
+        ).select_related('template')
+
+        # Services/Items: Paid but not fully dispensed (items) or not yet completed (services)
+        refundable_services = PatientServiceTransaction.objects.filter(
+            patient=patient,
+            status__in=REFUNDABLE_STATUSES,
+            amount_paid__gt=Decimal('0.00'),
+            created_at__gte=one_year_ago
+        ).select_related('service', 'service_item')
+
+        items_to_display = []
+
+        # The actual item list compilation is done here...
+        # We re-include the items list construction to avoid leaving it as a comment block
+        for o in refundable_drugs:
+            remaining_qty = o.quantity_ordered - o.quantity_dispensed
+            items_to_display.append({
+                'ref': f'drug-{o.id}',
+                'type': 'Drug Order',
+                'name': get_item_name(o),
+                'status': o.get_status_display(),
+                'notes': f"Remaining Qty: {remaining_qty}",
+                'amount': 0.00
+            })
+
+        for o in refundable_labs:
+            items_to_display.append({
+                'ref': f'lab-{o.id}',
+                'type': 'Lab Test',
+                'name': get_item_name(o),
+                'status': o.get_status_display(),
+                'notes': f"Total Charged: ₦{o.amount_charged:,.2f}",
+                'amount': float(o.amount_charged)
+            })
+
+        for o in refundable_scans:
+            items_to_display.append({
+                'ref': f'scan-{o.id}',
+                'type': 'Scan Order',
+                'name': get_item_name(o),
+                'status': o.get_status_display(),
+                'notes': f"Total Charged: ₦{o.amount_charged:,.2f}",
+                'amount': float(o.amount_charged)
+            })
+
+        for t in refundable_services:
+            items_to_display.append({
+                'ref': f'service-{t.id}',
+                'type': 'Service/Item',
+                'name': get_item_name(t),
+                'status': t.get_status_display(),
+                'notes': f"Amount Paid: ₦{t.amount_paid:,.2f}",
+                'amount': float(t.amount_paid)
+            })
+
+        context = {
+            'patient': patient,
+            'items': items_to_display
+        }
+        return render(request, 'finance/wallet/refund.html', context)
+
+    # 2. POST LOGIC: Handles the actual refund transaction
+    if request.method == 'POST':
+        try:
+            selected_items = request.POST.getlist('selected_items[]')
+
+            if not selected_items:
+                return JsonResponse({'success': False, 'error': 'No items selected for refund.'}, status=400)
+
+            refund_total = Decimal('0.00')
+            items_to_update = []
+
+            with transaction.atomic():
+                wallet_qs = PatientWalletModel.objects.select_for_update().filter(patient=patient)
+                wallet = wallet_qs.first()
+
+                if not wallet:
+                    return JsonResponse({'success': False, 'error': 'Wallet not found.'}, status=404)
+
+                # --- CALCULATE REFUND & UPDATE ITEM STATUSES ---
+                for item_ref in selected_items:
+                    try:
+                        item_type, item_id = item_ref.split('-')
+                        item_id = int(item_id)
+
+                        refund_amount = Decimal('0.00')
+                        item = None
+
+                        if item_type == 'drug':
+                            item = DrugOrderModel.objects.get(pk=item_id, patient=patient,
+                                                              status__in=REFUNDABLE_STATUSES)
+
+                            # FIX: Ensure all operands are Decimal
+                            remaining_qty = _to_decimal(item.quantity_ordered - item.quantity_dispensed)
+
+                            if remaining_qty <= Decimal('0.00'):
+                                continue
+
+                            unit_net_price = _to_decimal(item.drug.selling_price)
+
+                            if unit_net_price <= Decimal('0.00'):
+                                continue
+
+                            refund_amount = remaining_qty * unit_net_price  # Multiplication is now safe
+
+                            item.status = 'cancelled'
+                            item.quantity_dispensed = item.quantity_ordered
+
+                        elif item_type == 'lab':
+                            item = LabTestOrderModel.objects.get(pk=item_id, patient=patient,
+                                                                 status__in=['paid', 'collected'])
+                            refund_amount = _to_decimal(item.amount_charged)
+                            if refund_amount <= Decimal('0.00'): continue
+                            item.status = 'cancelled'
+
+                        elif item_type == 'scan':
+                            item = ScanOrderModel.objects.get(pk=item_id, patient=patient,
+                                                              status__in=['paid', 'collected'])
+                            refund_amount = _to_decimal(item.amount_charged)
+                            if refund_amount <= Decimal('0.00'): continue
+                            item.status = 'cancelled'
+
+                        elif item_type == 'service':
+                            item = PatientServiceTransaction.objects.get(pk=item_id, patient=patient,
+                                                                         status__in=REFUNDABLE_STATUSES)
+
+                            refund_amount = _to_decimal(item.amount_paid)  # Defensive use of _to_decimal
+                            if refund_amount <= Decimal('0.00'): continue
+
+                            item.status = 'cancelled'
+                            item.amount_paid = Decimal('0.00')
+
+                            # Finalize
+                        if item and refund_amount > Decimal('0.00'):
+                            items_to_update.append(item)
+                            refund_total += _quantize_money(refund_amount)
+
+                    except Exception as e:
+                        # Log the error but continue processing other items
+                        print(f"Refund item processing error for {item_ref}: {e}")
+                        continue
+
+                        # --- FAILURE POINT CHECK ---
+                if refund_total <= Decimal('0.00'):
+                    return JsonResponse(
+                        {'success': False, 'error': 'No valid refund amount calculated. Please check selected items.'},
+                        status=400)
+
+                # ... (rest of the transaction logic: update wallet, create transaction, save items)
+                old_balance = wallet.amount
+                wallet.amount += refund_total
+                wallet.save()
+
+                # Create IN transaction (Refund)
+                PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='refund_to_wallet',
+                    transaction_direction='in',
+                    amount=refund_total,
+                    old_balance=old_balance,
+                    new_balance=wallet.amount,
+                    date=timezone.now().date(),
+                    received_by=request.user,
+                    payment_method='wallet_return',
+                    status='completed'
+                )
+
+                # Save all updated items
+                for item in items_to_update:
+                    item.save()
+
+                return JsonResponse({
+                    'success': True,
+                    'message': f"Successfully refunded ₦{refund_total:,.2f} to wallet.",
+                    'new_balance': float(wallet.amount),
+                    'redirect_url': reverse('patient_wallet_dashboard', args=[patient.id])
+                })
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f'Error processing refund: {type(e).__name__}: {str(e)}'},
+                                status=500)
+
+# ----------------------------------------------------
+# 3. VIEW: Wallet History
+# ----------------------------------------------------
+
+@login_required
+def finance_wallet_history(request, patient_id):
+    """Displays a detailed history of all wallet-related transactions."""
+    patient = get_object_or_404(PatientModel, id=patient_id)
+
+    # Get all transactions, ordered by date
+    history = PatientTransactionModel.objects.filter(
+        patient=patient
+    ).select_related('received_by').order_by('-created_at')
+
+    context = {
+        'patient': patient,
+        'history': history
+    }
+    return render(request, 'finance/wallet/history.html', context)
+
+
+# ----------------------------------------------------
+# 4. VIEW: Central Entry Point
+# ----------------------------------------------------
+
+@login_required
+def finance_wallet_tools_entry(request):
+    """Central entry point for wallet tools (Verification -> Options)."""
+    # This view just renders the HTML containing the verification form.
+    return render(request, 'finance/wallet/tools_entry.html')

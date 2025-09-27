@@ -79,6 +79,39 @@ class OtherPaymentService(models.Model):
         return self.name
 
 
+class WalletWithdrawalRecord(models.Model):
+    """Record of money withdrawn from the patient wallet"""
+    patient = models.ForeignKey(
+        'patient.PatientModel',
+        on_delete=models.CASCADE,
+        related_name='withdrawals'
+    )
+    transaction = models.OneToOneField(
+        'PatientTransactionModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Link to the corresponding OUT transaction record"
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    withdrawn_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='wallet_withdrawals_processed'
+    )
+    withdrawal_date = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-withdrawal_date']
+        verbose_name = "Wallet Withdrawal Record"
+
+    def __str__(self):
+        return f"Withdrawal of ₦{self.amount} for {self.patient}"
+
+
 class PatientTransactionModel(models.Model):
     patient = models.ForeignKey('patient.PatientModel', on_delete=models.SET_NULL, null=True)
 
@@ -100,6 +133,8 @@ class PatientTransactionModel(models.Model):
         ('surgery_refund', 'SURGERY REFUND'),
         ('other_refund', 'OTHER REFUND'),
         ('wallet_withdrawal', 'WALLET WITHDRAWAL'),
+        ('refund_to_wallet', 'REFUND TO WALLET'),
+        ('wallet_correction', 'WALLET CORRECTION')
     )
 
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPE)
@@ -227,14 +262,14 @@ class PatientTransactionModel(models.Model):
 
     def clean(self):
         """Validate transaction direction based on type"""
-        funding_types = ['wallet_funding']
+        funding_types = ['wallet_funding', 'refund_to_wallet']
         payment_types = [
             'consultation_payment', 'drug_payment', 'lab_payment',
             'scan_payment', 'admission_payment', 'surgery_payment', 'other_payment'
         ]
         refund_types = [
             'drug_refund', 'lab_refund', 'scan_refund',
-            'admission_refund', 'surgery_refund', 'other_refund'
+            'admission_refund', 'surgery_refund', 'other_refund', 'wallet_withdrawal'
         ]
         withdrawal_types = ['wallet_withdrawal']
 

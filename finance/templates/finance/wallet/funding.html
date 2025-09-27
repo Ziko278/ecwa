@@ -302,6 +302,7 @@
                                         <option value="lab">Laboratory Tests</option>
                                         <option value="scan">Scans/Radiology</option>
                                         <option value="drug">Medications</option>
+                                        <option value="service">Services / Items</option>
                                         <option value="inpatient">Admission / Surgery</option>
                                     </select>
                                 </div>
@@ -351,362 +352,383 @@
     <!-- END: NEW SUCCESS MODAL                                  -->
     <!-- ======================================================= -->
 
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-    <script>
-        let patientData = null;
-        let pendingPayments = null;
-        let selectedItems = {
-            drugs: [],
-            labs: [],
-            scans: []
-        };
 
-        $(document).ready(function() {
-            // Patient verification form
-            $('#patient-verification-form').on('submit', function(e) {
-                e.preventDefault();
-                const cardNumber = $('#card_number').val().trim();
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-                if (!cardNumber) {
-                    alert('Please enter a card number');
-                    return;
-                }
+<script>
+    let patientData = null;
+    let pendingPayments = null;
+    // UPDATED: Added 'services' to track selected service/item transactions
+    let selectedItems = {
+        drugs: [],
+        labs: [],
+        scans: [],
+        services: [] // NEW
+    };
 
-                verifyPatient(cardNumber);
-            });
+    // NOTE: Replace this with the actual URL for your funding process view
+    const processFundingUrl = "{% url 'process_funding' %}";
 
-            // Funding form
-            $('#funding-form').on('submit', function(e) {
-                e.preventDefault();
-                processFunding();
-            });
+    $(document).ready(function() {
+        // Patient verification form
+        $('#patient-verification-form').on('submit', function(e) {
+            e.preventDefault();
+            const cardNumber = $('#card_number').val().trim();
 
-            // Action type change
-            $('input[name="action_type"]').on('change', function() {
-                if ($(this).val() === 'fund_and_pay') {
-                    $('#payment-type-section').removeClass('hidden');
-                    $('#submit-funding').html('<i class="fas fa-credit-card"></i> Fund & Pay');
-                } else {
-                    $('#payment-type-section').addClass('hidden');
-                    $('#submit-funding').html('<i class="fas fa-credit-card"></i> Fund Only');
-                }
-            });
+            if (!cardNumber) {
+                alert('Please enter a card number');
+                return;
+            }
 
-            // Funding amount input
-            $('#funding_amount').on('input', function() {
-                updateFundingDisplay();
-            });
+            verifyPatient(cardNumber);
         });
 
-        function verifyPatient(cardNumber) {
-            showLoading();
+        // Funding form
+        $('#funding-form').on('submit', function(e) {
+            e.preventDefault();
+            processFunding();
+        });
 
-            $.ajax({
-                url: "{% url 'finance_verify_patient_ajax' %}",
-                method: 'GET',
-                data: { card_number: cardNumber },
-                success: function(response) {
-                    hideLoading();
-                    if (response.success) {
-                        patientData = response.patient;
-                        pendingPayments = response.pending_payments;
+        // Action type change
+        $('input[name="action_type"]').on('change', function() {
+            if ($(this).val() === 'fund_and_pay') {
+                $('#payment-type-section').removeClass('hidden');
+                $('#submit-funding').html('<i class="fas fa-credit-card"></i> Fund & Pay');
+            } else {
+                $('#payment-type-section').addClass('hidden');
+                $('#submit-funding').html('<i class="fas fa-credit-card"></i> Fund Only');
+            }
+        });
 
-                        displayPatientInfo(response);
-                        displayPendingPayments(response.pending_payments);
+        // Funding amount input
+        $('#funding_amount').on('input', function() {
+            updateFundingDisplay();
+        });
+    });
 
-                        // Move to step 2
-                        $('#step-1').removeClass('active').addClass('completed');
-                        $('#step-2').addClass('active');
-                        $('#patient-verification-section').addClass('hidden');
-                        $('#patient-details-section').removeClass('hidden');
+    // Helper function to format currency client-side
+    function formatCurrency(amount) {
+        if (typeof amount === 'number') {
+            return '₦' + amount.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+        return '₦0.00';
+    }
 
-                        // Set patient ID for funding form
-                        $('#patient_id').val(response.patient.id);
-                    }
-                },
-                error: function(xhr) {
-                    hideLoading();
-                    const response = xhr.responseJSON;
-                    alert(response.error || 'Error verifying patient');
+    function verifyPatient(cardNumber) {
+        // Use inline loading messages instead of modals if no modal is defined
+        $('#patient-verification-form button').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Verifying...');
+
+        $.ajax({
+            url: "{% url 'finance_verify_patient_ajax' %}",
+            method: 'GET',
+            data: { card_number: cardNumber },
+            success: function(response) {
+                $('#patient-verification-form button').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
+                if (response.success) {
+                    patientData = response.patient;
+                    pendingPayments = response.pending_payments;
+
+                    displayPatientInfo(response);
+                    displayPendingPayments(response.pending_payments);
+
+                    // Move to step 2
+                    $('#step-1').removeClass('active').addClass('completed');
+                    $('#step-2').addClass('active');
+                    $('#patient-verification-section').addClass('hidden');
+                    $('#patient-details-section').removeClass('hidden');
+
+                    // Set patient ID for funding form
+                    $('#patient_id').val(response.patient.id);
                 }
-            });
-        }
-
-        function displayPatientInfo(data) {
-            const patient = data.patient;
-            const insurance = data.insurance;
-
-            let insuranceInfo = '';
-            if (insurance.has_insurance) {
-                insuranceInfo = `
-                    <div class="mt-2">
-                        <span class="badge bg-success insurance-badge">
-                            <i class="fas fa-shield-alt"></i> Insured
-                        </span>
-                        <small class="d-block text-muted mt-1">
-                            ${insurance.hmo_name} - ${insurance.plan_name}
-                        </small>
-                    </div>
-                `;
+            },
+            error: function(xhr) {
+                $('#patient-verification-form button').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
+                const response = xhr.responseJSON;
+                alert(response.error || 'Error verifying patient');
             }
+        });
+    }
 
-            $('#patient-info').html(`
-                <h5>${patient.full_name}</h5>
-                <p class="mb-1"><strong>Card Number:</strong> ${patient.card_number}</p>
-                <p class="mb-1"><strong>Phone:</strong> ${patient.phone}</p>
-                <p class="mb-1"><strong>Age:</strong> ${patient.age}</p>
-                <p class="mb-1"><strong>Gender:</strong> ${patient.gender}</p>
-                ${insuranceInfo}
-            `);
+    function displayPatientInfo(data) {
+        const patient = data.patient;
+        const insurance = data.insurance;
 
-            $('#wallet-balance').text(data.wallet.formatted_balance);
-        }
-
-        function displayPendingPayments(payments) {
-            let html = '';
-
-            // Drugs Section
-            if (payments.drugs.count > 0) {
-                html += createServiceSection('Medications', 'drugs', payments.drugs, 'fas fa-pills', '#17a2b8');
-            }
-
-            // Labs Section
-            if (payments.labs.count > 0) {
-                html += createServiceSection('Laboratory Tests', 'labs', payments.labs, 'fas fa-vial', '#28a745');
-            }
-
-            // Scans Section
-            if (payments.scans.count > 0) {
-                html += createServiceSection('Scans/Radiology', 'scans', payments.scans, 'fas fa-x-ray', '#dc3545');
-            }
-
-            if (html === '') {
-                html = `
-                    <div class="text-center text-muted py-4">
-                        <i class="fas fa-clipboard-list fa-3x mb-3"></i>
-                        <h5>No pending payments found</h5>
-                        <p>This patient has no pending payments in the last 30 days.</p>
-                    </div>
-                `;
-            }
-
-            $('#pending-payments-section').html(html);
-            updateSelectedTotal();
-        }
-
-        function createServiceSection(title, type, data, icon, color) {
-            let itemsHtml = '';
-
-            data.items.forEach(item => {
-                const insuranceDiscount = item.base_amount - item.patient_amount;
-                const hasDiscount = insuranceDiscount > 0;
-
-                itemsHtml += `
-                    <div class="item-row">
-                        <div class="form-check">
-                            <input class="form-check-input item-checkbox" type="checkbox"
-                                   value="${item.id}" data-type="${type}"
-                                   data-amount="${item.patient_amount}" checked>
-                            <label class="form-check-label">
-                                <strong>${item.name}</strong>
-                                ${item.quantity ? `<small class="text-muted"> (Qty: ${item.quantity})</small>` : ''}
-                                <br>
-                                <small class="text-muted">
-                                    Order: ${item.order_number} | Date: ${item.ordered_date}
-                                </small>
-                                ${hasDiscount ? `
-                                    <br><small class="text-success">
-                                        <i class="fas fa-shield-alt"></i> Insurance coverage applied
-                                    </small>
-                                ` : ''}
-                            </label>
-                        </div>
-                        <div class="text-end">
-                            ${hasDiscount ? `
-                                <div class="text-muted">
-                                    <small><s>₦${parseFloat(item.base_amount).toLocaleString()}</s></small>
-                                </div>
-                            ` : ''}
-                            <div class="amount-display">₦${parseFloat(item.patient_amount).toLocaleString()}</div>
-                        </div>
-                    </div>
-                `;
-            });
-
-            return `
-                <div class="service-card">
-                    <div class="service-header">
-                        <div>
-                            <h6 class="mb-0">
-                                <i class="${icon}" style="color: ${color}"></i> ${title}
-                            </h6>
-                            <small class="text-muted">${data.count} item(s)</small>
-                        </div>
-                        <div>
-                            <button class="btn btn-sm btn-outline-primary"
-                                    onclick="toggleAllItems('${type}')">
-                                Toggle All
-                            </button>
-                        </div>
-                    </div>
-                    ${itemsHtml}
+        let insuranceInfo = '';
+        if (insurance.has_insurance) {
+            insuranceInfo = `
+                <div class="mt-2">
+                    <span class="badge bg-success insurance-badge">
+                        <i class="fas fa-shield-alt"></i> Insured
+                    </span>
+                    <small class="d-block text-muted mt-1">
+                        ${insurance.hmo_name} - ${insurance.plan_name}
+                    </small>
                 </div>
             `;
         }
 
-        // Event delegation for checkboxes
-        $(document).on('change', '.item-checkbox', function() {
-            updateSelectedItems();
-            updateSelectedTotal();
+        $('#patient-info').html(`
+            <h5>${patient.full_name}</h5>
+            <p class="mb-1"><strong>Card Number:</strong> ${patient.card_number}</p>
+            <p class="mb-1"><strong>Phone:</strong> ${patient.phone}</p>
+            <p class="mb-1"><strong>Age:</strong> ${patient.age}</p>
+            <p class="mb-1"><strong>Gender:</strong> ${patient.gender}</p>
+            ${insuranceInfo}
+        `);
+
+        $('#wallet-balance').text(data.wallet.formatted_balance);
+    }
+
+    function displayPendingPayments(payments) {
+        let html = '';
+
+        // Drugs Section
+        if (payments.drugs.count > 0) {
+            html += createServiceSection('Medications', 'drugs', payments.drugs, 'fas fa-pills', '#17a2b8');
+        }
+
+        // Labs Section
+        if (payments.labs.count > 0) {
+            html += createServiceSection('Laboratory Tests', 'labs', payments.labs, 'fas fa-vial', '#28a745');
+        }
+
+        // Scans Section
+        if (payments.scans.count > 0) {
+            html += createServiceSection('Scans/Radiology', 'scans', payments.scans, 'fas fa-x-ray', '#dc3545');
+        }
+
+        // NEW: Services Section
+        if (payments.services.count > 0) {
+            html += createServiceSection('Services & Items', 'services', payments.services, 'fas fa-hand-holding-medical', '#fd7e14');
+        }
+
+        if (html === '') {
+            html = `
+                <div class="text-center text-muted py-4">
+                    <i class="fas fa-clipboard-list fa-3x mb-3"></i>
+                    <h5>No pending payments found</h5>
+                    <p>This patient has no pending payments in the last 30 days.</p>
+                </div>
+            `;
+        }
+
+        $('#pending-payments-section').html(html);
+        updateSelectedTotal();
+    }
+
+    function createServiceSection(title, type, data, icon, color) {
+        let itemsHtml = '';
+
+        data.items.forEach(item => {
+            // Note: Service/Item transactions may not have an 'order_number' field, but the unique ID works as a reference.
+            const orderRef = item.order_number || `Trans. ID: ${item.id}`;
+            const insuranceDiscount = item.base_amount - item.patient_amount;
+            const hasDiscount = insuranceDiscount > 0.01; // Use 0.01 for decimal comparison safety
+
+            itemsHtml += `
+                <div class="item-row">
+                    <div class="form-check">
+                        <input class="form-check-input item-checkbox" type="checkbox"
+                               value="${item.id}" data-type="${type}"
+                               data-amount="${item.patient_amount}" checked>
+                        <label class="form-check-label">
+                            <strong>${item.name}</strong>
+                            ${item.quantity && item.quantity !== 1 ? `<small class="text-muted"> (Qty: ${item.quantity})</small>` : ''}
+                            <br>
+                            <small class="text-muted">
+                                ${orderRef} | Date: ${item.ordered_date}
+                            </small>
+                            ${hasDiscount ? `
+                                <br><small class="text-success">
+                                    <i class="fas fa-shield-alt"></i> Insurance coverage applied
+                                </small>
+                            ` : ''}
+                        </label>
+                    </div>
+                    <div class="text-end">
+                        ${hasDiscount ? `
+                            <div class="text-muted">
+                                <small><s>${formatCurrency(item.base_amount)}</s></small>
+                            </div>
+                        ` : ''}
+                        <div class="amount-display">${formatCurrency(item.patient_amount)}</div>
+                    </div>
+                </div>
+            `;
         });
 
-        function toggleAllItems(type) {
-            const checkboxes = $(`.item-checkbox[data-type="${type}"]`);
-            const allChecked = checkboxes.filter(':checked').length === checkboxes.length;
+        return `
+            <div class="service-card">
+                <div class="service-header">
+                    <div>
+                        <h6 class="mb-0">
+                            <i class="${icon}" style="color: ${color}"></i> ${title}
+                        </h6>
+                        <small class="text-muted">${data.count} item(s)</small>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                onclick="toggleAllItems('${type}')">
+                            Toggle All
+                        </button>
+                    </div>
+                </div>
+                ${itemsHtml}
+            </div>
+        `;
+    }
 
-            checkboxes.prop('checked', !allChecked);
-            updateSelectedItems();
-            updateSelectedTotal();
+    // Event delegation for checkboxes
+    $(document).on('change', '.item-checkbox', function() {
+        updateSelectedItems();
+        updateSelectedTotal();
+    });
+
+    function toggleAllItems(type) {
+        const checkboxes = $(`.item-checkbox[data-type="${type}"]`);
+        const allChecked = checkboxes.filter(':checked').length === checkboxes.length;
+
+        checkboxes.prop('checked', !allChecked);
+        updateSelectedItems();
+        updateSelectedTotal();
+    }
+
+    function updateSelectedItems() {
+        // UPDATED: Added 'services' to clear and populate
+        selectedItems = { drugs: [], labs: [], scans: [], services: [] };
+
+        $('.item-checkbox:checked').each(function() {
+            const type = $(this).data('type');
+            const id = $(this).val();
+
+            if (selectedItems.hasOwnProperty(type)) { // Use hasOwnProperty for safety
+                selectedItems[type].push(id);
+            }
+        });
+    }
+
+    function updateSelectedTotal() {
+        let total = 0;
+
+        $('.item-checkbox:checked').each(function() {
+            total += parseFloat($(this).data('amount'));
+        });
+
+        $('#selected-total').text(formatCurrency(total));
+        $('#suggested-amount').text(formatCurrency(total));
+
+        // Update funding amount suggestion
+        if (total > 0) {
+            $('#funding_amount').attr('placeholder', `Suggested: ${formatCurrency(total).replace('₦','')}`);
         }
+    }
 
-        function updateSelectedItems() {
-            selectedItems = { drugs: [], labs: [], scans: [] };
+    function proceedToFunding() {
+        updateSelectedItems();
 
-            $('.item-checkbox:checked').each(function() {
-                const type = $(this).data('type');
-                const id = $(this).val();
+        // Move to step 3
+        $('#step-2').removeClass('active').addClass('completed');
+        $('#step-3').addClass('active');
+        $('#patient-details-section').addClass('hidden');
+        $('#funding-section').removeClass('hidden');
 
-                if (selectedItems[type]) {
-                    selectedItems[type].push(id);
+        // Set suggested funding amount
+        const totalText = $('#selected-total').text().replace(/[^\d.-]/g, '');
+        const total = parseFloat(totalText);
+
+        if (total > 0) {
+            $('#funding_amount').val(total.toFixed(2));
+        }
+    }
+
+    function goBackToDetails() {
+        $('#step-3').removeClass('active');
+        $('#step-2').addClass('active').removeClass('completed');
+        $('#funding-section').addClass('hidden');
+        $('#patient-details-section').removeClass('hidden');
+    }
+
+    function processFunding() {
+        const formData = new FormData($('#funding-form')[0]);
+
+        // Add all selected item IDs to the form data
+        Object.keys(selectedItems).forEach(type => {
+            selectedItems[type].forEach(id => formData.append('selected_items[]', id));
+            // Also append the type, so the backend knows which model to look up
+            selectedItems[type].forEach(id => formData.append('selected_types[]', type));
+        });
+
+        // Ensure you have logic in your process_funding view to handle multiple selected_types and selected_items
+
+        // Consider showing a spinner on the submit button
+        $('#submit-funding').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...');
+
+        $.ajax({
+            url: processFundingUrl, // Use the defined constant
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    // 1. Populate the modal with the success message
+                    $('#success-message-text').text(response.message);
+
+                    // 2. Create and show the Bootstrap modal
+                    const successModal = new bootstrap.Modal(document.getElementById('success-modal'));
+                    successModal.show();
+
+                    // 3. Handle the redirect when the 'OK' button is clicked
+                    $('#modal-ok-button').off('click').on('click', function() {
+                        if (response.redirect_url) {
+                            window.location.href = response.redirect_url;
+                        } else {
+                            // If no redirect, just hide the modal and reset
+                            successModal.hide();
+                            resetForm();
+                        }
+                    });
+
                 }
-            });
-        }
-
-        function updateSelectedTotal() {
-            let total = 0;
-
-            $('.item-checkbox:checked').each(function() {
-                total += parseFloat($(this).data('amount'));
-            });
-
-            $('#selected-total').text('₦' + total.toLocaleString());
-            $('#suggested-amount').text('₦' + total.toLocaleString());
-
-            // Update funding amount suggestion
-            if (total > 0) {
-                $('#funding_amount').attr('placeholder', `Suggested: ₦${total.toLocaleString()}`);
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                alert(response.error || 'Error processing funding');
+            },
+            complete: function() {
+                // Re-enable the submit button
+                $('#submit-funding').prop('disabled', false).html('<i class="fas fa-credit-card"></i> Process Funding');
             }
-        }
+        });
+    }
 
-        function proceedToFunding() {
-            updateSelectedItems();
+    function updateFundingDisplay() {
+        // This function seems unused or needs complex logic for new balance calculation.
+        // Keeping it simple for now, focusing on the core funding process.
+    }
 
-            // Move to step 3
-            $('#step-2').removeClass('active').addClass('completed');
-            $('#step-3').addClass('active');
-            $('#patient-details-section').addClass('hidden');
-            $('#funding-section').removeClass('hidden');
+    function resetForm() {
+        $('#patient-verification-form')[0].reset();
+        $('#funding-form')[0].reset();
 
-            // Set suggested funding amount
-            const total = parseFloat($('#selected-total').text().replace('₦', '').replace(/,/g, ''));
-            if (total > 0) {
-                $('#funding_amount').val(total.toFixed(2));
-            }
-        }
+        // Reset steps
+        $('.step').removeClass('active completed');
+        $('#step-1').addClass('active');
 
-        function goBackToDetails() {
-            $('#step-3').removeClass('active');
-            $('#step-2').addClass('active').removeClass('completed');
-            $('#funding-section').addClass('hidden');
-            $('#patient-details-section').removeClass('hidden');
-        }
+        // Show initial section
+        $('#patient-details-section, #funding-section').addClass('hidden');
+        $('#patient-verification-section').removeClass('hidden');
 
-        function processFunding() {
-            const formData = new FormData($('#funding-form')[0]);
-            Object.keys(selectedItems).forEach(type => {
-                selectedItems[type].forEach(id => formData.append('selected_items[]', id));
-            });
+        // Reset data
+        patientData = null;
+        pendingPayments = null;
+        selectedItems = { drugs: [], labs: [], scans: [], services: [] };
+    }
+</script>
 
-            // Consider showing a spinner on the submit button
-            $('#submit-funding').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...');
-
-            $.ajax({
-                url: "{% url 'process_funding' %}",
-                method: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(response) {
-                    if (response.success) {
-                        // 1. Populate the modal with the success message
-                        $('#success-message-text').text(response.message);
-
-                        // 2. Create and show the Bootstrap modal
-                        const successModal = new bootstrap.Modal(document.getElementById('success-modal'));
-                        successModal.show();
-
-                        // 3. Handle the redirect when the 'OK' button is clicked
-                        $('#modal-ok-button').off('click').on('click', function() {
-                            if (response.redirect_url) {
-                                window.location.href = response.redirect_url;
-                            } else {
-                                // If no redirect, just hide the modal and reset
-                                successModal.hide();
-                                resetForm();
-                            }
-                        });
-
-                    }
-                },
-                error: function(xhr) {
-                    const response = xhr.responseJSON;
-                    // You could use another modal for errors here
-                    alert(response.error || 'Error processing funding');
-                },
-                complete: function() {
-                    // Re-enable the submit button
-                    $('#submit-funding').prop('disabled', false).html('<i class="fas fa-credit-card"></i> Process Funding');
-                }
-            });
-        }
-
-        function updateFundingDisplay() {
-            const amount = parseFloat($('#funding_amount').val());
-            const currentBalance = parseFloat('{{ wallet.amount|default:0 }}');
-
-            if (amount && amount > 0) {
-                const newBalance = currentBalance + amount;
-                // Update display if needed
-            }
-        }
-
-        function resetForm() {
-            $('#patient-verification-form')[0].reset();
-            $('#funding-form')[0].reset();
-
-            // Reset steps
-            $('.step').removeClass('active completed');
-            $('#step-1').addClass('active');
-
-            // Show initial section
-            $('#patient-details-section, #funding-section').addClass('hidden');
-            $('#patient-verification-section').removeClass('hidden');
-
-            // Reset data
-            patientData = null;
-            pendingPayments = null;
-            selectedItems = { drugs: [], labs: [], scans: [] };
-        }
-
-        function showLoading() {
-            $('#loadingModal').modal('show');
-        }
-
-        function hideLoading() {
-            $('#loadingModal').modal('hide');
-        }
-    </script>
 {% endblock %}

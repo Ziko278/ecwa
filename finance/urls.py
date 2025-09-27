@@ -68,6 +68,8 @@ from .views import (
     finance_dashboard_print, OtherPaymentServiceListView, OtherPaymentServiceCreateView, OtherPaymentServiceDetailView,
     OtherPaymentServiceUpdateView, OtherPaymentServiceDeleteView, process_other_payment_ajax, OtherPaymentView,
     ajax_process_admission_funding, AdmissionSurgeryFundingView, staff_remittance_detail_view,
+    finance_service_patient_payment, finance_wallet_tools_entry, finance_wallet_history, finance_wallet_withdrawal,
+    finance_process_refund,
 )
 
 urlpatterns = [
@@ -87,6 +89,7 @@ urlpatterns = [
     path('payment/pharmacy/<int:patient_id>/', finance_pharmacy_patient_payment, name='finance_pharmacy_patient_payment'),
     path('payment/laboratory/<int:patient_id>/', finance_laboratory_patient_payment, name='finance_laboratory_patient_payment'),
     path('payment/scan/<int:patient_id>/', finance_scan_patient_payment, name='finance_scan_patient_payment'),
+    path('payment/service/<int:patient_id>/', finance_service_patient_payment, name='finance_service_patient_payment'),
     path('transactions/', PatientTransactionListView.as_view(), name='patient_transaction_index'),
     path('transactions/<int:pk>/', PatientTransactionDetailView.as_view(), name='patient_transaction_detail'),
     path('payment/other/', OtherPaymentView.as_view(), name='finance_other_payment'),
@@ -160,6 +163,13 @@ urlpatterns = [
 
     path('dashboard/', finance_dashboard, name='finance_dashboard'),
     path('dashboard/print/', finance_dashboard_print, name='finance_dashboard_print'),
+
+    path('wallet/tools/', finance_wallet_tools_entry, name='finance_wallet_tools_entry'),
+
+    # New Wallet Views
+    path('wallet/history/<int:patient_id>/', finance_wallet_history, name='finance_wallet_history'),
+    path('wallet/withdrawal/<int:patient_id>/', finance_wallet_withdrawal, name='finance_wallet_withdrawal'),
+    path('wallet/refund/<int:patient_id>/', finance_process_refund, name='finance_process_refund'),
 
 ]
 
