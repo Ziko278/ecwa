@@ -244,11 +244,6 @@ class PatientIDGeneratorModel(models.Model):
     status = models.CharField(max_length=10, choices=STATUS, blank=True, default='f')
     updated_at = models.DateTimeField(auto_now=True)  # Add timestamp for debugging
 
-    class Meta:
-        # Ensure only one record exists
-        constraints = [
-            models.CheckConstraint(check=models.Q(id=1), name='single_patient_generator_record')
-        ]
 
 
 class PatientSettingModel(models.Model):
