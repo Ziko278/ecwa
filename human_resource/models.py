@@ -213,15 +213,9 @@ class StaffModel(models.Model):
 
 class StaffIDGeneratorModel(models.Model):
     id = models.AutoField(primary_key=True)  # Make it explicit
-    last_id = models.BigIntegerField(default=0)  # Change to BigIntegerField
+    last_id = models.BigIntegerField(default=0) 
     last_staff_id = models.CharField(max_length=100, null=True, blank=True)
-    updated_at = models.DateTimeField(auto_now=True)  # Add timestamp for debugging
-
-    class Meta:
-        # Ensure only one record exists
-        constraints = [
-            models.CheckConstraint(check=models.Q(id=1), name='single_generator_record')
-        ]
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class StaffProfileModel(models.Model):
