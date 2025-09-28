@@ -7,7 +7,9 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.contrib.auth.models import Permission, Group, User
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.models.functions import Lower
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
