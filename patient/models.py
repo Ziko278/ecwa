@@ -245,7 +245,6 @@ class PatientIDGeneratorModel(models.Model):
     updated_at = models.DateTimeField(auto_now=True)  # Add timestamp for debugging
 
 
-
 class PatientSettingModel(models.Model):
     """This model handles all setting related to patient"""
     auto_generate_patient_id = models.BooleanField(default=True)
