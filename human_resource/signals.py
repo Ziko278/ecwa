@@ -41,7 +41,7 @@ def create_staff_account(sender, instance, created, **kwargs):
         with transaction.atomic():
             # Generate credentials
             username = staff.staff_id
-            alphabet = string.ascii_letters + string.digits + string.punctuation
+            alphabet = string.ascii_letters + string.digits
 
             # 2. Generate a cryptographically strong password (e.g., 8 characters).
             password = ''.join(secrets.choice(alphabet) for i in range(8))
