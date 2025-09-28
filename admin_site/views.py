@@ -2,6 +2,7 @@ from datetime import timedelta
 import json
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
+from django.views.decorators.http import require_http_methods
 from django.views.generic import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.http import HttpResponse
@@ -29,6 +30,10 @@ from django.http import HttpResponse
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.views.decorators.cache import never_cache
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def create_activity_log(user, log, category, sub_category, keywords=""):
@@ -302,3 +307,79 @@ def user_sign_in_view(request):
 def user_sign_out_view(request):
     logout(request)
     return redirect(reverse('login'))
+
+
+@login_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def change_password_view(request):
+    """
+    View to handle password change for authenticated users.
+    Validates current password and updates to new password.
+    """
+
+    if request.method == 'POST':
+        # Get form data
+        current_password = request.POST.get('current_password', '').strip()
+        new_password1 = request.POST.get('new_password1', '').strip()
+        new_password2 = request.POST.get('new_password2', '').strip()
+
+        # Validation
+        errors = []
+
+        # Check if all fields are provided
+        if not current_password:
+            errors.append("Current password is required.")
+
+        if not new_password1:
+            errors.append("New password is required.")
+
+        if not new_password2:
+            errors.append("Password confirmation is required.")
+
+        # Check if new passwords match
+        if new_password1 and new_password2 and new_password1 != new_password2:
+            errors.append("New passwords do not match.")
+
+        # Check password length and complexity
+        if new_password1 and len(new_password1) < 8:
+            errors.append("New password must be at least 8 characters long.")
+
+        # Check if new password is different from current
+        if current_password and new_password1 and current_password == new_password1:
+            errors.append("New password must be different from current password.")
+
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+            return render(request, 'admin_site/user/change_password.html')
+
+        # Verify current password
+        user = authenticate(username=request.user.username, password=current_password)
+        if user is None:
+            messages.error(request, "Current password is incorrect.")
+            logger.warning(
+                f"Failed password change attempt for user {request.user.username} - incorrect current password")
+            return render(request, 'admin_site/user/change_password.html')
+
+        try:
+            # Change password
+            user.set_password(new_password1)
+            user.save()
+
+            # Keep user logged in after password change
+            update_session_auth_hash(request, user)
+
+            messages.success(request, "Your password has been successfully changed!")
+            logger.info(f"Password successfully changed for user {request.user.username}")
+
+            # Redirect to dashboard or profile page
+            return redirect('admin_dashboard')  # Change this to your desired redirect URL
+
+        except Exception as e:
+            logger.exception(f"Error changing password for user {request.user.username}: {str(e)}")
+            messages.error(request, "An error occurred while changing your password. Please try again.")
+            return render(request, 'admin_site/user/change_password.html')
+
+    # GET request - show the form
+    return render(request, 'admin_site/user/change_password.html')

@@ -6,6 +6,7 @@ urlpatterns = [
     
     path('sign-in', user_sign_in_view, name='login'),
     path('sign-out', user_sign_out_view, name='logout'),
+    path('change-password/', change_password_view, name='change_password'),
 
     path('site-info/create', SiteInfoCreateView.as_view(), name='site_info_create'),
     path('site-info/<int:pk>/detail', SiteInfoDetailView.as_view(), name='site_info_detail'),

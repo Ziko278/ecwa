@@ -355,13 +355,7 @@ class PositionDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView
         return reverse('position_index')
 
 
-# -------------------------
-# Staff Views
-# -------------------------
-class StaffCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin,
-    StaffContextMixin, CreateView
-):
+class StaffCreateView(LoginRequiredMixin, PermissionRequiredMixin, StaffContextMixin, CreateView):
     model = StaffModel
     permission_required = 'human_resource.add_staffmodel'
     form_class = StaffForm
@@ -372,12 +366,49 @@ class StaffCreateView(
         return reverse('staff_detail', kwargs={'pk': self.object.pk})
 
     def form_valid(self, form):
-        # Set created_by field defensively
+        """Enhanced form validation with user creation feedback"""
         try:
-            form.instance.created_by = getattr(self.request, 'user', None)
-        except Exception:
-            logger.exception("Failed to set created_by on staff form_valid")
-        return super().form_valid(form)
+            form.instance.created_by = self.request.user
+
+            # Validate email format if provided
+            if form.instance.email:
+                try:
+                    validate_email(form.instance.email)
+                except ValidationError:
+                    messages.error(self.request, 'Please provide a valid email address.')
+                    return self.form_invalid(form)
+
+            # Save the form (this triggers the signal)
+            response = super().form_valid(form)
+
+            # Provide appropriate success message based on user creation
+            staff = self.object
+            if staff.position and staff.position.staff_login:
+                if staff.email:
+                    messages.success(
+                        self.request,
+                        f'Staff successfully registered! Login credentials have been sent to {staff.email}.'
+                    )
+                else:
+                    messages.warning(
+                        self.request,
+                        'Staff registered successfully. However, no email was provided for sending login credentials.'
+                    )
+            else:
+                messages.success(self.request, 'Staff successfully registered.')
+
+            return response
+
+        except Exception as e:
+            logger.exception(f"Error in staff creation: {str(e)}")
+            messages.error(self.request, 'An error occurred while creating the staff record. Please try again.')
+            return self.form_invalid(form)
+
+    def form_invalid(self, form):
+        """Enhanced error handling for form validation failures"""
+        logger.warning(f"Staff creation form invalid: {form.errors}")
+        messages.error(self.request, 'Please correct the errors below and try again.')
+        return super().form_invalid(form)
 
 
 class StaffListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):

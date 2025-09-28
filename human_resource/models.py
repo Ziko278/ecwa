@@ -4,6 +4,9 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 from admin_site.model_info import *
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DepartmentModel(models.Model):
@@ -116,23 +119,60 @@ class StaffModel(models.Model):
         return "{} {}".format(self.first_name, self.last_name)
 
     def save(self, *args, **kwargs):
-        # Only generate ID if it doesn't exist
+        """
+        Enhanced save method with better user synchronization.
+        Generates staff ID and syncs user data safely.
+        """
+        # Generate staff ID if not exists
         if not self.staff_id:
             self.staff_id = self.generate_unique_staff_id()
 
-        # Handle user profile sync
-        if self.id:
-            user_profile = StaffProfileModel.objects.filter(staff=self).first()
-            if user_profile:
-                user = user_profile.user
-                if self.email:
-                    user.email = self.email
-                user.save()
-
-                if self.group:
-                    self.group.user_set.add(user)
-
+        # Save the staff record first
         super(StaffModel, self).save(*args, **kwargs)
+
+        # Sync with user profile only for existing records (updates)
+        if self.pk:
+            self._sync_user_profile()
+
+    def _sync_user_profile(self):
+        """
+        Synchronize staff data with associated user profile.
+        Only runs for existing staff records, not new ones.
+        """
+        try:
+            staff_profile = StaffProfileModel.objects.select_related('user').filter(staff=self).first()
+            if not staff_profile:
+                return  # No user profile exists yet
+
+            user = staff_profile.user
+            user_updated = False
+
+            # Update email if changed and provided
+            if self.email and user.email != self.email:
+                user.email = self.email
+                user_updated = True
+
+            # Update names if changed
+            if user.first_name != self.first_name:
+                user.first_name = self.first_name
+                user_updated = True
+
+            if user.last_name != self.last_name:
+                user.last_name = self.last_name
+                user_updated = True
+
+            # Save user if any changes made
+            if user_updated:
+                user.save()
+                logger.info(f"Updated user profile for staff {self.staff_id}")
+
+            # Update group membership
+            if self.group and not user.groups.filter(id=self.group.id).exists():
+                self.group.user_set.add(user)
+
+        except Exception as e:
+            logger.exception(f"Failed to sync user profile for staff {self.staff_id}: {str(e)}")
+            # Don't raise exception to avoid breaking staff updates
 
     @transaction.atomic
     def generate_unique_staff_id(self):
@@ -213,7 +253,7 @@ class StaffModel(models.Model):
 
 class StaffIDGeneratorModel(models.Model):
     id = models.AutoField(primary_key=True)  # Make it explicit
-    last_id = models.BigIntegerField(default=0) 
+    last_id = models.BigIntegerField(default=0)
     last_staff_id = models.CharField(max_length=100, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
