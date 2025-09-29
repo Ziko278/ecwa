@@ -247,7 +247,7 @@ class ManufacturerDeleteView(LoginRequiredMixin, PermissionRequiredMixin, Delete
 # Generic Drug Views
 # -------------------------
 class GenericDrugCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    LoginRequiredMixin, PermissionRequiredMixin,
     PharmacyContextMixin, CreateView
 ):
     model = GenericDrugModel
@@ -300,7 +300,7 @@ class GenericDrugDetailView(LoginRequiredMixin, PermissionRequiredMixin, Pharmac
 
 
 class GenericDrugUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    LoginRequiredMixin, PermissionRequiredMixin,
     PharmacyContextMixin, UpdateView
 ):
     model = GenericDrugModel
