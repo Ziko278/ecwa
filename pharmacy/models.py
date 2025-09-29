@@ -130,8 +130,8 @@ class DrugModel(models.Model):
     manufacturer = models.ForeignKey(ManufacturerModel, on_delete=models.CASCADE, related_name='products', blank=True, null=True)
 
     # Product identification
-    brand_name = models.CharField(max_length=200, blank=True, help_text="Commercial/Brand name")
-    sku = models.CharField(max_length=100, unique=True, help_text="Stock Keeping Unit")
+    brand_name = models.CharField(max_length=200, blank=True, default='', help_text="Commercial/Brand name")
+    sku = models.CharField(max_length=100, blank=True, default='', help_text="Stock Keeping Unit")
 
     # Stock tracking - Store vs Pharmacy
     store_quantity = models.FloatField(default=0, help_text="Quantity in store/warehouse")
