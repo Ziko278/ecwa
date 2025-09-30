@@ -330,7 +330,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const el = document.createElement('div');
                 el.className = 'drug-result-item';
                 // display using the format: BrandName (Formulation) - Manufacturer
-                const displayText = `${item.brand_name} (${item.formulation}) - ${item.manufacturer}`;
+                const displayText = `${item.brand_name} - ${item.formulation}`;
                 el.innerHTML = `<div><strong>${escapeHtml(displayText)}</strong></div>
                                 <div class="small text-muted">${escapeHtml(item.generic_name)} • ₦${Number(item.price).toFixed(2)}</div>`;
                 el.dataset.drugId = item.id;

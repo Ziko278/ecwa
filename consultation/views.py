@@ -3580,7 +3580,7 @@ def ajax_search_drugs(request):
             Q(brand_name__icontains=query) |
             Q(formulation__generic_drug__generic_name__icontains=query),
             is_active=True
-        ).select_related('formulation__generic_drug', 'manufacturer')[:20] # Added manufacturer
+        ).select_related('formulation__generic_drug', 'manufacturer')[:20]
 
         drugs_data = []
         for drug in drugs:
@@ -3589,20 +3589,22 @@ def ajax_search_drugs(request):
                 'brand_name': drug.brand_name,
                 'generic_name': drug.formulation.generic_drug.generic_name,
                 'formulation': str(drug.formulation),
-                'manufacturer': drug.manufacturer.name,
+                # --- FIX APPLIED HERE ---
+                'manufacturer': drug.manufacturer.name if drug.manufacturer else '',
                 'price': float(drug.selling_price),
-                # --- ADD THIS LINE ---
                 'is_prescription_only': drug.formulation.generic_drug.is_prescription_only
             })
 
         return JsonResponse({'drugs': drugs_data})
 
     except Exception as e:
+        # It's good practice to log the exception for debugging purposes
+        # import logging
+        # logging.error(f"Drug search failed: {e}")
         return JsonResponse({
             'success': False,
-            'error': f'Drug search failed: {str(e)}'
+            'error': 'An unexpected error occurred during drug search.'
         })
-
 
 @login_required
 @require_POST
