@@ -107,6 +107,13 @@
                                                                    {% if "change_patientsettingmodel" in permission_codenames %} checked {% endif %}>
                                                         </span>
                                                     </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can View Patient Setting
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="view_patientsettingmodel"
+                                                                   {% if "view_patientsettingmodel" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
 
                                                     <li class="list-group-item d-flex justify-content-between align-items-center">
                                                         Can View Patient Dashboard
@@ -455,13 +462,7 @@
                                                                 {% if "view_labtestresultmodel" in permission_codenames %} checked {% endif %}>
                                                         </span>
                                                     </li>
-                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                                        Can update lab test results
-                                                        <span class="badge">
-                                                            <input type="checkbox" name="permissions[]" value="change_labtestresultmodel"
-                                                                {% if "change_labtestresultmodel" in permission_codenames %} checked {% endif %}>
-                                                        </span>
-                                                    </li>
+
                                                     <li class="list-group-item d-flex justify-content-between align-items-center">
                                                         Can verify lab test results
                                                         <span class="badge">

@@ -10,36 +10,42 @@
             </h4>
 
             <!-- Edit -->
+            {% if perms.human_resource.change_staffmodel %}
             <a title="Edit Staff" href="{% url 'staff_edit' staff.id %}" class="btn btn-warning">
                 <i class="bi bi-pencil-square"></i>
             </a>
+            {% endif %}
 
             <!-- Delete -->
+            {% if perms.human_resource.delete_staffmodel %}
             <button title="Delete Staff" type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
                 <i class="bi bi-trash"></i>
             </button>
-
-            <!-- Enable / Disable -->
-            {% if staff.status == 'active' %}
-                <button title="Disable Staff" type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#confirmDisableModal">
-                    <i class="bi bi-person-dash"></i>
-                </button>
-            {% else %}
-                <button title="Activate Staff" type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#confirmEnableModal">
-                    <i class="bi bi-person-check"></i>
-                </button>
             {% endif %}
 
-            {% if staff.position and staff.position.staff_login %}
-                <!-- Login: Generate or Update -->
-                {% if not staff.staff_profile %}
-                    <button type="button" title="Generate Staff Login Detail" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#confirmGenerateLoginModal">
-                        <i class="bi bi-lock-fill"></i>
+            <!-- Enable / Disable -->
+            {% if perms.human_resource.change_staffmodel %}
+                {% if staff.status == 'active' %}
+                    <button title="Disable Staff" type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#confirmDisableModal">
+                        <i class="bi bi-person-dash"></i>
                     </button>
                 {% else %}
-                    <button title="Update Staff Login Detail" type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#confirmUpdateLoginModal">
-                        <i class="bi bi-shield-lock-fill"></i>
+                    <button title="Activate Staff" type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#confirmEnableModal">
+                        <i class="bi bi-person-check"></i>
                     </button>
+                {% endif %}
+
+                {% if staff.position and staff.position.staff_login %}
+                    <!-- Login: Generate or Update -->
+                    {% if not staff.staff_profile %}
+                        <button type="button" title="Generate Staff Login Detail" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#confirmGenerateLoginModal">
+                            <i class="bi bi-lock-fill"></i>
+                        </button>
+                    {% else %}
+                        <button title="Update Staff Login Detail" type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#confirmUpdateLoginModal">
+                            <i class="bi bi-shield-lock-fill"></i>
+                        </button>
+                    {% endif %}
                 {% endif %}
             {% endif %}
         </div>

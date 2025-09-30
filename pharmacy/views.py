@@ -153,7 +153,7 @@ class DrugCategoryUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = DrugCategoryModel
-    permission_required = 'pharmacy.change_drugcategorymodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     form_class = DrugCategoryForm
     template_name = 'pharmacy/category/index.html'
     success_message = 'Drug Category Successfully Updated'
@@ -169,7 +169,7 @@ class DrugCategoryUpdateView(
 
 class DrugCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = DrugCategoryModel
-    permission_required = 'pharmacy.delete_drugcategorymodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     template_name = 'pharmacy/category/delete.html'
     context_object_name = "category"
     success_message = 'Drug Category Successfully Deleted'
@@ -185,7 +185,7 @@ class ManufacturerCreateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
 ):
     model = ManufacturerModel
-    permission_required = 'pharmacy.add_manufacturermodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     form_class = ManufacturerForm
     template_name = 'pharmacy/manufacturer/index.html'
     success_message = 'Manufacturer Successfully Created'
@@ -201,7 +201,7 @@ class ManufacturerCreateView(
 
 class ManufacturerListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ManufacturerModel
-    permission_required = 'pharmacy.view_manufacturermodel'
+    permission_required = 'pharmacy.view_drugcategorymodel'
     template_name = 'pharmacy/manufacturer/index.html'
     context_object_name = "manufacturer_list"
 
@@ -218,7 +218,7 @@ class ManufacturerUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = ManufacturerModel
-    permission_required = 'pharmacy.change_manufacturermodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     form_class = ManufacturerForm
     template_name = 'pharmacy/manufacturer/index.html'
     success_message = 'Manufacturer Successfully Updated'
@@ -234,7 +234,7 @@ class ManufacturerUpdateView(
 
 class ManufacturerDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = ManufacturerModel
-    permission_required = 'pharmacy.delete_manufacturermodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     template_name = 'pharmacy/manufacturer/delete.html'
     context_object_name = "manufacturer"
     success_message = 'Manufacturer Successfully Deleted'
@@ -251,7 +251,7 @@ class GenericDrugCreateView(
     PharmacyContextMixin, CreateView
 ):
     model = GenericDrugModel
-    permission_required = 'pharmacy.add_genericdrugmodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     form_class = GenericDrugForm
     template_name = 'pharmacy/generic_drug/create.html'
     success_message = 'Generic Drug Successfully Created'
@@ -262,7 +262,7 @@ class GenericDrugCreateView(
 
 class GenericDrugListView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyContextMixin, ListView):
     model = GenericDrugModel
-    permission_required = 'pharmacy.view_genericdrugmodel'
+    permission_required = 'pharmacy.view_drugcategorymodel'
     template_name = 'pharmacy/generic_drug/index.html'
     context_object_name = "generic_drug_list"
     paginate_by = 20
@@ -273,7 +273,7 @@ class GenericDrugListView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyC
 
 class GenericDrugDetailView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyContextMixin, DetailView):
     model = GenericDrugModel
-    permission_required = 'pharmacy.view_genericdrugmodel'
+    permission_required = 'pharmacy.view_drugcategorymodel'
     template_name = 'pharmacy/generic_drug/detail.html'
     context_object_name = "generic_drug"
 
@@ -304,7 +304,7 @@ class GenericDrugUpdateView(
     PharmacyContextMixin, UpdateView
 ):
     model = GenericDrugModel
-    permission_required = 'pharmacy.change_genericdrugmodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     form_class = GenericDrugForm
     template_name = 'pharmacy/generic_drug/update.html'
     context_object_name = "generic_drug"
@@ -317,7 +317,7 @@ class GenericDrugUpdateView(
 
 class GenericDrugDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = GenericDrugModel
-    permission_required = 'pharmacy.delete_genericdrugmodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     template_name = 'pharmacy/generic_drug/delete.html'
     context_object_name = "generic_drug"
     success_message = 'Generic Drug Successfully Deleted'
@@ -334,7 +334,7 @@ class DrugFormulationCreateView(
     PharmacyContextMixin, CreateView
 ):
     model = DrugFormulationModel
-    permission_required = 'pharmacy.add_drugformulationmodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     form_class = DrugFormulationForm
     template_name = 'pharmacy/formulation/create.html'
     success_message = 'Drug Formulation Successfully Created'
@@ -345,7 +345,7 @@ class DrugFormulationCreateView(
 
 class DrugFormulationListView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyContextMixin, ListView):
     model = DrugFormulationModel
-    permission_required = 'pharmacy.view_drugformulationmodel'
+    permission_required = 'pharmacy.view_drugcategorymodel'
     template_name = 'pharmacy/formulation/index.html'
     context_object_name = "formulation_list"
     paginate_by = 20
@@ -358,7 +358,7 @@ class DrugFormulationListView(LoginRequiredMixin, PermissionRequiredMixin, Pharm
 
 class DrugFormulationDetailView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyContextMixin, DetailView):
     model = DrugFormulationModel
-    permission_required = 'pharmacy.view_drugformulationmodel'
+    permission_required = 'pharmacy.view_drugcategorymodel'
     template_name = 'pharmacy/formulation/detail.html'
     context_object_name = "formulation"
 
@@ -383,7 +383,7 @@ class DrugFormulationUpdateView(
     PharmacyContextMixin, UpdateView
 ):
     model = DrugFormulationModel
-    permission_required = 'pharmacy.change_drugformulationmodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     form_class = DrugFormulationForm
     template_name = 'pharmacy/formulation/update.html'
     success_message = 'Drug Formulation Successfully Updated'
@@ -395,7 +395,7 @@ class DrugFormulationUpdateView(
 
 class DrugFormulationDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = DrugFormulationModel
-    permission_required = 'pharmacy.delete_drugformulationmodel'
+    permission_required = 'pharmacy.add_drugcategorymodel'
     template_name = 'pharmacy/formulation/delete.html'
     context_object_name = "formulation"
     success_message = 'Drug Formulation Successfully Deleted'
@@ -588,7 +588,7 @@ class DrugBatchCreateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
 ):
     model = DrugBatchModel
-    permission_required = 'pharmacy.add_drugbatchmodel'
+    permission_required = 'pharmacy.add_drugstockmodel'
     form_class = DrugBatchForm
     template_name = 'pharmacy/batch/index.html'
     success_message = 'Drug Batch Successfully Created'
@@ -604,7 +604,7 @@ class DrugBatchCreateView(
 
 class DrugBatchListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = DrugBatchModel
-    permission_required = 'pharmacy.view_drugbatchmodel'
+    permission_required = 'pharmacy.view_drugstockmodel'
     template_name = 'pharmacy/batch/index.html'
     context_object_name = "batch_list"
 
@@ -624,7 +624,7 @@ class DrugBatchUpdateView(
     UpdateView
 ):
     model = DrugBatchModel
-    permission_required = 'pharmacy.change_drugbatchmodel'
+    permission_required = 'pharmacy.add_drugstockmodel'
     form_class = DrugBatchForm
     template_name = 'pharmacy/batch/index.html' # This template is typically for list + add modal
     # success_message = 'Drug Batch Successfully Updated' # Handled by FlashFormErrorsMixin or messages directly
@@ -700,7 +700,7 @@ class DrugBatchDeleteView(
     DeleteView
 ):
     model = DrugBatchModel
-    permission_required = 'pharmacy.delete_drugbatchmodel'
+    permission_required = 'pharmacy.add_drugstockmodel'
     template_name = 'pharmacy/batch/delete.html'
     context_object_name = "batch"
     # success_message = 'Drug Batch Successfully Deleted'
@@ -732,7 +732,6 @@ class DrugBatchDeleteView(
     def get_success_url(self):
         return reverse('drug_batch_index')
 
-
     def dispatch(self, request, *args, **kwargs):
         """
         Custom dispatch to handle HttpResponseRedirect from get_object.
@@ -749,7 +748,6 @@ class DrugBatchDeleteView(
         # This sets self.object, which is then used by get_context_data and post.
         self.object = obj
         return super().dispatch(request, *args, **kwargs)
-
 
 
 # -------------------------
@@ -857,7 +855,7 @@ class DrugBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyC
     model = DrugBatchModel
     template_name = 'pharmacy/stock/batch_detail.html'
     context_object_name = 'batch'
-    permission_required = 'pharmacy.view_drugbatchmodel' # Ensure you have the correct permission
+    permission_required = 'pharmacy.add_drugstockmodel' # Ensure you have the correct permission
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -888,13 +886,12 @@ class DrugBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyC
         return context
 
 
-
 class DrugStockUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
     PharmacyContextMixin, UpdateView
 ):
     model = DrugStockModel
-    permission_required = 'pharmacy.change_drugstockmodel'
+    permission_required = 'pharmacy.add_drugstockmodel'
     form_class = DrugStockForm
     template_name = 'pharmacy/stock/edit.html'  # This template will likely be used in a modal
     success_message = 'Drug Stock Successfully Updated'
@@ -931,7 +928,7 @@ class DrugStockUpdateView(
 
 class DrugStockDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = DrugStockModel
-    permission_required = 'pharmacy.delete_drugstockmodel'
+    permission_required = 'pharmacy.add_drugstockmodel'
     template_name = 'pharmacy/stock/delete.html'
     context_object_name = "stock"
     success_message = 'Drug Stock Successfully Deleted'
@@ -983,7 +980,7 @@ class DrugStockDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVie
 
 class DrugStockOutView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """Handle drug stock out with FIFO allocation across multiple stocks"""
-    permission_required = 'pharmacy.change_drugmodel'
+    permission_required = 'pharmacy.add_drugstockmodel'
     success_message = 'Drug Stock Successfully Reduced'
 
     def post(self, request, pk):
@@ -1483,6 +1480,7 @@ class StockReportView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyConte
 
         return context
 
+
 # -------------------------
 # AJAX and API Views
 # -------------------------
@@ -1535,7 +1533,7 @@ def quick_transfer_view(request):
 
 
 @login_required
-@permission_required('pharmacy.change_drugmodel')
+@permission_required('pharmacy.add_drugtransfermodel')
 def update_stock_alert_view(request):
     """AJAX view for updating minimum stock levels"""
     if request.method == 'POST':
@@ -1738,6 +1736,7 @@ def export_stock_report_view(request):
 
 
 @login_required
+@permission_required('pharmacy.add_drugordermodel', raise_exception=True)
 def drug_dispense_page(request):
     """Main drug dispensing page"""
     return render(request, 'pharmacy/dispense/dispense.html')
@@ -1840,6 +1839,7 @@ def verify_patient_pharmacy_ajax(request):
 
 
 @login_required
+@permission_required('pharmacy.change_drugordermodel', raise_exception=True)
 @transaction.atomic
 def process_dispense_ajax(request):
     """Process drug dispensing and/or payments with pharmacy stock management"""
@@ -2149,6 +2149,7 @@ def dispense_history_ajax(request):
 
 
 @login_required
+@permission_required('pharmacy.add_dispenserecord', raise_exception=True)
 def general_dispense_view(request):
     # Defaults
     today = now().date()
@@ -2195,6 +2196,7 @@ def general_dispense_view(request):
     return render(request, "pharmacy/dispense/index.html", context)
 
 
+@permission_required('pharmacy.view_dispenserecord', raise_exception=True)
 def patient_dispense_view(request, patient_id):
     patient = get_object_or_404(PatientModel, id=patient_id)
     records = DispenseRecord.objects.filter(order__patient=patient)

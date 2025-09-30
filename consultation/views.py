@@ -21,11 +21,10 @@ from django.views.generic import (
 )
 from django.db.models import Q, Count, Sum
 from django.contrib.auth.models import User
-
 from consultation.models import *
 from consultation.forms import *
 from finance.forms import PatientTransactionForm
-from finance.models import PatientTransactionModel
+from consultation.models import PatientTransactionModel
 from laboratory.models import LabTestOrderModel, LabTestCategoryModel, LabTestTemplateModel, LabSettingModel
 from patient.models import PatientModel
 from human_resource.models import StaffModel
@@ -113,7 +112,7 @@ class SpecializationUpdateView(
     SuccessMessageMixin, UpdateView
 ):
     model = SpecializationModel
-    permission_required = 'consultation.change_specializationmodel'
+    permission_required = 'consultation.add_specializationmodel'
     form_class = SpecializationForm
     template_name = 'consultation/specialization/index.html'
     success_message = 'Specialization Successfully Updated'
@@ -131,7 +130,7 @@ class SpecializationDeleteView(
     LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView
 ):
     model = SpecializationModel
-    permission_required = 'consultation.delete_specializationmodel'
+    permission_required = 'consultation.add_specializationmodel'
     template_name = 'consultation/specialization/delete.html'
     context_object_name = "specialization"
     success_message = 'Specialization Successfully Deleted'
@@ -168,7 +167,7 @@ class SpecializationGroupCreateView(
     SuccessMessageMixin, CreateView
 ):
     model = SpecializationGroupModel
-    permission_required = 'consultation.add_specializationgroupmodel'
+    permission_required = 'consultation.add_specializationmodel'
     form_class = SpecializationGroupForm
     template_name = 'consultation/specialization_group/index.html'
     success_message = 'Specialization Group Successfully Registered'
@@ -184,7 +183,7 @@ class SpecializationGroupCreateView(
 
 class SpecializationGroupListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = SpecializationGroupModel
-    permission_required = 'consultation.view_specializationgroupmodel'
+    permission_required = 'consultation.view_specializationmodel'
     template_name = 'consultation/specialization_group/index.html'
     context_object_name = "specialization_group_list"
 
@@ -202,7 +201,7 @@ class SpecializationGroupUpdateView(
     SuccessMessageMixin, UpdateView
 ):
     model = SpecializationGroupModel
-    permission_required = 'consultation.change_specializationgroupmodel'
+    permission_required = 'consultation.add_specializationmodel'
     form_class = SpecializationGroupForm
     template_name = 'consultation/specialization_group/index.html'
     success_message = 'Specialization Group Successfully Updated'
@@ -220,7 +219,7 @@ class SpecializationGroupDeleteView(
     LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView
 ):
     model = SpecializationGroupModel
-    permission_required = 'consultation.delete_specializationgroupmodel'
+    permission_required = 'consultation.add_specializationmodel'
     template_name = 'consultation/specialization_group/delete.html'
     context_object_name = "specialization_group"
     success_message = 'Specialization Group Successfully Deleted'
@@ -271,7 +270,7 @@ class ConsultationBlockUpdateView(
     SuccessMessageMixin, UpdateView
 ):
     model = ConsultationBlockModel
-    permission_required = 'consultation.change_consultationblockmodel'
+    permission_required = 'consultation.add_consultationblockmodel'
     form_class = ConsultationBlockForm
     template_name = 'consultation/block/index.html'
     success_message = 'Block Successfully Updated'
@@ -289,7 +288,7 @@ class ConsultationBlockDeleteView(
     LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView
 ):
     model = ConsultationBlockModel
-    permission_required = 'consultation.delete_consultationblockmodel'
+    permission_required = 'consultation.add_consultationblockmodel'
     template_name = 'consultation/block/delete.html'
     context_object_name = "consultation_block"
     success_message = 'Block Successfully Deleted'
@@ -306,7 +305,7 @@ class ConsultationRoomCreateView(
     SuccessMessageMixin, CreateView
 ):
     model = ConsultationRoomModel
-    permission_required = 'consultation.add_consultationroommodel'
+    permission_required = 'consultation.add_consultationblockmodel'
     form_class = ConsultationRoomForm
     template_name = 'consultation/room/index.html'
     success_message = 'Room Successfully Registered'
@@ -322,7 +321,7 @@ class ConsultationRoomCreateView(
 
 class ConsultationRoomListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ConsultationRoomModel
-    permission_required = 'consultation.view_consultationroommodel'
+    permission_required = 'consultation.view_consultationblockmodel'
     template_name = 'consultation/room/index.html'
     context_object_name = "room_list"
 
@@ -342,7 +341,7 @@ class ConsultationRoomUpdateView(
     SuccessMessageMixin, UpdateView
 ):
     model = ConsultationRoomModel
-    permission_required = 'consultation.change_consultationroommodel'
+    permission_required = 'consultation.add_consultationblockmodel'
     form_class = ConsultationRoomForm
     template_name = 'consultation/room/index.html'
     success_message = 'Room Successfully Updated'
@@ -360,7 +359,7 @@ class ConsultationRoomDeleteView(
     LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView
 ):
     model = ConsultationRoomModel
-    permission_required = 'consultation.delete_consultationroommodel'
+    permission_required = 'consultation.add_consultationblockmodel'
     template_name = 'consultation/room/delete.html'
     context_object_name = "room"
     success_message = 'Room Successfully Deleted'
@@ -442,7 +441,7 @@ class ConsultantListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 class ConsultantQueueView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """View to manage a specific consultant's queue"""
     model = PatientQueueModel
-    permission_required = 'consultation.view_patientqueuemodel'
+    permission_required = 'consultation.add_consultantmodel'
     template_name = 'consultation/consultant/queue.html'
     context_object_name = "queue_list"
 
@@ -470,7 +469,7 @@ class ConsultantQueueView(LoginRequiredMixin, PermissionRequiredMixin, ListView)
 
 
 @login_required
-@permission_required('consultation.change_consultantmodel', raise_exception=True)
+@permission_required('consultation.add_consultantmodel', raise_exception=True)
 def toggle_consultant_availability(request, pk):
     """Enhanced toggle that handles patient transfers"""
     if request.method == 'POST':
@@ -547,7 +546,7 @@ def toggle_consultant_availability(request, pk):
 
 @require_POST
 @login_required
-@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+@permission_required('consultation.add_consultantmodel', raise_exception=True)
 def transfer_patient_ajax(request, queue_id, new_consultant_id):
     """Transfer a single patient to another consultant via AJAX"""
     try:
@@ -598,7 +597,7 @@ def transfer_patient_ajax(request, queue_id, new_consultant_id):
 
 @require_POST
 @login_required
-@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+@permission_required('consultation.add_consultantmodel', raise_exception=True)
 def bulk_transfer_patients_ajax(request):
     """Transfer multiple patients at once"""
     try:
@@ -654,7 +653,7 @@ class ConsultantUpdateView(
     SuccessMessageMixin, UpdateView
 ):
     model = ConsultantModel
-    permission_required = 'consultation.change_consultantmodel'
+    permission_required = 'consultation.add_consultantmodel'
     form_class = ConsultantForm
     template_name = 'consultation/consultant/update.html'
     success_message = 'Consultant Successfully Updated'
@@ -733,14 +732,13 @@ class ConsultantDeleteView(
     LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView
 ):
     model = ConsultantModel
-    permission_required = 'consultation.delete_consultantmodel'
+    permission_required = 'consultation.add_consultantmodel'
     template_name = 'consultation/consultant/delete.html'
     context_object_name = "consultant"
     success_message = 'Consultant Successfully Deleted'
 
     def get_success_url(self):
         return reverse('consultant_list')
-
 
 
 
@@ -788,7 +786,7 @@ class ConsultationFeeUpdateView(
     SuccessMessageMixin, UpdateView
 ):
     model = ConsultationFeeModel
-    permission_required = 'consultation.change_consultationfeemodel'
+    permission_required = 'consultation.add_consultationfeemodel'
     form_class = ConsultationFeeForm
     template_name = 'consultation/fee/update.html'
     success_message = 'Consultation Fee Successfully Updated'
@@ -806,7 +804,7 @@ class ConsultationFeeDeleteView(
     LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView
 ):
     model = ConsultationFeeModel
-    permission_required = 'consultation.delete_consultationfeemodel'
+    permission_required = 'consultation.add_consultationfeemodel'
     template_name = 'consultation/fee/delete.html'
     context_object_name = "fee"
     success_message = 'Consultation Fee Successfully Deleted'
@@ -821,7 +819,7 @@ class ConsultationFeeDeleteView(
 
 class ConsultationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = PatientTransactionModel
-    permission_required = 'finance.add_patienttransactionmodel'
+    permission_required = 'consultation.add_patientvitalsmodel'
     form_class = PatientTransactionForm
     template_name = 'consultation/payment/create.html'
 
@@ -1071,17 +1069,11 @@ def get_specialization_consultants_ajax(request):
         }, status=500)
 
 
-from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.views.generic import ListView
-from django.db.models import Sum
-from datetime import date
-from .models import PatientTransactionModel # Import your transaction model
-
 class ConsultationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     # 1. Update the model to your transaction model
     model = PatientTransactionModel
     # 2. Update the permission to match the new model
-    permission_required = 'finance.view_patienttransactionmodel'
+    permission_required = 'consultation.add_patientvitalsmodel'
     template_name = 'consultation/payment/list.html'
     context_object_name = "payment_list"
     paginate_by = 50
@@ -1133,9 +1125,10 @@ class ConsultationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, L
         except Exception:
             return {'total_payments': 0, 'total_amount': 0, 'pending_count': 0, 'completed_count': 0}
 
+
 class ConsultationPaymentDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = PatientTransactionModel
-    permission_required = 'consultation.view_consultationpaymentmodel'
+    permission_required = 'consultation.add_patientvitalsmodel'
     template_name = 'consultation/payment/detail.html'
     context_object_name = "payment"
 
@@ -1159,7 +1152,7 @@ class ConsultationPaymentDetailView(LoginRequiredMixin, PermissionRequiredMixin,
 
 @require_POST
 @login_required
-@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+@permission_required('consultation.add_patientvitalsmodel', raise_exception=True)
 def update_patient_vitals_ajax(request, queue_pk):
     """
     AJAX view to update existing patient vitals
@@ -1208,7 +1201,7 @@ def update_patient_vitals_ajax(request, queue_pk):
 
 @require_POST
 @login_required
-@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+@permission_required('consultation.add_patientvitalsmodel', raise_exception=True)
 def change_patient_doctor_ajax(request, queue_pk):
     """
     AJAX view to change the assigned doctor for a patient
@@ -1285,7 +1278,6 @@ def change_patient_doctor_ajax(request, queue_pk):
 
 
 @login_required
-@permission_required('consultation.view_patientqueuemodel')
 def get_patient_queue_data_ajax(request):
     """
     AJAX endpoint to get current queue data for quick actions
@@ -1393,7 +1385,7 @@ class PatientQueueCreateView(
     SuccessMessageMixin, CreateView
 ):
     model = PatientQueueModel
-    permission_required = 'consultation.add_patientqueuemodel'
+    permission_required = 'consultation.add_patientvitalsmodel'
     form_class = PatientQueueForm
     template_name = 'consultation/queue/add_patient.html'
     success_message = 'Patient Successfully Added to Queue'
@@ -1423,7 +1415,7 @@ class PatientQueueCreateView(
 
 class PatientQueueListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = PatientQueueModel
-    permission_required = 'consultation.view_patientqueuemodel'
+    permission_required = 'consultation.add_patientvitalsmodel'
     template_name = 'consultation/queue/index.html'
     context_object_name = "queue_list"
 
@@ -1603,7 +1595,7 @@ def create_vitals_view(request, queue_pk):
 
 @require_POST
 @login_required
-@permission_required('consultation.change_patientqueuemodel', raise_exception=True)
+@permission_required('consultation.add_patientvitalsmodel', raise_exception=True)
 def assign_consultant_ajax(request, queue_pk):
     """
     Assign a ConsultantModel instance to a PatientQueueModel (AJAX).
@@ -1684,7 +1676,7 @@ def assign_consultant_ajax(request, queue_pk):
 class VitalsQueueListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """Queue for nurses to take vitals"""
     model = PatientQueueModel
-    permission_required = 'consultation.view_patientqueuemodel'
+    permission_required = 'consultation.add_patientvitalsmodel'
     template_name = 'consultation/vitals/queue.html'
     context_object_name = "queue_list"
 
@@ -1699,7 +1691,7 @@ class VitalsQueueListView(LoginRequiredMixin, PermissionRequiredMixin, ListView)
 
 
 @login_required
-@permission_required('consultation.change_patientqueuemodel')
+@permission_required('consultation.add_patientvitalsmodel')
 def complete_vitals_view(request, queue_pk):
     """Mark vitals as completed and move patient to doctor queue"""
     try:
@@ -1723,7 +1715,7 @@ def complete_vitals_view(request, queue_pk):
 class DoctorQueueListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """Doctor's queue - patients ready for consultation"""
     model = PatientQueueModel
-    permission_required = 'consultation.view_patientqueuemodel'
+    permission_required = 'consultation.add_consultationsessionmodel'
     template_name = 'consultation/queue/doctor_index.html'
     context_object_name = "queue_list"
 
@@ -1795,7 +1787,7 @@ class DoctorQueueListView(LoginRequiredMixin, PermissionRequiredMixin, ListView)
 
 
 @login_required
-@permission_required('consultation.change_patientqueuemodel')
+@permission_required('consultation.add_consultationsessionmodel')
 def start_consultation_view(request, queue_pk):
     """Start consultation with patient"""
     try:
@@ -1827,7 +1819,7 @@ def start_consultation_view(request, queue_pk):
 
 
 @login_required
-@permission_required('consultation.change_patientqueuemodel')
+@permission_required('consultation.add_consultationsessionmodel')
 def pause_consultation_view(request, queue_pk):
     """Pause consultation (patient stepped out)"""
     try:
@@ -1846,7 +1838,7 @@ def pause_consultation_view(request, queue_pk):
 
 
 @login_required
-@permission_required('consultation.change_patientqueuemodel')
+@permission_required('consultation.add_consultationsessionmodel')
 def resume_consultation_view(request, queue_pk):
     """Resume paused consultation"""
     try:
@@ -1928,7 +1920,7 @@ class ConsultationSessionCreateView(LoginRequiredMixin, PermissionRequiredMixin,
 
 class ConsultationSessionUpdateView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, UpdateView):
     model = ConsultationSessionModel
-    permission_required = 'consultation.change_consultationsessionmodel'
+    permission_required = 'consultation.add_consultationsessionmodel'
     form_class = ConsultationSessionForm
     template_name = 'consultation/session/update.html'
     success_message = 'Consultation Session Successfully Updated'
@@ -1965,7 +1957,7 @@ class ConsultationSessionUpdateView(LoginRequiredMixin, PermissionRequiredMixin,
 
 
 @login_required
-@permission_required('consultation.change_consultationsessionmodel')
+@permission_required('consultation.add_consultationsessionmodel')
 def complete_consultation_session_view(request, pk):
     """Complete consultation session"""
     try:
@@ -2091,7 +2083,7 @@ class ConsultationRecordDetailView(LoginRequiredMixin, PermissionRequiredMixin, 
 
 class PatientConsultationHistoryView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ConsultationSessionModel
-    permission_required = 'consultation.view_consultationsessionmodel'
+    permission_required = 'consultation.add_consultationsessionmodel'
     template_name = 'consultation/records/patient_history.html'
     context_object_name = "consultation_list"
     paginate_by = 20
@@ -2141,7 +2133,7 @@ class PatientConsultationHistoryView(LoginRequiredMixin, PermissionRequiredMixin
 # -------------------------
 class DoctorScheduleCreateView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, CreateView):
     model = DoctorScheduleModel
-    permission_required = 'consultation.add_doctorschedulemodel'
+    permission_required = 'consultation.add_consultationsessionmodel'
     form_class = DoctorScheduleForm
     template_name = 'consultation/schedule/create.html'
     success_message = 'Schedule Successfully Created'
@@ -2170,7 +2162,7 @@ class DoctorScheduleCreateView(LoginRequiredMixin, PermissionRequiredMixin, Succ
 
 class DoctorScheduleListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = DoctorScheduleModel
-    permission_required = 'consultation.view_doctorschedulemodel'
+    permission_required = 'consultation.view_consultationsessionmodel'
     template_name = 'consultation/schedule/list.html'
     context_object_name = "schedule_list"
 
@@ -2201,7 +2193,7 @@ class DoctorScheduleListView(LoginRequiredMixin, PermissionRequiredMixin, ListVi
 
 class DoctorScheduleUpdateView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, UpdateView):
     model = DoctorScheduleModel
-    permission_required = 'consultation.change_doctorschedulemodel'
+    permission_required = 'consultation.add_consultationsessionmodel'
     form_class = DoctorScheduleForm
     template_name = 'consultation/schedule/update.html'
     success_message = 'Schedule Successfully Updated'
@@ -2231,7 +2223,7 @@ class DoctorScheduleUpdateView(LoginRequiredMixin, PermissionRequiredMixin, Succ
 # -------------------------
 class ConsultationDashboardView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = 'consultation/dashboard/index.html'
-    permission_required = 'consultation.view_patientqueuemodel'
+    permission_required = 'consultation.view_consultationsessionmodel'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -2809,7 +2801,6 @@ def bulk_complete_vitals_view(request):
 
 
 @login_required
-@permission_required('consultation.view_patientqueuemodel')
 def export_consultation_data_view(request):
     """Export consultation data to CSV"""
     try:
@@ -2879,7 +2870,6 @@ def export_consultation_data_view(request):
 
 
 @login_required
-@permission_required('consultation.view_consultationpaymentmodel')
 def export_payment_data_view(request):
     """Export payment data to CSV"""
     try:
@@ -3006,6 +2996,7 @@ def search_patients_ajax(request):
 # consultation/views.py
 
 @login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def doctor_dashboard(request):
     """Doctor's main dashboard view"""
 
@@ -3064,6 +3055,7 @@ def doctor_dashboard(request):
 
 
 @login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def consultation_page(request, consultation_id):
     """Individual consultation management page"""
     try:
@@ -3137,6 +3129,7 @@ def consultation_page(request, consultation_id):
 
 
 @login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def consultation_history(request):
     """View consultation history with filters"""
     try:
@@ -3266,6 +3259,8 @@ def consultation_history(request):
     return render(request, 'consultation/doctor/history.html', context)
 
 
+@login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def patient_history_view(request, patient_id):
     """Renders the initial patient history page."""
     patient = get_object_or_404(PatientModel, id=patient_id)
@@ -3462,7 +3457,6 @@ def ajax_pause_consultation(request, consultation_id):
             'success': False,
             'error': f'Failed to pause consultation: {str(e)}'
         })
-
 
 
 @login_required
@@ -4088,6 +4082,7 @@ def patient_prescriptions(request, patient_id):
 
 
 @login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def patient_test_results(request, patient_id):
     """View patient test results"""
     try:
@@ -4157,6 +4152,7 @@ def lab_test_result(request, test_id):
 
 
 @login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def scan_result(request, scan_id):
     """View scan result"""
     try:
@@ -4172,6 +4168,7 @@ def scan_result(request, scan_id):
 
 
 @login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def print_consultation(request, consultation_id):
     """Print consultation report"""
     try:
@@ -4195,6 +4192,7 @@ def print_consultation(request, consultation_id):
 
 
 @login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def view_consultation_detail(request, consultation_id):
     """View detailed consultation (read-only)"""
     try:
@@ -4238,6 +4236,7 @@ def view_consultation_detail(request, consultation_id):
 
 
 @login_required
+@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
 def new_consultation(request):
     """Create a new consultation (for walk-ins or special cases)"""
     try:

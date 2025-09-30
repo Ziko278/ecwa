@@ -7,7 +7,9 @@
         <div class="card profile-card card-bx m-b30">
             <div class="card-header">
                 <h6 class="title"><b>Finance Settings</b></h6>
-                <a href="{% url 'finance_setting_edit' finance_setting.pk %}"
+                <a {% if finance_setting %} href="{% url 'finance_setting_edit' finance_setting.pk %}" {% else %}
+                   href="{% url 'finance_setting_create'  %}"
+                   {% endif %}
                    class="btn btn-primary" style="float:right">
                    Update Settings
                 </a>

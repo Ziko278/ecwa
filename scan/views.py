@@ -91,7 +91,7 @@ class ScanCategoryUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, SuccessMessageMixin, UpdateView
 ):
     model = ScanCategoryModel
-    permission_required = 'scan.change_scancategorymodel'
+    permission_required = 'scan.add_scancategorymodel'
     form_class = ScanCategoryForm
     template_name = 'scan/category/index.html'
     success_message = 'Scan Category Successfully Updated'
@@ -107,7 +107,7 @@ class ScanCategoryUpdateView(
 
 class ScanCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView):
     model = ScanCategoryModel
-    permission_required = 'scan.delete_scancategorymodel'
+    permission_required = 'scan.add_scancategorymodel'
     template_name = 'scan/category/delete.html'
     context_object_name = "category"
     success_message = 'Scan Category Successfully Deleted'
@@ -124,7 +124,7 @@ class ScanTemplateCreateView(
     CreateView
 ):
     model = ScanTemplateModel
-    permission_required = 'scan.add_scantemplatemodel'
+    permission_required = 'scan.add_scancategorymodel'
     form_class = ScanTemplateForm
     template_name = 'scan/template/create.html'
     success_message = 'Scan Template Successfully Created'
@@ -140,7 +140,7 @@ class ScanTemplateCreateView(
 
 class ScanTemplateListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ScanTemplateModel
-    permission_required = 'scan.view_scantemplatemodel'
+    permission_required = 'scan.view_scancategorymodel'
     template_name = 'scan/template/index.html'
     context_object_name = "template_list"
 
@@ -155,7 +155,7 @@ class ScanTemplateListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
 
 class ScanTemplateDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = ScanTemplateModel
-    permission_required = 'scan.view_scantemplatemodel'
+    permission_required = 'scan.view_scancategorymodel'
     template_name = 'scan/template/detail.html'
     context_object_name = "template"
 
@@ -179,7 +179,7 @@ class ScanTemplateUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = ScanTemplateModel
-    permission_required = 'scan.change_scantemplatemodel'
+    permission_required = 'scan.add_scancategorymodel'
     form_class = ScanTemplateForm
     template_name = 'scan/template/edit.html'
     success_message = 'Scan Template Successfully Updated'
@@ -196,7 +196,7 @@ class ScanTemplateUpdateView(
 
 class ScanTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = ScanTemplateModel
-    permission_required = 'scan.delete_scantemplatemodel'
+    permission_required = 'scan.add_scancategorymodel'
     template_name = 'scan/template/delete.html'
     context_object_name = "template"
     success_message = 'Scan Template Successfully Deleted'
@@ -210,7 +210,7 @@ class ScanTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, Delete
 # -------------------------
 class ScanEntryView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     """Entry point for scan operations - patient verification"""
-    permission_required = 'scan.view_scanordermodel'
+    permission_required = 'scan.add_scanordermodel'
     template_name = 'scan/order/entry.html'
 
     def get_context_data(self, **kwargs):
@@ -330,11 +330,12 @@ class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
         return context
 
+
 class ScanOrderUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, UpdateView
 ):
     model = ScanOrderModel
-    permission_required = 'scan.change_scanordermodel'
+    permission_required = 'scan.add_scanordermodel'
     form_class = ScanOrderForm
     template_name = 'radiology/order/edit.html'
 
@@ -347,7 +348,6 @@ class ScanOrderUpdateView(
         context['patient_list'] = PatientModel.objects.filter(status='active').order_by('first_name')
         context['template_list'] = ScanTemplateModel.objects.filter(is_active=True).order_by('name')
         return context
-
 
 
 # -------------------------
@@ -699,7 +699,7 @@ def process_scan_payments(request):
 # Scan Scheduling
 # -------------------------
 @login_required
-@permission_required('scan.change_scanordermodel', raise_exception=True)
+@permission_required('scan.add_scanordermodel', raise_exception=True)
 def schedule_scan(request, order_id):
     """Schedule a paid scan"""
     if request.method != 'POST':
@@ -1028,10 +1028,11 @@ class ScanResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
         ]
         return context
 
+
 class ScanResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     model = ScanResultModel
     form_class = ScanResultForm
-    permission_required = 'scan.change_scanresultmodel'
+    permission_required = 'scan.add_scanresultmodel'
     template_name = 'scan/result/edit.html'
 
     def dispatch(self, request, *args, **kwargs):
@@ -1251,7 +1252,7 @@ class ScanResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVi
 class ScanImageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """Upload individual scan images"""
     model = ScanImageModel
-    permission_required = 'scan.add_scanimagemodel'
+    permission_required = 'scan.add_scanresultmodel'
     form_class = ScanImageForm
     template_name = 'radiology/image/upload.html'
 
@@ -1278,7 +1279,6 @@ class ScanImageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
 
     def get_success_url(self):
         return reverse('scan_result_detail', kwargs={'pk': self.object.scan_result.pk})
-
 
 
 # -------------------------
@@ -1321,7 +1321,7 @@ def start_scan(request, order_id):
 
 
 @login_required
-@permission_required('scan.change_scanresultmodel', raise_exception=True)
+@permission_required('scan.can_verify_scan_result', raise_exception=True)
 def verify_scan_result(request, pk):
     result_id = pk
     """AJAX endpoint to verify a scan result"""
@@ -1365,7 +1365,7 @@ def verify_scan_result(request, pk):
 
 
 @login_required
-@permission_required('scan.change_scanresultmodel', raise_exception=True)
+@permission_required('scan.can_verify_scan_result', raise_exception=True)
 def unverify_scan_result(request, pk):
     """AJAX endpoint to un-verify a scan result."""
     # 1. We must check that this is a POST request
@@ -1534,7 +1534,7 @@ class ScanDashboardView(LoginRequiredMixin, PermissionRequiredMixin, TemplateVie
 # Image Management Actions
 # -------------------------
 @login_required
-@permission_required('scan.delete_scanimagemodel', raise_exception=True)
+@permission_required('scan.add_scanresultmodel', raise_exception=True)
 def delete_scan_image(request, image_id):
     """Delete a scan image - AJAX endpoint"""
     if request.method != 'POST':
@@ -1568,7 +1568,7 @@ def delete_scan_image(request, image_id):
 
 
 @login_required
-@permission_required('scan.change_scanimagemodel', raise_exception=True)
+@permission_required('scan.add_scanresultmodel', raise_exception=True)
 def update_image_details(request, image_id):
     """Update image description and view type - AJAX endpoint"""
     if request.method != 'POST':
@@ -1926,7 +1926,7 @@ class ScanTemplateBuilderDetailView(LoginRequiredMixin, PermissionRequiredMixin,
 class ScanSettingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = ScanSettingModel
     form_class = ScanSettingForm
-    permission_required = 'scan.change_scansettingmodel'
+    permission_required = 'scan.add_scansettingmodel'
     success_message = 'Scan Setting Created Successfully'
     template_name = 'scan/setting/create.html'
 
@@ -1955,7 +1955,7 @@ class ScanSettingUpdateView(
 ):
     model = ScanSettingModel
     form_class = ScanSettingForm
-    permission_required = 'scan.change_scansettingmodel'
+    permission_required = 'scan.add_scansettingmodel'
     success_message = 'Scan Setting Updated Successfully'
     template_name = 'scan/setting/create.html'
 
@@ -1970,7 +1970,7 @@ class ScanSettingUpdateView(
 # Action Views (Status Updates)
 # -------------------------
 @login_required
-@permission_required('scan.change_scanresultmodel', raise_exception=True)
+@permission_required('scan.can_verify_scan_result', raise_exception=True)
 def verify_result(request, pk):
     result = get_object_or_404(ScanResultModel, pk=pk)
     try:
@@ -2199,82 +2199,6 @@ def scan_dashboard_data(request):
         return JsonResponse({'error': 'Internal error'}, status=500)
 
 
-# -------------------------
-# Dashboard View
-# -------------------------
-class ScanDashboardView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    template_name = 'scan/dashboard.html'
-    permission_required = 'scan.view_scanordermodel'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        today = date.today()
-
-        context.update({
-            'total_categories': ScanCategoryModel.objects.count(),
-            'total_templates': ScanTemplateModel.objects.filter(is_active=True).count(),
-            'today_orders': ScanOrderModel.objects.filter(ordered_at__date=today).count(),
-            'pending_payments': ScanOrderModel.objects.filter(status='pending').count(),
-            'scheduled_scans': ScanOrderModel.objects.filter(status='scheduled').count(),
-            'scans_in_progress': ScanOrderModel.objects.filter(status='in_progress').count(),
-            'completed_today': ScanOrderModel.objects.filter(status='completed', ordered_at__date=today).count(),
-            'pending_verification': ScanResultModel.objects.filter(is_verified=False).count(),
-        })
-
-        context['recent_orders'] = ScanOrderModel.objects.select_related('patient', 'template').order_by('-ordered_at')[
-                                   :10]
-
-        context['maintenance_due'] = ScanEquipmentModel.objects.filter(next_maintenance__lte=today, status='active')[:5]
-
-        return context
-
-
-# -------------------------
-# Report Views
-# -------------------------
-class ScanReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    template_name = 'scan/reports/index.html'
-    permission_required = 'scan.view_scanordermodel'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        from_date = self.request.GET.get('from_date')
-        to_date = self.request.GET.get('to_date')
-
-        if not from_date:
-            from_date = date.today().replace(day=1)
-        else:
-            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
-
-        if not to_date:
-            to_date = date.today()
-        else:
-            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
-
-        orders = ScanOrderModel.objects.filter(ordered_at__date__range=[from_date, to_date])
-
-        context.update({
-            'from_date': from_date,
-            'to_date': to_date,
-            'total_orders': orders.count(),
-            'total_revenue': orders.aggregate(Sum('amount_charged'))['amount_charged__sum'] or 0,
-            'completed_scans': orders.filter(status='completed').count(),
-            'cancelled_scans': orders.filter(status='cancelled').count(),
-        })
-
-        context['scan_breakdown'] = orders.values('template__category__name', 'template__name').annotate(
-            count=Count('id'),
-            revenue=Sum('amount_charged')
-        ).order_by('-count')
-
-        context['daily_orders'] = orders.extra(select={'day': "date(ordered_at)"}).values('day').annotate(
-            count=Count('id'),
-            revenue=Sum('amount_charged')
-        ).order_by('day')
-
-        return context
-
 
 # -------------------------
 # Print Views
@@ -2326,7 +2250,6 @@ def process_payment(request, pk):
         logger.exception("Error processing payment for scan order id=%s", pk)
         messages.error(request, "An error occurred while processing payment. Contact admin.")
     return redirect(reverse('scan_order_detail', kwargs={'pk': pk}))
-
 
 
 @login_required

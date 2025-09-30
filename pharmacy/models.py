@@ -122,7 +122,6 @@ class ManufacturerModel(models.Model):
         return self.name
 
 
-# 4. SIMPLIFIED DRUG PRODUCT (Main Inventory Item)
 class DrugModel(models.Model):
     """The actual drug product in your inventory"""
     # Core relationships
@@ -154,9 +153,17 @@ class DrugModel(models.Model):
         ordering = ['formulation__generic_drug__generic_name', 'brand_name']
 
     def __str__(self):
+        # Start with the base representation, using brand_name if available
         if self.brand_name:
-            return f"{self.brand_name} ({self.formulation}) - {self.manufacturer.name}"
-        return f"{self.formulation} - {self.manufacturer.name}"
+            display_text = f"{self.brand_name} ({self.formulation})"
+        else:
+            display_text = str(self.formulation)
+
+        # Append manufacturer name only if it exists
+        if self.manufacturer:
+            display_text += f" - {self.manufacturer.name}"
+
+        return display_text
 
     @property
     def generic_name(self):

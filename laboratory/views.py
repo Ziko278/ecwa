@@ -90,7 +90,7 @@ class LabTestCategoryUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, SuccessMessageMixin, UpdateView
 ):
     model = LabTestCategoryModel
-    permission_required = 'laboratory.change_labtestcategorymodel'
+    permission_required = 'laboratory.add_labtestcategorymodel'
     form_class = LabTestCategoryForm
     template_name = 'laboratory/category/index.html'
     success_message = 'Lab Test Category Successfully Updated'
@@ -106,7 +106,7 @@ class LabTestCategoryUpdateView(
 
 class LabTestCategoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView):
     model = LabTestCategoryModel
-    permission_required = 'laboratory.delete_labtestcategorymodel'
+    permission_required = 'laboratory.add_labtestcategorymodel'
     template_name = 'laboratory/category/delete.html'
     context_object_name = "category"
     success_message = 'Lab Test Category Successfully Deleted'
@@ -123,7 +123,7 @@ class LabTestTemplateCreateView(
     CreateView
 ):
     model = LabTestTemplateModel
-    permission_required = 'laboratory.add_labtesttemplatemodel'
+    permission_required = 'laboratory.add_labtestcategorymodel'
     form_class = LabTestTemplateForm
     template_name = 'laboratory/template/create.html'
     success_message = 'Lab Test Template Successfully Created'
@@ -139,7 +139,7 @@ class LabTestTemplateCreateView(
 
 class LabTestTemplateListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = LabTestTemplateModel
-    permission_required = 'laboratory.view_labtesttemplatemodel'
+    permission_required = 'laboratory.view_labtestcategorymodel'
     template_name = 'laboratory/template/index.html'
     context_object_name = "template_list"
 
@@ -154,7 +154,7 @@ class LabTestTemplateListView(LoginRequiredMixin, PermissionRequiredMixin, ListV
 
 class LabTestTemplateDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = LabTestTemplateModel
-    permission_required = 'laboratory.view_labtesttemplatemodel'
+    permission_required = 'laboratory.view_labtestcategorymodel'
     template_name = 'laboratory/template/detail.html'
     context_object_name = "template"
 
@@ -186,7 +186,7 @@ class LabTestTemplateUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = LabTestTemplateModel
-    permission_required = 'laboratory.change_labtesttemplatemodel'
+    permission_required = 'laboratory.add_labtestcategorymodel'
     form_class = LabTestTemplateForm
     template_name = 'laboratory/template/edit.html'
     success_message = 'Lab Test Template Successfully Updated'
@@ -202,7 +202,7 @@ class LabTestTemplateUpdateView(
 
 
 class LabTestTemplateToggleStatusView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_required = 'lab.change_labtesttemplatemodel'
+    permission_required = 'lab.add_labtestcategorymodel'
 
     def post(self, request, pk):
         template = get_object_or_404(LabTestTemplateModel, pk=pk)
@@ -233,7 +233,7 @@ class LabTestTemplateToggleStatusView(LoginRequiredMixin, PermissionRequiredMixi
 
 class LabTestTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = LabTestTemplateModel
-    permission_required = 'laboratory.delete_labtesttemplatemodel'
+    permission_required = 'laboratory.add_labtestcategorymodel'
     template_name = 'laboratory/template/delete.html'
     context_object_name = "template"
     success_message = 'Lab Test Template Successfully Deleted'
@@ -247,7 +247,7 @@ class LabTestTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, Del
 # -------------------------
 class LabEntryView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     """Entry point for lab operations - patient verification"""
-    permission_required = 'laboratory.view_labtestordermodel'
+    permission_required = 'laboratory.add_labtestordermodel'
     template_name = 'laboratory/order/entry.html'
 
     def get_context_data(self, **kwargs):
@@ -257,6 +257,7 @@ class LabEntryView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
         return context
 
 
+@login_required
 def verify_lab_patient_ajax(request):
     """AJAX view to verify patient by card number"""
     if not request.user.has_perm('laboratory.view_labtestordermodel'):
@@ -448,15 +449,13 @@ class LabTestOrderCreateView(LoginRequiredMixin, PermissionRequiredMixin, Create
             messages.error(request, "No valid tests selected.")
             return redirect(request.path)
 
-
-
-
+@login_required
 def process_lab_payments(request):
     """Process payments for selected lab tests with wallet balance and insurance validation"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
-    if not request.user.has_perm('laboratory.change_labtestordermodel'):
+    if not request.user.has_perm('laboratory.add_labtestordermodel'):
         return JsonResponse({'success': False, 'error': 'Permission denied'})
 
     selected_orders = request.POST.getlist('selected_orders')
@@ -735,6 +734,7 @@ class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
 
         return context
 
+
 class LabTestOrderDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = LabTestOrderModel
     permission_required = 'laboratory.view_labtestordermodel'
@@ -768,7 +768,7 @@ class LabTestOrderUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, UpdateView
 ):
     model = LabTestOrderModel
-    permission_required = 'laboratory.change_labtestordermodel'
+    permission_required = 'laboratory.add_labtestordermodel'
     form_class = LabTestOrderForm
     template_name = 'laboratory/order/edit.html'
 
@@ -788,6 +788,7 @@ class LabTestOrderUpdateView(
 # -------------------------
 
 @login_required
+@permission_required('laboratory.view_labtestordermodel', raise_exception=True)
 def laboratory_dashboard(request):
     """Main laboratory dashboard with comprehensive statistics"""
 
@@ -1241,7 +1242,7 @@ class LabTestResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListVie
 
 
 @login_required
-@permission_required('laboratory.change_labtestresultmodel', raise_exception=True)
+@permission_required('laboratory.can_verify_lab_result', raise_exception=True)
 def verify_result(request, result_id):
     """AJAX endpoint to verify a lab result"""
     if request.method != 'POST':
@@ -1289,7 +1290,7 @@ def verify_result(request, result_id):
 
 
 @login_required
-@permission_required('laboratory.view_labtestordermodel', raise_exception=True)
+@permission_required('laboratory.add_labtestresultmodel', raise_exception=True)
 def process_to_result_entry(request, order_id):
     """AJAX endpoint to move order from collected to processing status for result entry"""
     if request.method != 'POST':
@@ -1464,7 +1465,7 @@ class LabTestResultCreateView(LoginRequiredMixin, PermissionRequiredMixin, Creat
 class LabTestResultUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     """Update lab test results (only if not verified)"""
     model = LabTestResultModel
-    permission_required = 'laboratory.change_labtestresultmodel'
+    permission_required = 'laboratory.add_labtestresultmodel'
     template_name = 'laboratory/result/edit.html'
     fields = ['technician_comments']
 
@@ -1775,7 +1776,7 @@ class LabTestTemplateBuilderDetailView(LoginRequiredMixin, PermissionRequiredMix
 class LabSettingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = LabSettingModel
     form_class = LabSettingForm
-    permission_required = 'laboratory.change_labsettingmodel'
+    permission_required = 'laboratory.add_labsettingmodel'
     success_message = 'Lab Setting Created Successfully'
     template_name = 'laboratory/setting/create.html'
 
@@ -1804,7 +1805,7 @@ class LabSettingUpdateView(
 ):
     model = LabSettingModel
     form_class = LabSettingForm
-    permission_required = 'laboratory.change_labsettingmodel'
+    permission_required = 'laboratory.add_labsettingmodel'
     success_message = 'Lab Setting Updated Successfully'
     template_name = 'laboratory/setting/create.html'
 
@@ -1818,48 +1819,10 @@ class LabSettingUpdateView(
 # -------------------------
 # Action Views (Status Updates)
 # -------------------------
-@login_required
-@permission_required('laboratory.change_labtestresultmodel', raise_exception=True)
-def verify_result(request, pk):
-    # 1. We must check that this is a POST request
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
-
-    result = get_object_or_404(LabTestResultModel, pk=pk)
-
-    # 2. Check if already verified and return a JSON error
-    if result.is_verified:
-        return JsonResponse({'success': False, 'error': 'This result has already been verified.'})
-
-    try:
-        # The core logic remains inside a transaction
-        with transaction.atomic():
-            result.is_verified = True
-            result.verified_by = request.user
-            result.verified_at = now()
-
-            # 3. Get pathologist comments from the AJAX request
-            pathologist_comments = request.POST.get('pathologist_comments', '')
-            if pathologist_comments:
-                result.pathologist_comments = pathologist_comments
-
-            result.save()
-
-        # 4. Return a success JSON response
-        message = f"Result verified for order {result.order.order_number}"
-        return JsonResponse({'success': True, 'message': message})
-
-    except Exception as e:
-        # 5. Catch any errors and return a server error JSON response
-        logger.exception("Error verifying result id=%s: %s", pk, e)
-        return JsonResponse({
-            'success': False,
-            'error': 'An unexpected error occurred. Please contact support.'
-        }, status=500)
 
 
 @login_required
-@permission_required('laboratory.change_labtestresultmodel', raise_exception=True)
+@permission_required('laboratory.can_verify_lab_result', raise_exception=True)
 def unverify_result(request, pk):
     # 1. We must check that this is a POST request
     if request.method != 'POST':
@@ -2239,6 +2202,8 @@ def print_result(request, pk):
     return render(request, 'laboratory/print/result.html', context)
 
 
+@login_required
+@permission_required('laboratory.add_labtestordermodel', raise_exception=True)
 def process_payment(request, pk):
     order = get_object_or_404(LabTestOrderModel, pk=pk)
     try:
@@ -2340,6 +2305,7 @@ def collect_sample(request, order_id):
             'success': False,
             'error': 'An error occurred while collecting sample. Please contact administrator.'
         }, status=500)
+
 
 @login_required
 @permission_required('laboratory.change_labtestordermodel', raise_exception=True)

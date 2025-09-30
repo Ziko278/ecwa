@@ -53,7 +53,7 @@ class RegistrationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin,
     model = RegistrationPaymentModel
     form_class = RegistrationPaymentForm
     template_name = "finance/registration_payment/create.html"
-    permission_required = "patient.add_registrationpaymentmodel"
+    permission_required = "patient.add_patienttransactionmodel"
 
     def get_success_url(self):
         return reverse('registration_payment_detail', kwargs={'pk': self.object.pk})
@@ -90,14 +90,14 @@ class RegistrationPaymentDetailView(LoginRequiredMixin, PermissionRequiredMixin,
     model = RegistrationPaymentModel
     template_name = "finance/registration_payment/detail.html"
     context_object_name = "payment"
-    permission_required = "patient.view_registrationpaymentmodel"
+    permission_required = "patient.view_patienttransactionmodel"
 
 
 class RegistrationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = RegistrationPaymentModel
     template_name = "finance/registration_payment/index.html"
     context_object_name = "payments"
-    permission_required = "patient.view_registrationpaymentmodel"
+    permission_required = "patient.add_patienttransactionmodel"
 
     def get_queryset(self):
         qs = RegistrationPaymentModel.objects.select_related('registration_fee', 'consultation_fee', 'created_by')
@@ -142,12 +142,13 @@ class RegistrationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, L
         return context
 
 
+@login_required
 def print_receipt(request, pk):
     """Generate printable POS receipt"""
     payment = get_object_or_404(RegistrationPaymentModel, pk=pk)
 
     # Check permission
-    if not request.user.has_perm('patient.view_registrationpaymentmodel'):
+    if not request.user.has_perm('patient.add_patienttransactionmodel'):
         messages.error(request, "You don't have permission to view this receipt.")
         return redirect('registration_payment_index')
 
@@ -167,6 +168,7 @@ def print_receipt(request, pk):
 
 
 @login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 def patient_wallet_funding(request):
     """Initial page for patient wallet funding"""
     context = {
@@ -458,6 +460,7 @@ def verify_patient_ajax(request):
 
 
 @login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 @require_http_methods(["POST"])
 def process_wallet_funding(request):
     """Process wallet funding and optional payments"""
@@ -647,6 +650,7 @@ def calculate_payment_total_ajax(request):
 
 
 @login_required
+@permission_required('finance.view_patienttransactionmodel', raise_exception=True)
 def patient_wallet_dashboard(request, patient_id):
     """Patient wallet dashboard showing balance and recent transactions"""
     patient = get_object_or_404(PatientModel, id=patient_id)
@@ -690,6 +694,7 @@ def patient_wallet_dashboard(request, patient_id):
     return render(request, 'finance/wallet/dashboard.html', context)
 
 @login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 @require_http_methods(["POST"])
 def process_wallet_payment(request):
     """Process payment from wallet for selected services"""
@@ -866,6 +871,7 @@ def _quantize_money(d: Decimal) -> Decimal:
 
 
 @login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 def finance_payment_select(request):
     """
     Initial payment selection page.
@@ -1030,7 +1036,7 @@ def finance_verify_patient_ajax(request):
 
 class OtherPaymentView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = 'finance/payment/other_payment.html'
-    permission_required = 'finance.add_patienttransactionmodel'
+    permission_required = 'finance.view_patienttransactionmodel'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -1097,11 +1103,6 @@ def process_other_payment_ajax(request):
 
     return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
 
-
-from django.db.models import ExpressionWrapper, DecimalField, Sum, F
-
-
-# Other necessary imports...
 
 class AdmissionSurgeryFundingView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = 'finance/payment/admission_surgery.html'
@@ -1411,6 +1412,7 @@ def get_consultation_fees_ajax(request):
 
 
 @login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 @require_http_methods(["GET", "POST"])
 def finance_consultation_patient_payment(request, patient_id):
     """
@@ -1485,8 +1487,8 @@ def finance_consultation_patient_payment(request, patient_id):
         return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'}, status=500)
 
 
-# The existing pharmacy, lab, and scan payment views remain the same
 @login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 @require_http_methods(["GET", "POST"])
 def finance_pharmacy_patient_payment(request, patient_id):
     """
@@ -1685,6 +1687,7 @@ def _get_active_insurance(patient):
 
 
 @login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 @require_http_methods(["GET", "POST"])
 def finance_service_patient_payment(request, patient_id):
     """
@@ -1874,6 +1877,7 @@ def finance_service_patient_payment(request, patient_id):
 
 # Lab and Scan views remain the same as in your original code
 @login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 @require_http_methods(["GET", "POST"])
 def finance_generic_order_payment(request, patient_id, order_type):
     """
@@ -2056,10 +2060,6 @@ def finance_scan_patient_payment(request, patient_id):
     return finance_generic_order_payment(request, patient_id, 'scan')
 
 
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
-
-
 class PatientTransactionListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = PatientTransactionModel
     template_name = "finance/payment/index.html"
@@ -2232,19 +2232,12 @@ class PatientTransactionListView(LoginRequiredMixin, PermissionRequiredMixin, Li
         workbook.save(response)
         return response
 
+
 class PatientTransactionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
-    # Specifies the model this view will operate on.
     model = PatientTransactionModel
-
-    # Points to the template file that will render the data.
     template_name = "finance/payment/detail.html"
-
-    # Sets the variable name to be used in the template (e.g., {{ transaction }}).
     context_object_name = "transaction"
-
-    # Defines the permission required to access this view.
-    # Remember to replace 'app_name' with your actual Django app's name.
-    permission_required = "app_name.view_patienttransactionmodel"
+    permission_required = "finance.view_patienttransactionmodel"
 
     def get_queryset(self):
         """
@@ -2272,7 +2265,7 @@ def get_finance_setting_instance():
 class FinanceSettingCreateView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, CreateView):
     model = FinanceSettingModel
     form_class = FinanceSettingForm
-    permission_required = 'finance.change_financesettingmodel'
+    permission_required = 'finance.add_financesettingmodel'
     success_message = 'Finance Setting Created Successfully'
     template_name = 'finance/setting/create.html'
 
@@ -2309,7 +2302,7 @@ class FinanceSettingDetailView(LoginRequiredMixin, PermissionRequiredMixin, Deta
 class FinanceSettingUpdateView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, UpdateView):
     model = FinanceSettingModel
     form_class = FinanceSettingForm
-    permission_required = 'finance.change_financesettingmodel'
+    permission_required = 'finance.add_financesettingmodel'
     success_message = 'Finance Setting Updated Successfully'
     template_name = 'finance/setting/create.html' # Reuse the create template for editing
 
@@ -2652,7 +2645,7 @@ class OtherPaymentServiceDetailView(LoginRequiredMixin, PermissionRequiredMixin,
 
 class OtherPaymentServiceUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     model = OtherPaymentService
-    permission_required = 'service.change_otherpaymentservice'
+    permission_required = 'service.add_otherpaymentservice'
     form_class = OtherPaymentServiceForm
     template_name = 'finance/other_payment/edit.html'
     context_object_name = "service"
@@ -2665,7 +2658,7 @@ class OtherPaymentServiceUpdateView(LoginRequiredMixin, PermissionRequiredMixin,
 
 class OtherPaymentServiceDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = OtherPaymentService
-    permission_required = 'service.delete_otherpaymentservice'
+    permission_required = 'service.add_otherpaymentservice'
     template_name = 'finance/other_payment/delete.html'
     context_object_name = "service"
 
@@ -3162,6 +3155,7 @@ def create_remittance_view(request):
     }
     return render(request, 'finance/remittance/create.html', context)
 
+
 @login_required
 def get_staff_remittance_details_ajax(request):
     """
@@ -3530,6 +3524,7 @@ def finance_dashboard_print(request):
 
 
 @login_required
+@permission_required('finance.add_patientrefundmodel', raise_exception=True)
 @require_http_methods(["GET", "POST"])
 def finance_wallet_withdrawal(request, patient_id):
     """Handles patient wallet withdrawal."""
@@ -3607,6 +3602,7 @@ REFUNDABLE_STATUSES = ['paid', 'partially_dispensed']
 
 
 @login_required
+@permission_required('finance.add_patientrefundmodel', raise_exception=True)
 @require_http_methods(["GET", "POST"])
 def finance_process_refund(request, patient_id):
     """
@@ -3834,6 +3830,7 @@ def finance_process_refund(request, patient_id):
 # ----------------------------------------------------
 
 @login_required
+@permission_required('finance.view_patientrefundmodel', raise_exception=True)
 def finance_wallet_history(request, patient_id):
     """Displays a detailed history of all wallet-related transactions."""
     patient = get_object_or_404(PatientModel, id=patient_id)

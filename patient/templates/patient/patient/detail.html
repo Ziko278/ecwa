@@ -17,9 +17,11 @@
             {% endif %}
 
             <!-- Upload Document -->
+            {% if 'patient.add_patientmodel' in perms %}
             <button title="Upload Consultation Document" type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal">
                 <i class="bi bi-file-earmark-plus"></i>
             </button>
+            {% endif %}
 
             <!-- Delete -->
             {% if 'patient.delete_patientmodel' in perms %}

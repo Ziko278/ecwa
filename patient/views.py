@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, date, timedelta
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.exceptions import ObjectDoesNotExist, ValidationError, PermissionDenied
@@ -87,7 +87,7 @@ class RegistrationFeeUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = RegistrationFeeModel
-    permission_required = 'patient.change_registrationfeemodel'
+    permission_required = 'patient.add_registrationfeemodel'
     form_class = RegistrationFeeForm
     template_name = 'patient/registration_fee/index.html'
     success_message = 'Registration Fee Successfully Updated'
@@ -104,7 +104,6 @@ class RegistrationFeeUpdateView(
         if request.method == 'GET':
             return redirect(reverse('registration_fee_index'))
         return super().dispatch(request, *args, **kwargs)
-
 
 
 class RegistrationFeeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
@@ -129,7 +128,7 @@ class PatientSettingCreateView(LoginRequiredMixin, PermissionRequiredMixin, Succ
     """Create patient settings - only if none exist"""
     model = PatientSettingModel
     form_class = PatientSettingForm
-    permission_required = 'patient.add_patientsettingmodel'
+    permission_required = 'patient.change_patientsettingmodel'
     success_message = 'Patient settings created successfully'
     template_name = 'patient/setting/create.html'
 
@@ -183,7 +182,7 @@ class PatientSettingDetailView(LoginRequiredMixin, PermissionRequiredMixin, Deta
         except Exception as e:
             logger.error(f"Error in PatientSettingDetailView dispatch: {str(e)}")
             messages.error(request, 'An error occurred while accessing patient settings.')
-            return redirect('dashboard')
+            return redirect('admin_dashboard')
 
 
 class PatientSettingUpdateView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, UpdateView):
@@ -460,10 +459,11 @@ class PatientDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
         return context
 
 
-class PatientPaymentHistoryView(LoginRequiredMixin, ListView):
+class PatientPaymentHistoryView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """
     Patient sector: shows processed registration payments
     """
+    permission_required = 'patient.view_patientmodel'
     model = RegistrationPaymentModel
     template_name = 'patient/patient/payment_history.html'
     context_object_name = 'payment_list'
@@ -725,6 +725,7 @@ def get_patient_dashboard_context(request):
 
 
 @login_required
+@permission_required('patient.can_view_patient_dashboard', raise_exception=True)
 def patient_dashboard(request):
     """
     Comprehensive patient dashboard with statistics and analytics
@@ -734,6 +735,7 @@ def patient_dashboard(request):
 
 
 @login_required
+@permission_required('patient.can_view_patient_dashboard', raise_exception=True)
 def patient_dashboard_print(request):
     """
     Printable version of patient dashboard statistics
@@ -748,6 +750,7 @@ def patient_dashboard_print(request):
     })
 
     return render(request, 'patient/patient/dashboard_print.html', context)
+
 
 def calculate_growth_percentage(current, previous):
     """Calculate growth percentage between two periods"""
@@ -854,11 +857,10 @@ def get_monthly_trends():
     return data
 
 
-
 class PatientPendingListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """List pending patient registrations (paid but not registered)"""
     model = RegistrationPaymentModel
-    permission_required = 'patient.view_patientmodel'
+    permission_required = 'patient.add_patientmodel'
     template_name = 'patient/patient/pending_index.html'
     context_object_name = "pending_payment_list"
     paginate_by = 20
@@ -1010,6 +1012,7 @@ def patient_statistics(request):
 
 
 @login_required
+@permission_required('patient.add_patientmodel', raise_exception=True)
 def upload_consultation_document(request, patient_id):
     """Upload consultation document via AJAX"""
     patient = get_object_or_404(PatientModel, id=patient_id)
@@ -1049,6 +1052,7 @@ def upload_consultation_document(request, patient_id):
 
 
 @login_required
+@permission_required('patient.add_patientmodel', raise_exception=True)
 def delete_consultation_document(request, document_id):
     """Delete consultation document via AJAX"""
     document = get_object_or_404(ConsultationDocument, id=document_id)

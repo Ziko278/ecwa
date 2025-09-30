@@ -82,9 +82,8 @@
                 <tr>
                     <th scope="col">#</th>
                     <th scope="col">Generic Name</th>
-                    <th scope="col">Brand Name</th>
-                    <th scope="col">SKU</th>
-                    <th scope="col">Manufacturer</th>
+                    <th scope="col">Drug Name</th>
+                    <th class="text-center" scope="col">Price</th>
                     <th class="text-center" scope="col">Store Qty</th>
                     <th class="text-center" scope="col">Pharmacy Qty</th>
                     <th class="text-center" scope="col">Total Qty</th>
@@ -103,9 +102,9 @@
                         </a>
                         <small class="d-block text-muted">{{ drug.formulation.strength }} {{ drug.formulation.get_form_type_display }}</small>
                     </td>
-                    <td>{% if drug.brand_name %}{{ drug.brand_name|title }}{% else %}---{% endif %}</td>
-                    <td>{{ drug.sku|upper }}</td>
-                    <td><a href="{% url 'manufacturer_index' %}?search_term={{ drug.manufacturer.name }}">{{ drug.manufacturer.name|title }}</a></td>
+
+                    <td>{{ drug|title }}</td>
+                    <td class="text-center">₦{{ drug.selling_price|floatformat:0|intcomma }}</td>
                     <td class="text-center">{{ drug.store_quantity|floatformat:0|intcomma }}</td>
                     <td class="text-center">{{ drug.pharmacy_quantity|floatformat:0|intcomma }}</td>
                     <td class="text-center">

@@ -5,7 +5,7 @@ from insurance.views import *
 
 urlpatterns = [
     # Dashboard & summaries
-    path("", InsuranceDashboardView.as_view(), name="dashboard"),
+    path("", InsuranceDashboardView.as_view(), name="insurance_dashboard"),
     path("summary/", PatientInsuranceSummaryView.as_view(), name="summary"),
     path("reports/", InsuranceReportView.as_view(), name="report"),
     path("reports/print/summary/", PrintPatientInsuranceSummaryView.as_view(), name="report_print_summary"),

@@ -157,7 +157,7 @@ class DepartmentUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = DepartmentModel
-    permission_required = 'human_resource.change_departmentmodel'
+    permission_required = 'human_resource.add_departmentmodel'
     form_class = DepartmentForm
     template_name = 'human_resource/department/index.html'
     success_message = 'Department Successfully Updated'
@@ -259,6 +259,8 @@ def multi_department_action(request):
     return redirect(reverse('department_index'))
 
 
+@login_required
+@permission_required('human_resource.add_departmentmodel', raise_exception=True)
 def assign_hod(request, pk):
     department = get_object_or_404(DepartmentModel, pk=pk)
 
@@ -298,7 +300,7 @@ class PositionCreateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
 ):
     model = PositionModel
-    permission_required = 'human_resource.add_positionmodel'
+    permission_required = 'human_resource.add_departmentmodel'
     form_class = PositionForm
     template_name = 'human_resource/position/index.html'
     success_message = 'Position Successfully Created'
@@ -314,7 +316,7 @@ class PositionCreateView(
 
 class PositionListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = PositionModel
-    permission_required = 'human_resource.view_positionmodel'
+    permission_required = 'human_resource.view_departmentmodel'
     template_name = 'human_resource/position/index.html'
     context_object_name = 'position_list'
 
@@ -332,7 +334,7 @@ class PositionUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = PositionModel
-    permission_required = 'human_resource.change_positionmodel'
+    permission_required = 'human_resource.add_departmentmodel'
     form_class = PositionForm
     template_name = 'human_resource/position/index.html'
     success_message = 'Position Successfully Updated'
@@ -348,7 +350,7 @@ class PositionUpdateView(
 
 class PositionDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = PositionModel
-    permission_required = 'human_resource.delete_positionmodel'
+    permission_required = 'human_resource.delete_departmentmodel'
     template_name = 'human_resource/position/delete.html'
     context_object_name = 'position'
     success_message = 'Position Successfully Deleted'
@@ -562,7 +564,7 @@ class GroupCreateView(
 
 class GroupListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = Group
-    permission_required = 'auth.add_group'
+    permission_required = 'auth.view_group'
     template_name = 'human_resource/group/index.html'
     context_object_name = "group_list"
 
@@ -577,7 +579,7 @@ class GroupListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
 class GroupDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = Group
-    permission_required = 'auth.add_group'
+    permission_required = 'auth.view_group'
     template_name = 'human_resource/group/detail.html'
     context_object_name = "group"
 
@@ -668,6 +670,8 @@ class GroupDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
 # -------------------------
 # Enable/Disable Staff and Credentials
 # -------------------------
+@login_required
+@permission_required('human_resource.change_staffmodel', raise_exception=True)
 def disable_staff(request, staff_id):
     try:
         staff = get_object_or_404(StaffModel, id=staff_id)
@@ -690,6 +694,8 @@ def disable_staff(request, staff_id):
     return redirect(reverse('staff_detail', kwargs={'pk': staff_id}))
 
 
+@login_required
+@permission_required('human_resource.change_staffmodel', raise_exception=True)
 def enable_staff(request, staff_id):
     try:
         staff = get_object_or_404(StaffModel, id=staff_id)
@@ -712,6 +718,8 @@ def enable_staff(request, staff_id):
     return redirect(reverse('staff_detail', kwargs={'pk': staff_id}))
 
 
+@login_required
+@permission_required('human_resource.change_staffmodel', raise_exception=True)
 def generate_staff_login(request, staff_id):
     staff = get_object_or_404(StaffModel, id=staff_id)
     try:
@@ -747,6 +755,8 @@ def generate_staff_login(request, staff_id):
     return redirect(reverse('staff_detail', kwargs={'pk': staff_id}))
 
 
+@login_required
+@permission_required('human_resource.change_staffmodel', raise_exception=True)
 def update_staff_login(request, staff_id):
     staff = get_object_or_404(StaffModel, id=staff_id)
     try:
