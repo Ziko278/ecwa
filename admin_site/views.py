@@ -383,3 +383,50 @@ def change_password_view(request):
 
     # GET request - show the form
     return render(request, 'admin_site/user/change_password.html')
+
+
+def custom_404_view(request, exception):
+    """
+    Handles Page Not Found errors (404).
+
+    It checks if the URL path contains 'portal' to decide whether to show
+    the admin error page or the public website error page.
+    """
+    # Get the path of the URL that could not be found
+    path = request.path
+
+    # Check if the path starts with '/portal/'. This is more specific
+    # than just checking if 'portal' is in the path.
+    if path.startswith('/portal/'):
+        # If it's a portal URL, render the admin-themed 404 page
+        template_name = 'admin_site/errors/404.html'
+    else:
+        # Otherwise, render the public website's 404 page
+        template_name = 'website/errors/404.html'
+
+    return render(request, template_name, status=404)
+
+
+def custom_500_view(request):
+    """
+    Handles Server Errors (500).
+    Django calls this view when there's a server-side crash.
+    """
+    return render(request, 'errors/500.html', status=500)
+
+
+def custom_403_view(request, exception):
+    """
+    Handles Permission Denied errors (403).
+    This is triggered when a user tries to access a resource they don't have permission for.
+    """
+    return render(request, 'admin_site/errors/403.html', status=403)
+
+
+def custom_csrf_failure_view(request, reason=""):
+    """
+    Handles CSRF verification failures.
+    This is a special case handled via settings.py.
+    """
+    return render(request, 'admin_site/errors/403_csrf.html', status=403)
+

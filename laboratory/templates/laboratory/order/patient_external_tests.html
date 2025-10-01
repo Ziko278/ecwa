@@ -1,0 +1,128 @@
+{% extends 'admin_site/layout.html' %}
+{% load static humanize %}
+
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h4 class="card-title">External Lab Tests for {{ patient }}</h4>
+                    <p class="card-description">
+                        Manage external test orders and upload result files.
+                    </p>
+                </div>
+                <a href="{% url 'lab_entry' %}" class="btn btn-outline-secondary">
+                    <i class="mdi mdi-arrow-left me-1"></i> Back to Patient Verification
+                </a>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h5 class="card-title text-white">Total Orders</h5>
+                            <p class="fs-2 mb-0">{{ result_counts.total }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-warning text-dark">
+                        <div class="card-body">
+                            <h5 class="card-title text-dark">Awaiting Result</h5>
+                            <p class="fs-2 mb-0">{{ result_counts.pending }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h5 class="card-title text-white">Result Uploaded</h5>
+                            <p class="fs-2 mb-0">{{ result_counts.uploaded }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <a href="{% url 'patient_external_lab_tests' patient_id=patient.id %}" class="btn {% if not current_filter %}btn-primary{% else %}btn-outline-primary{% endif %}">All</a>
+                <a href="?result_status=pending" class="btn {% if current_filter == 'pending' %}btn-primary{% else %}btn-outline-primary{% endif %}">Awaiting Result</a>
+                <a href="?result_status=uploaded" class="btn {% if current_filter == 'uploaded' %}btn-primary{% else %}btn-outline-primary{% endif %}">Result Uploaded</a>
+            </div>
+
+            {% for date, orders_in_date in orders_by_date.items %}
+            <div class="mb-4">
+                <h5>{{ date|date:"l, j F Y" }}</h5>
+                <hr class="mt-0">
+                {% for order in orders_in_date %}
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-5">
+                                <h6 class="mb-1">{{ order.test_name }}</h6>
+                                <p class="mb-1 text-muted">Order #: <strong>{{ order.order_number }}</strong></p>
+                                <small>Ordered At: {{ order.ordered_at|date:"g:i A" }} by {{ order.ordered_by.username|default:'System' }}</small>
+                                {% if order.special_instructions %}
+                                <p class="mt-2 mb-0"><em><i class="mdi mdi-information-outline"></i> {{ order.special_instructions }}</em></p>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-md-7">
+                                {% if order.result_file %}
+                                <div class="alert alert-success p-3">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <p class="mb-1"><strong>Result is available.</strong></p>
+                                            <a href="{{ order.result_file.url }}" target="_blank" class="btn btn-sm btn-success">
+                                                <i class="mdi mdi-download me-1"></i> View Result
+                                            </a>
+                                            <p class="mb-0 mt-2">
+                                                <small>Uploaded by {{ order.result_uploaded_by.user_staff_profile.staff|title }} ({{ order.result_uploaded_at|naturaltime }})</small>
+                                            </p>
+                                        </div>
+                                        <div>
+                                            </div>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <div class="alert alert-warning p-3">
+                                    <p class="mb-2"><strong>Result file is pending.</strong></p>
+                                    <form action="{% url 'upload_external_lab_result' order.id %}" method="post" enctype="multipart/form-data">
+                                        {% csrf_token %}
+                                        <div class="input-group">
+                                            <input type="file" name="result_file" class="form-control" required>
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="mdi mdi-upload me-1"></i> Upload
+                                            </button>
+                                        </div>
+                                        <small class="form-text text-muted">Select a PDF or image file to upload.</small>
+                                    </form>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% empty %}
+            <div class="alert alert-info">No external lab test orders found for this patient matching the current filter.</div>
+            {% endfor %}
+
+            {% if is_paginated %}
+            <nav>
+                <ul class="pagination">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if current_filter %}&result_status={{ current_filter }}{% endif %}">Previous</a></li>
+                    {% endif %}
+                    <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+                    {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if current_filter %}&result_status={{ current_filter }}{% endif %}">Next</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

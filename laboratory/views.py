@@ -270,7 +270,7 @@ def verify_lab_patient_ajax(request):
     try:
         patient = PatientModel.objects.get(card_number__iexact=card_number, status='active')
 
-        # Get test counts
+        # Get internal test counts
         test_counts = {
             'total': LabTestOrderModel.objects.filter(patient=patient).count(),
             'pending': LabTestOrderModel.objects.filter(patient=patient, status='pending').count(),
@@ -279,6 +279,15 @@ def verify_lab_patient_ajax(request):
                                                            status__in=['collected', 'processing']).count(),
             'completed': LabTestOrderModel.objects.filter(patient=patient, status='completed').count(),
         }
+
+        # --- NEW CODE: Count external orders awaiting results ---
+        external_pending_count = ExternalLabTestOrder.objects.filter(
+            patient=patient
+        ).filter(
+            Q(result_file__isnull=True) | Q(result_file='')
+        ).count()
+        test_counts['external_pending_results'] = external_pending_count
+        # --- END NEW CODE ---
 
         return JsonResponse({
             'success': True,
@@ -301,11 +310,87 @@ def verify_lab_patient_ajax(request):
             'error': f'No patient found with card number: {card_number}'
         })
     except Exception as e:
-
         return JsonResponse({
             'success': False,
             'error': f'An error occurred while verifying patient {str(e)}'
         })
+
+
+class PatientExternalLabTestListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """View a patient's external lab tests with filtering and result management."""
+    model = ExternalLabTestOrder
+    # It's good practice to have a specific permission for external orders
+    permission_required = 'laboratory.view_externallabtestorder'
+    template_name = 'laboratory/order/patient_external_tests.html'
+    context_object_name = 'external_orders'
+    paginate_by = 20
+
+    def get_queryset(self):
+        patient_id = self.kwargs.get('patient_id')
+        self.patient = get_object_or_404(PatientModel, id=patient_id, status='active')
+
+        queryset = ExternalLabTestOrder.objects.filter(
+            patient=self.patient
+        ).select_related(
+            'ordered_by', 'result_uploaded_by'
+        ).order_by('-ordered_at')
+
+        # Filter by result status if provided via GET parameter
+        result_status = self.request.GET.get('result_status', '')
+        if result_status == 'pending':
+            queryset = queryset.filter(Q(result_file__isnull=True) | Q(result_file=''))
+        elif result_status == 'uploaded':
+            queryset = queryset.filter(result_file__isnull=False).exclude(result_file='')
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['patient'] = self.patient
+
+        # Group orders by date for a cleaner display, similar to the internal tests view
+        orders_by_date = {}
+        for order in context['external_orders']:
+            order_date = order.ordered_at.date()
+            if order_date not in orders_by_date:
+                orders_by_date[order_date] = []
+            orders_by_date[order_date].append(order)
+        context['orders_by_date'] = orders_by_date
+
+        # Get counts for the summary cards
+        all_orders = ExternalLabTestOrder.objects.filter(patient=self.patient)
+        context['result_counts'] = {
+            'total': all_orders.count(),
+            'pending': all_orders.filter(Q(result_file__isnull=True) | Q(result_file='')).count(),
+            'uploaded': all_orders.filter(result_file__isnull=False).exclude(result_file='').count(),
+        }
+
+        # Pass the current filter to the template to highlight the active filter button
+        context['current_filter'] = self.request.GET.get('result_status', '')
+
+        return context
+
+
+class UploadExternalLabResultView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Handles the POST request for uploading or changing a result file."""
+    permission_required = 'laboratory.change_externallabtestorder'
+
+    def post(self, request, order_id):
+        order = get_object_or_404(ExternalLabTestOrder, id=order_id)
+        result_file = request.FILES.get('result_file')
+
+        if not result_file:
+            messages.error(request, 'No file was selected for upload.')
+            return redirect(reverse('patient_external_lab_tests', kwargs={'patient_id': order.patient.id}))
+
+        # Update the order instance with the file and tracking info
+        order.result_file = result_file
+        order.result_uploaded_by = request.user
+        order.result_uploaded_at = timezone.now()
+        order.save()
+
+        messages.success(request, f"Result for order {order.order_number} was uploaded successfully.")
+        return redirect(reverse('patient_external_lab_tests', kwargs={'patient_id': order.patient.id}))
 
 
 # -------------------------

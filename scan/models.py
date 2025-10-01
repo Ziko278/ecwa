@@ -309,6 +309,91 @@ class ScanOrderModel(models.Model):
         super().save(*args, **kwargs)
 
 
+class ExternalScanOrder(models.Model):
+    """Scans/Imaging performed externally (template.is_active=False)"""
+    patient = models.ForeignKey(
+        'patient.PatientModel',
+        on_delete=models.CASCADE,
+        related_name='external_scan_orders'
+    )
+    consultation = models.ForeignKey(
+        'consultation.ConsultationSessionModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='external_scan_orders',
+    )
+    ordered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='ordered_external_scans'
+    )
+
+    # Template info (stored as text since template might be deactivated)
+    scan_name = models.CharField(max_length=200)
+    scan_code = models.CharField(max_length=20, blank=True)
+    category_name = models.CharField(max_length=100, blank=True)
+
+    # Instructions
+    clinical_indication = models.TextField(blank=True)
+    special_instructions = models.TextField(blank=True)
+
+    # External result file
+    result_file = models.FileField(
+        upload_to='external_scan_results/%Y/%m/',
+        blank=True,
+        null=True,
+        help_text="Upload external scan/radiology report (PDF/Image)"
+    )
+
+    # Tracking
+    order_number = models.CharField(max_length=20, unique=True, blank=True)
+    ordered_at = models.DateTimeField(auto_now_add=True)
+    result_uploaded_at = models.DateTimeField(blank=True, null=True)
+    result_uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_external_scan_results'
+    )
+
+    class Meta:
+        db_table = 'external_scan_orders'
+        ordering = ['-ordered_at']
+        verbose_name = 'External Scan Order'
+        verbose_name_plural = 'External Scan Orders'
+
+    def __str__(self):
+        return f"External: {self.scan_name} - {self.patient} ({self.order_number})"
+
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            today = date.today()
+            date_str = today.strftime('%Y%m%d')
+            last_order = ExternalScanOrder.objects.filter(
+                order_number__startswith=f'EXTSCN{date_str}'
+            ).order_by('-order_number').first()
+
+            if last_order:
+                try:
+                    last_num = int(last_order.order_number[-3:])
+                    next_num = last_num + 1
+                except ValueError:
+                    next_num = 1
+            else:
+                next_num = 1
+
+            self.order_number = f'EXTSCN{date_str}{str(next_num).zfill(3)}'
+
+        super().save(*args, **kwargs)
+
+    @property
+    def has_result(self):
+        return bool(self.result_file)
+
+
 class ScanResultModel(models.Model):
     """Actual scan execution results - Enhanced with report handling"""
     order = models.OneToOneField(ScanOrderModel, on_delete=models.CASCADE, related_name='result')

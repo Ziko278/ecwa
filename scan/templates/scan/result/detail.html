@@ -120,6 +120,7 @@
                         </div>
                     </div>
 
+                    {% if measurements %}
                     <!-- Measured Parameters (if any) -->
                     <div class="mb-4">
                         <h6 class="mb-3 text-uppercase" style="background-color: #e9ecef; padding: 8px;">MEASUREMENTS</h6>
@@ -165,46 +166,24 @@
                             </div>
                         {% endif %}
                     </div>
+                    {% endif %}
 
                     <!-- Core Findings / Impression / Recommendations -->
-                    <div class="row mb-4 print-flex-row">
-                        <div class="col-md-6">
-                            <div class="border p-3">
-                                <h6>Findings</h6>
-                                {% if result.findings %}
-                                    <p class="text-muted">{{ result.findings|linebreaksbr }}</p>
-                                {% else %}
-                                    <p class="text-muted">-</p>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="border p-3">
-                                <h6>Impression</h6>
-                                {% if result.impression %}
-                                    <p class="text-muted">{{ result.impression|linebreaksbr }}</p>
-                                {% else %}
-                                    <p class="text-muted">-</p>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
+                    {% if result.findings %}
+                        <h6><b>Findings</b></h6>
+                        <p class="text-muted">{{ result.findings|safe }}</p>
+                    {% endif %}
 
-                    <div class="mb-4">
-                        <h6>Recommendations</h6>
-                        {% if result.recommendations %}
-                            <p class="text-muted">{{ result.recommendations|linebreaksbr }}</p>
-                        {% else %}
-                            <p class="text-muted">-</p>
-                        {% endif %}
-                    </div>
+                    {% if result.impression %}
+                        <h6><b>Impression</b></h6>
+                        <p class="text-muted">{{ result.impression|safe }}</p>
+                    {% endif %}
 
-                    <!-- Extracted Data -->
-                    {% if result.extracted_data %}
-                    <div class="mb-4">
-                        <h6 class="mb-2">Extracted Findings</h6>
-                        <pre class="small bg-light p-3" style="white-space: pre-wrap;">{{ result.extracted_data|json_script:"extracted_data" }}</pre>
-                    </div>
+
+                    {% if result.recommendations %}
+                        <h6><b>Recommendations</b></h6>
+                        <p class="text-muted">{{ result.recommendations|safe }}</p>
+
                     {% endif %}
 
                     <!-- Radiology Report Image -->

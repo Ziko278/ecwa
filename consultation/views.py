@@ -25,11 +25,12 @@ from consultation.models import *
 from consultation.forms import *
 from finance.forms import PatientTransactionForm
 from consultation.models import PatientTransactionModel
-from laboratory.models import LabTestOrderModel, LabTestCategoryModel, LabTestTemplateModel, LabSettingModel
+from laboratory.models import LabTestOrderModel, LabTestCategoryModel, LabTestTemplateModel, LabSettingModel, \
+    ExternalLabTestOrder
 from patient.models import PatientModel
 from human_resource.models import StaffModel
 from pharmacy.models import DrugOrderModel, DrugModel, ExternalPrescription
-from scan.models import ScanOrderModel, ScanCategoryModel, ScanTemplateModel
+from scan.models import ScanOrderModel, ScanCategoryModel, ScanTemplateModel, ExternalScanOrder
 
 logger = logging.getLogger(__name__)
 
@@ -3112,6 +3113,8 @@ def consultation_page(request, consultation_id):
     lab_categories = LabTestCategoryModel.objects.filter()
     scan_categories = ScanCategoryModel.objects.filter()
     external_prescriptions = ExternalPrescription.objects.filter(consultation=consultation)
+    external_lab_tests = consultation.external_lab_orders.all()
+    external_scans = consultation.external_scan_orders.all()
 
     context = {
         'consultant': consultant,
@@ -3123,6 +3126,8 @@ def consultation_page(request, consultation_id):
         'external_prescriptions': external_prescriptions,
         'lab_categories': lab_categories,
         'scan_categories': scan_categories,
+        'external_lab_tests': external_lab_tests,
+        'external_scans': external_scans,
     }
 
     return render(request, 'consultation/doctor/consultation.html', context)
@@ -3588,9 +3593,11 @@ def ajax_search_drugs(request):
                 'id': drug.id,
                 'brand_name': drug.brand_name,
                 'generic_name': drug.formulation.generic_drug.generic_name,
+                'pharmacy_quantity': drug.pharmacy_quantity,
                 'formulation': str(drug.formulation),
-                # --- FIX APPLIED HERE ---
                 'manufacturer': drug.manufacturer.name if drug.manufacturer else '',
+                'pack_size': drug.pack_size,
+                'unit': drug.formulation.form_type,
                 'price': float(drug.selling_price),
                 'is_prescription_only': drug.formulation.generic_drug.is_prescription_only
             })
@@ -3814,7 +3821,8 @@ def ajax_lab_templates_search(request):
         query = request.GET.get('q', '')
         category_id = request.GET.get('category_id')
 
-        templates = LabTestTemplateModel.objects.filter(is_active=True)
+        # CHANGED: Remove is_active filter - show ALL templates
+        templates = LabTestTemplateModel.objects.all()
 
         if category_id:
             templates = templates.filter(category_id=category_id)
@@ -3822,12 +3830,13 @@ def ajax_lab_templates_search(request):
         if len(query) >= 2:
             templates = templates.filter(name__icontains=query)
 
-        templates = templates.order_by('name')[:15]  # Limit results
+        templates = templates.order_by('name')[:15]
 
         templates_data = [{
             'id': t.id,
             'name': t.name,
             'price': float(t.price),
+            'is_active': t.is_active,  # NEW: Add is_active status
         } for t in templates]
 
         return JsonResponse({'templates': templates_data})
@@ -3843,7 +3852,8 @@ def ajax_imaging_templates_search(request):
         query = request.GET.get('q', '')
         category_id = request.GET.get('category_id')
 
-        templates = ScanTemplateModel.objects.filter(is_active=True)
+        # CHANGED: Remove is_active filter - show ALL templates
+        templates = ScanTemplateModel.objects.all()
 
         if category_id:
             templates = templates.filter(category_id=category_id)
@@ -3851,19 +3861,19 @@ def ajax_imaging_templates_search(request):
         if len(query) >= 2:
             templates = templates.filter(name__icontains=query)
 
-        templates = templates.order_by('name')[:15]  # Limit results
+        templates = templates.order_by('name')[:15]
 
         templates_data = [{
             'id': t.id,
             'name': t.name,
             'price': float(t.price),
+            'is_active': t.is_active,  # NEW: Add is_active status
         } for t in templates]
 
         return JsonResponse({'templates': templates_data})
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
-
 
 # --- NEW MULTI-ORDER VIEWS ---
 
@@ -3883,19 +3893,48 @@ def ajax_order_multiple_lab_tests(request):
         patient = get_object_or_404(PatientModel, id=patient_id)
         consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
 
+        internal_count = 0
+        external_count = 0
+
         with transaction.atomic():
             for order_data in orders:
                 template = get_object_or_404(LabTestTemplateModel, id=order_data.get('template_id'))
-                LabTestOrderModel.objects.create(
-                    patient=patient,
-                    consultation=consultation,
-                    template=template,
-                    ordered_by=request.user,
-                    special_instructions=order_data.get('instructions', ''),
-                    source='doctor',
-                )
 
-        return JsonResponse({'success': True, 'message': f'{len(orders)} lab test(s) ordered successfully.'})
+                # NEW: Route based on is_active
+                if template.is_active:
+                    # Internal order
+                    LabTestOrderModel.objects.create(
+                        patient=patient,
+                        consultation=consultation,
+                        template=template,
+                        ordered_by=request.user,
+                        special_instructions=order_data.get('instructions', ''),
+                        source='doctor',
+                    )
+                    internal_count += 1
+                else:
+                    # External order
+                    ExternalLabTestOrder.objects.create(
+                        patient=patient,
+                        consultation=consultation,
+                        ordered_by=request.user,
+                        test_name=template.name,
+                        test_code=template.code,
+                        category_name=template.category.name if template.category else '',
+                        special_instructions=order_data.get('instructions', ''),
+                    )
+                    external_count += 1
+
+        # NEW: Build message showing internal vs external
+        message_parts = []
+        if internal_count > 0:
+            message_parts.append(f'{internal_count} internal lab test(s)')
+        if external_count > 0:
+            message_parts.append(f'{external_count} external lab test(s)')
+
+        message = ' and '.join(message_parts) + ' ordered successfully.'
+
+        return JsonResponse({'success': True, 'message': message})
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -3917,19 +3956,49 @@ def ajax_order_multiple_imaging(request):
         patient = get_object_or_404(PatientModel, id=patient_id)
         consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
 
+        internal_count = 0
+        external_count = 0
+
         with transaction.atomic():
             for order_data in orders:
                 template = get_object_or_404(ScanTemplateModel, id=order_data.get('template_id'))
-                ScanOrderModel.objects.create(
-                    patient=patient,
-                    consultation=consultation,
-                    template=template,
-                    ordered_by=request.user,
-                    clinical_indication=order_data.get('indication', ''),
-                    special_instructions=order_data.get('instructions', ''),
-                )
 
-        return JsonResponse({'success': True, 'message': f'{len(orders)} imaging request(s) ordered successfully.'})
+                # NEW: Route based on is_active
+                if template.is_active:
+                    # Internal order
+                    ScanOrderModel.objects.create(
+                        patient=patient,
+                        consultation=consultation,
+                        template=template,
+                        ordered_by=request.user,
+                        clinical_indication=order_data.get('indication', ''),
+                        special_instructions=order_data.get('instructions', ''),
+                    )
+                    internal_count += 1
+                else:
+                    # External order
+                    ExternalScanOrder.objects.create(
+                        patient=patient,
+                        consultation=consultation,
+                        ordered_by=request.user,
+                        scan_name=template.name,
+                        scan_code=template.code,
+                        category_name=template.category.name if template.category else '',
+                        clinical_indication=order_data.get('indication', ''),
+                        special_instructions=order_data.get('instructions', ''),
+                    )
+                    external_count += 1
+
+        # NEW: Build message showing internal vs external
+        message_parts = []
+        if internal_count > 0:
+            message_parts.append(f'{internal_count} internal scan(s)')
+        if external_count > 0:
+            message_parts.append(f'{external_count} external scan(s)')
+
+        message = ' and '.join(message_parts) + ' ordered successfully.'
+
+        return JsonResponse({'success': True, 'message': message})
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)

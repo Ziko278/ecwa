@@ -106,9 +106,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (errorContainer) errorContainer.style.display = 'none';
     };
 
-    // Build a summary row
-    function summaryRow(label, count, badgeClass='bg-secondary') {
-        return `<div class="list-group-item">
+    // Build a summary row (with optional extra class for styling)
+    function summaryRow(label, count, badgeClass='bg-secondary', extraClass='') {
+        return `<div class="list-group-item ${extraClass}">
                     <span>${label}</span>
                     <span class="badge ${badgeClass}">${count}</span>
                 </div>`;
@@ -142,11 +142,13 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
 
-        // normalize scanCounts with safe defaults
+        // --- MODIFIED: Added external_pending_results to defaults ---
         const sc = Object.assign({
-            total: 0, pending: 0, paid: 0, scheduled: 0, in_progress: 0, completed: 0, cancelled: 0
+            total: 0, pending: 0, paid: 0, scheduled: 0, in_progress: 0, completed: 0, cancelled: 0,
+            external_pending_results: 0
         }, scanCounts || {});
 
+        // --- MODIFIED: Added new summary row for external scans ---
         let html = '<h6 class="mb-2">Scan Summary</h6><div class="list-group list-group-flush">';
         html += summaryRow('Total Scans:', sc.total, 'bg-primary');
         html += summaryRow('Pending Payment:', sc.pending, 'bg-warning');
@@ -155,6 +157,7 @@ document.addEventListener('DOMContentLoaded', function () {
         html += summaryRow('In Progress:', sc.in_progress, 'bg-secondary');
         html += summaryRow('Completed:', sc.completed, 'bg-success');
         html += summaryRow('Cancelled:', sc.cancelled, 'bg-danger');
+        html += summaryRow('External (Awaiting Result):', sc.external_pending_results, 'bg-dark', 'border-top mt-1 pt-2');
         html += '</div>';
         orderSummaryEl.innerHTML = html;
 
@@ -166,10 +169,31 @@ document.addEventListener('DOMContentLoaded', function () {
         if (viewOrdersBtn) {
             viewOrdersBtn.onclick = function() {
                 if (!currentPatient) return showError('No patient selected');
-                // replace 0 with patient id in the URL
                 window.location.href = `{% url 'patient_scan_orders' patient_id=0 %}`.replace('0', currentPatient.id);
             };
         }
+
+        // --- NEW CODE: Create and add the "View External Scans" button ---
+        const existingExternalBtn = document.getElementById('view-external-scans-btn');
+        if (existingExternalBtn) {
+            existingExternalBtn.remove();
+        }
+
+        const viewExternalScansBtn = document.createElement('button');
+        viewExternalScansBtn.id = 'view-external-scans-btn';
+        viewExternalScansBtn.type = 'button';
+        viewExternalScansBtn.className = 'btn btn-dark';
+        viewExternalScansBtn.innerHTML = '<i class="mdi mdi-upload me-2"></i>View External Scans';
+        viewExternalScansBtn.onclick = function() {
+            if (!currentPatient) return showError('No patient selected');
+            // This URL name 'patient_external_scan_list' must exist in your urls.py
+            window.location.href = `{% url 'patient_external_scan_list' patient_id=0 %}`.replace('0', currentPatient.id);
+        };
+
+        if (viewOrdersBtn) {
+            viewOrdersBtn.insertAdjacentElement('afterend', viewExternalScansBtn);
+        }
+        // --- END NEW CODE ---
 
         if (newScanBtn) {
             newScanBtn.onclick = function() {
@@ -198,7 +222,7 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(data => {
             if (data.success) {
                 currentPatient = data.patient || null;
-                const counts = data.scan_counts || data.scanCounts || {}; // be tolerant of naming
+                const counts = data.scan_counts || data.scanCounts || {};
                 renderPatient(data.patient || {}, counts);
                 hideError();
             } else {
@@ -228,5 +252,4 @@ document.addEventListener('DOMContentLoaded', function () {
     if (cardNumberInput) cardNumberInput.focus();
 });
 </script>
-
 {% endblock %}

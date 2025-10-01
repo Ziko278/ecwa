@@ -341,6 +341,7 @@
                                     </button>
                                 </div>
 
+                                <!-- INTERNAL LAB TESTS -->
                                 <div class="list-group">
                                     {% for test in lab_tests %}
                                     <div class="list-group-item">
@@ -366,10 +367,35 @@
                                     </div>
                                     {% empty %}
                                     <div class="list-group-item text-center text-muted">
-                                        No lab tests ordered
+                                        No internal lab tests ordered
                                     </div>
                                     {% endfor %}
                                 </div>
+
+                                <!-- NEW: EXTERNAL LAB TESTS SECTION -->
+                                {% if external_lab_tests %}
+                                <h6 class="mt-4 mb-3">External Lab Tests</h6>
+                                <div class="list-group">
+                                    {% for test in external_lab_tests %}
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ test.test_name }}</strong>
+                                                <span class="badge bg-warning text-dark ms-2">External</span>
+                                                <small class="text-muted d-block">{{ test.order_number }}</small>
+                                            </div>
+                                            {% if test.has_result %}
+                                                <a href="{{ test.result_file.url }}" target="_blank" class="btn btn-xs btn-outline-primary">
+                                                    <i class="bi bi-file-earmark-pdf"></i> View Result
+                                                </a>
+                                            {% else %}
+                                                <span class="badge bg-light text-dark">Result Not Available</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
 
                             </div>
 
@@ -381,35 +407,62 @@
                                     </button>
                                 </div>
 
+                                <!-- INTERNAL SCANS -->
                                 <div class="list-group">
-            {% for scan in scans %}
-            <div class="list-group-item">
-                <div>
-                    <strong>{{ scan.template.name }}</strong>
-                    <small class="text-muted d-block">{{ scan.order_number }}</small>
-                </div>
-                 <div class="mt-2 d-flex justify-content-between align-items-center">
-                    <span class="badge bg-secondary">{{ scan.get_status_display }}</span>
+                                    {% for scan in scans %}
+                                    <div class="list-group-item">
+                                        <div>
+                                            <strong>{{ scan.template.name }}</strong>
+                                            <small class="text-muted d-block">{{ scan.order_number }}</small>
+                                        </div>
+                                        <div class="mt-2 d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-secondary">{{ scan.get_status_display }}</span>
 
-                    {% if scan.status == 'completed' %}
-                        <button class="btn btn-xs btn-outline-primary" onclick="viewScanResult({{ scan.id }})">
-                            View Result
-                        </button>
-                    {% else %}
-                         <span class="badge bg-light text-dark">Result Not Available</span>
-                    {% endif %}
-                </div>
-            </div>
-            {% empty %}
-            <div class="list-group-item text-center text-muted">
-                No imaging ordered
-            </div>
-            {% endfor %}
-        </div>
+                                            {% if scan.status == 'completed' %}
+                                                <button class="btn btn-xs btn-outline-primary" onclick="viewScanResult({{ scan.id }})">
+                                                    View Result
+                                                </button>
+                                            {% else %}
+                                                <span class="badge bg-light text-dark">Result Not Available</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">
+                                        No internal scans ordered
+                                    </div>
+                                    {% endfor %}
+                                </div>
+
+                                <!-- NEW: EXTERNAL SCANS SECTION -->
+                                {% if external_scans %}
+                                <h6 class="mt-4 mb-3">External Scans</h6>
+                                <div class="list-group">
+                                    {% for scan in external_scans %}
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ scan.scan_name }}</strong>
+                                                <span class="badge bg-warning text-dark ms-2">External</span>
+                                                <small class="text-muted d-block">{{ scan.order_number }}</small>
+                                            </div>
+                                            {% if scan.has_result %}
+                                                <a href="{{ scan.result_file.url }}" target="_blank" class="btn btn-xs btn-outline-primary">
+                                                    <i class="bi bi-file-earmark-pdf"></i> View Result
+                                                </a>
+                                            {% else %}
+                                                <span class="badge bg-light text-dark">Result Not Available</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
 
                             </div>
                         </div>
                     </div>
+
                 </div>
             </div>
         </div>
@@ -461,6 +514,7 @@
                     <input type="text" class="form-control drug-search-input" placeholder="Start typing drug name..." required>
                     <input type="hidden" class="drug-id-input" name="drug_id">
                     <input type="hidden" class="drug-pack-size-input" name="pack_size">
+                    <input type="hidden" class="drug-unit-input" name="unit">
                     <div class="search-results list-group position-absolute w-100" style="z-index: 1050;"></div>
                 </div>
             </div>
@@ -475,8 +529,11 @@
                     <input type="text" class="form-control duration-input" name="duration" placeholder="e.g., 7 days or 1 week">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Quantity (Packs)</label>
-                    <input type="number" class="form-control quantity-input" name="quantity" placeholder="Auto" min="1" required>
+                    <label class="form-label">Total Quantity</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control quantity-input" name="quantity" placeholder="Auto" min="1" required>
+                        <input type="text" class="form-control quantity-display" readonly style="max-width: 150px; font-size: 0.875rem;">
+                    </div>
                 </div>
             </div>
              <div class="row g-2 mt-2">
@@ -1089,7 +1146,14 @@ function handleOrderSearch(inputEl, type) {
                     const item = document.createElement('a');
                     item.href = '#';
                     item.className = 'list-group-item list-group-item-action';
-                    item.textContent = `${template.name} - ₦${template.price}`;
+
+                    // UPDATED: Show price only for internal, badge for external
+                    if (template.is_active) {
+                        item.innerHTML = `${template.name} - ₦${template.price}`;
+                    } else {
+                        item.innerHTML = `${template.name} <span class="badge bg-warning text-dark ms-2">External</span>`;
+                    }
+
                     item.addEventListener('click', e => {
                         e.preventDefault();
                         const formRow = inputEl.closest('.order-row');
@@ -1213,6 +1277,14 @@ function addDrugForm() {
     searchInput.addEventListener('input', () => handleDrugSearch(searchInput));
     dosageInput.addEventListener('input', () => calculateQuantity(formRow));
     durationInput.addEventListener('input', () => calculateQuantity(formRow));
+    const quantityInput = formRow.querySelector('.quantity-input');
+    quantityInput.addEventListener('input', () => {
+    const packSize = parseInt(formRow.querySelector('.drug-pack-size-input')?.value || '1') || 1;
+    const unitType = formRow.querySelector('.drug-unit-input')?.value || 'tablet';
+    const quantityDisplay = formRow.querySelector('.quantity-display');
+    const totalUnits = parseInt(quantityInput.value) || 0;
+    updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
+});
 }
 
 function addExternalDrugForm() {
@@ -1251,6 +1323,7 @@ function handleDrugSearch(inputEl) {
                         formRow.querySelector('.drug-search-input').value = item.textContent;
                         formRow.querySelector('.drug-id-input').value = drug.id;
                         formRow.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
+                        formRow.querySelector('.drug-unit-input').value = drug.unit || 'tablet';
                         resultsContainer.innerHTML = '';
                         calculateQuantity(formRow); // Recalculate if needed
                     });
@@ -1266,7 +1339,9 @@ function calculateQuantity(formRowEl) {
     const dosageText = formRowEl.querySelector('.dosage-input').value.toLowerCase();
     const durationText = formRowEl.querySelector('.duration-input').value.toLowerCase();
     const packSize = parseInt(formRowEl.querySelector('.drug-pack-size-input')?.value || '1') || 1;
+    const unitType = formRowEl.querySelector('.drug-unit-input')?.value || 'tablet';
     const quantityInput = formRowEl.querySelector('.quantity-input');
+    const quantityDisplay = formRowEl.querySelector('.quantity-display');
 
     if (!quantityInput) return; // Only applies to available drugs with this input
 
@@ -1306,11 +1381,52 @@ function calculateQuantity(formRowEl) {
         }
     }
 
-    // 3. Calculate and set quantity
+    // 3. Calculate and set quantity (total units)
     if (dailyDose > 0 && durationDays > 0) {
         const totalUnits = dailyDose * durationDays;
-        const requiredPacks = Math.ceil(totalUnits / packSize);
-        quantityInput.value = requiredPacks;
+        quantityInput.value = totalUnits;
+        updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
+    }
+}
+
+function getPackageTerminology(unitType) {
+    // Returns [singular, plural] forms
+    const terminology = {
+        'tablet': ['card', 'cards'],
+        'capsule': ['card', 'cards'],
+        'injection': ['pack', 'packs'],
+        'syrup': ['bottle', 'bottles'],
+        'cream': ['tube', 'tubes'],
+        'drops': ['bottle', 'bottles']
+    };
+    return terminology[unitType] || ['pack', 'packs'];
+}
+
+function updateQuantityDisplay(totalUnits, packSize, unitType, displayElement) {
+    if (!displayElement || !totalUnits) {
+        if (displayElement) displayElement.value = '';
+        return;
+    }
+
+    // If pack size is 1 or total is less than pack size, show units only
+    if (packSize === 1 || totalUnits < packSize) {
+        displayElement.value = `${totalUnits} units`;
+        return;
+    }
+
+    // Calculate packs and remaining units
+    const fullPacks = Math.floor(totalUnits / packSize);
+    const remainingUnits = totalUnits % packSize;
+
+    // Get appropriate terminology
+    const [singularTerm, pluralTerm] = getPackageTerminology(unitType);
+    const packTerm = fullPacks === 1 ? singularTerm : pluralTerm;
+
+    // Build display string
+    if (remainingUnits === 0) {
+        displayElement.value = `${fullPacks} ${packTerm}`;
+    } else {
+        displayElement.value = `${fullPacks} ${packTerm} ${remainingUnits} units`;
     }
 }
 

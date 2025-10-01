@@ -19,6 +19,10 @@ urlpatterns = [
     path('django-admin/', admin.site.urls),
 ]
 
+handler404 = 'admin_site.views.custom_404_view'
+handler403 = 'admin_site.views.custom_403_view'
+handler500 = 'admin_site.views.custom_500_view'
+
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

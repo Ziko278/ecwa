@@ -17,6 +17,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
+from django.views import View
 from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
@@ -238,6 +239,8 @@ def verify_scan_patient_ajax(request):
             'paid': ScanOrderModel.objects.filter(patient=patient, status='paid').count(),
             'in_progress': ScanOrderModel.objects.filter(patient=patient, status='in_progress').count(),
             'completed': ScanOrderModel.objects.filter(patient=patient, status='completed').count(),
+            'external_pending_results':  ExternalScanOrder.objects.filter(patient=patient).filter(
+                            Q(result_file__isnull=True) | Q(result_file='')).count()
         }
 
         return JsonResponse({
@@ -266,6 +269,82 @@ def verify_scan_patient_ajax(request):
             'error': f'An error occurred while verifying patient: {str(e)}'
         })
 
+
+class PatientExternalScanListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """View a patient's external scan orders with filtering and result management."""
+    model = ExternalScanOrder
+    # Assumes a specific permission for external scans exists
+    permission_required = 'radiology.view_externalscanorder'
+    template_name = 'scan/order/patient_external_scans.html'
+    context_object_name = 'external_scans'
+    paginate_by = 20
+
+    def get_queryset(self):
+        patient_id = self.kwargs.get('patient_id')
+        self.patient = get_object_or_404(PatientModel, id=patient_id, status='active')
+
+        queryset = ExternalScanOrder.objects.filter(
+            patient=self.patient
+        ).select_related(
+            'ordered_by', 'result_uploaded_by'
+        ).order_by('-ordered_at')
+
+        # Filter by result status if provided via GET parameter
+        result_status = self.request.GET.get('result_status', '')
+        if result_status == 'pending':
+            queryset = queryset.filter(Q(result_file__isnull=True) | Q(result_file=''))
+        elif result_status == 'uploaded':
+            queryset = queryset.filter(result_file__isnull=False).exclude(result_file='')
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['patient'] = self.patient
+
+        # Group orders by date for a cleaner display
+        orders_by_date = {}
+        for order in context['external_scans']:
+            order_date = order.ordered_at.date()
+            if order_date not in orders_by_date:
+                orders_by_date[order_date] = []
+            orders_by_date[order_date].append(order)
+        context['orders_by_date'] = orders_by_date
+
+        # Get counts for the summary cards
+        all_orders = ExternalScanOrder.objects.filter(patient=self.patient)
+        context['result_counts'] = {
+            'total': all_orders.count(),
+            'pending': all_orders.filter(Q(result_file__isnull=True) | Q(result_file='')).count(),
+            'uploaded': all_orders.filter(result_file__isnull=False).exclude(result_file='').count(),
+        }
+
+        # Pass the current filter to the template
+        context['current_filter'] = self.request.GET.get('result_status', '')
+
+        return context
+
+
+class UploadExternalScanResultView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Handles the POST request for uploading or changing a scan result file."""
+    permission_required = 'radiology.change_externalscanorder'
+
+    def post(self, request, order_id):
+        order = get_object_or_404(ExternalScanOrder, id=order_id)
+        result_file = request.FILES.get('result_file')
+
+        if not result_file:
+            messages.error(request, 'No file was selected for upload.')
+            return redirect(reverse('patient_external_scan_list', kwargs={'patient_id': order.patient.id}))
+
+        # Update the order instance with the file and tracking info
+        order.result_file = result_file
+        order.result_uploaded_by = request.user
+        order.result_uploaded_at = timezone.now()
+        order.save()
+
+        messages.success(request, f"Result for scan order {order.order_number} was uploaded successfully.")
+        return redirect(reverse('patient_external_scan_list', kwargs={'patient_id': order.patient.id}))
 
 class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ScanOrderModel
@@ -337,7 +416,7 @@ class ScanOrderUpdateView(
     model = ScanOrderModel
     permission_required = 'scan.add_scanordermodel'
     form_class = ScanOrderForm
-    template_name = 'radiology/order/edit.html'
+    template_name = 'scan/order/edit.html'
 
     def get_success_url(self):
         return reverse('scan_order_detail', kwargs={'pk': self.object.pk})
@@ -741,7 +820,7 @@ class ScanResultDashboardView(LoginRequiredMixin, PermissionRequiredMixin, ListV
     """Main dashboard for scan results - shows orders ready for scanning"""
     model = ScanOrderModel
     permission_required = 'scan.view_scanordermodel'
-    template_name = 'radiology/result/dashboard.html'
+    template_name = 'scan/result/dashboard.html'
     context_object_name = 'orders'
     paginate_by = 20
 
@@ -1254,7 +1333,7 @@ class ScanImageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
     model = ScanImageModel
     permission_required = 'scan.add_scanresultmodel'
     form_class = ScanImageForm
-    template_name = 'radiology/image/upload.html'
+    template_name = 'scan/image/upload.html'
 
     def get_initial(self):
         initial = super().get_initial()
@@ -1496,7 +1575,7 @@ def scan_dashboard_data(request):
 # Dashboard View
 # -------------------------
 class ScanDashboardView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    template_name = 'radiology/dashboard.html'
+    template_name = 'scan/dashboard.html'
     permission_required = 'scan.view_scanordermodel'
 
     def get_context_data(self, **kwargs):
@@ -1665,7 +1744,7 @@ def print_scan_order(request, pk):
         'order': order,
 
     }
-    return render(request, 'radiology/print/order.html', context)
+    return render(request, 'scan/print/order.html', context)
 
 
 @login_required
@@ -1679,14 +1758,14 @@ def print_scan_result(request, pk):
         'images': result.images.all().order_by('sequence_number'),
 
     }
-    return render(request, 'radiology/print/result.html', context)
+    return render(request, 'scan/print/result.html', context)
 
 
 # -------------------------
 # Report Views
 # -------------------------
 class ScanReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    template_name = 'radiology/reports/index.html'
+    template_name = 'scan/reports/index.html'
     permission_required = 'scan.view_scanordermodel'
 
     def get_context_data(self, **kwargs):

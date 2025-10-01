@@ -159,12 +159,12 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
 
-        // Display test summary
+        // --- MODIFIED: Display updated test summary ---
         document.getElementById('test-summary').innerHTML = `
             <h6 class="mb-2">Test Summary</h6>
             <div class="list-group list-group-flush">
                 <div class="list-group-item d-flex justify-content-between align-items-center py-2">
-                    <span>Total Tests:</span>
+                    <span>Internal Tests (Total):</span>
                     <span class="badge bg-primary">${testCounts.total}</span>
                 </div>
                 <div class="list-group-item d-flex justify-content-between align-items-center py-2">
@@ -175,13 +175,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span>Paid:</span>
                     <span class="badge bg-info">${testCounts.paid}</span>
                 </div>
-                <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                 <div class="list-group-item d-flex justify-content-between align-items-center py-2">
                     <span>Processing:</span>
                     <span class="badge bg-secondary">${testCounts.processing}</span>
                 </div>
                 <div class="list-group-item d-flex justify-content-between align-items-center py-2">
                     <span>Completed:</span>
                     <span class="badge bg-success">${testCounts.completed}</span>
+                </div>
+                <div class="list-group-item d-flex justify-content-between align-items-center py-2 border-top mt-1 pt-2">
+                    <span>External (Awaiting Result):</span>
+                    <span class="badge bg-dark">${testCounts.external_pending_results}</span>
                 </div>
             </div>
         `;
@@ -190,15 +194,35 @@ document.addEventListener('DOMContentLoaded', function() {
         patientDetailsSection.style.display = 'block';
         patientDetailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-        // Set up action buttons
+        // --- MODIFIED: Set up action buttons, including the new one ---
         viewTestsBtn.onclick = function() {
             window.location.href = `{% url 'patient_lab_tests' patient_id=0 %}`.replace('0', currentPatient.id);
         };
 
-        {% if lab_setting.allow_direct_lab_order %}
-        newTestBtn.onclick = function() {
-            window.location.href = `{% url 'lab_order_create' patient_id=0 %}`.replace('0', currentPatient.id);
+        // Remove the external button if it already exists (to prevent duplicates on re-verify)
+        const existingExternalBtn = document.getElementById('view-external-tests-btn');
+        if (existingExternalBtn) {
+            existingExternalBtn.remove();
+        }
+
+        // Create and insert the new button for external tests
+        const viewExternalTestsBtn = document.createElement('button');
+        viewExternalTestsBtn.id = 'view-external-tests-btn';
+        viewExternalTestsBtn.type = 'button';
+        viewExternalTestsBtn.className = 'btn btn-dark';
+        viewExternalTestsBtn.innerHTML = '<i class="mdi mdi-upload me-2"></i>View External Tests';
+        viewExternalTestsBtn.onclick = function() {
+            // IMPORTANT: You must create this URL pattern in your urls.py
+            window.location.href = `{% url 'patient_external_lab_tests' patient_id=0 %}`.replace('0', currentPatient.id);
         };
+        viewTestsBtn.insertAdjacentElement('afterend', viewExternalTestsBtn);
+
+        {% if lab_setting.allow_direct_lab_order %}
+        if (newTestBtn) {
+            newTestBtn.onclick = function() {
+                window.location.href = `{% url 'lab_order_create' patient_id=0 %}`.replace('0', currentPatient.id);
+            };
+        }
         {% endif %}
     }
 

@@ -252,7 +252,7 @@
 
                     <!-- Clinical Findings -->
                     <div class="row mb-4">
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <div class="form-group">
                                 <label for="findings" class="form-label">Clinical Findings</label>
                                 <textarea name="findings" id="findings"
@@ -260,8 +260,9 @@
                                           placeholder="Describe the primary scan findings...">{{ form.findings.value|default:object.findings }}</textarea>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <div class="form-group">
+                                <br>
                                 <label for="impression" class="form-label">Clinical Impression</label>
                                 <textarea name="impression" id="impression"
                                           class="form-control" rows="5"
@@ -272,16 +273,18 @@
 
                     <!-- Recommendations & Comments -->
                     <div class="row mb-4">
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <div class="form-group">
+                                <br>
                                 <label for="recommendations" class="form-label">Recommendations</label>
                                 <textarea name="recommendations" id="recommendations"
                                           class="form-control" rows="4"
                                           placeholder="Enter follow-up recommendations...">{{ form.recommendations.value|default:object.recommendations }}</textarea>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <div class="form-group">
+                                <br>
                                 <label for="technician_comments" class="form-label">Technician Comments</label>
                                 <textarea name="technician_comments" id="technician_comments"
                                           class="form-control" rows="4"
@@ -483,38 +486,37 @@
 </style>
 
 <script>
+/**
+ * Validates the form by reading data directly from the TinyMCE editors.
+ * This is a standalone utility function. The main validation happens on form submit.
+ */
 function validateForm() {
     const form = document.getElementById('result-form');
-    const findings = document.getElementById('findings').value.trim();
-    const impression = document.getElementById('impression').value.trim();
+    // Read content as plain text for validation purposes
+    const findings = tinymce.get('findings').getContent({ format: 'text' }).trim();
+    const impression = tinymce.get('impression').getContent({ format: 'text' }).trim();
     const status = document.getElementById('status').value;
 
-    // Check if essential fields are filled
     if (!findings && !impression) {
         alert('Please enter either clinical findings or impression before saving.');
         return false;
     }
 
-    // If finalizing, impression is required
     if (status === 'finalized' && !impression) {
         alert('Clinical impression is required to finalize the report.');
         return false;
     }
 
-    // Check if any images are marked for deletion
     const deleteImages = form.querySelectorAll('input[name="delete_images"]:checked');
     if (deleteImages.length > 0) {
-        const confirmDelete = confirm(`Are you sure you want to delete ${deleteImages.length} image(s)? This action cannot be undone.`);
-        if (!confirmDelete) {
+        if (!confirm(`Are you sure you want to delete ${deleteImages.length} image(s)? This action cannot be undone.`)) {
             return false;
         }
     }
 
-    // Check if radiology report is marked for deletion
     const deleteReport = form.querySelector('input[name="delete_radiology_report"]:checked');
     if (deleteReport) {
-        const confirmDeleteReport = confirm('Are you sure you want to delete the radiology report image? This action cannot be undone.');
-        if (!confirmDeleteReport) {
+        if (!confirm('Are you sure you want to delete the radiology report image? This action cannot be undone.')) {
             return false;
         }
     }
@@ -523,11 +525,13 @@ function validateForm() {
     return true;
 }
 
+/**
+ * Generates a preview of the report by getting live HTML content from the editors.
+ */
 function previewReport() {
-    // Collect current form values for preview
-    const findings = document.getElementById('findings').value;
-    const impression = document.getElementById('impression').value;
-    const recommendations = document.getElementById('recommendations').value;
+    const findings = tinymce.get('findings').getContent();
+    const impression = tinymce.get('impression').getContent();
+    const recommendations = tinymce.get('recommendations').getContent();
     const status = document.getElementById('status').value;
     const reportDate = document.getElementById('report_date').value;
 
@@ -547,14 +551,7 @@ function previewReport() {
                 .section { margin-bottom: 15px; }
                 .label { font-weight: bold; color: #333; }
                 .content { margin-left: 10px; margin-top: 5px; }
-                .status {
-                    display: inline-block;
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    background: #007bff;
-                    color: white;
-                    font-size: 12px;
-                }
+                .status { display: inline-block; padding: 4px 8px; border-radius: 4px; background: #007bff; color: white; font-size: 12px; }
                 .patient-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
             </style>
         </head>
@@ -585,9 +582,12 @@ function previewReport() {
     `);
 }
 
+/**
+ * Special function to finalize the report, with its own validation.
+ */
 function finalizeReport() {
-    const findings = document.getElementById('findings').value.trim();
-    const impression = document.getElementById('impression').value.trim();
+    const findings = tinymce.get('findings').getContent({ format: 'text' }).trim();
+    const impression = tinymce.get('impression').getContent({ format: 'text' }).trim();
 
     if (!findings || !impression) {
         alert('Both clinical findings and impression are required to finalize the report.');
@@ -595,12 +595,16 @@ function finalizeReport() {
     }
 
     if (confirm('Are you sure you want to finalize this report? Finalized reports may require special permissions to edit.')) {
+        // CRUCIAL: Sync TinyMCE content before submitting programmatically
+        tinymce.triggerSave();
         document.getElementById('status').value = 'finalized';
         document.getElementById('result-form').submit();
     }
 }
 
-// Image preview functionality
+/**
+ * Shows a preview of a newly selected image file.
+ */
 function previewImage(input, previewId) {
     if (input.files && input.files[0]) {
         const reader = new FileReader();
@@ -615,32 +619,37 @@ function previewImage(input, previewId) {
     }
 }
 
-// Set current datetime for report_date if empty
 document.addEventListener('DOMContentLoaded', function() {
+    let autoSaveTimeout;
+
+    // 1. Initialize TinyMCE with updated auto-save logic
+    tinymce.init({
+        selector: '#findings, #impression, #recommendations',
+        height: 300,
+        menubar: false,
+        plugins: 'lists advlist autoresize link table',
+        toolbar: 'undo redo | blocks | bold italic underline | bullist numlist | table',
+        content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 14px; }',
+        setup: function(editor) {
+            // This is the correct way to handle auto-save with TinyMCE
+            editor.on('input change undo redo', function() {
+                clearTimeout(autoSaveTimeout);
+                autoSaveTimeout = setTimeout(() => {
+                    console.log('Auto-saving draft...');
+                    // You could add an actual AJAX save function here
+                }, 10000); // 10 seconds
+            });
+        }
+    });
+
+    // 2. All other page setup logic
     const reportDateInput = document.getElementById('report_date');
     if (reportDateInput && !reportDateInput.value) {
         const now = new Date();
-        const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-        reportDateInput.value = localISOTime;
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        reportDateInput.value = now.toISOString().slice(0, 16);
     }
 
-    // Auto-save draft functionality (optional)
-    let autoSaveTimeout;
-    const form = document.getElementById('result-form');
-    if (form) {
-        const inputs = form.querySelectorAll('input, select, textarea');
-        inputs.forEach(input => {
-            input.addEventListener('input', function() {
-                clearTimeout(autoSaveTimeout);
-                autoSaveTimeout = setTimeout(() => {
-                    // Could implement auto-save draft here
-                    console.log('Auto-saving draft...');
-                }, 10000); // 10 seconds
-            });
-        });
-    }
-
-    // Add click handlers for image previews
     const existingImages = document.querySelectorAll('.card-img-top');
     existingImages.forEach(img => {
         img.addEventListener('click', function() {
@@ -648,34 +657,36 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Confirmation for status changes
     const statusSelect = document.getElementById('status');
-    let originalStatus = statusSelect.value;
-    statusSelect.addEventListener('change', function() {
-        if (this.value === 'finalized' && originalStatus !== 'finalized') {
-            if (!confirm('Changing status to "Finalized" will restrict future edits. Are you sure?')) {
-                this.value = originalStatus;
+    if (statusSelect) {
+        let originalStatus = statusSelect.value;
+        statusSelect.addEventListener('change', function() {
+            if (this.value === 'finalized' && originalStatus !== 'finalized') {
+                if (!confirm('Changing status to "Finalized" will restrict future edits. Are you sure?')) {
+                    this.value = originalStatus;
+                }
             }
-        }
-    });
+        });
+    }
 });
 
-// Form submission confirmation for critical changes
+// 3. Form submission handler - THE MOST IMPORTANT FIX
 document.getElementById('result-form').addEventListener('submit', function(e) {
+    // CRUCIAL: Sync TinyMCE content to the underlying textareas before any other logic runs
+    tinymce.triggerSave();
+
+    // Now, the rest of your original validation and confirmation logic can run correctly
     const status = document.getElementById('status').value;
     const deleteImages = this.querySelectorAll('input[name="delete_images"]:checked');
     const deleteReport = this.querySelector('input[name="delete_radiology_report"]:checked');
-
     let confirmMessage = '';
 
     if (status === 'finalized') {
         confirmMessage += 'You are finalizing this report. ';
     }
-
     if (deleteImages.length > 0) {
         confirmMessage += `${deleteImages.length} image(s) will be deleted. `;
     }
-
     if (deleteReport) {
         confirmMessage += 'The radiology report image will be deleted. ';
     }
@@ -683,7 +694,7 @@ document.getElementById('result-form').addEventListener('submit', function(e) {
     if (confirmMessage) {
         confirmMessage += 'These changes cannot be undone. Continue?';
         if (!confirm(confirmMessage)) {
-            e.preventDefault();
+            e.preventDefault(); // Stop the form submission if user cancels
         }
     }
 });

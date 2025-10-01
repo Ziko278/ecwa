@@ -13,12 +13,12 @@ urlpatterns = [
     path('', ScanDashboardView.as_view(), name='scan_dashboard'),
     path('dashboard/data/', scan_dashboard_data, name='scan_dashboard_data'),
 
-    # -------------------------
-    # Entry Point
-    # -------------------------
     path('entry/', ScanEntryView.as_view(), name='scan_entry'),
     path('verify-patient/', verify_scan_patient_ajax, name='verify_scan_patient_ajax'),
+    path('patient/<int:patient_id>/external-scans/', PatientExternalScanListView.as_view(),name='patient_external_scan_list'),
 
+    path('external-scan-order/<int:order_id>/upload-result/', UploadExternalScanResultView.as_view(),
+        name='upload_external_scan_result'),
 
     # -------------------------
     # Templates

@@ -22,6 +22,12 @@ urlpatterns = [
     # Lab Entry Point
     path('order-entry', LabEntryView.as_view(), name='lab_entry'),
     path('verify-patient/', verify_lab_patient_ajax, name='verify_lab_patient_ajax'),
+    path('patient/<int:patient_id>/external-tests/', PatientExternalLabTestListView.as_view(),
+         name='patient_external_lab_tests'),
+    path(
+        'external-order/<int:order_id>/upload-result/', UploadExternalLabResultView.as_view(),
+        name='upload_external_lab_result'
+    ),
 
     # Patient Lab Tests Management
     path('patient/<int:patient_id>/tests/', PatientLabTestsView.as_view(), name='patient_lab_tests'),
