@@ -2997,7 +2997,7 @@ def search_patients_ajax(request):
 # consultation/views.py
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def doctor_dashboard(request):
     """Doctor's main dashboard view"""
 
