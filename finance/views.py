@@ -53,7 +53,7 @@ class RegistrationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin,
     model = RegistrationPaymentModel
     form_class = RegistrationPaymentForm
     template_name = "finance/registration_payment/create.html"
-    permission_required = "patient.add_patienttransactionmodel"
+    permission_required = "finance.add_patienttransactionmodel"
 
     def get_success_url(self):
         return reverse('registration_payment_detail', kwargs={'pk': self.object.pk})
@@ -90,14 +90,14 @@ class RegistrationPaymentDetailView(LoginRequiredMixin, PermissionRequiredMixin,
     model = RegistrationPaymentModel
     template_name = "finance/registration_payment/detail.html"
     context_object_name = "payment"
-    permission_required = "patient.view_patienttransactionmodel"
+    permission_required = "finance.view_patienttransactionmodel"
 
 
 class RegistrationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = RegistrationPaymentModel
     template_name = "finance/registration_payment/index.html"
     context_object_name = "payments"
-    permission_required = "patient.add_patienttransactionmodel"
+    permission_required = "finance.view_patienttransactionmodel"
 
     def get_queryset(self):
         qs = RegistrationPaymentModel.objects.select_related('registration_fee', 'consultation_fee', 'created_by')
