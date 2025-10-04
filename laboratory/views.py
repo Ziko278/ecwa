@@ -1328,7 +1328,8 @@ class LabTestResultListView(LoginRequiredMixin, PermissionRequiredMixin, ListVie
 
 @login_required
 @permission_required('laboratory.can_verify_lab_result', raise_exception=True)
-def verify_result(request, result_id):
+def verify_result(request, pk):
+    result_id = pk
     """AJAX endpoint to verify a lab result"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
