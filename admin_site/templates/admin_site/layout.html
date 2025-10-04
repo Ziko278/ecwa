@@ -188,14 +188,14 @@
                 </a>
             </li>
             {% endif %}
-            {% if perms.patient.add_registrationfeemodel %}
+            {% if perms.finance.add_patienttransactionmodel %}
             <li>
                 <a href="{% url 'registration_payment_create' %}">
                     <i class="bi bi-circle"></i><span>New Registration Payments</span>
                 </a>
             </li>
             {% endif %}
-            {% if perms.patient.view_registrationfeemodel %}
+            {% if perms.patient.view_patienttransactionmodel %}
             <li>
                 <a href="{% url 'registration_payment_index' %}">
                     <i class="bi bi-circle"></i><span>Registration Payments</span>
