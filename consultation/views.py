@@ -3056,7 +3056,7 @@ def doctor_dashboard(request):
 
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def consultation_page(request, consultation_id):
     """Individual consultation management page"""
     try:
@@ -3134,7 +3134,7 @@ def consultation_page(request, consultation_id):
 
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def consultation_history(request):
     """View consultation history with filters"""
     try:
@@ -3265,7 +3265,7 @@ def consultation_history(request):
 
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def patient_history_view(request, patient_id):
     """Renders the initial patient history page."""
     patient = get_object_or_404(PatientModel, id=patient_id)
@@ -4153,7 +4153,7 @@ def patient_prescriptions(request, patient_id):
 
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def patient_test_results(request, patient_id):
     """View patient test results"""
     try:
@@ -4223,7 +4223,7 @@ def lab_test_result(request, test_id):
 
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def scan_result(request, scan_id):
     """View scan result"""
     try:
@@ -4239,7 +4239,7 @@ def scan_result(request, scan_id):
 
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def print_consultation(request, consultation_id):
     """Print consultation report"""
     try:
@@ -4263,7 +4263,7 @@ def print_consultation(request, consultation_id):
 
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def view_consultation_detail(request, consultation_id):
     """View detailed consultation (read-only)"""
     try:
@@ -4307,7 +4307,7 @@ def view_consultation_detail(request, consultation_id):
 
 
 @login_required
-@permission_required('patient.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
 def new_consultation(request):
     """Create a new consultation (for walk-ins or special cases)"""
     try:

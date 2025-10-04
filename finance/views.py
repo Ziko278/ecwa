@@ -3058,14 +3058,25 @@ def remittance_dashboard_view(request):
     as well as overall statistics.
     """
     # Find all staff who have ever received wallet funding payments
+    today = date.today()
+
     staff_with_transactions = User.objects.filter(
-        patienttransactionmodel__transaction_type='wallet_funding'
+        # Use Q objects to define the conditions in the related model:
+        Q(
+            patienttransactionmodel__transaction_type='wallet_funding',
+            patienttransactionmodel__remittance__isnull=True
+        ) |
+        Q(
+            patienttransactionmodel__transaction_type='consultation_payment',
+            patienttransactionmodel__date=today,
+            patienttransactionmodel__remittance__isnull=True
+        )
     ).distinct()
 
     # Calculate individual balances
     staff_balances = []
     total_outstanding = Decimal('0.00')
-    today = timezone.now().date()
+
     for staff in staff_with_transactions:
         unremitted_txns = PatientTransactionModel.objects.filter(
             received_by=staff,
