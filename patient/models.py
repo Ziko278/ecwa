@@ -206,7 +206,7 @@ class PatientModel(models.Model):
 
     def _build_patient_id(self, setting, counter):
         """Build patient ID from components"""
-        prefix = setting.patient_id_prefix or 'PAT'
+        prefix = setting.patient_id_prefix or ''
         return f"{prefix}{counter}"
 
     def _generate_manual_fallback(self):
