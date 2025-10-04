@@ -23,7 +23,7 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
 import openpyxl
-from openpyxl.styles import Font
+from openpyxl.styles import Font, Alignment, PatternFill
 from admin_site.models import SiteInfoModel
 from consultation.models import ConsultationFeeModel, SpecializationModel, PatientQueueModel
 from finance.forms import FinanceSettingForm, ExpenseCategoryForm, \
@@ -3065,11 +3065,19 @@ def remittance_dashboard_view(request):
     # Calculate individual balances
     staff_balances = []
     total_outstanding = Decimal('0.00')
+    today = timezone.now().date()
     for staff in staff_with_transactions:
         unremitted_txns = PatientTransactionModel.objects.filter(
             received_by=staff,
-            transaction_type='wallet_funding',
             remittance__isnull=True
+        ).filter(
+            # Use Q objects to create the required OR condition:
+            # (wallet_funding, any date) OR (consultation_payment, today's date)
+            Q(transaction_type='wallet_funding') |
+            Q(
+                transaction_type='consultation_payment',
+                date=today  # Filter on the 'date' DateField for today only
+            )
         )
         cash_total = unremitted_txns.filter(payment_method__iexact='cash').aggregate(total=Sum('amount'))['total'] or 0
 
@@ -3099,11 +3107,19 @@ def create_remittance_view(request):
     Allows an admin/accountant to record a remittance from a staff member.
     The staff dropdown only shows users with unremitted funds.
     """
+    today = timezone.now().date()
     # Find users who have unremitted cash transactions to populate the dropdown
     owing_staff_ids = PatientTransactionModel.objects.filter(
-        transaction_type='wallet_funding',
         remittance__isnull=True,
         payment_method__iexact='cash'
+    ).filter(
+        # Use Q objects to create the required OR condition:
+        # (wallet_funding, any date) OR (consultation_payment, today's date)
+        Q(transaction_type='wallet_funding') |
+        Q(
+            transaction_type='consultation_payment',
+            date=today  # Filter on the 'date' DateField for today only
+        )
     ).values_list('received_by_id', flat=True).distinct()
 
     owing_staff = User.objects.filter(id__in=owing_staff_ids)
@@ -3167,10 +3183,19 @@ def get_staff_remittance_details_ajax(request):
 
     try:
         staff = User.objects.get(pk=staff_id)
+        today = timezone.now().date()
+
         unremitted_txns = PatientTransactionModel.objects.filter(
             received_by=staff,
-            transaction_type='wallet_funding',
             remittance__isnull=True
+        ).filter(
+            # Use Q objects to create the required OR condition:
+            # (wallet_funding, any date) OR (consultation_payment, today's date)
+            Q(transaction_type='wallet_funding') |
+            Q(
+                transaction_type='consultation_payment',
+                date=today  # Filter on the 'date' DateField for today only
+            )
         )
         cash_expected = unremitted_txns.filter(payment_method__iexact='cash').aggregate(total=Sum('amount'))[
                             'total'] or 0
