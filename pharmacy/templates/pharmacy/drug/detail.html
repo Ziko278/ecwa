@@ -216,7 +216,7 @@
                             <td>{{ so.get_reason_display }}</td>
                             <td>₦{{ so.worth|floatformat:2|intcomma }}</td>
                             <td>{{ so.created_at|date:"M d, Y H:i" }}</td>
-                            <td>{% if so.created_by %}{{ so.created_by.get_full_name|default:so.created_by.username|title }}{% else %}N/A{% endif %}</td>
+                            <td>{% if so.created_by %}{{ so.created_by.user_staff_profile|default:so.created_by.username|title }}{% else %}N/A{% endif %}</td>
                         </tr>
                         {% empty %}
                         <tr><td colspan="5" class="text-center">No recent stock outs found for this drug.</td></tr>
@@ -241,7 +241,7 @@
                         <tr>
                             <td>{{ transfer.quantity|floatformat:0|intcomma }}</td>
                             <td>{{ transfer.transferred_at|date:"M d, Y H:i" }}</td>
-                            <td>{% if transfer.transferred_by %}{{ transfer.transferred_by.get_full_name|default:transfer.transferred_by.username|title }}{% else %}N/A{% endif %}</td>
+                            <td>{% if transfer.transferred_by %}{{ transfer.transferred_by.user_staff_profile|default:transfer.transferred_by.username|title }}{% else %}N/A{% endif %}</td>
                             <td>{% if transfer.notes %}{{ transfer.notes }}{% else %}---{% endif %}</td>
                         </tr>
                         {% empty %}

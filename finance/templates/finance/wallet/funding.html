@@ -368,10 +368,118 @@
         services: [] // NEW
     };
 
+    // Server-provided auto-open values (if any)
+{% if patient %}
+  const AUTO_PATIENT_ID = "{{ patient.id }}";
+  const AUTO_PATIENT_CARD = "{{ patient.card_number|escapejs }}";
+  const AUTO_PATIENT_NAME = "{{ patient.full_name|escapejs }}";
+  const AUTO_PATIENT_PHONE = "{{ patient.phone|escapejs }}";
+  const AUTO_PATIENT_AGE = "{{ patient.age|default:''|escapejs }}";
+  const AUTO_PATIENT_GENDER = "{{ patient.gender|default:''|escapejs }}";
+  const SERVER_WALLET_BALANCE = {{ patient.wallet.amount|default:0 }};
+{% else %}
+  const AUTO_PATIENT_ID = null;
+  const AUTO_PATIENT_CARD = null;
+  const AUTO_PATIENT_NAME = null;
+  const AUTO_PATIENT_PHONE = null;
+  const AUTO_PATIENT_AGE = null;
+  const AUTO_PATIENT_GENDER = null;
+  const SERVER_WALLET_BALANCE = 0;
+{% endif %}
+
+{% if amount %}
+  const AUTO_AMOUNT = {{ amount }};
+{% else %}
+  const AUTO_AMOUNT = null;
+{% endif %}
+
+{% if redirect %}
+  const AUTO_REDIRECT = "{{ redirect|escapejs }}";
+{% else %}
+  const AUTO_REDIRECT = null;
+{% endif %}
+
+
+// Populate patient info UI using server-provided values (no AJAX)
+function populatePatientFromServer() {
+    if (!AUTO_PATIENT_ID) return;
+
+    // build a minimal object compatible with displayPatientInfo expectations
+    const serverData = {
+        patient: {
+            id: AUTO_PATIENT_ID,
+            full_name: AUTO_PATIENT_NAME || 'Unknown',
+            card_number: AUTO_PATIENT_CARD || '',
+            phone: AUTO_PATIENT_PHONE || '',
+            age: AUTO_PATIENT_AGE || '',
+            gender: AUTO_PATIENT_GENDER || ''
+        },
+        wallet: {
+            // we'll format on the client
+            balance: parseFloat(SERVER_WALLET_BALANCE || 0),
+            formatted_balance: formatCurrency(parseFloat(SERVER_WALLET_BALANCE || 0))
+        },
+        insurance: {
+            has_insurance: false,
+            hmo_name: '',
+            plan_name: ''
+        }
+    };
+
+    // Use the same DOM targets as displayPatientInfo
+    $('#patient-info').html(`
+        <h5>${serverData.patient.full_name}</h5>
+        <p class="mb-1"><strong>Card Number:</strong> ${serverData.patient.card_number}</p>
+        <p class="mb-1"><strong>Phone:</strong> ${serverData.patient.phone}</p>
+        <p class="mb-1"><strong>Age:</strong> ${serverData.patient.age}</p>
+        <p class="mb-1"><strong>Gender:</strong> ${serverData.patient.gender}</p>
+    `);
+
+    $('#wallet-balance').text(serverData.wallet.formatted_balance);
+
+    // set hidden field patient id
+    $('#patient_id').val(serverData.patient.id);
+    $('#fund_and_pay').attr('checked', true);
+    $('#payment-type-section').removeClass('hidden');
+    $('#payment_type').val(AUTO_REDIRECT);
+
+}
+
+
     // NOTE: Replace this with the actual URL for your funding process view
     const processFundingUrl = "{% url 'process_funding' %}";
 
     $(document).ready(function() {
+        // If the view provided a patient, skip verification and show the funding form directly
+if (AUTO_PATIENT_ID) {
+    // 1. Populate patient info from server data (no need to click Verify)
+    populatePatientFromServer();
+
+    // 2. Update step indicators: mark step1 & step2 completed, step3 active
+    $('#step-1').removeClass('active').addClass('completed');
+    $('#step-2').removeClass('active').addClass('completed');
+    $('#step-3').addClass('active');
+
+    // 3. Hide verification and details sections, show funding section
+    $('#patient-verification-section, #patient-details-section').addClass('hidden');
+    $('#funding-section').removeClass('hidden');
+
+    // 4. If an amount was passed, prefill funding amount + suggested amount
+    if (AUTO_AMOUNT && parseFloat(AUTO_AMOUNT) > 0) {
+        const amt = parseFloat(AUTO_AMOUNT);
+        $('#funding_amount').val(amt.toFixed(2));
+        $('#suggested-amount').text(formatCurrency(amt));
+    } else {
+        // If you want to default suggested amount to 0 or to pending total, keep as-is
+    }
+
+    // Optional: scroll to funding form (UX)
+    setTimeout(function() {
+        document.getElementById('funding_amount').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+}
+
+
         // Patient verification form
         $('#patient-verification-form').on('submit', function(e) {
             e.preventDefault();

@@ -1,3 +1,5 @@
 from django.contrib import admin
+from insurance.models import InsuranceClaimModel
 
-# Register your models here.
+
+admin.site.register(InsuranceClaimModel)

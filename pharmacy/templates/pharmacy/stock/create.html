@@ -335,9 +335,37 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="small text-muted">${escapeHtml(item.generic_name)} • ₦${Number(item.price).toFixed(2)}</div>`;
                 el.dataset.drugId = item.id;
                 el.dataset.displayText = displayText;
+                el.dataset.sellingPrice = item.price;
+                el.dataset.lastCostPrice = item.last_cost_price;
                 el.addEventListener('click', function() {
                     const chosenId = this.dataset.drugId;
                     const chosenText = this.dataset.displayText;
+
+                     const sellingPrice = this.dataset.sellingPrice;
+                     const lastCostPrice = this.dataset.lastCostPrice;
+
+                    // Find the parent form row to scope our search for inputs
+                    const formRow = this.closest('.stock-item-form');
+                    if (!formRow) return;
+
+                    // Find the input fields within this specific form row
+                    const sellingPriceInput = formRow.querySelector('input[name$="-selling_price"]');
+                    const costPriceInput = formRow.querySelector('input[name$="-unit_cost_price"]');
+
+                    // Populate the selling price field
+                    if (sellingPriceInput && sellingPrice && sellingPrice !== 'undefined') {
+                        sellingPriceInput.value = Number(sellingPrice).toFixed(2);
+                    }
+
+                    // Populate the cost price field
+                    if (costPriceInput) {
+                        // Data attributes convert a null value to the string "null"
+                        if (lastCostPrice && lastCostPrice !== 'null' && lastCostPrice !== 'undefined') {
+                            costPriceInput.value = Number(lastCostPrice).toFixed(2);
+                        } else {
+                            costPriceInput.value = ''; // Clear the field if no last cost price exists
+                        }
+                    }
 
                     // set the hidden select/input to chosen id
                     if (hiddenField.tagName.toLowerCase() === 'select') {
@@ -367,7 +395,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (selectedLabelContainer) {
                         selectedLabelContainer.innerHTML =
                           `<span class="badge bg-primary selected-drug-label">${escapeHtml(chosenText)}</span>
-                           <button type="button" class="btn btn-sm btn-outline-light ms-2 edit-selected-drug">Change</button>`;
+                           <button type="button" class="btn btn-sm btn-outline-danger ms-2 edit-selected-drug">Change</button>`;
                         // add edit behaviour
                         const editBtn = selectedLabelContainer.querySelector('.edit-selected-drug');
                         if (editBtn) {

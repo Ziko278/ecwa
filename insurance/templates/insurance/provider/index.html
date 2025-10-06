@@ -31,7 +31,6 @@
                         <th scope="col">#</th>
                         <th scope="col">Provider</th>
                         <th scope="col">Type</th>
-                        <th scope="col">Contact</th>
                         <th scope="col">Status</th>
                         <th scope="col">Created</th>
                         <th scope="col" class="text-center">Action</th>
@@ -43,11 +42,7 @@
                         <th scope="row">{{ forloop.counter }}</th>
                         <td title="created at {{ provider.created_at|date }}">{{ provider.name|upper }}</td>
                         <td>{{ provider.get_provider_type_display }}</td>
-                        <td>
-                            {% if provider.contact_person %}{{ provider.contact_person }}<br>{% endif %}
-                            {% if provider.contact_email %}<a href="mailto:{{ provider.contact_email }}">{{ provider.contact_email }}</a><br>{% endif %}
-                            {% if provider.contact_phone_number %}{{ provider.contact_phone_number }}{% endif %}
-                        </td>
+
                         <td>
                             {% if provider.status == 'active' %}
                                 <span class="badge bg-success">ACTIVE</span>

@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.validators import MinValueValidator
 from django.contrib.auth.models import User
 from datetime import date
@@ -178,6 +178,15 @@ class DrugModel(models.Model):
     def is_low_stock(self):
         return self.total_quantity <= self.minimum_stock_level
 
+    @property
+    def last_cost_price(self):
+        """
+        Returns the unit_cost_price from the most recent DrugStockModel entry.
+        """
+
+        last_stock = DrugStockModel.objects.filter(drug=self).order_by('-id').first()
+        return last_stock.unit_cost_price if last_stock else 0
+
 
 # 5. DRUG BATCH MODEL (For tracking different purchases)
 class DrugBatchModel(models.Model):
@@ -284,37 +293,68 @@ class DrugStockModel(models.Model):
         return False
 
     def save(self, *args, **kwargs):
-        # Auto-calculate fields
-        # Convert quantity_bought to Decimal for safe multiplication
+        # Auto-calculate fields before saving
         quantity_bought_decimal = Decimal(str(self.quantity_bought))
-
         if not self.total_cost_price:
             self.total_cost_price = self.unit_cost_price * quantity_bought_decimal
 
-        # Ensure quantity_left is initialized before use, then convert to Decimal
-        if not self.quantity_left:
+        if self.quantity_left is None or self.quantity_left == 0:
             self.quantity_left = self.quantity_bought
         quantity_left_decimal = Decimal(str(self.quantity_left))
-
         self.current_worth = quantity_left_decimal * self.selling_price
 
-        # Auto-assign to last batch if none specified
         if not self.batch:
             last_batch = DrugBatchModel.objects.last()
-            self.batch = last_batch if last_batch else None
+            self.batch = last_batch
 
-        # Check if this is a new stock entry
-        is_new = not self.id
+        # Use a database transaction to ensure data integrity
+        with transaction.atomic():
+            if not self.pk:  # This is a new entry (creation)
+                super().save(*args, **kwargs)  # Save the new stock entry first
+                # Now, update the parent drug's quantity
+                if self.location == 'store':
+                    self.drug.store_quantity += self.quantity_bought
+                else:
+                    self.drug.pharmacy_quantity += self.quantity_bought
+                self.drug.save()
+            else:  # This is an existing entry (update)
+                # Get the original state from the database *before* saving changes
+                original_stock = DrugStockModel.objects.get(pk=self.pk)
 
-        super().save(*args, **kwargs)
+                # Step 1: Reverse the old quantities from the parent drug
+                if original_stock.location == 'store':
+                    self.drug.store_quantity -= original_stock.quantity_bought
+                else:
+                    self.drug.pharmacy_quantity -= original_stock.quantity_bought
 
-        # Update drug quantities
-        if is_new:
-            if self.location == 'store':
-                self.drug.store_quantity += self.quantity_bought
+                # Step 2: Save the current stock model with its changes
+                super().save(*args, **kwargs)
+
+                # Step 3: Apply the new quantities to the parent drug
+                if self.location == 'store':
+                    self.drug.store_quantity += self.quantity_bought
+                else:
+                    self.drug.pharmacy_quantity += self.quantity_bought
+
+                # Step 4: Save the updated parent drug
+                self.drug.save()
+
+    def delete(self, *args, **kwargs):
+        # Use a database transaction to ensure data integrity
+        with transaction.atomic():
+            # Get the values before this instance is deleted
+            quantity_to_subtract = self.quantity_bought
+            location = self.location
+
+            # Update the parent drug by subtracting the quantity
+            if location == 'store':
+                self.drug.store_quantity -= quantity_to_subtract
             else:
-                self.drug.pharmacy_quantity += self.quantity_bought
+                self.drug.pharmacy_quantity -= quantity_to_subtract
             self.drug.save()
+
+            # Call the original delete method to complete the deletion
+            super().delete(*args, **kwargs)
 
 
 # 7. DRUG STOCK OUT MODEL (Track removals/sales/wastage)

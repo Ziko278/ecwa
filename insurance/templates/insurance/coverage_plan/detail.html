@@ -18,6 +18,10 @@
                 <a href="{% url 'coverage_plan_update' plan.pk %}" class="btn btn-primary">
                     <i class="fas fa-edit me-1"></i>Edit Plan
                 </a>
+                <a href="{% url 'coverage_plan_delete' plan.pk %}" class="btn btn-danger">
+                    <i class="fas fa-arrow-left me-1"></i>Delete
+                </a>
+
             </div>
         </div>
         <div class="card-body">
@@ -59,6 +63,12 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="radiology-tab" data-bs-toggle="tab" data-bs-target="#radiology" type="button" role="tab">
                         <i class="fas fa-x-ray me-1"></i>Radiology Coverage
+                    </button>
+                </li>
+
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="surgery-tab" data-bs-toggle="tab" data-bs-target="#surgery" type="button" role="tab">
+                        <i class="fas fa-scalpel me-1"></i>Surgery Coverage
                     </button>
                 </li>
             </ul>
@@ -179,6 +189,45 @@
                         </div>
                         {% else %}
                         <div class="alert alert-light"><i class="fas fa-info-circle me-2"></i>Since the coverage type is set to <strong>"{{ plan.get_radiology_coverage_display }}"</strong>, no specific items need to be managed here.</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="surgery" role="tabpanel">
+                    <div class="management-panel" data-plan-pk="{{ plan.pk }}">
+                        <h5>Current Coverage Type: <span class="badge bg-info">{{ plan.get_surgery_coverage_display }}</span></h5>
+                        {% if plan.surgery_coverage == 'include_selected' or plan.surgery_coverage == 'exclude_selected' %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Currently Selected Items</h6>
+                                <ul class="list-group" id="surgery-list" data-add-url="{% url 'coverage_plan_add_surgery' pk=plan.pk %}">
+                                    {% for item in plan.selected_surgeries.all %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center" id="surgery-item-{{ item.id }}">
+                                        {{ item.name }}
+                                        <button class="btn btn-sm btn-danger remove-item-btn"
+                                                data-remove-url="{% url 'coverage_plan_remove_surgery' pk=plan.pk surgery_id=item.id %}"
+                                                data-target-id="surgery-item-{{ item.id }}">
+                                            <i class="fas fa-trash"></i> Remove
+                                        </button>
+                                    </li>
+                                    {% empty %}
+                                    <li class="list-group-item text-muted">No items have been selected yet.</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Add New Item</h6>
+                                <div class="mb-3">
+                                    <input type="text" class="form-control item-search-input" id="surgery-search" placeholder="Search for Surgery to add..."
+                                           data-search-url="{% url 'search_surgeries' %}"
+                                           data-results-target="surgery-search-results"
+                                           data-item-type="surgery">
+                                </div>
+                                <div id="surgery-search-results"></div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-light"><i class="fas fa-info-circle me-2"></i>Since the coverage type is set to <strong>"{{ plan.get_surgery_coverage_display }}"</strong>, no specific items need to be managed here.</div>
                         {% endif %}
                     </div>
                 </div>
@@ -310,6 +359,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         removeUrl = "{% url 'coverage_plan_remove_lab' pk=0 lab_id=1 %}".replace('0', planId).replace('1', newItem.id);
                     } else if (itemType === 'radiology') {
                         removeUrl = "{% url 'coverage_plan_remove_radiology' pk=0 scan_id=1 %}".replace('0', planId).replace('1', newItem.id);
+                    } else if (itemType === 'surgery') {
+                        removeUrl = "{% url 'coverage_plan_remove_surgery' pk=0 surgery_id=1 %}".replace('0', planId).replace('1', newItem.id);
                     }
 
                     const newRow = `

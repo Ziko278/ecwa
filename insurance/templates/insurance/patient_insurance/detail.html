@@ -92,12 +92,12 @@
                         {% endif %}
                     </p>
                 </div>
-                {% if policy.is_verified %}
-                <div class="col-md-4">
-                    <strong>Verified By:</strong>
-                    <p>{{ policy.verified_by.get_full_name|default:policy.verified_by.username }} on {{ policy.verification_date|date:"M d, Y h:i A" }}</p>
-                </div>
-                {% endif %}
+<!--                {% if policy.is_verified %}-->
+<!--                <div class="col-md-4">-->
+<!--                    <strong>Verified By:</strong>-->
+<!--                    <p>{{ policy.verified_by }} </p>-->
+<!--                </div>-->
+<!--                {% endif %}-->
             </div>
 
             <hr class="my-4">
@@ -106,7 +106,7 @@
             <div class="row mb-3">
                 <div class="col-md-4">
                     <strong>Created By:</strong>
-                    <p>{{ policy.created_by.get_full_name|default:policy.created_by.username }}</p>
+                    <p>{{ policy.created_by.user_staff_profile.staff|default:policy.created_by.username }}</p>
                 </div>
                 <div class="col-md-4">
                     <strong>Created At:</strong>

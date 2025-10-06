@@ -1,0 +1,52 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Drug Stock Entry</h4>
+            <p>
+                You are about to delete a specific stock entry for the drug:
+                <strong>{{ stock.drug|title }}</strong>
+            </p>
+
+            <ul class="list-group list-group-flush mb-3">
+                <li class="list-group-item"><strong>Batch Name:</strong> {{ stock.batch.name|upper }}</li>
+                <li class="list-group-item"><strong>Batch Number:</strong> {{ stock.batch_number|default:"N/A" }}</li>
+                <li class="list-group-item"><strong>Quantity to be Removed:</strong> {{ stock.quantity_bought }} units</li>
+                <li class="list-group-item"><strong>Expiry Date:</strong> {{ stock.expiry_date|date:"F d, Y"|default:"N/A" }}</li>
+                <li class="list-group-item"><strong>Location:</strong> {{ stock.get_location_display }}</li>
+            </ul>
+
+            <p class="text-danger">
+                <strong>Warning:</strong> Deleting this stock entry will permanently remove it from your records.
+                The quantity ({{ stock.quantity_bought }} units) will be subtracted from the drug's overall total in the {{ stock.get_location_display }}.
+            </p>
+
+            {% if stock.quantity_left != stock.quantity_bought %}
+                <div class="alert alert-danger" role="alert">
+                    <h5 class="alert-heading">Action Prohibited!</h5>
+                    <p>
+                        This stock entry cannot be deleted because it has already been partially used. The quantity left ({{ stock.quantity_left }}) is different from the quantity originally bought ({{ stock.quantity_bought }}).
+                    </p>
+                    <hr>
+                    <p class="mb-0">
+                        Only full, unused stock entries can be deleted to maintain accurate inventory history. If this stock is damaged or needs to be removed, please use the "Stock Out" functionality instead.
+                    </p>
+                </div>
+                <a class="btn btn-secondary" href="{% url 'drug_batch_detail' pk=stock.batch.pk %}"> Go Back to Batch Details</a>
+            {% else %}
+                 <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+
+                <form style="display:inline" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success">Proceed with Deletion</button>
+                </form>
+                <a class="btn btn-danger" href="{% url 'drug_batch_detail' pk=stock.batch.pk %}"> Cancel</a>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endblock %}

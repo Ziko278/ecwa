@@ -15,7 +15,35 @@
                 <i class="fas fa-plus me-1"></i>Add New Policy
             </a>
         </div>
+
         <div class="card-body">
+            <!-- Add this after card-header, inside card-body -->
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <form method="get" class="d-flex gap-2">
+                        <input type="text" name="q" class="form-control" placeholder="Search by patient name, card number, policy number, or HMO" value="{{ search_query }}">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        {% if search_query %}
+                        <a href="{% url 'patient_insurance_list' %}" class="btn btn-secondary">Clear</a>
+                        {% endif %}
+                    </form>
+                </div>
+                <div class="col-md-6">
+                    <div class="btn-group w-100" role="group">
+                        <a href="?status=all" class="btn btn-outline-primary {% if current_status_filter == 'all' %}active{% endif %}">
+                            All Policies
+                        </a>
+                        <a href="?status=active" class="btn btn-outline-success {% if current_status_filter == 'active' %}active{% endif %}">
+                            Active Only
+                        </a>
+                        <a href="?status=inactive" class="btn btn-outline-danger {% if current_status_filter == 'inactive' %}active{% endif %}">
+                            Inactive Only
+                        </a>
+                    </div>
+                </div>
+            </div>
             <div class="table-responsive">
                 <table class="table table-hover table-striped">
                     <thead>

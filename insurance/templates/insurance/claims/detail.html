@@ -1,0 +1,253 @@
+{% extends 'admin_site/layout.html' %}
+{% load static humanize %}
+{% block 'main' %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">
+            <i class="fas fa-file-invoice-dollar me-2"></i>
+            Claim Details: <span class="text-primary">{{ claim.claim_number }}</span>
+        </h4>
+        <a href="{% url 'insurance_claim_list' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back to All Claims
+        </a>
+    </div>
+
+    {% if messages %}
+    <div class="row">
+        <div class="col-12">
+            {% for message in messages %}
+            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Claim Information</h5>
+                    <span class="badge fs-6
+                        {% if claim.status == 'pending' %}bg-warning
+                        {% elif claim.status == 'processing' %}bg-info
+                        {% elif claim.status == 'approved' or claim.status == 'partially_approved' %}bg-success
+                        {% elif claim.status == 'rejected' %}bg-danger
+                        {% else %}bg-secondary{% endif %}">
+                        {{ claim.get_status_display }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-4">Claim Number</dt>
+                        <dd class="col-sm-8">{{ claim.claim_number }}</dd>
+
+                        <dt class="col-sm-4">Service Type</dt>
+                        <dd class="col-sm-8">{{ claim.get_claim_type_display }}</dd>
+
+                        <dt class="col-sm-4">Service Date</dt>
+                        <dd class="col-sm-8">{{ claim.service_date|date:"F j, Y, P" }}</dd>
+
+                        <dt class="col-sm-4">Claim Filed On</dt>
+                        <dd class="col-sm-8">{{ claim.created_at|date:"F j, Y, P" }}</dd>
+
+                        <dt class="col-sm-4">Related Service Details</dt>
+                        <dd class="col-sm-12">
+                            {# First, check if the related service object actually exists #}
+                            {% if claim.content_object %}
+                                {# Check the model name of the content_type to decide what to render #}
+                                {% with service=claim.content_object %}
+                                    <div class="p-3 border rounded bg-light">
+
+                                        {# --- FOR DRUG ORDERS --- #}
+                                        {% if claim.content_type.model == 'drugordermodel' %}
+                                            <h6 class="fw-bold border-bottom pb-2 mb-2">Drug Order: <a href="{{ service.get_absolute_url }}">{{ service.order_number }}</a></h6>
+                                            <dl class="row mb-0">
+                                                <dt class="col-5">Drug Name:</dt>
+                                                <dd class="col-7">{{ service.drug }}</dd>
+
+                                                <dt class="col-5">Unit Price:</dt>
+                                                <dd class="col-7">₦{{ service.drug.selling_price|intcomma }}</dd>
+
+                                                <dt class="col-5">Quantity:</dt>
+                                                <dd class="col-7">{{ service.quantity_ordered }}</dd>
+
+                                                <dt class="col-5">Total:</dt>
+                                                <dd class="col-7 fw-bold">₦{{ claim.total_amount|intcomma }}</dd>
+                                            </dl>
+
+                                        {# --- FOR LAB TEST ORDERS --- #}
+                                        {% elif claim.content_type.model == 'labtestordermodel' %}
+                                            <h6 class="fw-bold border-bottom pb-2 mb-2">Lab Test Order: <a href="{{ service.get_absolute_url }}">{{ service.order_number }}</a></h6>
+                                            <dl class="row mb-0">
+                                                <dt class="col-5">Test Name:</dt>
+                                                <dd class="col-7">{{ service.template.name }}</dd>
+
+                                                <dt class="col-5">Total Cost:</dt>
+                                                <dd class="col-7 fw-bold">₦{{ claim.total_amount|intcomma }}</dd>
+                                            </dl>
+
+                                        {# --- FOR SCAN ORDERS --- #}
+                                        {% elif claim.content_type.model == 'scanordermodel' %}
+                                            <h6 class="fw-bold border-bottom pb-2 mb-2">Scan Order: <a href="{{ service.get_absolute_url }}">{{ service.order_number }}</a></h6>
+                                            <dl class="row mb-0">
+                                                <dt class="col-5">Scan Name:</dt>
+                                                <dd class="col-7">{{ service.template.name }}</dd>
+
+                                                <dt class="col-5">Total Cost:</dt>
+                                                <dd class="col-7 fw-bold">₦{{ claim.total_amount|intcomma }}</dd>
+                                            </dl>
+
+                                        {# --- FOR SURGERY --- #}
+                                        {% elif claim.content_type.model == 'surgery' %}
+                                            <h6 class="fw-bold border-bottom pb-2 mb-2">Surgery: <a href="{{ service.get_absolute_url }}">{{ service.surgery_number }}</a></h6>
+                                            <dl class="row mb-0">
+                                                <dt class="col-5">Procedure:</dt>
+                                                <dd class="col-7">{{ service.surgery_type.name }}</dd>
+
+                                                <dt class="col-5">Total Cost:</dt>
+                                                <dd class="col-7 fw-bold">₦{{ claim.total_amount|intcomma }}</dd>
+                                            </dl>
+
+                                        {# --- Fallback for any other type --- #}
+                                        {% else %}
+                                            <p>
+                                                <a href="{{ service.get_absolute_url }}">{{ service }}</a>
+                                            </p>
+                                        {% endif %}
+                                    </div>
+                                {% endwith %}
+                            {% else %}
+                                <span class="text-muted">Service record not available or has been deleted.</span>
+                            {% endif %}
+                        </dd>
+                    </dl>
+
+                    <hr>
+                    <h5 class="mb-3">Financial Summary</h5>
+                    <dl class="row fs-5">
+                        <dt class="col-sm-4">Total Service Cost</dt>
+                        <dd class="col-sm-8">₦{{ claim.total_amount|intcomma }}</dd>
+
+                        <dt class="col-sm-4">Amount Covered (HMO)</dt>
+                        <dd class="col-sm-8 text-success fw-bold">₦{{ claim.covered_amount|intcomma }}</dd>
+
+                        <dt class="col-sm-4">Patient Responsibility</dt>
+                        <dd class="col-sm-8 text-danger fw-bold">₦{{ claim.patient_amount|intcomma }}</dd>
+
+                        <dt class="col-sm-4">Coverage Percentage</dt>
+                        <dd class="col-sm-8">{{ coverage_percentage }}%</dd>
+                    </dl>
+
+                    {% if claim.status != 'pending' %}
+                    <hr>
+                    <h5 class="mb-3">Processing Details</h5>
+                    <dl class="row">
+                        <dt class="col-sm-4">Processed By</dt>
+                        <dd class="col-sm-8">{{ claim.processed_by.user_staff_profile.staff|default:claim.processed_by.username }}</dd>
+
+                        <dt class="col-sm-4">Processed On</dt>
+                        <dd class="col-sm-8">{{ claim.processed_date|naturaltime }} ({{ claim.processed_date|date:"F j, Y, P" }})</dd>
+
+                        {% if claim.status == 'rejected' and claim.rejection_reason %}
+                        <dt class="col-sm-4">Rejection Reason</dt>
+                        <dd class="col-sm-8 text-danger">{{ claim.rejection_reason }}</dd>
+                        {% endif %}
+
+                        {% if claim.notes %}
+                        <dt class="col-sm-4">Notes</dt>
+                        <dd class="col-sm-8">
+                            <pre class="bg-light p-2 rounded">{{ claim.notes }}</pre>
+                        </dd>
+                        {% endif %}
+                    </dl>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        {% if claim.status == 'pending' %}
+                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#processClaimModal">
+                                <i class="fas fa-check me-2"></i>Process / Approve
+                            </button>
+                            <a href="{% url 'insurance_claim_decline' pk=claim.pk %}" class="btn btn-danger">
+                                <i class="fas fa-times me-2"></i>Reject Claim
+                            </a>
+                            <hr>
+                        {% endif %}
+
+                        {% if claim.status == 'pending' %}
+                        <a href="% url 'insurance_claim_delete' pk=claim.pk %}" class="btn btn-outline-danger">
+                            <i class="fas fa-trash me-2"></i>Delete Claim
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Patient & Policy</h5>
+                </div>
+                <div class="card-body">
+                    <dl>
+                        <dt>Patient Name</dt>
+                        <dd>{{ claim.patient_insurance.patient|title }}</dd>
+
+                        <dt>Patient ID</dt>
+                        <dd>{{ claim.patient_insurance.patient.card_number }}</dd>
+
+                        <dt>HMO / Insurer</dt>
+                        <dd>{{ claim.patient_insurance.hmo.name }}</dd>
+
+                        <dt>Policy Number</dt>
+                        <dd>{{ claim.patient_insurance.policy_number }}</dd>
+
+                        <dt>Coverage Plan</dt>
+                        <dd>{{ claim.patient_insurance.coverage_plan.name }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="processClaimModal" tabindex="-1" aria-labelledby="processClaimModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form action="% url 'approve_claim' pk=claim.pk %}" method="post">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="processClaimModalLabel">Process Claim: {{ claim.claim_number }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <p>Review the amounts below. You can approve the initially covered amount or enter a different amount as specified by the HMO.</p>
+            <div class="mb-3">
+                <label class="form-label">Total Service Cost</label>
+                <input type="text" class="form-control" value="₦{{ claim.total_amount|intcomma }}" readonly disabled>
+            </div>
+            <div class="mb-3">
+                <label for="approved_amount" class="form-label">Amount to Approve (HMO Pays)</label>
+                <input type="number" class="form-control" name="approved_amount" id="approved_amount"
+                       value="{{ claim.covered_amount }}" step="0.01" min="0" max="{{ claim.total_amount }}" required>
+            </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">Save and Approve</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

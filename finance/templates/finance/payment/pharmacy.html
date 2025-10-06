@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', function() {
   fundBtn.addEventListener('click', () => {
     const total = computeTotal();
     const shortfall = Math.max(0, total - walletBalance);
-    const url = `{% url 'patient_funding' %}?amount=${shortfall.toFixed(2)}&redirect=pharmacy_payment&patient_id={{ patient.id }}`;
+    const url = `{% url 'patient_funding' %}?amount=${shortfall.toFixed(2)}&redirect=drug&patient_id={{ patient.id }}`;
     window.location.href = url;
   });
 

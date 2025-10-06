@@ -12,11 +12,11 @@
                         <i class="bi bi-arrow-left-circle me-1"></i> Back to Stock Overview
                     </a>
                     <a href="{% url 'drug_batch_update' batch.pk %}" class="btn btn-warning btn-sm me-2"
-                        title="Edit Batch Details (Only last batch is editable)">
+                        title="Edit Batch Details">
                         <i class="bi bi-pencil-square me-1"></i> Edit Batch
                     </a>
                     <a href="{% url 'drug_batch_delete' batch.pk %}" class="btn btn-danger btn-sm"
-                        title="Delete Batch (Only last batch is deletable)">
+                        title="Delete Batch">
                         <i class="bi bi-trash me-1"></i> Delete Batch
                     </a>
                 </div>
@@ -26,16 +26,16 @@
 
             <div class="mb-4 p-3 bg-light rounded shadow-sm">
                 <h5>Batch Information</h5>
-                <p><strong>Batch Name:</strong> {{ batch.name|upper }}</p>
-                <p><strong>Date:</strong> {{ batch.date|date:"F d, Y" }}</p>
-                <p><strong>Created At:</strong> {{ batch.created_at|date:"F d, Y H:i" }}</p>
+                <p class="mb-1"><strong>Batch Name:</strong> {{ batch.name|upper }}</p>
+                <p class="mb-1"><strong>Date:</strong> {{ batch.date|date:"F d, Y" }}</p>
+                <p class="mb-0"><strong>Created At:</strong> {{ batch.created_at|date:"F d, Y H:i" }}</p>
             </div>
 
             <h5 class="card-title mt-4">Drugs in this Batch ({{ stock_items|length }} entries)</h5>
 
             {% if stock_items %}
                 <div class="table-responsive">
-                    <table class="table table-borderless datatable">
+                    <table class="table table-hover datatable">
                         <thead>
                         <tr>
                             <th scope="col">#</th>
@@ -66,10 +66,8 @@
                                 {% if stock.expiry_date %}{{ stock.expiry_date|date:"F d, Y" }}{% else %}N/A{% endif %}
                             </td>
                             <td>{{ stock.batch_number }}</td>
-
                             <td class="text-center">
                                 <div class="btn-group" role="group" aria-label="Stock Actions">
-
                                     <button type="button" class="btn btn-sm btn-outline-warning"
                                             data-bs-toggle="modal" data-bs-target="#editStockModal{{ stock.pk }}"
                                             title="Edit Stock"><i class="bi bi-pencil-square"></i></button>
@@ -90,94 +88,98 @@
 </div>
 
 {% for stock in stock_items %}
-    {# Edit Stock Modal for each stock item #}
     <div class="modal fade" id="editStockModal{{ stock.pk }}" tabindex="-1" aria-labelledby="editStockModalLabel{{ stock.pk }}" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <form method="post" action="{% url 'drug_stock_update' stock.pk %}">
                     {% csrf_token %}
                     <div class="modal-header">
-                        <h5 class="modal-title" id="editStockModalLabel{{ stock.pk }}">Edit Stock: {{ stock.drug.name|title }}</h5>
+                        <h5 class="modal-title" id="editStockModalLabel{{ stock.pk }}">Edit Stock: {{ stock.drug|title }}</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        {% with form=update_forms|get_item:stock.pk %} {# Access the specific form for this stock item #}
-                            {{ update_forms }}
-                        {% if form %}
-                                <div class="form-floating mb-3">
-                                    {{ form.drug }}
-                                    <label for="{{ form.drug.id_for_label }}">{{ form.drug.label }}</label>
-                                    {% if form.drug.errors %}<div class="text-danger">{{ form.drug.errors }}</div>{% endif %}
-                                </div>
-                                <div class="form-floating mb-3">
-                                    {{ form.quantity_bought }}
-                                    <label for="{{ form.quantity_bought.id_for_label }}">{{ form.quantity_bought.label }}</label>
-                                    {% if form.quantity_bought.errors %}<div class="text-danger">{{ form.quantity_bought.errors }}</div>{% endif %}
-                                </div>
-                                <div class="form-floating mb-3">
-                                    {{ form.quantity_left }} {# Display quantity_left but make it read-only #}
-                                    <label for="{{ form.quantity_left.id_for_label }}">Quantity Left (Read-only)</label>
-                                    <input type="hidden" name="{{ form.quantity_left.name }}" value="{{ form.quantity_left.value }}"> {# Ensure hidden input sends value #}
-                                </div>
-                                <div class="form-floating mb-3">
-                                    {{ form.unit_cost_price }}
-                                    <label for="{{ form.unit_cost_price.id_for_label }}">{{ form.unit_cost_price.label }}</label>
-                                    {% if form.unit_cost_price.errors %}<div class="text-danger">{{ form.unit_cost_price.errors }}</div>{% endif %}
-                                </div>
-                                <div class="form-floating mb-3">
-                                    {{ form.selling_price }}
-                                    <label for="{{ form.selling_price.id_for_label }}">{{ form.selling_price.label }}</label>
-                                    {% if form.selling_price.errors %}<div class="text-danger">{{ form.selling_price.errors }}</div>{% endif %}
-                                </div>
-                                <div class="form-floating mb-3">
-                                    {{ form.location }}
-                                    <label for="{{ form.location.id_for_label }}">{{ form.location.label }}</label>
-                                    {% if form.location.errors %}<div class="text-danger">{{ form.location.errors }}</div>{% endif %}
-                                </div>
-                                <div class="form-floating mb-3">
-                                    {{ form.expiry_date }}
-                                    <label for="{{ form.expiry_date.id_for_label }}">{{ form.expiry_date.label }}</label>
-                                    {% if form.expiry_date.errors %}<div class="text-danger">{{ form.expiry_date.errors }}</div>{% endif %}
-                                </div>
-                                <div class="form-floating mb-3">
-                                    {{ form.batch_number }}
-                                    <label for="{{ form.batch_number.id_for_label }}">{{ form.batch_number.label }}</label>
-                                    {% if form.batch_number.errors %}<div class="text-danger">{{ form.batch_number.errors }}</div>{% endif %}
-                                </div>
-                                <div class="form-floating mb-3">
-                                    {{ form.status }}
-                                    <label for="{{ form.status.id_for_label }}">{{ form.status.label }}</label>
-                                    {% if form.status.errors %}<div class="text-danger">{{ form.status.errors }}</div>{% endif %}
-                                </div>
-                                {# Hidden batch field, should not be editable #}
-                                {{ form.batch }}
-                                {{ form.id }} {# REQUIRED for update #}
+                        {% with form=update_forms|get_item:stock.pk %}
+                            {% if form %}
+
+                                {% if form.instance.quantity_left < form.instance.quantity_bought %}
+                                    <div class="alert alert-warning" role="alert">
+                                        <h5 class="alert-heading">Editing Locked</h5>
+                                        <p>
+                                            This stock entry has been partially used (Quantity Left: {{ form.instance.quantity_left|floatformat:2 }}).
+                                            To maintain accurate records, its core details can no longer be edited.
+                                        </p>
+                                        <hr>
+                                        <p class="mb-0">
+                                            If you need to adjust for wastage or damage, please use the "Stock Out" functionality.
+                                        </p>
+                                    </div>
+                                {% else %}
+                                    <div class="mb-3">
+                                        <label class="form-label">Drug</label>
+                                        <input type="text" class="form-control" value="{{ form.instance.drug }}" readonly>
+                                        {{ form.drug.as_hidden }}
+                                    </div>
+
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3 form-floating">
+                                            {{ form.quantity_bought }}
+                                            <label for="{{ form.quantity_bought.id_for_label }}">{{ form.quantity_bought.label }}</label>
+                                            {% if form.quantity_bought.errors %}<div class="text-danger small">{{ form.quantity_bought.errors }}</div>{% endif %}
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Quantity Left</label>
+                                            <input type="text" class="form-control" value="{{ form.instance.quantity_left|floatformat:2 }}" readonly>
+                                        </div>
+                                    </div>
+
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3 form-floating">
+                                            {{ form.unit_cost_price }}
+                                            <label for="{{ form.unit_cost_price.id_for_label }}">{{ form.unit_cost_price.label }}</label>
+                                            {% if form.unit_cost_price.errors %}<div class="text-danger small">{{ form.unit_cost_price.errors }}</div>{% endif %}
+                                        </div>
+                                        <div class="col-md-6 mb-3 form-floating">
+                                            {{ form.selling_price }}
+                                            <label for="{{ form.selling_price.id_for_label }}">{{ form.selling_price.label }}</label>
+                                            {% if form.selling_price.errors %}<div class="text-danger small">{{ form.selling_price.errors }}</div>{% endif %}
+                                        </div>
+                                    </div>
+
+                                    <div class="form-floating md-6 mb-3">
+                                        {{ form.expiry_date }}
+                                        <label for="{{ form.expiry_date.id_for_label }}">{{ form.expiry_date.label }}</label>
+                                        {% if form.expiry_date.errors %}<div class="text-danger small">{{ form.expiry_date.errors }}</div>{% endif %}
+                                    </div>
+
+                                    <div class="form-floating md-6 mb-3">
+                                        {{ form.batch_number }}
+                                        <label for="{{ form.batch_number.id_for_label }}">{{ form.batch_number.label }}</label>
+                                        {% if form.batch_number.errors %}<div class="text-danger small">{{ form.batch_number.errors }}</div>{% endif %}
+                                    </div>
+
+                                    <div class="form-floating md-6 mb-3">
+                                        {{ form.location }}
+                                        <label for="{{ form.location.id_for_label }}">{{ form.location.label }}</label>
+                                        {% if form.location.errors %}<div class="text-danger small">{{ form.location.errors }}</div>{% endif %}
+                                    </div>
+
+                                    {{ form.batch.as_hidden }}
+                                {% endif %}
+
                             {% else %}
-                                <p class="text-danger">Form not available for this stock item.</p>
+                                <p class="text-danger">Error: The form for this stock item could not be loaded.</p>
                             {% endif %}
                         {% endwith %}
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        <button type="submit" class="btn btn-primary">Save changes</button>
+                        <button type="submit" class="btn btn-primary" {% if stock.quantity_left < stock.quantity_bought %}disabled{% endif %}>
+                            Save changes
+                        </button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
-
-
-
 {% endfor %}
-
-{% comment %} Helper for get_item filter in template {% endcomment %}
-{% load i18n %}
-{% load static %}
-{% if not update_forms|get_item:"DUMMY" %} {# Only define if not already defined for template context safety #}
-{% comment %}
-    Custom template filter to get item from dictionary in Django templates.
-    Used for accessing `update_forms` dictionary by key `stock.pk`.
-{% endcomment %}
-{% endif %}
-
 {% endblock %}

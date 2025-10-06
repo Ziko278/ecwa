@@ -3589,6 +3589,7 @@ def ajax_search_drugs(request):
 
         drugs_data = []
         for drug in drugs:
+
             drugs_data.append({
                 'id': drug.id,
                 'brand_name': drug.brand_name,
@@ -3596,6 +3597,7 @@ def ajax_search_drugs(request):
                 'pharmacy_quantity': drug.pharmacy_quantity,
                 'formulation': str(drug.formulation),
                 'manufacturer': drug.manufacturer.name if drug.manufacturer else '',
+                'last_cost_price': drug.last_cost_price if drug.last_cost_price else 0,
                 'pack_size': drug.pack_size,
                 'unit': drug.formulation.form_type,
                 'price': float(drug.selling_price),
@@ -3612,6 +3614,7 @@ def ajax_search_drugs(request):
             'success': False,
             'error': 'An unexpected error occurred during drug search.'
         })
+
 
 @login_required
 @require_POST

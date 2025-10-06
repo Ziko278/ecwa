@@ -1,0 +1,220 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<div class="container-fluid">
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>Insurance Claims</h4>
+        </div>
+
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <form method="get" class="d-flex gap-2">
+                        <input type="text" name="q" class="form-control" placeholder="Search by claim number, patient, policy or HMO" value="{{ search_query }}">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
+                        {% if search_query %}
+                        <a href="{% url 'insurance_claim_list' %}" class="btn btn-secondary">Clear</a>
+                        {% endif %}
+                    </form>
+                </div>
+                <div class="col-md-6">
+                    <div class="btn-group w-100" role="group">
+                        <a href="?status=all" class="btn btn-outline-primary {% if current_status_filter == 'all' %}active{% endif %}">All</a>
+                        <a href="?status=pending" class="btn btn-outline-warning {% if current_status_filter == 'pending' %}active{% endif %}">Pending</a>
+                        <a href="?status=partially_approved" class="btn btn-outline-info {% if current_status_filter == 'partially_approved' %}partially_approved{% endif %}">Partial</a>
+                        <a href="?status=approved" class="btn btn-outline-success {% if current_status_filter == 'approved' %}active{% endif %}">Approved</a>
+                        <a href="?status=declined" class="btn btn-outline-danger {% if current_status_filter == 'rejected' %}active{% endif %}">Rejected</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Claim No.</th>
+                            <th>Patient</th>
+                            <th>HMO</th>
+                            <th>Type</th>
+                            <th>Total</th>
+                            <th>Covered</th>
+                            <th>Patient</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for claim in page_obj %}
+                        <tr>
+                            <td>{{ forloop.counter|add:page_obj.start_index|add:"-1" }}</td>
+                            <td>{{ claim.claim_number }}</td>
+                            <td>
+                                {% with p=claim.patient_insurance.patient %}
+                                    {{ p.first_name }} {{ p.last_name }}<br>
+                                    <small class="text-muted">{{ p.patient_id }}</small>
+                                {% endwith %}
+                            </td>
+                            <td>{{ claim.patient_insurance.hmo.name }}</td>
+                            <td>{{ claim.get_claim_type_display }}</td>
+                            <td>{{ claim.total_amount }}</td>
+                            <td>{{ claim.covered_amount }}</td>
+                            <td>{{ claim.patient_amount }}</td>
+                            <td>
+                                <span class="badge
+                                    {% if claim.status == 'pending' %}bg-warning
+                                    {% elif claim.status == 'processing' %}bg-info
+                                    {% elif claim.status == 'approved' %}bg-success
+                                    {% elif claim.status == 'rejected' %}bg-danger
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ claim.get_status_display }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{% url 'insurance_claim_detail' pk=claim.pk %}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+
+                                    {% if claim.status not in 'approved,rejected,paid,partially_approved' %}
+                                    <button type="button" class="btn btn-sm btn-success approve-btn"
+                                            data-bs-toggle="modal" data-bs-target="#approveClaimModal"
+                                            data-pk="{{ claim.pk }}"
+                                            data-total="{{ claim.total_amount }}"
+                                            data-covered="{{ claim.covered_amount }}">
+                                        <i class="bi bi-check"></i>
+                                    </button>
+
+                                    <button type="button" class="btn btn-sm btn-danger decline-btn"
+                                            data-bs-toggle="modal" data-bs-target="#declineClaimModal"
+                                            data-pk="{{ claim.pk }}">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="text-center text-muted">No claims found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if page_obj.has_other_pages %}
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Previous</span></li>
+                    {% endif %}
+
+                    {% for i in page_obj.paginator.page_range %}
+                        {% if page_obj.number == i %}
+                            <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                        {% else %}
+                            <li class="page-item"><a class="page-link" href="?page={{ i }}">{{ i }}</a></li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Next</span></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Approve Modal -->
+<div class="modal fade" id="approveClaimModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" id="approveClaimForm">
+      {% csrf_token %}
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Approve Claim <span id="approveClaimNumber"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>Total: <strong id="approveTotal"></strong></p>
+          <div class="mb-3">
+            <label for="approved_amount" class="form-label">Approved Amount (what HMO will pay)</label>
+            <input type="number" step="0.01" min="0" name="approved_amount" id="approved_amount" class="form-control" required>
+            <div class="form-text">Defaults to current covered amount; change if HMO approves a different figure.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">Confirm Approve</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Decline Modal -->
+<div class="modal fade" id="declineClaimModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" id="declineClaimForm">
+      {% csrf_token %}
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Decline Claim <span id="declineClaimNumber"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="decline_reason" class="form-label">Reason for decline</label>
+            <textarea name="reason" id="decline_reason" rows="4" class="form-control" required></textarea>
+            <div class="form-text">Provide a short reason that will be stored on the claim.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Confirm Decline</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Approve buttons
+    document.querySelectorAll('.approve-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            const pk = btn.dataset.pk;
+            const total = btn.dataset.total;
+            const covered = btn.dataset.covered || total;
+            // set modal fields
+            document.getElementById('approveTotal').textContent = total;
+            document.getElementById('approved_amount').value = covered;
+            document.getElementById('approveClaimNumber').textContent = pk;
+            // set form action
+            const form = document.getElementById('approveClaimForm');
+            form.action = "{% url 'insurance_claim_approve' pk=0 %}".replace('/0/', '/' + pk + '/');
+        });
+    });
+
+    // Decline buttons
+    document.querySelectorAll('.decline-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            const pk = btn.dataset.pk;
+            document.getElementById('declineClaimNumber').textContent = pk;
+            const form = document.getElementById('declineClaimForm');
+            form.action = "{% url 'insurance_claim_decline' pk=0 %}".replace('/0/', '/' + pk + '/');
+        });
+    });
+});
+</script>
+
+{% endblock %}

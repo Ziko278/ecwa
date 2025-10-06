@@ -1,14 +1,14 @@
 import logging
 import json
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum, Count, Q, Avg
+from django.db.models import Sum, Count, Q, Avg, F
 from django.db.models.functions import Lower
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -20,6 +20,7 @@ from django.views.generic import (
 )
 
 from human_resource.views import FlashFormErrorsMixin
+from inpatient.models import SurgeryType
 from insurance.forms import *
 from insurance.models import *
 
@@ -781,7 +782,7 @@ class HMODeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
 # HMO Coverage Plan Views
 # -------------------------
 class HMOCoveragePlanCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
+    LoginRequiredMixin, PermissionRequiredMixin, CreateView
 ):
     model = HMOCoveragePlanModel
     permission_required = 'insurance.add_hmocoverageplanmodel'
@@ -833,7 +834,7 @@ class HMOCoveragePlanDetailView(LoginRequiredMixin, PermissionRequiredMixin, Det
 
 
 class HMOCoveragePlanUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
+    LoginRequiredMixin, PermissionRequiredMixin, UpdateView
 ):
     model = HMOCoveragePlanModel
     permission_required = 'insurance.change_hmocoverageplanmodel'
@@ -1100,7 +1101,7 @@ def search_scans(request):
         from scan.models import ScanTemplateModel
         scans = ScanTemplateModel.objects.filter(
             name__icontains=query
-        ).values('id', 'name', 'description')[:20]
+        ).values('id', 'name')[:20]
         return JsonResponse({'results': list(scans)})
     except Exception:
         logger.exception("Error searching scans")
@@ -1111,7 +1112,7 @@ def search_scans(request):
 # Patient Insurance Views
 # -------------------------
 class PatientInsuranceCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
+    LoginRequiredMixin, PermissionRequiredMixin, CreateView
 ):
     model = PatientInsuranceModel
     permission_required = 'insurance.add_patientinsurancemodel'
@@ -1135,7 +1136,6 @@ class PatientInsuranceCreateView(
         # User = get_user_model()
         # context['system_users'] = User.objects.all()
         return context
-
 
     def form_valid(self, form):
         try:
@@ -1264,36 +1264,42 @@ class PatientInsuranceListView(LoginRequiredMixin, PermissionRequiredMixin, List
     model = PatientInsuranceModel
     permission_required = 'insurance.view_patientinsurancemodel'
     template_name = 'insurance/patient_insurance/index.html'
-    context_object_name = "policies" # You can keep this, but the template will primarily use 'page_obj'
-    paginate_by = 10 # <-- Add this line to enable pagination (e.g., 10 items per page)
+    context_object_name = "policies"
+    paginate_by = 20
 
     def get_queryset(self):
-        # You can add search/filter logic here based on request.GET parameters
         queryset = PatientInsuranceModel.objects.select_related(
             'patient', 'hmo', 'coverage_plan'
         ).order_by('-created_at')
 
-        # Example of basic search (optional)
-        # query = self.request.GET.get('q')
-        # if query:
-        #     queryset = queryset.filter(
-        #         Q(patient__first_name__icontains=query) |
-        #         Q(patient__last_name__icontains=query) |
-        #         Q(policy_number__icontains=query) |
-        #         Q(hmo__name__icontains=query)
-        #     )
+        # Search by patient name, card number, policy number, or HMO
+        query = self.request.GET.get('q')
+        if query:
+            queryset = queryset.filter(
+                Q(patient__first_name__icontains=query) |
+                Q(patient__last_name__icontains=query) |
+                Q(patient__card_number__icontains=query) |  # Added
+                Q(policy_number__icontains=query) |
+                Q(hmo__name__icontains=query)
+            )
+
+        # Filter by active/inactive status
+        status_filter = self.request.GET.get('status')
+        if status_filter == 'active':
+            queryset = queryset.filter(is_active=True)
+        elif status_filter == 'inactive':
+            queryset = queryset.filter(is_active=False)
+
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # When `paginate_by` is set, `super().get_context_data` already adds `page_obj` and `paginator`.
-        # The objects for the current page are available via `context['page_obj'].object_list`
-        # or, if `context_object_name` is set, they'll also be in `context['policies']` (the `object_list` of `page_obj`).
-
         context.update({
             'pending_verification_count': PatientInsuranceModel.objects.filter(
-                is_verified=False, is_active=True, coverage_plan__require_verification=True # Added condition for requiring verification
-            ).count()
+                is_verified=False, is_active=True, coverage_plan__require_verification=True
+            ).count(),
+            'current_status_filter': self.request.GET.get('status', 'all'),  # Added
+            'search_query': self.request.GET.get('q', '')  # Added
         })
         return context
 
@@ -1447,6 +1453,14 @@ class PatientInsuranceUpdateView(
     def get_success_url(self):
         return reverse('patient_insurance_detail', kwargs={'pk': self.object.pk})
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from .models import HMOModel
+        context['hmos'] = HMOModel.objects.all()
+        # Pass the current patient info for display
+        context['current_patient'] = self.object.patient
+        return context
+
     def form_valid(self, form):
         try:
             with transaction.atomic():
@@ -1458,7 +1472,7 @@ class PatientInsuranceUpdateView(
 
                 if existing.exists():
                     messages.error(self.request, "Patient already has an active insurance.")
-                    return redirect(self.get_success_url())
+                    return self.form_invalid(form)
 
                 # Check enrollee_id uniqueness
                 if form.instance.enrollee_id:
@@ -1470,7 +1484,7 @@ class PatientInsuranceUpdateView(
                     if existing_enrollee.exists():
                         messages.error(self.request,
                                        f"Enrollee ID '{form.instance.enrollee_id}' already exists for this coverage plan.")
-                        return redirect(self.get_success_url())
+                        return self.form_invalid(form)
 
                 return super().form_valid(form)
         except Exception:
@@ -1503,538 +1517,429 @@ def verify_patient_insurance(request, pk):
 # -------------------------
 # Patient Claims Views
 # -------------------------
-class PatientClaimsView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    permission_required = 'insurance.view_insuranceclaimmodel'
-    template_name = 'insurance/claims/patient_claims.html'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        patient_id = self.kwargs.get('patient_id')
-
-        # Date filters from request
-        start_date = self.request.GET.get('start_date')
-        end_date = self.request.GET.get('end_date')
-        status_filter = self.request.GET.get('status', '')
-
-        try:
-            from patient.models import PatientModel
-            patient = get_object_or_404(PatientModel, pk=patient_id)
-
-            # Get patient's insurance(s)
-            patient_insurances = PatientInsuranceModel.objects.filter(patient=patient)
-
-            # Build claims query
-            claims_qs = InsuranceClaimModel.objects.filter(
-                patient_insurance__patient=patient
-            ).select_related('patient_insurance__hmo', 'patient_insurance__coverage_plan')
-
-            # Apply filters
-            if start_date:
-                claims_qs = claims_qs.filter(service_date__gte=start_date)
-            if end_date:
-                claims_qs = claims_qs.filter(service_date__lte=end_date)
-            if status_filter:
-                claims_qs = claims_qs.filter(status=status_filter)
-
-            claims = claims_qs.order_by('-service_date')
-
-            # Calculate statistics
-            stats = claims.aggregate(
-                total_claims=Count('id'),
-                total_amount=Sum('total_amount') or Decimal('0'),
-                covered_amount=Sum('covered_amount') or Decimal('0'),
-                patient_amount=Sum('patient_amount') or Decimal('0')
-            )
-
-            # Status breakdown
-            status_breakdown = claims.values('status').annotate(count=Count('id'))
-
-            context.update({
-                'patient': patient,
-                'patient_insurances': patient_insurances,
-                'claims': claims,
-                'stats': stats,
-                'status_breakdown': status_breakdown,
-                'start_date': start_date,
-                'end_date': end_date,
-                'status_filter': status_filter,
-            })
-        except Exception:
-            logger.exception("Error loading patient claims for patient_id=%s", patient_id)
-            messages.error(self.request, "Error loading patient claims data. Contact admin.")
-            context.update({
-                'patient': None,
-                'claims': [],
-                'stats': {'total_claims': 0, 'total_amount': 0, 'covered_amount': 0, 'patient_amount': 0},
-                'status_breakdown': [],
-            })
-
-        return context
-
-
-# -------------------------
-# Insurance Claim Views
-# -------------------------
-class InsuranceClaimCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
-):
-    model = InsuranceClaimModel
-    permission_required = 'insurance.add_insuranceclaimmodel'
-    form_class = InsuranceClaimForm
-    template_name = 'insurance/claims/create.html'
-    success_message = 'Insurance Claim Successfully Created'
-
-    def get_success_url(self):
-        return reverse('insurance_claim_detail', kwargs={'pk': self.object.pk})
-
-    def form_valid(self, form):
-        try:
-            with transaction.atomic():
-                form.instance.created_by = self.request.user
-                return super().form_valid(form)
-        except Exception:
-            logger.exception("Error creating insurance claim")
-            messages.error(self.request, "An error occurred while creating the claim. Contact admin.")
-            return redirect(reverse('insurance_claim_index'))
-
-
 class InsuranceClaimListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = InsuranceClaimModel
-    permission_required = 'insurance.view_insuranceclaimmodel'
-    template_name = 'insurance/claims/index.html'
+    permission_required = "insurance.view_insuranceclaimmodel"
+    template_name = "insurance/claims/index.html"
     context_object_name = "claim_list"
     paginate_by = 50
 
     def get_queryset(self):
-        return InsuranceClaimModel.objects.select_related(
-            'patient_insurance__patient',
-            'patient_insurance__hmo',
-            'patient_insurance__coverage_plan'
-        ).order_by('-claim_date')
+        queryset = InsuranceClaimModel.objects.select_related(
+            "patient_insurance__patient",
+            "patient_insurance__hmo",
+            "patient_insurance__coverage_plan"
+            # NOTE: I noticed you were ordering by 'claim_date'. If your model field is
+            # 'created_at' or something else, please adjust this.
+        ).order_by("-created_at")
+
+        # Filtering
+        status = self.request.GET.get("status")
+        claim_type = self.request.GET.get("claim_type")
+        hmo = self.request.GET.get("hmo")
+        search = self.request.GET.get("q")  # Your template uses 'q', not 'search'
+
+        if status:
+            # Added 'all' check to prevent filtering when user clicks 'All'
+            if status != 'all':
+                queryset = queryset.filter(status=status)
+        if claim_type:
+            queryset = queryset.filter(claim_type=claim_type)
+        if hmo:
+            queryset = queryset.filter(patient_insurance__hmo__id=hmo)
+
+        if search:
+            # ===================================================
+            # FIX: Search against the correct patient fields
+            # ===================================================
+            queryset = queryset.filter(
+                Q(claim_number__icontains=search) |
+                Q(patient_insurance__patient__first_name__icontains=search) |
+                Q(patient_insurance__patient__last_name__icontains=search) |
+                Q(patient_insurance__patient__card_number__icontains=search)
+            )
+            # ===================================================
+
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        # Summary statistics
-        summary_stats = InsuranceClaimModel.objects.aggregate(
-            total_claims=Count('id'),
-            pending_claims=Count('id', filter=Q(status='pending')),
-            approved_claims=Count('id', filter=Q(status='approved')),
-            total_amount=Sum('total_amount') or Decimal('0'),
-            covered_amount=Sum('covered_amount') or Decimal('0')
+        stats = InsuranceClaimModel.objects.aggregate(
+            total_claims=Count("id"),
+            pending_claims=Count("id", filter=Q(status="pending")),
+            approved_claims=Count("id", filter=Q(status="approved")),
+            rejected_claims=Count("id", filter=Q(status="rejected")),
+            total_amount=Sum("total_amount") or Decimal("0.00"),
+            covered_amount=Sum("covered_amount") or Decimal("0.00"),
         )
 
-        context.update({
-            'summary_stats': summary_stats,
-        })
+        context["summary_stats"] = stats
         return context
 
 
 class InsuranceClaimDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = InsuranceClaimModel
-    permission_required = 'insurance.view_insuranceclaimmodel'
-    template_name = 'insurance/claims/detail.html'
+    permission_required = "insurance.view_insuranceclaimmodel"
+    template_name = "insurance/claims/detail.html"
     context_object_name = "claim"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         claim = self.object
 
-        # Calculate coverage percentage
         if claim.total_amount > 0:
             coverage_percentage = (claim.covered_amount / claim.total_amount) * 100
         else:
             coverage_percentage = 0
 
-        context.update({
-            'coverage_percentage': round(coverage_percentage, 2),
-        })
+        context["coverage_percentage"] = round(coverage_percentage, 2)
         return context
 
 
-class InsuranceClaimUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
-):
+class InsuranceClaimUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     model = InsuranceClaimModel
-    permission_required = 'insurance.change_insuranceclaimmodel'
+    permission_required = "insurance.change_insuranceclaimmodel"
     form_class = InsuranceClaimForm
-    template_name = 'insurance/claims/edit.html'
-    success_message = 'Insurance Claim Successfully Updated'
+    template_name = "insurance/claims/edit.html"
 
     def get_success_url(self):
-        return reverse('insurance_claim_detail', kwargs={'pk': self.object.pk})
+        return reverse("insurance_claim_detail", kwargs={"pk": self.object.pk})
 
     def form_valid(self, form):
-        try:
-            # Update processed date if status changed to processed/approved/rejected
-            if form.instance.status in ['processing', 'approved', 'rejected', 'partially_approved', 'paid']:
-                if not form.instance.processed_date:
-                    form.instance.processed_date = timezone.now()
-                    form.instance.processed_by = self.request.user
-
-            return super().form_valid(form)
-        except Exception:
-            logger.exception("Error updating insurance claim")
-            messages.error(self.request, "An error occurred while updating the claim. Contact admin.")
-            return redirect(self.get_success_url())
+        if form.instance.status in ["processing", "approved", "rejected", "partially_approved", "paid"]:
+            if not form.instance.processed_date:
+                form.instance.processed_date = timezone.now()
+                form.instance.processed_by = self.request.user
+        return super().form_valid(form)
 
 
 class InsuranceClaimDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = InsuranceClaimModel
-    permission_required = 'insurance.delete_insuranceclaimmodel'
-    template_name = 'insurance/claims/delete.html'
+    permission_required = "insurance.delete_insuranceclaimmodel"
+    template_name = "insurance/claims/delete.html"
     context_object_name = "claim"
-    success_message = 'Insurance Claim Successfully Deleted'
 
     def get_success_url(self):
-        return reverse('insurance_claim_index')
+        return reverse("insurance_claim_list")
 
 
-# -------------------------
-# Claim Processing Actions
-# -------------------------
 @login_required
-@permission_required('insurance.change_insuranceclaimmodel', raise_exception=True)
+@permission_required("insurance.change_insuranceclaimmodel", raise_exception=True)
 def approve_claim(request, pk):
-    """Approve an insurance claim"""
+    """
+    Processes the approval of a pending insurance claim via a POST request.
+    This view does not respond to GET requests.
+    """
     claim = get_object_or_404(InsuranceClaimModel, pk=pk)
 
-    if request.method == 'POST':
-        try:
-            with transaction.atomic():
-                if claim.status != 'pending':
-                    messages.error(request, "Only pending claims can be approved.")
-                    return redirect(reverse('insurance_claim_detail', kwargs={'pk': pk}))
+    # 1. Ensure this view only accepts POST requests
+    if request.method != "POST":
+        messages.error(request, "This action can only be performed via the approval form.")
+        return redirect("insurance_claim_detail", pk=pk)
 
-                claim.status = 'approved'
-                claim.processed_date = timezone.now()
-                claim.processed_by = request.user
-                claim.save(update_fields=['status', 'processed_date', 'processed_by'])
+    # 2. Check if the claim is in a state that can be approved
+    if claim.status != "pending":
+        messages.error(request, "This claim has already been processed and cannot be changed.")
+        return redirect("insurance_claim_detail", pk=pk)
 
-                messages.success(request, f"Claim {claim.claim_number} has been approved.")
-                return redirect(reverse('insurance_claim_detail', kwargs={'pk': pk}))
+    approved_amount_str = request.POST.get("approved_amount", "").strip()
 
-        except Exception:
-            logger.exception("Error approving claim id=%s", pk)
-            messages.error(request, "An error occurred while approving the claim. Contact admin.")
-            return redirect(reverse('insurance_claim_detail', kwargs={'pk': pk}))
+    # 3. Validate the input from the form
+    if not approved_amount_str:
+        messages.error(request, "The approved amount field cannot be empty.")
+        return redirect("insurance_claim_detail", pk=pk)
 
-    return render(request, 'insurance/claims/approve.html', {'claim': claim})
+    try:
+        approved_amount = Decimal(approved_amount_str).quantize(Decimal("0.01"))
+    except InvalidOperation:
+        messages.error(request, "Invalid number format. Please enter a valid amount.")
+        return redirect("insurance_claim_detail", pk=pk)
+
+    # 4. Check data integrity (amount is not negative or more than the total)
+    if approved_amount < 0 or approved_amount > claim.total_amount:
+        messages.error(request, f"Approved amount must be between ₦0.00 and the total of ₦{claim.total_amount:,.2f}.")
+        return redirect("insurance_claim_detail", pk=pk)
+
+    # 5. Process the claim within a database transaction
+    try:
+        with transaction.atomic():
+            # Determine the correct status based on the approved amount
+            if approved_amount == claim.total_amount:
+                claim.status = "approved"
+            else:
+                claim.status = "partially_approved"
+
+            claim.covered_amount = approved_amount
+            claim.patient_amount = claim.total_amount - approved_amount
+
+            claim.processed_date = timezone.now()
+            claim.processed_by = request.user
+            claim.save()
+
+            messages.success(request, f"Claim {claim.claim_number} was processed successfully.")
+
+    except Exception as e:
+        logger.exception("Error processing claim %s: %s", claim.claim_number, e)
+        messages.error(request, "A server error occurred. Please contact support.")
+
+    return redirect("insurance_claim_detail", pk=pk)
 
 
 @login_required
-@permission_required('insurance.change_insuranceclaimmodel', raise_exception=True)
+@permission_required("insurance.change_insuranceclaimmodel", raise_exception=True)
 def reject_claim(request, pk):
-    """Reject an insurance claim"""
     claim = get_object_or_404(InsuranceClaimModel, pk=pk)
 
-    if request.method == 'POST':
-        rejection_reason = request.POST.get('rejection_reason', '').strip()
-
-        if not rejection_reason:
+    if request.method == "POST":
+        reason = request.POST.get("rejection_reason", "").strip()
+        if not reason:
             messages.error(request, "Rejection reason is required.")
-            return render(request, 'insurance/claims/reject.html', {'claim': claim})
+            return render(request, "insurance/claims/reject.html", {"claim": claim})
 
         try:
             with transaction.atomic():
-                if claim.status != 'pending':
-                    messages.error(request, "Only pending claims can be rejected.")
-                    return redirect(reverse('insurance_claim_detail', kwargs={'pk': pk}))
-
-                claim.status = 'rejected'
-                claim.rejection_reason = rejection_reason
+                claim.status = "rejected"
+                claim.rejection_reason = reason
+                claim.covered_amount = Decimal("0.00")
+                claim.patient_amount = claim.total_amount
                 claim.processed_date = timezone.now()
                 claim.processed_by = request.user
-                claim.covered_amount = Decimal('0.00')
-                claim.patient_amount = claim.total_amount
-                claim.save(update_fields=[
-                    'status', 'rejection_reason', 'processed_date', 'processed_by',
-                    'covered_amount', 'patient_amount'
-                ])
+                claim.save()
 
-                messages.success(request, f"Claim {claim.claim_number} has been rejected.")
-                return redirect(reverse('insurance_claim_detail', kwargs={'pk': pk}))
-
+                messages.success(request, f"Claim {claim.claim_number} rejected successfully.")
         except Exception:
-            logger.exception("Error rejecting claim id=%s", pk)
-            messages.error(request, "An error occurred while rejecting the claim. Contact admin.")
+            logger.exception("Error rejecting claim")
+            messages.error(request, "An error occurred while rejecting the claim.")
+        return redirect("insurance_claim_detail", pk=pk)
 
-    return render(request, 'insurance/claims/reject.html', {'claim': claim})
+    return render(request, "insurance/claims/reject.html", {"claim": claim})
 
 
 @login_required
-@permission_required('insurance.change_insuranceclaimmodel', raise_exception=True)
+@permission_required("insurance.change_insuranceclaimmodel", raise_exception=True)
 def process_claim(request, pk):
-    """Process a claim with custom amounts"""
     claim = get_object_or_404(InsuranceClaimModel, pk=pk)
 
-    if request.method == 'POST':
+    coverage_plan = claim.patient_insurance.coverage_plan
+    suggested_coverage = Decimal("0.00")
+
+    # Suggest based on claim type coverage %
+    if claim.claim_type == "consultation" and coverage_plan.consultation_covered:
+        suggested_coverage = claim.total_amount * coverage_plan.consultation_coverage_percentage / 100
+    elif claim.claim_type == "drug":
+        suggested_coverage = claim.total_amount * coverage_plan.drug_coverage_percentage / 100
+    elif claim.claim_type == "laboratory":
+        suggested_coverage = claim.total_amount * coverage_plan.lab_coverage_percentage / 100
+    elif claim.claim_type == "scan":
+        suggested_coverage = claim.total_amount * coverage_plan.radiology_coverage_percentage / 100
+    elif claim.claim_type == "surgery":
+        suggested_coverage = claim.total_amount * coverage_plan.surgery_coverage_percentage / 100
+
+    suggested_patient_amount = claim.total_amount - suggested_coverage
+
+    if request.method == "POST":
         try:
-            covered_amount = Decimal(request.POST.get('covered_amount', '0'))
-            patient_amount = Decimal(request.POST.get('patient_amount', '0'))
-            notes = request.POST.get('notes', '').strip()
+            covered_amount = Decimal(request.POST.get("covered_amount", "0"))
+            patient_amount = Decimal(request.POST.get("patient_amount", "0"))
+            notes = request.POST.get("notes", "").strip()
 
-            # Validation
             if covered_amount + patient_amount != claim.total_amount:
-                messages.error(request, "Covered amount + Patient amount must equal total amount.")
-                return render(request, 'insurance/claims/process.html', {
-                    'claim': claim,
-                    'covered_amount': covered_amount,
-                    'patient_amount': patient_amount,
-                    'notes': notes
-                })
-
-            if covered_amount < 0 or patient_amount < 0:
-                messages.error(request, "Amounts cannot be negative.")
-                return render(request, 'insurance/claims/process.html', {
-                    'claim': claim,
-                    'covered_amount': covered_amount,
-                    'patient_amount': patient_amount,
-                    'notes': notes
-                })
+                messages.error(request, "Covered + patient amount must equal total.")
+                return redirect("insurance_claim_detail", pk=pk)
 
             with transaction.atomic():
                 claim.covered_amount = covered_amount
                 claim.patient_amount = patient_amount
-                claim.status = 'partially_approved' if covered_amount < claim.total_amount else 'approved'
+                claim.status = "partially_approved" if covered_amount < claim.total_amount else "approved"
                 claim.processed_date = timezone.now()
                 claim.processed_by = request.user
-                if notes:
-                    claim.notes = notes
-                claim.save(update_fields=[
-                    'covered_amount', 'patient_amount', 'status',
-                    'processed_date', 'processed_by', 'notes'
-                ])
+                claim.notes = notes
+                claim.save()
 
-                messages.success(request, f"Claim {claim.claim_number} has been processed.")
-                return redirect(reverse('insurance_claim_detail', kwargs={'pk': pk}))
-
-        except (ValueError, TypeError):
-            messages.error(request, "Invalid amount values.")
+                messages.success(request, f"Claim {claim.claim_number} processed successfully.")
         except Exception:
-            logger.exception("Error processing claim id=%s", pk)
-            messages.error(request, "An error occurred while processing the claim. Contact admin.")
+            logger.exception("Error processing claim")
+            messages.error(request, "An error occurred while processing the claim.")
+        return redirect("insurance_claim_detail", pk=pk)
 
-    # Calculate suggested amounts based on coverage plan
-    coverage_plan = claim.patient_insurance.coverage_plan
-    suggested_coverage = Decimal('0')
-
-    # Calculate based on claim type
-    if claim.claim_type == 'consultation' and coverage_plan.consultation_covered:
-        suggested_coverage = (claim.total_amount * coverage_plan.consultation_coverage_percentage / 100)
-    elif claim.claim_type == 'drug':
-        suggested_coverage = (claim.total_amount * coverage_plan.drug_coverage_percentage / 100)
-    elif claim.claim_type == 'laboratory':
-        suggested_coverage = (claim.total_amount * coverage_plan.lab_coverage_percentage / 100)
-    elif claim.claim_type == 'radiology':
-        suggested_coverage = (claim.total_amount * coverage_plan.radiology_coverage_percentage / 100)
-
-    suggested_patient_amount = claim.total_amount - suggested_coverage
-
-    context = {
-        'claim': claim,
-        'suggested_covered_amount': suggested_coverage,
-        'suggested_patient_amount': suggested_patient_amount,
-    }
-    return render(request, 'insurance/claims/process.html', context)
+    return render(request, "insurance/claims/process.html", {
+        "claim": claim,
+        "suggested_covered_amount": suggested_coverage,
+        "suggested_patient_amount": suggested_patient_amount,
+    })
 
 
-# -------------------------
-# Bulk Claim Actions
-# -------------------------
 @login_required
-@permission_required('insurance.change_insuranceclaimmodel', raise_exception=True)
+@permission_required("insurance.change_insuranceclaimmodel", raise_exception=True)
 def bulk_claim_action(request):
-    """Handle bulk actions on insurance claims"""
-    if request.method == 'POST':
-        claim_ids = request.POST.getlist('claim')
-        action = request.POST.get('action')
-
-        if not claim_ids:
-            messages.error(request, 'No claims selected.')
-            return redirect(reverse('insurance_claim_index'))
+    if request.method == "POST":
+        ids = request.POST.getlist("claim")
+        action = request.POST.get("action")
+        claims = InsuranceClaimModel.objects.filter(id__in=ids)
 
         try:
             with transaction.atomic():
-                claims = InsuranceClaimModel.objects.filter(id__in=claim_ids)
+                if action == "approve":
+                    count = claims.filter(status="pending").update(
+                        status="approved",
+                        processed_date=timezone.now(),
+                        processed_by=request.user,
+                        covered_amount=F("total_amount"),
+                        patient_amount=0
+                    )
+                    messages.success(request, f"{count} claim(s) approved.")
 
-                if action == 'approve':
-                    # Only approve pending claims
-                    pending_claims = claims.filter(status='pending')
-                    count = pending_claims.update(
-                        status='approved',
+                elif action == "reject":
+                    count = claims.filter(status="pending").update(
+                        status="rejected",
                         processed_date=timezone.now(),
                         processed_by=request.user
                     )
-                    messages.success(request, f'Successfully approved {count} pending claim(s).')
+                    messages.success(request, f"{count} claim(s) rejected.")
 
-                elif action == 'mark_processing':
-                    pending_claims = claims.filter(status='pending')
-                    count = pending_claims.update(status='processing')
-                    messages.success(request, f'Successfully marked {count} claim(s) as processing.')
-
-                elif action == 'mark_paid':
-                    approved_claims = claims.filter(status__in=['approved', 'partially_approved'])
-                    count = approved_claims.update(status='paid')
-                    messages.success(request, f'Successfully marked {count} claim(s) as paid.')
-
-                elif action == 'delete':
-                    count, _ = claims.delete()
-                    messages.success(request, f'Successfully deleted {count} claim(s).')
+                elif action == "mark_paid":
+                    count = claims.filter(status__in=["approved", "partially_approved"]).update(
+                        status="paid",
+                        processed_date=timezone.now(),
+                        processed_by=request.user
+                    )
+                    messages.success(request, f"{count} claim(s) marked as paid.")
 
                 else:
-                    messages.error(request, 'Invalid action.')
-
+                    messages.error(request, "Invalid action selected.")
         except Exception:
-            logger.exception("Bulk claim action failed")
-            messages.error(request, "An error occurred during bulk action. Contact admin.")
+            logger.exception("Bulk action failed")
+            messages.error(request, "An error occurred during bulk update.")
+        return redirect("insurance_claim_list")
 
-        return redirect(reverse('insurance_claim_index'))
-
-    # GET - confirm action
-    claim_ids = request.GET.getlist('claim')
-    if not claim_ids:
-        messages.error(request, 'No claims selected.')
-        return redirect(reverse('insurance_claim_index'))
-
-    action = request.GET.get('action')
-    context = {
-        'claim_list': InsuranceClaimModel.objects.filter(id__in=claim_ids).select_related(
-            'patient_insurance__patient', 'patient_insurance__hmo'
-        ),
-        'action': action
-    }
-
-    if action in ['approve', 'mark_processing', 'mark_paid', 'delete']:
-        return render(request, 'insurance/claims/bulk_action.html', context)
-
-    messages.error(request, 'Invalid action.')
-    return redirect(reverse('insurance_claim_index'))
+    messages.error(request, "Invalid request.")
+    return redirect("insurance_claim_list")
 
 
-# -------------------------
-# Coverage Calculation Helper
-# -------------------------
-@login_required
-def calculate_coverage(request):
-    """AJAX endpoint to calculate coverage for a claim"""
-    patient_insurance_id = request.GET.get('patient_insurance_id')
-    claim_type = request.GET.get('claim_type')
-    total_amount = request.GET.get('total_amount')
-    service_id = request.GET.get('service_id')  # For specific drug/lab/scan coverage
+class PatientClaimsView(LoginRequiredMixin, ListView):
+    """Display all insurance claims for a specific patient."""
+    model = InsuranceClaimModel
+    template_name = "insurance/patient_claims.html"
+    context_object_name = "claims"
+    paginate_by = 20
 
-    if not all([patient_insurance_id, claim_type, total_amount]):
-        return JsonResponse({'error': 'Missing required parameters'}, status=400)
+    def get_queryset(self):
+        patient_id = self.kwargs.get("patient_id")
 
-    try:
-        patient_insurance = get_object_or_404(PatientInsuranceModel, pk=patient_insurance_id)
-        coverage_plan = patient_insurance.coverage_plan
-        total_amount = Decimal(total_amount)
+        # Get the patient's insurance record (required)
+        patient_insurance = get_object_or_404(PatientInsuranceModel, patient_id=patient_id)
 
-        covered_amount = Decimal('0')
-        is_covered = False
+        # Start filtering only claims for this patient
+        queryset = InsuranceClaimModel.objects.filter(patient_insurance=patient_insurance)
 
-        # Calculate based on claim type
-        if claim_type == 'consultation':
-            if coverage_plan.consultation_covered:
-                covered_amount = (total_amount * coverage_plan.consultation_coverage_percentage / 100)
-                is_covered = True
+        # Apply optional filters
+        status_filter = self.request.GET.get("status")
+        type_filter = self.request.GET.get("type")
+        search_query = self.request.GET.get("q")
 
-        elif claim_type == 'drug' and service_id:
-            from pharmacy.models import DrugModel
-            drug = get_object_or_404(DrugModel, pk=service_id)
-            if coverage_plan.is_drug_covered(drug):
-                covered_amount = (total_amount * coverage_plan.drug_coverage_percentage / 100)
-                is_covered = True
-
-        elif claim_type == 'laboratory' and service_id:
-            from laboratory.models import LabTestTemplateModel
-            lab_test = get_object_or_404(LabTestTemplateModel, pk=service_id)
-            if coverage_plan.is_lab_covered(lab_test):
-                covered_amount = (total_amount * coverage_plan.lab_coverage_percentage / 100)
-                is_covered = True
-
-        elif claim_type == 'radiology' and service_id:
-            from scan.models import ScanTemplateModel
-            scan = get_object_or_404(ScanTemplateModel, pk=service_id)
-            if coverage_plan.is_radiology_covered(scan):
-                covered_amount = (total_amount * coverage_plan.radiology_coverage_percentage / 100)
-                is_covered = True
-
-        patient_amount = total_amount - covered_amount
-
-        return JsonResponse({
-            'is_covered': is_covered,
-            'covered_amount': float(covered_amount),
-            'patient_amount': float(patient_amount),
-            'coverage_percentage': float((covered_amount / total_amount * 100) if total_amount > 0 else 0)
-        })
-
-    except (ValueError, TypeError):
-        return JsonResponse({'error': 'Invalid amount value'}, status=400)
-    except Exception:
-        logger.exception("Error calculating coverage")
-        return JsonResponse({'error': 'Coverage calculation failed'}, status=500)
-
-
-# -------------------------
-# Insurance Statistics API
-# -------------------------
-@login_required
-@permission_required('insurance.view_insuranceclaimmodel', raise_exception=True)
-def insurance_statistics_api(request):
-    """API endpoint for dashboard charts"""
-    try:
-        # Claims by month (last 12 months)
-        months_data = []
-        for i in range(12):
-            month_start = timezone.now().replace(day=1) - timedelta(days=30 * i)
-            month_end = month_start + timedelta(days=30)
-
-            month_claims = InsuranceClaimModel.objects.filter(
-                claim_date__gte=month_start,
-                claim_date__lt=month_end
-            ).aggregate(
-                count=Count('id'),
-                amount=Sum('total_amount') or 0
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if type_filter:
+            queryset = queryset.filter(claim_type=type_filter)
+        if search_query:
+            queryset = queryset.filter(
+                Q(claim_number__icontains=search_query)
+                | Q(notes__icontains=search_query)
+                | Q(rejection_reason__icontains=search_query)
             )
 
-            months_data.append({
-                'month': month_start.strftime('%b %Y'),
-                'claims': month_claims['count'],
-                'amount': float(month_claims['amount'])
-            })
+        return queryset.order_by("-created_at")
 
-        months_data.reverse()
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["status_filter"] = self.request.GET.get("status")
+        context["type_filter"] = self.request.GET.get("type")
+        context["search_query"] = self.request.GET.get("q")
+        context["patient_id"] = self.kwargs.get("patient_id")
+        return context
 
-        # Claims by HMO
-        hmo_data = list(InsuranceClaimModel.objects.values(
-            'patient_insurance__hmo__name'
-        ).annotate(
-            count=Count('id'),
-            amount=Sum('total_amount')
-        ).order_by('-count')[:10])
 
-        # Claims by status
-        status_data = list(InsuranceClaimModel.objects.values(
-            'status'
-        ).annotate(count=Count('id')))
+@login_required
+def search_surgeries(request):
+    query = request.GET.get('q', '').strip()
+    if len(query) < 2:
+        return JsonResponse({'results': []})
 
-        # Claims by type
-        type_data = list(InsuranceClaimModel.objects.values(
-            'claim_type'
-        ).annotate(
-            count=Count('id'),
-            amount=Sum('total_amount')
-        ))
+    try:
+        surgeries = SurgeryType.objects.filter(
+            Q(name__icontains=query) | Q(category__icontains=query),
+            is_active=True
+        ).values('id', 'name', 'category')[:20]
 
+        # Format name to include category
+        results = [
+            {'id': s['id'], 'name': f"{s['name']} ({s['category']})"}
+            for s in surgeries
+        ]
+        return JsonResponse({'results': results})
+    except Exception:
+        logger.exception("Error searching surgeries")
+        return JsonResponse({'error': 'Search failed'}, status=500)
+
+
+@login_required
+def coverage_plan_add_surgery(request, pk):
+    plan = get_object_or_404(HMOCoveragePlanModel, pk=pk)
+    surgery_id = request.POST.get('surgery_id')
+    surgery = get_object_or_404(SurgeryType, id=surgery_id)
+
+    plan.selected_surgeries.add(surgery)
+    return JsonResponse({
+        'success': True,
+        'message': f'{surgery.name} added successfully',
+        'surgery': {'id': surgery.id, 'name': surgery.name}
+    })
+
+
+@login_required
+def coverage_plan_remove_surgery(request, pk, surgery_id):
+    plan = get_object_or_404(HMOCoveragePlanModel, pk=pk)
+    surgery = get_object_or_404(SurgeryType, id=surgery_id)
+
+    plan.selected_surgeries.remove(surgery)
+    return JsonResponse({
+        'success': True,
+        'message': f'{surgery.name} removed successfully'
+    })
+
+
+@login_required
+def verify_patient_by_card(request):
+    """API endpoint to verify patient by card number"""
+    card_number = request.GET.get('card_number', '').strip()
+
+    if not card_number:
+        return JsonResponse({'success': False, 'error': 'Card number is required'})
+
+    try:
+        from patient.models import PatientModel
+        patient = PatientModel.objects.get(card_number=card_number)
         return JsonResponse({
-            'monthly_trends': months_data,
-            'hmo_breakdown': hmo_data,
-            'status_breakdown': status_data,
-            'type_breakdown': type_data
+            'success': True,
+            'patient': {
+                'id': patient.id,
+                'first_name': patient.first_name,
+                'middle_name': patient.middle_name,
+                'last_name': patient.last_name,
+                'card_number': patient.card_number,
+                'full_name': f"{patient.first_name} {patient.middle_name} {patient.last_name}".replace('  ', ' ')
+            }
+        })
+    except PatientModel.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Patient not found with this card number'
+        })
+    except Exception as e:
+        logger.exception("Error verifying patient")
+        return JsonResponse({
+            'success': False,
+            'error': 'An error occurred while verifying patient'
         })
 
-    except Exception:
-        logger.exception("Error generating insurance statistics")
-        return JsonResponse({'error': 'Failed to generate statistics'}, status=500)

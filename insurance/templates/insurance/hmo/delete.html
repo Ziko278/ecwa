@@ -1,0 +1,42 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete HMO</h4>
+
+            <p>HMO: <i>{{ hmo.name }}</i></p>
+            <p>Provider: <i>{{ hmo.insurance_provider.name|upper }}</i></p>
+
+            <p>The HMO will be permanently deleted.</p>
+
+            {% if hmo.coverage_plans.all|length > 0 %}
+                <p>
+                    {{ hmo.coverage_plans.all|length }} Coverage Plan{{ hmo.coverage_plans.all|length|pluralize }}
+                    under this HMO will also be deleted.
+                </p>
+            {% endif %}
+
+            {% if hmo.patientinsurancemodel_set.all|length > 0 %}
+                <p class="text-warning">
+                    <strong>Warning:</strong> {{ hmo.patientinsurancemodel_set.all|length }} Patient Insurance Polic{{ hmo.patientinsurancemodel_set.all|length|pluralize:"y,ies" }}
+                    are linked to this HMO and will also be affected.
+                </p>
+            {% endif %}
+
+            {% if hmo.coverage_plans.all|length == 0 and hmo.patientinsurancemodel_set.all|length == 0 %}
+                <p>There are currently no coverage plans or patient policies under this HMO.</p>
+            {% endif %}
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'hmo_index' %}">Cancel</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

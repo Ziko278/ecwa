@@ -25,24 +25,26 @@
                 {% csrf_token %}
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label for="patient" class="form-label">Patient <span class="text-danger">*</span></label>
-                        <select class="form-select" id="patient" name="patient" required>
-                            <option value="">Select Patient</option>
-                            {% for patient in patients %} {# 'patients' passed from view #}
-                                <option value="{{ patient.pk }}" {% if form.patient.value == patient.pk|stringformat:"s" %}selected{% endif %}>
-                                    {{ patient.first_name }} {{ patient.last_name }} ({{ patient.patient_id }})
-                                </option>
-                            {% endfor %}
-                        </select>
-                        {% if form.patient.errors %}<div class="text-danger">{{ form.patient.errors }}</div>{% endif %}
+                        <label class="form-label">Patient</label>
+                        <div class="form-control-plaintext bg-light p-3 rounded border">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-user-circle text-primary me-2" style="font-size: 1.5rem;"></i>
+                                <div>
+                                    <strong>{{ current_patient.first_name }} {{ current_patient.middle_name }} {{ current_patient.last_name }}</strong><br>
+                                    <small class="text-muted">Card Number: {{ current_patient.card_number }}</small>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="patient" name="patient" value="{{ policy.patient.pk }}">
+                        <small class="text-muted"><i class="fas fa-info-circle me-1"></i>Patient cannot be changed after policy creation</small>
                     </div>
                     <div class="col-md-6 mb-3">
                         <label for="hmo" class="form-label">HMO Provider <span class="text-danger">*</span></label>
                         <select class="form-select" id="hmo" name="hmo" required
                                 data-plans-url="{% url 'get_hmo_coverage_plans' hmo_id=0 %}">
                             <option value="">Select HMO</option>
-                            {% for hmo in hmos %} {# 'hmos' passed from view #}
-                                <option value="{{ hmo.pk }}" {% if form.hmo.value == hmo.pk|stringformat:"s" %}selected{% endif %}>
+                            {% for hmo in hmos %}
+                                <option value="{{ hmo.pk }}" {% if policy.hmo.pk == hmo.pk %}selected{% endif %}>
                                     {{ hmo.name }}
                                 </option>
                             {% endfor %}
@@ -56,20 +58,13 @@
                         <label for="coverage_plan" class="form-label">Coverage Plan <span class="text-danger">*</span></label>
                         <select class="form-select" id="coverage_plan" name="coverage_plan" required disabled
                                 data-details-url="{% url 'get_coverage_plan_details' plan_id=0 %}">
-                            <option value="">Select Coverage Plan</option>
-                            {# The currently selected plan will be added here by JS after HMO selection #}
-                            {% if form.coverage_plan.value %}
-                                {# This option ensures the current plan is shown while JS loads #}
-                                <option value="{{ form.coverage_plan.value }}" selected>
-                                    Loading current plan...
-                                </option>
-                            {% endif %}
+                            <option value="">Loading plans...</option>
                         </select>
                         {% if form.coverage_plan.errors %}<div class="text-danger">{{ form.coverage_plan.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-6 mb-3">
                         <label for="policy_number" class="form-label">Policy Number <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="policy_number" name="policy_number" value="{{ form.policy_number.value|default:'' }}" required>
+                        <input type="text" class="form-control" id="policy_number" name="policy_number" value="{{ policy.policy_number }}" required>
                         {% if form.policy_number.errors %}<div class="text-danger">{{ form.policy_number.errors }}</div>{% endif %}
                     </div>
                 </div>
@@ -77,23 +72,23 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label for="enrollee_id" class="form-label">Enrollee ID</label>
-                        <input type="text" class="form-control" id="enrollee_id" name="enrollee_id" value="{{ form.enrollee_id.value|default:'' }}">
+                        <input type="text" class="form-control" id="enrollee_id" name="enrollee_id" value="{{ policy.enrollee_id|default:'' }}">
                         {% if form.enrollee_id.errors %}<div class="text-danger">{{ form.enrollee_id.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-3 mb-3">
                         <label for="valid_from" class="form-label">Valid From <span class="text-danger">*</span></label>
-                        <input type="date" class="form-control" id="valid_from" name="valid_from" value="{{ form.valid_from.value|date:'Y-m-d'|default:'' }}" required>
+                        <input type="date" class="form-control" id="valid_from" name="valid_from" value="{{ policy.valid_from|date:'Y-m-d' }}" required>
                         {% if form.valid_from.errors %}<div class="text-danger">{{ form.valid_from.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-3 mb-3">
                         <label for="valid_to" class="form-label">Valid To <span class="text-danger">*</span></label>
-                        <input type="date" class="form-control" id="valid_to" name="valid_to" value="{{ form.valid_to.value|date:'Y-m-d'|default:'' }}" required>
+                        <input type="date" class="form-control" id="valid_to" name="valid_to" value="{{ policy.valid_to|date:'Y-m-d' }}" required>
                         {% if form.valid_to.errors %}<div class="text-danger">{{ form.valid_to.errors }}</div>{% endif %}
                     </div>
                 </div>
 
                 <div class="mb-3 form-check">
-                    <input type="checkbox" class="form-check-input" id="is_active" name="is_active" {% if form.is_active.value %}checked{% endif %}>
+                    <input type="checkbox" class="form-check-input" id="is_active" name="is_active" {% if policy.is_active %}checked{% endif %}>
                     <label class="form-check-label" for="is_active">Is Active</label>
                     {% if form.is_active.errors %}<div class="text-danger">{{ form.is_active.errors }}</div>{% endif %}
                 </div>
@@ -101,7 +96,7 @@
                 <hr>
 
                 <div class="mb-3 form-check">
-                    <input type="checkbox" class="form-check-input" id="is_verified" name="is_verified" {% if form.is_verified.value %}checked{% endif %} disabled>
+                    <input type="checkbox" class="form-check-input" id="is_verified" name="is_verified" {% if policy.is_verified %}checked{% endif %} disabled>
                     <label class="form-check-label" for="is_verified">Verified (Only if required by plan)</label>
                     <small id="verificationHelp" class="form-text text-muted d-block mt-1">
                         This will be enabled if the selected coverage plan requires verification.
@@ -111,7 +106,7 @@
 
                 <div class="mb-3">
                     <label for="notes" class="form-label">Notes</label>
-                    <textarea class="form-control" id="notes" name="notes" rows="3">{{ form.notes.value|default:'' }}</textarea>
+                    <textarea class="form-control" id="notes" name="notes" rows="3">{{ policy.notes|default:'' }}</textarea>
                     {% if form.notes.errors %}<div class="text-danger">{{ form.notes.errors }}</div>{% endif %}
                 </div>
 
@@ -132,10 +127,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const isVerifiedCheckbox = document.getElementById('is_verified');
     const verificationHelpText = document.getElementById('verificationHelp');
 
-    // Store initial values for dynamic dropdowns/checkboxes
-    const initialHMOValue = hmoSelect.value;
-    const initialCoveragePlanValue = coveragePlanSelect.value;
-    const initialIsVerified = isVerifiedCheckbox.checked; // Capture actual checked state from server
+    // Store initial values from the server
+    const initialHMOValue = "{{ policy.hmo.pk }}";
+    const initialCoveragePlanValue = "{{ policy.coverage_plan.pk }}";
+    const initialIsVerified = {{ policy.is_verified|yesno:"true,false" }};
 
     // --- Toast Notification Handler ---
     function showToast(message, type = 'success') {
@@ -174,8 +169,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Function to reset verification fields ---
     function resetVerificationFields() {
-        // Only reset if it wasn't initially verified AND the plan requires verification
-        // This ensures if a policy was already verified, we don't automatically uncheck it visually
         if (!initialIsVerified) {
             isVerifiedCheckbox.checked = false;
         }
@@ -188,9 +181,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Handle HMO selection change to load coverage plans ---
     hmoSelect.addEventListener('change', async function() {
         const hmoId = this.value;
+        const shouldPreserveSelection = (hmoId == initialHMOValue);
+
         coveragePlanSelect.innerHTML = '<option value="">Loading plans...</option>';
         coveragePlanSelect.disabled = true;
-        resetVerificationFields(); // Reset verification fields when HMO changes
+
+        if (!shouldPreserveSelection) {
+            resetVerificationFields();
+        }
 
         if (hmoId) {
             try {
@@ -209,15 +207,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         const option = document.createElement('option');
                         option.value = plan.id;
                         option.textContent = plan.name;
-                        // Pre-select the existing plan if it matches
-                        if (plan.id == initialCoveragePlanValue) {
+                        if (shouldPreserveSelection && plan.id == initialCoveragePlanValue) {
                             option.selected = true;
                         }
                         coveragePlanSelect.appendChild(option);
                     });
                     coveragePlanSelect.disabled = false;
-                    // If the initial coverage plan was selected, trigger its change event
-                    if (initialCoveragePlanValue && coveragePlanSelect.value == initialCoveragePlanValue) {
+
+                    if (shouldPreserveSelection && coveragePlanSelect.value == initialCoveragePlanValue) {
                          coveragePlanSelect.dispatchEvent(new Event('change'));
                     }
                 } else {
@@ -236,8 +233,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Handle Coverage Plan selection change for verification logic ---
     coveragePlanSelect.addEventListener('change', async function() {
         const planId = this.value;
-        // Do not call resetVerificationFields() here immediately.
-        // We want to retain the initialIsVerified state if the policy was already verified.
 
         if (planId) {
             try {
@@ -254,11 +249,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     isVerifiedCheckbox.disabled = false;
                     verificationHelpText.textContent = 'This plan requires verification. Check the box if verified.';
                     verificationHelpText.classList.remove('text-muted');
-                    verificationHelpText.classList.add('text-warning'); // Use warning for pending action
+                    verificationHelpText.classList.add('text-warning');
                 } else {
-                    isVerifiedCheckbox.checked = false; // Ensure it's unchecked if not required
+                    isVerifiedCheckbox.checked = false;
                     isVerifiedCheckbox.disabled = true;
-                    verificationHelpText.textContent = 'This plan does NOT require upfront verification. It will be created unverified.';
+                    verificationHelpText.textContent = 'This plan does NOT require upfront verification.';
                     verificationHelpText.classList.remove('text-warning');
                     verificationHelpText.classList.add('text-muted');
                 }
@@ -267,17 +262,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 showToast('Failed to load plan verification status. Please try again.', 'danger');
             }
         } else {
-             resetVerificationFields(); // If no plan is selected, reset to default state
+             resetVerificationFields();
         }
     });
 
     // --- Initial setup on page load ---
-    // If an HMO is pre-selected (which it should be for an edit page),
-    // trigger the change event to load associated coverage plans.
     if (initialHMOValue) {
         hmoSelect.dispatchEvent(new Event('change'));
     } else {
-        // If somehow no HMO is selected (shouldn't happen on edit), ensure verification is reset
         resetVerificationFields();
     }
 });

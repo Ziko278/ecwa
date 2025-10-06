@@ -20,16 +20,32 @@
                 {% csrf_token %}
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label for="patient" class="form-label">Patient <span class="text-danger">*</span></label>
-                        <select class="form-select" id="patient" name="patient" required>
-                            <option value="">Select Patient</option>
-                            {% for patient in patients %} {# 'patients' should be passed from the view context #}
-                                <option value="{{ patient.pk }}" {% if form.patient.value == patient.pk|stringformat:"s" %}selected{% endif %}>
-                                    {{ patient.first_name }} {{ patient.last_name }} ({{ patient.patient_id }})
-                                </option>
-                            {% endfor %}
-                        </select>
-                        {% if form.patient.errors %}<div class="text-danger">{{ form.patient.errors }}</div>{% endif %}
+                        <label for="card_number_input" class="form-label">Patient Card Number <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="card_number_input" placeholder="Enter patient card number">
+                            <button type="button" class="btn btn-primary" id="verify_patient_btn">
+                                <i class="fas fa-check-circle me-1"></i>Verify
+                            </button>
+                        </div>
+                        <small class="text-muted">Enter the patient's card number and click Verify</small>
+
+                        <!-- Hidden field to store actual patient ID -->
+                        <input type="hidden" id="patient" name="patient" value="{{ form.patient.value|default:'' }}" required>
+
+                        <!-- Patient details display (hidden initially) -->
+                        <div id="patient_details" class="mt-2 p-2 bg-light rounded" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <strong>Patient:</strong> <span id="patient_name"></span><br>
+                                    <small class="text-muted">Card: <span id="patient_card"></span></small>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="change_patient_btn">
+                                    <i class="fas fa-times"></i> Change
+                                </button>
+                            </div>
+                        </div>
+
+                        {% if form.patient.errors %}<div class="text-danger mt-1">{{ form.patient.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-6 mb-3">
                         <label for="hmo" class="form-label">HMO Provider <span class="text-danger">*</span></label>
@@ -270,6 +286,105 @@ document.addEventListener('DOMContentLoaded', function() {
         // If a coverage plan was also initially selected, and the HMO change reloads it,
         // the subsequent plan.id == initialPlanValue in the loop will trigger the change event
         // for the coverage plan after it's loaded.
+    }
+
+        // --- Patient Verification Logic ---
+    const cardNumberInput = document.getElementById('card_number_input');
+    const verifyPatientBtn = document.getElementById('verify_patient_btn');
+    const patientHiddenField = document.getElementById('patient');
+    const patientDetails = document.getElementById('patient_details');
+    const patientNameSpan = document.getElementById('patient_name');
+    const patientCardSpan = document.getElementById('patient_card');
+    const changePatientBtn = document.getElementById('change_patient_btn');
+
+    // Error Modal HTML (add this at the end of the template, outside the script)
+    const errorModalHTML = `
+        <div class="modal fade" id="patientErrorModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Patient Not Found</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="error_message"></p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Add modal to page if it doesn't exist
+    if (!document.getElementById('patientErrorModal')) {
+        document.body.insertAdjacentHTML('beforeend', errorModalHTML);
+    }
+
+    verifyPatientBtn.addEventListener('click', async function() {
+        const cardNumber = cardNumberInput.value.trim();
+
+        if (!cardNumber) {
+            showErrorModal('Please enter a patient card number');
+            return;
+        }
+
+        // Show loading state
+        verifyPatientBtn.disabled = true;
+        verifyPatientBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Verifying...';
+
+        try {
+            const response = await fetch(`{% url 'verify_patient_by_card' %}?card_number=${encodeURIComponent(cardNumber)}`);
+            const data = await response.json();
+
+            if (data.success) {
+                // Populate hidden field and display patient details
+                patientHiddenField.value = data.patient.id;
+                patientNameSpan.textContent = data.patient.full_name;
+                patientCardSpan.textContent = data.patient.card_number;
+
+                // Show patient details, hide input
+                cardNumberInput.style.display = 'none';
+                verifyPatientBtn.style.display = 'none';
+                patientDetails.style.display = 'block';
+
+                showToast('Patient verified successfully', 'success');
+            } else {
+                showErrorModal(data.error);
+                patientHiddenField.value = '';
+            }
+        } catch (error) {
+            console.error('Error verifying patient:', error);
+            showErrorModal('An error occurred while verifying the patient. Please try again.');
+            patientHiddenField.value = '';
+        } finally {
+            verifyPatientBtn.disabled = false;
+            verifyPatientBtn.innerHTML = '<i class="fas fa-check-circle me-1"></i>Verify';
+        }
+    });
+
+    changePatientBtn.addEventListener('click', function() {
+        // Reset to input mode
+        cardNumberInput.value = '';
+        cardNumberInput.style.display = 'block';
+        verifyPatientBtn.style.display = 'block';
+        patientDetails.style.display = 'none';
+        patientHiddenField.value = '';
+    });
+
+    function showErrorModal(message) {
+        document.getElementById('error_message').textContent = message;
+        const modal = new bootstrap.Modal(document.getElementById('patientErrorModal'));
+        modal.show();
+    }
+
+    // If form has errors and patient was pre-selected, show patient details
+    if (patientHiddenField.value) {
+        // You might need to fetch patient details here or pass them from backend
+        cardNumberInput.style.display = 'none';
+        verifyPatientBtn.style.display = 'none';
+        patientDetails.style.display = 'block';
     }
 });
 </script>

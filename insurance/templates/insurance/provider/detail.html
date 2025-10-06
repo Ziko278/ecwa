@@ -112,8 +112,8 @@
                     <div class="form-floating">
                         <select name="provider_type" class="form-select">
                             <option value="">Select Type</option>
+                            <option value="government" {% if provider.provider_type == 'government' %}selected{% endif %}>Government</option>
                             <option value="private" {% if provider.provider_type == 'private' %}selected{% endif %}>Private</option>
-                            <option value="public" {% if provider.provider_type == 'public' %}selected{% endif %}>Public</option>
                         </select>
                         <label>Provider Type</label>
                     </div><br/>

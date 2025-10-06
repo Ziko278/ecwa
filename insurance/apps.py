@@ -2,5 +2,8 @@ from django.apps import AppConfig
 
 
 class InsuranceConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'insurance'
+    name = "insurance"  # your app label, adjust if different
+
+    def ready(self):
+        from . import signals
+        signals.connect_signals()

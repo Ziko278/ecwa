@@ -174,8 +174,31 @@ def patient_wallet_funding(request):
     context = {
         'finance_setting': FinanceSettingModel.objects.first()
     }
+    try:
+        # optional amount to prefill
+        if 'amount' in request.GET:
+            try:
+                context['amount'] = float(request.GET.get('amount'))
+            except (TypeError, ValueError):
+                context['amount'] = None
+
+        # optional redirect target (kept as string)
+        if 'redirect' in request.GET:
+            context['redirect'] = request.GET.get('redirect')
+
+        # optional patient_id: load patient and pass to template
+        if 'patient_id' in request.GET:
+            patient_id = request.GET.get('patient_id')
+            # get_object_or_404 will raise 404 if invalid
+            patient = get_object_or_404(PatientModel, pk=patient_id)
+            context['patient'] = patient
+
+    except Exception:
+        # keep old behavior if anything goes wrong
+        pass
 
     return render(request, 'finance/wallet/funding.html', context)
+
 
 
 def calculate_insurance_amount(base_amount, coverage_percentage):
@@ -304,8 +327,9 @@ def verify_patient_ajax(request):
         drug_items = []
         drug_total = Decimal('0.00')
         for order in pending_drugs:
-            base_amount = order.drug.selling_price if hasattr(order.drug, 'selling_price') else Decimal('0.00')
-
+            base_amount = (order.drug.selling_price * Decimal(order.quantity_ordered)) if hasattr(order.drug,
+                                                                                         'selling_price') else Decimal(
+                '0.00')
             if active_insurance and hasattr(active_insurance.coverage_plan,
                                             'is_drug_covered') and active_insurance.coverage_plan.is_drug_covered(
                     order.drug):
@@ -318,7 +342,7 @@ def verify_patient_ajax(request):
 
             drug_items.append({
                 'id': order.id,
-                'name': f"{getattr(order.drug, 'brand_name', 'Drug')} (x{float(order.quantity_ordered)})",
+                'name': f"{order.drug.__str__()} (x{float(order.quantity_ordered)})",
                 'quantity': float(order.quantity_ordered),
                 'base_amount': float(base_amount),
                 'patient_amount': float(patient_amount),
@@ -692,6 +716,7 @@ def patient_wallet_dashboard(request, patient_id):
     }
 
     return render(request, 'finance/wallet/dashboard.html', context)
+
 
 @login_required
 @permission_required('finance.add_patienttransactionmodel', raise_exception=True)
@@ -1523,7 +1548,9 @@ def finance_pharmacy_patient_payment(request, patient_id):
         items = []
         total = Decimal('0.00')
         for o in pending_drugs:
-            base_amount = _to_decimal(o.drug.selling_price)
+            base_amount = (o.drug.selling_price * Decimal(o.quantity_ordered)) if hasattr(o.drug,
+                                                                                                  'selling_price') else Decimal(
+                '0.00')
             # insurance logic, protection if coverage_plan missing methods
             patient_amount = base_amount
             if active_insurance and hasattr(active_insurance.coverage_plan, 'is_drug_covered'):
@@ -1587,7 +1614,9 @@ def finance_pharmacy_patient_payment(request, patient_id):
                 return JsonResponse({'success': False,
                                      'error': 'One or more selected orders are older than 30 days and cannot be paid here.'},
                                     status=400)
-            base_amount = _to_decimal(o.drug.selling_price)
+            base_amount = (o.drug.selling_price * Decimal(o.quantity_ordered)) if hasattr(o.drug,
+                                                                                                  'selling_price') else Decimal(
+                '0.00')
             patient_amount = base_amount
             if active_insurance and hasattr(active_insurance.coverage_plan, 'is_drug_covered'):
                 try:
@@ -3866,7 +3895,7 @@ def finance_process_refund(request, patient_id):
 # ----------------------------------------------------
 
 @login_required
-@permission_required('finance.view_patientrefundmodel', raise_exception=True)
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
 def finance_wallet_history(request, patient_id):
     """Displays a detailed history of all wallet-related transactions."""
     patient = get_object_or_404(PatientModel, id=patient_id)

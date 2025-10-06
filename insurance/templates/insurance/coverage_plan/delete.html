@@ -1,0 +1,61 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-lg-12 grid-margin stretch-card">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="card-title">Delete Coverage Plan</h4>
+
+            <p>Plan: <i>{{ plan.name }}</i></p>
+            <p>HMO: <i>{{ plan.hmo.name }}</i></p>
+
+            <p>The coverage plan will be permanently deleted.</p>
+
+            {% if plan.patientinsurancemodel_set.all|length > 0 %}
+                <p class="text-warning">
+                    <strong>Warning:</strong> {{ plan.patientinsurancemodel_set.all|length }} Patient Insurance Polic{{ plan.patientinsurancemodel_set.all|length|pluralize:"y,ies" }}
+                    are using this coverage plan.
+                </p>
+            {% endif %}
+
+            {% if plan.insuranceclaimmodel_set.all|length > 0 %}
+                <p class="text-warning">
+                    <strong>Warning:</strong> {{ plan.insuranceclaimmodel_set.all|length }} Insurance Claim{{ plan.insuranceclaimmodel_set.all|length|pluralize }}
+                    are linked to this coverage plan.
+                </p>
+            {% endif %}
+
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Coverage Details:</strong>
+                <ul class="mb-0 mt-2">
+                    <li>Drug Coverage: {{ plan.get_drug_coverage_display }} 
+                        {% if plan.selected_drugs.all|length > 0 %}({{ plan.selected_drugs.all|length }} drug{{ plan.selected_drugs.all|length|pluralize }} selected){% endif %}
+                    </li>
+                    <li>Lab Coverage: {{ plan.get_lab_coverage_display }}
+                        {% if plan.selected_lab_tests.all|length > 0 %}({{ plan.selected_lab_tests.all|length }} test{{ plan.selected_lab_tests.all|length|pluralize }} selected){% endif %}
+                    </li>
+                    <li>Radiology Coverage: {{ plan.get_radiology_coverage_display }}
+                        {% if plan.selected_radiology.all|length > 0 %}({{ plan.selected_radiology.all|length }} scan{{ plan.selected_radiology.all|length|pluralize }} selected){% endif %}
+                    </li>
+                    <li>Surgery Coverage: {{ plan.get_surgery_coverage_display }}
+                        {% if plan.selected_surgeries.all|length > 0 %}({{ plan.selected_surgeries.all|length }} surger{{ plan.selected_surgeries.all|length|pluralize:"y,ies" }} selected){% endif %}
+                    </li>
+                </ul>
+            </div>
+
+            {% if plan.patientinsurancemodel_set.all|length == 0 and plan.insuranceclaimmodel_set.all|length == 0 %}
+                <p class="text-muted">There are no patient policies or claims associated with this coverage plan.</p>
+            {% endif %}
+
+            <form style="display:inline" method="post">
+                {% csrf_token %}
+                <button class="btn btn-success">Proceed</button>
+            </form>
+            <a class="btn btn-danger" href="{% url 'coverage_plan_index' %}">Cancel</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

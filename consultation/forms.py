@@ -485,28 +485,28 @@ class PatientVitalsForm(ModelForm):
             }),
         }
 
-    def clean_blood_pressure_systolic(self):
-        systolic = self.cleaned_data.get('blood_pressure_systolic')
-        if systolic and (systolic < 60 or systolic > 250):
-            raise ValidationError("Systolic BP must be between 60-250 mmHg.")
-        return systolic
-
-    def clean_blood_pressure_diastolic(self):
-        diastolic = self.cleaned_data.get('blood_pressure_diastolic')
-        if diastolic and (diastolic < 10 or diastolic > 300):
-            raise ValidationError("Diastolic BP must be between 40-150 mmHg.")
-        return diastolic
-
-    def clean(self):
-        cleaned_data = super().clean()
-        systolic = cleaned_data.get('blood_pressure_systolic')
-        diastolic = cleaned_data.get('blood_pressure_diastolic')
-
-        if systolic and diastolic:
-            if diastolic >= systolic:
-                raise ValidationError("Diastolic BP must be lower than Systolic BP.")
-
-        return cleaned_data
+    # def clean_blood_pressure_systolic(self):
+    #     systolic = self.cleaned_data.get('blood_pressure_systolic')
+    #     if systolic and (systolic < 60 or systolic > 250):
+    #         raise ValidationError("Systolic BP must be between 60-250 mmHg.")
+    #     return systolic
+    #
+    # def clean_blood_pressure_diastolic(self):
+    #     diastolic = self.cleaned_data.get('blood_pressure_diastolic')
+    #     if diastolic and (diastolic < 10 or diastolic > 300):
+    #         raise ValidationError("Diastolic BP must be between 40-150 mmHg.")
+    #     return diastolic
+    #
+    # def clean(self):
+    #     cleaned_data = super().clean()
+    #     systolic = cleaned_data.get('blood_pressure_systolic')
+    #     diastolic = cleaned_data.get('blood_pressure_diastolic')
+    #
+    #     if systolic and diastolic:
+    #         if diastolic >= systolic:
+    #             raise ValidationError("Diastolic BP must be lower than Systolic BP.")
+    #
+    #     return cleaned_data
 
 
 class ConsultationSessionForm(ModelForm):

@@ -740,6 +740,10 @@ class DrugBatchDeleteView(
         # It might return an HttpResponseRedirect if the condition isn't met.
         obj = self.get_object()
 
+        if obj.stock_items.all():
+            messages.error(request, 'Cannot Delete a batch that has stocks')
+            return redirect(reverse('drug_batch_detail', kwargs={'pk':obj.id}))
+
         # If get_object returned a redirect, immediately return it.
         if isinstance(obj, HttpResponseRedirect):
             return obj
@@ -880,8 +884,7 @@ class DrugBatchDetailView(LoginRequiredMixin, PermissionRequiredMixin, PharmacyC
         context['title'] = f"Batch Details: {batch.name.upper()}"
         context['update_forms'] = {
             stock.pk: DrugStockForm(instance=stock) for stock in stock_items
-        },
-
+        }
 
         return context
 
@@ -943,7 +946,7 @@ class DrugStockDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVie
         if stock.quantity_left != stock.quantity_bought:
             messages.error(
                 self.request,
-                f"Cannot delete stock for '{stock.drug.name}' (Batch: '{stock.batch.name}'). "
+                f"Cannot delete stock for '{stock.drug.__str__()}' (Batch: '{stock.batch.name}'). "
                 f"Quantity left ({stock.quantity_left}) does not equal quantity bought ({stock.quantity_bought}). "
                 "Only full, unused stock entries can be deleted."
             )
@@ -960,7 +963,7 @@ class DrugStockDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVie
         # If successfully deleted, self.object won't have a batch.pk anymore.
         # So, we should redirect to the main stock index.
         messages.success(self.request, self.success_message)  # Manually add success message here
-        return reverse('drug_stock_index')  # Redirect to the main stock overview
+        return reverse('drug_batch_detail', kwargs={'pk':self.object.batch.pk})  # Redirect to the main stock overview
 
     def dispatch(self, request, *args, **kwargs):
         """

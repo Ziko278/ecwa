@@ -405,9 +405,14 @@
       {% if perms.insurance.view_patientinsurancemodel or perms.insurance.view_insuranceprovidermodel %}
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#lnote" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-shield-check"></i><span>INSURANCE</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-shield-check"></i><span>Insurance</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="lnote" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+            <li>
+            <a href="{% url 'insurance_claim_list' %}">
+              <i class="bi bi-circle"></i><span>Claims</span>
+            </a>
+          </li>
           {% if perms.insurance.view_patientinsurancemodel %}
           <li>
             <a href="{% url 'patient_insurance_list' %}">

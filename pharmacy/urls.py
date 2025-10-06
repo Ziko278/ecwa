@@ -42,9 +42,7 @@ urlpatterns = [
     path('batch/<int:pk>/delete', DrugBatchDeleteView.as_view(), name='drug_batch_delete'),
 
     # 7: Drug Stock URLs
-    path('stock/create', DrugStockCreateView.as_view(), name='drug_stock_create'),
-    path('stock/', DrugBatchStockListView.as_view(), name='drug_stock_index'), # Lists batches with stock counts
-    path('stock/add/', DrugStockCreateView.as_view(), name='drug_stock_create'), # Add multiple stock items
+    path('stock/add/', DrugStockCreateView.as_view(), name='drug_stock_create'), #
     path('stock/batch/<int:pk>/', DrugBatchDetailView.as_view(), name='drug_batch_detail'), # NEW: Details of a batch and its stocks
     path('stock/<int:pk>/edit/', DrugStockUpdateView.as_view(), name='drug_stock_update'), # Edit single stock item
     path('stock/<int:pk>/delete/', DrugStockDeleteView.as_view(), name='drug_stock_delete'), # Delete single stock item

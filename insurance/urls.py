@@ -61,6 +61,10 @@ urlpatterns = [
     path("search/lab-tests/", search_lab_tests, name="search_lab_tests"),
     path("search/scans/", search_scans, name="search_scans"),
 
+    path("search/surgeries/", search_surgeries, name="search_surgeries"),
+    path("coverage-plan/<int:pk>/add-surgery/", coverage_plan_add_surgery, name="coverage_plan_add_surgery"),
+    path("coverage-plan/<int:pk>/remove-surgery/<int:surgery_id>/", coverage_plan_remove_surgery, name="coverage_plan_remove_surgery"),
+
     # Patient Insurance (CRUD + verify)
     path("patient-insurance/", PatientInsuranceListView.as_view(), name="patient_insurance_list"),
     path("patient-insurance/create/", PatientInsuranceCreateView.as_view(), name="patient_insurance_create"),
@@ -73,21 +77,22 @@ urlpatterns = [
 
     # Patient's claims overview
     path("patient/<int:patient_id>/claims/", PatientClaimsView.as_view(), name="patient_claims"),
+    path("verify-patient-card/", verify_patient_by_card, name="verify_patient_by_card"),
 
     # Claims (CRUD + detail)
-    path("claims/", InsuranceClaimListView.as_view(), name="claim_list"),
-    path("claims/create/", InsuranceClaimCreateView.as_view(), name="claim_create"),
-    path("claims/<int:pk>/", InsuranceClaimDetailView.as_view(), name="claim_detail"),
-    path("claims/<int:pk>/update/", InsuranceClaimUpdateView.as_view(), name="claim_update"),
-    path("claims/<int:pk>/delete/", InsuranceClaimDeleteView.as_view(), name="claim_delete"),
+    path("claims/", InsuranceClaimListView.as_view(), name="insurance_claim_list"),
+    path("claims/<int:pk>/", InsuranceClaimDetailView.as_view(), name="insurance_claim_detail"),
 
-    # Claim actions
-    path("claims/<int:pk>/approve/", approve_claim, name="approve_claim"),
-    path("claims/<int:pk>/reject/", reject_claim, name="reject_claim"),
-    path("claims/<int:pk>/process/", process_claim, name="process_claim"),
-    path("claims/bulk-action/", bulk_claim_action, name="bulk_claim_action"),
+    # -----------------------
+    # CLAIM ACTIONS
+    # -----------------------
+    path("claims/<int:pk>/approve/", approve_claim, name="insurance_claim_approve"),  # This name is correct
+    path("claims/<int:pk>/reject/", reject_claim, name="insurance_claim_decline"),  # Use this name consistently
+    path("claims/<int:pk>/process/", process_claim, name="insurance_claim_process"),
 
-    # Utilities
-    path("calculate-coverage/", calculate_coverage, name="calculate_coverage"),
-    path("api/statistics/", insurance_statistics_api, name="insurance_statistics_api"),
+    # -----------------------
+    # AJAX / API ENDPOINTS
+    # -----------------------
+
+
 ]

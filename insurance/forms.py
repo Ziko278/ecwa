@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from insurance.models import (
@@ -92,6 +93,11 @@ class HMOCoveragePlanForm(forms.ModelForm):
             'selected_radiology': forms.SelectMultiple(attrs={'class': 'form-control'}),
             'radiology_coverage_percentage': forms.NumberInput(attrs={'class': 'form-control', 'min': '0', 'max': '100'}),
             'radiology_annual_limit': forms.NumberInput(attrs={'class': 'form-control'}),
+            # FIXED: These should be widgets, not field definitions
+            'surgery_coverage': forms.Select(attrs={'class': 'form-control'}),
+            'selected_surgeries': forms.SelectMultiple(attrs={'class': 'form-control'}),
+            'surgery_coverage_percentage': forms.NumberInput(attrs={'class': 'form-control', 'min': '0', 'max': '100'}),
+            'surgery_annual_limit': forms.NumberInput(attrs={'class': 'form-control'}),
             'require_verification': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'require_referral': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'annual_limit': forms.NumberInput(attrs={'class': 'form-control'}),
@@ -154,6 +160,11 @@ class PatientInsuranceForm(forms.ModelForm):
         if valid_from and valid_to and valid_to <= valid_from:
             raise ValidationError("Valid To date must be after Valid From date.")
         return cleaned_data
+
+    def form_invalid(self, form):
+        if not form.cleaned_data.get('patient'):
+            messages.error(self.request, 'Please verify a patient using their card number')
+        return super().form_invalid(form)
 
 
 # -------------------------------

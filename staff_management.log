@@ -1,2 +1,26 @@
 Successfully created user account 'STF-0001' for staff STF-0001
 No email for staff STF-0001 - credentials not sent
+Successfully created user account 'STF-0002' for staff STF-0002
+Failed to send credentials email to odekeziko@gmail.com: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials ffacd0b85a97d-4255d8f0392sm19908670f8f.42 - gsmtp')
+Traceback (most recent call last):
+  File "C:\Users\ZIKO\Desktop\projects\ecwa_hms\human_resource\signals.py", line 106, in send_staff_credentials_email
+    send_mail(
+  File "C:\Users\ZIKO\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\core\mail\__init__.py", line 87, in send_mail
+    return mail.send()
+           ^^^^^^^^^^^
+  File "C:\Users\ZIKO\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\core\mail\message.py", line 300, in send
+    return self.get_connection(fail_silently).send_messages([self])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ZIKO\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\core\mail\backends\smtp.py", line 127, in send_messages
+    new_conn_created = self.open()
+                       ^^^^^^^^^^^
+  File "C:\Users\ZIKO\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\core\mail\backends\smtp.py", line 94, in open
+    self.connection.login(self.username, self.password)
+  File "C:\Users\ZIKO\AppData\Local\Programs\Python\Python312\Lib\smtplib.py", line 750, in login
+    raise last_exception
+  File "C:\Users\ZIKO\AppData\Local\Programs\Python\Python312\Lib\smtplib.py", line 739, in login
+    (code, resp) = self.auth(
+                   ^^^^^^^^^^
+  File "C:\Users\ZIKO\AppData\Local\Programs\Python\Python312\Lib\smtplib.py", line 662, in auth
+    raise SMTPAuthenticationError(code, resp)
+smtplib.SMTPAuthenticationError: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials ffacd0b85a97d-4255d8f0392sm19908670f8f.42 - gsmtp')
