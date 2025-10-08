@@ -591,7 +591,11 @@
                                     Ordered: ${order.quantity_ordered} |
                                     Dispensed: ${order.quantity_dispensed} |
                                     Remaining: ${order.remaining_quantity}
+                                    <br>
+                                    ${order.dosage_instructions || order.duration ? ` | Dosage: ${order.dosage_instructions || ''} ${order.duration || ''}`.trim() : ''}
                                 </small>
+                                ${order.notes ? `<br><small class="text-muted">Note: ${order.notes}</small>` : ''}
+
                                 ${stockWarning}
                             </label>
                         </div>
@@ -679,7 +683,10 @@
                                 <br>
                                 <small class="text-muted">
                                     Order: ${order.order_number} | Qty: ${order.quantity_ordered}
+                                    <br>
+                                    ${order.dosage_instructions || order.duration ? ` | Dosage: ${order.dosage_instructions || ''} ${order.duration || ''}`.trim() : ''}
                                 </small>
+                                ${order.notes ? `<br><small class="text-muted">Note: ${order.notes}</small>` : ''}
                                 <br>
                                 <small class="text-muted">
                                     ${order.dosage_instructions}
