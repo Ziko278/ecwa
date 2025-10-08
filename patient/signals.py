@@ -2,10 +2,11 @@ from decimal import Decimal
 
 from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 from django.utils.html import escape
 from django.utils.timezone import now
 from django.db import transaction
-from datetime import datetime, date
+from datetime import datetime, date, time, timedelta
 import logging
 from admin_site.models import ActivityLogModel
 from consultation.models import PatientQueueModel
@@ -150,6 +151,12 @@ def create_consultation_payment_and_queue(sender, instance: PatientModel, create
 
             patient_wallet = instance.wallet
 
+            validity_days = payment.consultation_fee.validity_in_days
+            today = date.today()
+            cutoff_time = time(20, 0)  # 8:00 PM
+            start_date_for_validity = today if timezone.now().time() < cutoff_time else today + timedelta(days=1)
+            valid_till = start_date_for_validity + timedelta(days=validity_days - 1)
+
             consult_payment = PatientTransactionModel.objects.create(
                 patient=instance,
                 fee_structure=payment.consultation_fee,
@@ -162,7 +169,9 @@ def create_consultation_payment_and_queue(sender, instance: PatientModel, create
                 received_by=payment.created_by,
                 old_balance=Decimal(patient_wallet.amount) + Decimal(
                     payment.consultation_fee.amount) if payment.consultation_fee else 0,
-                new_balance=patient_wallet.amount
+                new_balance=patient_wallet.amount,
+                valid_till = valid_till
+
             )
 
             # 2. Add patient to PatientQueueModel
