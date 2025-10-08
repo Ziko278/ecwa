@@ -1953,11 +1953,9 @@ def process_dispense_ajax(request):
 
                 # Update order status
                 order.status = 'paid'
-                order.payment_status = True
-                order.payment_date = timezone.now()
-                order.payment_by = request.user
+              
                 order.quantity_paid = order.quantity_ordered
-                order.save(update_fields=['status', 'payment_status', 'payment_date', 'payment_by', 'quantity_paid'])
+                order.save(update_fields=['status', 'quantity_paid'])
 
                 paid_count += 1
 
@@ -2077,6 +2075,7 @@ def process_dispense_ajax(request):
         return JsonResponse({
             'error': f'Error processing request: {str(e)}'
         }, status=500)
+
 
 def process_fifo_stock_reduction(drug, quantity_to_reduce, location, reason, remark, user):
     """

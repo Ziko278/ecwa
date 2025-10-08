@@ -866,9 +866,7 @@ def process_wallet_payment(request):
             # Update order statuses
             for item in payment_items:
                 order = item['order']
-                order.payment_status = True
-                order.payment_date = timezone.now()
-                order.payment_by = request.user
+
 
                 if payment_type in ['lab', 'scan']:
                     order.status = 'paid'
@@ -1605,10 +1603,8 @@ def finance_pharmacy_patient_payment(request, patient_id):
             for detail in order_details:
                 order = detail['order']
                 order.status = 'paid'
-                order.payment_status = True
-                order.payment_date = timezone.now()
-                order.payment_by = request.user
-                order.save(update_fields=['status', 'payment_status', 'payment_date', 'payment_by'])
+
+                order.save(update_fields=['status'])
 
             # Create transaction record
             try:
