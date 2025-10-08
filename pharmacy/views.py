@@ -25,6 +25,9 @@ from django.views.generic import (
 )
 
 from finance.models import PatientTransactionModel
+from finance.views import _quantize_money
+from insurance.claim_helpers import get_orders_with_claim_info
+from insurance.models import PatientInsuranceModel
 from patient.models import PatientModel, PatientWalletModel
 from pharmacy.forms import (
     DrugCategoryForm, GenericDrugForm, DrugFormulationForm, ManufacturerForm,
@@ -1747,14 +1750,13 @@ def drug_dispense_page(request):
 
 @login_required
 def verify_patient_pharmacy_ajax(request):
-    """Verify patient and get drug orders for dispensing"""
+    """Verify patient and get drug orders for dispensing - CLAIM-BASED VERSION"""
     card_number = request.GET.get('card_number', '').strip()
 
     if not card_number:
         return JsonResponse({'error': 'Card number required'}, status=400)
 
     try:
-        # Look up patient by card number
         patient = PatientModel.objects.get(card_number__iexact=card_number)
 
         # Get or create wallet
@@ -1763,8 +1765,23 @@ def verify_patient_pharmacy_ajax(request):
             defaults={'amount': Decimal('0.00')}
         )
 
+        # Get active insurance for display
+        active_insurance = None
+        try:
+            policies_qs = patient.insurance_policies.all()
+        except Exception:
+            try:
+                policies_qs = patient.insurancepolicy_set.all()
+            except:
+                policies_qs = PatientInsuranceModel.objects.none()
+
+        active_insurance = policies_qs.filter(
+            is_active=True,
+            valid_to__gte=timezone.now().date()
+        ).select_related('hmo', 'coverage_plan').first()
+
         # Get ready to dispense orders (paid but not fully dispensed)
-        ready_to_dispense = DrugOrderModel.objects.filter(
+        ready_to_dispense_qs = DrugOrderModel.objects.filter(
             patient=patient,
             status__in=['paid', 'partially_dispensed']
         ).exclude(
@@ -1772,18 +1789,19 @@ def verify_patient_pharmacy_ajax(request):
         ).select_related('drug').order_by('-ordered_at')
 
         # Get unpaid orders
-        unpaid_orders = DrugOrderModel.objects.filter(
+        unpaid_orders_qs = DrugOrderModel.objects.filter(
             patient=patient,
             status='pending'
         ).select_related('drug').order_by('-ordered_at')
 
-        # Serialize ready to dispense orders
+        # Process ready_to_dispense with claim info (for display context)
         ready_items = []
-        for order in ready_to_dispense:
+        for order in ready_to_dispense_qs:
             ready_items.append({
                 'id': order.id,
                 'order_number': order.order_number,
-                'drug_name': f"{order.drug.brand_name or order.drug.generic_name}",
+                'drug_name': f"{order.drug.__str__()}",
+                'quantity_left': f"{order.drug.store_quantity}",
                 'quantity_ordered': float(order.quantity_ordered),
                 'quantity_dispensed': float(order.quantity_dispensed),
                 'remaining_quantity': float(order.remaining_to_dispense),
@@ -1793,22 +1811,35 @@ def verify_patient_pharmacy_ajax(request):
                 'ordered_date': order.ordered_at.strftime('%Y-%m-%d')
             })
 
-        # Serialize unpaid orders
+        # Process unpaid orders with claim-based logic
+        unpaid_results = get_orders_with_claim_info(unpaid_orders_qs, 'drug')
+
         unpaid_items = []
-        for order in unpaid_orders:
-            total_amount = Decimal(order.drug.selling_price) * Decimal(order.quantity_ordered)
+        for result in unpaid_results:
+            order = result['order']
             unpaid_items.append({
                 'id': order.id,
                 'order_number': order.order_number,
                 'drug_name': f"{order.drug.brand_name or order.drug.generic_name}",
                 'quantity_ordered': float(order.quantity_ordered),
                 'price_per_unit': float(order.drug.selling_price),
-                'total_amount': float(total_amount),
+                'base_amount': float(result['base_amount']),
+                'patient_amount': float(result['patient_amount']),
+                'covered_amount': float(result['covered_amount']),
+                'total_amount': float(result['patient_amount']),  # Use patient_amount instead
                 'dosage_instructions': order.dosage_instructions,
                 'duration': order.duration,
                 'status': order.status,
-                'ordered_date': order.ordered_at.strftime('%Y-%m-%d')
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d'),
+                'has_approved_claim': result['has_approved_claim'],
+                'claim_number': result['claim_number'],
+                'claim_status': result['claim_status'],
+                'has_pending_claim': result['has_pending_claim'],
+                'pending_claim_number': result['pending_claim_number'],
             })
+
+        # Count pending claims
+        pending_claims_count = sum(1 for item in unpaid_items if item.get('has_pending_claim'))
 
         return JsonResponse({
             'success': True,
@@ -1825,10 +1856,16 @@ def verify_patient_pharmacy_ajax(request):
                 'balance': float(wallet.amount),
                 'formatted_balance': f'₦{wallet.amount:,.2f}'
             },
+            'insurance': {
+                'has_active': active_insurance is not None,
+                'hmo_name': active_insurance.hmo.name if active_insurance else None,
+                'plan_name': active_insurance.coverage_plan.name if active_insurance else None,
+            } if active_insurance else None,
             'drug_orders': {
                 'ready_to_dispense': ready_items,
                 'unpaid_orders': unpaid_items
-            }
+            },
+            'pending_claims_count': pending_claims_count
         })
 
     except PatientModel.DoesNotExist:
@@ -1845,7 +1882,9 @@ def verify_patient_pharmacy_ajax(request):
 @permission_required('pharmacy.change_drugordermodel', raise_exception=True)
 @transaction.atomic
 def process_dispense_ajax(request):
-    """Process drug dispensing and/or payments with pharmacy stock management"""
+    """Process drug dispensing and/or payments with pharmacy stock management - CLAIM-BASED VERSION"""
+    from insurance.claim_helpers import calculate_patient_amount_with_claim
+
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
@@ -1867,55 +1906,82 @@ def process_dispense_ajax(request):
         paid_count = 0
         total_payment = Decimal('0.00')
 
-        # Process payments first
+        # Process payments first WITH CLAIM-BASED LOGIC
         if payment_items:
             payment_orders = DrugOrderModel.objects.filter(
                 id__in=payment_items,
                 patient=patient,
                 status='pending'
-            )
+            ).select_related('drug')
 
+            order_details = []
             for order in payment_orders:
-                order_total = Decimal(order.drug.selling_price) * Decimal(order.quantity_ordered)
-                total_payment += Decimal(order_total)
+                # Calculate base amount
+                base_amount = Decimal(order.drug.selling_price) * Decimal(order.quantity_ordered)
+
+                # Use claim-based calculation
+                claim_info = calculate_patient_amount_with_claim(order, base_amount)
+                patient_amount = claim_info['patient_amount']
+
+                total_payment += _quantize_money(patient_amount)
+                order_details.append({
+                    'order': order,
+                    'base_amount': base_amount,
+                    'patient_amount': patient_amount,
+                    'covered_amount': claim_info['covered_amount'],
+                    'has_claim': claim_info['has_approved_claim'],
+                    'claim_number': claim_info['claim_number']
+                })
 
             # Check wallet balance
             if wallet.amount < total_payment:
+                shortfall = _quantize_money(total_payment - wallet.amount)
                 return JsonResponse({
-                    'error': f'Insufficient wallet balance. Required: ₦{total_payment:,.2f}, Available: ₦{wallet.amount:,.2f}'
+                    'error': f'Insufficient wallet balance. Required: ₦{total_payment:,.2f}, Available: ₦{wallet.amount:,.2f}',
+                    'shortfall': float(shortfall)
                 }, status=400)
 
+            old_balance = wallet.amount
+
             # Process payments
-            for order in payment_orders:
-                order_total = Decimal(order.drug.selling_price) * Decimal(order.quantity_ordered)
+            for detail in order_details:
+                order = detail['order']
+                patient_amount = detail['patient_amount']
 
                 # Deduct from wallet
-                wallet.amount -= order_total
+                wallet.amount -= patient_amount
 
                 # Update order status
                 order.status = 'paid'
+                order.payment_status = True
+                order.payment_date = timezone.now()
+                order.payment_by = request.user
                 order.quantity_paid = order.quantity_ordered
-                order.save()
+                order.save(update_fields=['status', 'payment_status', 'payment_date', 'payment_by', 'quantity_paid'])
 
                 paid_count += 1
 
+                # Create transaction record for this order
                 PatientTransactionModel.objects.create(
                     patient=patient,
-                    transaction_type='drug_payment',  # Or specific type if payment is split by order
+                    transaction_type='drug_payment',
                     transaction_direction='out',
-                    amount=order_total,
-                    old_balance=wallet.amount + order_total,
+                    amount=patient_amount,
+                    old_balance=old_balance,
                     new_balance=wallet.amount,
                     date=timezone.now().date(),
                     received_by=request.user,
                     payment_method='wallet',
                     status='completed',
-                    # You may want to link the drug order here (requires a FK on PatientTransactionModel)
                 )
+                old_balance = wallet.amount  # Update for next iteration
 
             wallet.save()
 
-        # Process dispensing with pharmacy stock management
+            # Count claims applied
+            claims_count = sum(1 for d in order_details if d['has_claim'])
+
+        # Process dispensing with pharmacy stock management (unchanged)
         if dispense_items:
             for item in dispense_items:
                 order_id = item.get('order_id')
@@ -1993,7 +2059,10 @@ def process_dispense_ajax(request):
         # Build success message
         messages = []
         if paid_count > 0:
-            messages.append(f'Paid for {paid_count} drug order(s) - ₦{total_payment:,.2f} deducted from wallet')
+            payment_msg = f'Paid for {paid_count} drug order(s) - ₦{total_payment:,.2f} deducted from wallet'
+            if claims_count > 0:
+                payment_msg += f'. Insurance claims applied to {claims_count} order(s)'
+            messages.append(payment_msg)
         if dispensed_count > 0:
             messages.append(f'Dispensed {dispensed_count} drug order(s) from pharmacy stock')
 
@@ -2008,7 +2077,6 @@ def process_dispense_ajax(request):
         return JsonResponse({
             'error': f'Error processing request: {str(e)}'
         }, status=500)
-
 
 def process_fifo_stock_reduction(drug, quantity_to_reduce, location, reason, remark, user):
     """

@@ -965,25 +965,53 @@ def get_consultation_fees_ajax(request):
     """Get consultation fees for selected specialization"""
     specialization_id = request.GET.get('specialization_id')
     patient_id = request.GET.get('patient_id')
+    today = date.today()
 
     if not specialization_id:
         return JsonResponse({'error': 'Specialization ID required'}, status=400)
 
     try:
+        specialization = SpecializationModel.objects.get(id=specialization_id)
+
         # Get patient to check insurance status
         patient_category = 'regular'
         if patient_id:
             patient = PatientModel.objects.get(id=patient_id)
+
+            # NEW: Check for valid, un-used payment for this specialization's group
+            if specialization.group:
+                valid_payment = PatientTransactionModel.objects.filter(
+                    patient=patient,
+                    transaction_type='consultation_payment',
+                    status='completed',
+                    valid_till__gte=today,
+                    fee_structure__specialization__group=specialization.group
+                ).order_by('-created_at').first()
+
+                if valid_payment:
+                    return JsonResponse({
+                        'success': True,
+                        'has_valid_payment': True,
+                        'payment_id': valid_payment.id,
+                        'message': f"Patient has a valid payment for the {specialization.group.name} group.",
+                        'fee': {
+                            'id': valid_payment.fee_structure.id,
+                            'amount': float(valid_payment.amount),
+                            'formatted_amount': f'₦{valid_payment.amount:,.2f}',
+                            'patient_category': valid_payment.fee_structure.get_patient_category_display(),
+                        }
+                    })
+
             # Check if patient has active insurance
             if hasattr(patient, 'insurance_policies'):
                 active_insurance = patient.insurance_policies.filter(
                     is_active=True,
-                    valid_to__gt=date.today()
+                    valid_to__gte=today
                 ).exists()
                 if active_insurance:
                     patient_category = 'insurance'
 
-        # Get consultation fee
+        # Get consultation fee for new payment
         fee = ConsultationFeeModel.objects.filter(
             specialization_id=specialization_id,
             patient_category=patient_category,
@@ -1001,6 +1029,7 @@ def get_consultation_fees_ajax(request):
         if fee:
             return JsonResponse({
                 'success': True,
+                'has_valid_payment': False,
                 'fee': {
                     'id': fee.id,
                     'amount': float(fee.amount),
@@ -1013,6 +1042,10 @@ def get_consultation_fees_ajax(request):
                 'error': 'No consultation fee found for this specialization'
             }, status=404)
 
+    except SpecializationModel.DoesNotExist:
+        return JsonResponse({
+            'error': 'Specialization not found'
+        }, status=404)
     except PatientModel.DoesNotExist:
         return JsonResponse({
             'error': 'Patient not found'
@@ -2017,7 +2050,7 @@ class ConsultationRecordsListView(LoginRequiredMixin, PermissionRequiredMixin, L
             queryset = queryset.filter(
                 Q(queue_entry__patient__first_name__icontains=patient_search) |
                 Q(queue_entry__patient__last_name__icontains=patient_search) |
-                Q(queue_entry__patient__patient_id__icontains=patient_search)
+                Q(queue_entry__patient__card_number__icontains=patient_search)
             )
 
         if date_from:
@@ -3134,14 +3167,14 @@ def consultation_page(request, consultation_id):
 
 
 @login_required
-@permission_required('consultation.add_consultationsessionmodel', raise_exception=True)
+@permission_required('consultation.view_consultationsessionmodel', raise_exception=True)
 def consultation_history(request):
     """View consultation history with filters"""
     try:
         consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user)
     except ConsultantModel.DoesNotExist:
         messages.error(request, "Access denied.")
-        return redirect('admin_home')
+        return redirect('admin_dashboard')
 
     # Get filter parameters
     date_range = request.GET.get('date_range', 'this_month')
@@ -3202,7 +3235,7 @@ def consultation_history(request):
         consultations = consultations.filter(
             Q(queue_entry__patient__first_name__icontains=patient_search) |
             Q(queue_entry__patient__last_name__icontains=patient_search) |
-            Q(queue_entry__patient__patient_id__icontains=patient_search)
+            Q(queue_entry__patient__card_number__icontains=patient_search)
         )
 
     # Handle CSV export
@@ -4011,7 +4044,7 @@ def ajax_order_multiple_imaging(request):
 def ajax_consultation_details(request, consultation_id):
     """Get detailed consultation information for modal view"""
     try:
-        consultant = get_object_or_404(ConsultantModel, staff__user=request.user)
+        consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user)
         consultation = get_object_or_404(
             ConsultationSessionModel,
             id=consultation_id,
@@ -4025,7 +4058,7 @@ def ajax_consultation_details(request, consultation_id):
                 <h6 class="text-primary">Patient Information</h6>
                 <table class="table table-sm">
                     <tr><td><strong>Name:</strong></td><td>{consultation.queue_entry.patient.first_name} {consultation.queue_entry.patient.last_name}</td></tr>
-                    <tr><td><strong>ID:</strong></td><td>{consultation.queue_entry.patient.patient_id}</td></tr>
+                    <tr><td><strong>ID:</strong></td><td>{consultation.queue_entry.patient.card_number}</td></tr>
                     <tr><td><strong>Age:</strong></td><td>{consultation.queue_entry.patient.age} years</td></tr>
                     <tr><td><strong>Gender:</strong></td><td>{consultation.queue_entry.patient.gender.title()}</td></tr>
                     <tr><td><strong>Queue #:</strong></td><td>{consultation.queue_entry.queue_number}</td></tr>
@@ -4056,10 +4089,8 @@ def ajax_consultation_details(request, consultation_id):
                     <strong>Diagnosis:</strong>
                     <p class="text-muted">{consultation.diagnosis or 'Not recorded'}</p>
                 </div>
-                <div class="mb-2">
-                    <strong>Treatment Plan:</strong>
-                    <p class="text-muted">{consultation.treatment_plan or 'Not recorded'}</p>
-                </div>
+                
+                
             </div>
         </div>
 
@@ -4091,7 +4122,7 @@ def ajax_consultation_details(request, consultation_id):
 def patient_history(request, patient_id):
     """View complete patient history"""
     try:
-        consultant = get_object_or_404(ConsultantModel, staff__user=request.user)
+        consultant = get_object_or_404(ConsultantModel, staff__user_staff_profile__user=request.user)
         patient = get_object_or_404(PatientModel, id=patient_id)
 
         # Get all consultations for this patient
@@ -4148,7 +4179,7 @@ def patient_prescriptions(request, patient_id):
             'prescriptions': prescriptions,
         }
 
-        return render(request, 'doctor/patient_prescriptions.html', context)
+        return render(request, 'consultation/doctor/patient_prescriptions.html', context)
 
     except Exception as e:
         messages.error(request, f"Error loading prescriptions: {str(e)}")

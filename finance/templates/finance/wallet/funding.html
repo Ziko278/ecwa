@@ -125,6 +125,30 @@
         #success-modal .modal-footer {
             border-top: none;
         }
+    .pending-claim-warning {
+    background-color: #fff3cd;
+    border-left: 4px solid #ffc107;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+.claim-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    margin-left: 5px;
+}
+
+.claim-approved {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.claim-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
     </style>
 
     <div class="container-fluid mt-4">
@@ -595,6 +619,30 @@ if (AUTO_PATIENT_ID) {
     function displayPendingPayments(payments) {
         let html = '';
 
+    // NEW: Check for pending claims across all categories
+    let pendingClaimsCount = 0;
+    ['drugs', 'labs', 'scans', 'services'].forEach(category => {
+        if (payments[category] && payments[category].items) {
+            pendingClaimsCount += payments[category].items.filter(
+                item => item.has_pending_claim
+            ).length;
+        }
+    });
+
+    // Show warning if pending claims exist
+    if (pendingClaimsCount > 0) {
+        html += `
+            <div class="pending-claim-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>⚠️ ${pendingClaimsCount} Pending Insurance Claim(s)</strong>
+                <p class="mb-0 mt-1">
+                    <small>Some items have pending insurance claims. Patient will pay full amount
+                    until claims are approved. Claims marked in <span class="text-warning">yellow</span>.</small>
+                </p>
+            </div>
+        `;
+    }
+
         // Drugs Section
         if (payments.drugs.count > 0) {
             html += createServiceSection('Medications', 'drugs', payments.drugs, 'fas fa-pills', '#17a2b8');
@@ -651,9 +699,17 @@ if (AUTO_PATIENT_ID) {
                             <small class="text-muted">
                                 ${orderRef} | Date: ${item.ordered_date}
                             </small>
-                            ${hasDiscount ? `
+                            ${item.has_approved_claim ? `
                                 <br><small class="text-success">
-                                    <i class="fas fa-shield-alt"></i> Insurance coverage applied
+                                    <i class="fas fa-check-circle"></i> Claim Approved: ${item.claim_number}
+                                </small>
+                            ` : item.has_pending_claim ? `
+                                <br><small class="text-warning">
+                                    <i class="fas fa-clock"></i> Pending Claim: ${item.pending_claim_number}
+                                </small>
+                            ` : hasDiscount ? `
+                                <br><small class="text-muted">
+                                    <i class="fas fa-info-circle"></i> No claim
                                 </small>
                             ` : ''}
                         </label>

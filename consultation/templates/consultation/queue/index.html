@@ -434,7 +434,7 @@ function loadQuickActions() {
         actionSelect.innerHTML = '<option value="">Select Action...</option>';
 
         // Add available actions based on status
-        if (status === 'waiting_vitals' || status === 'vitals_done' || status === 'with_doctor') {
+        if (status === 'waiting_vitals' || status === 'vitals_done' || status === 'with_doctor' || status === 'consultation_paused') {
             actionSelect.innerHTML += '<option value="update_vitals">Update Vitals</option>';
         }
         if (status === 'vitals_done' || status === 'consultation_paused') {

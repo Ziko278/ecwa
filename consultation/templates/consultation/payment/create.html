@@ -10,8 +10,6 @@
                 Verify patient and process their consultation payment or add them to the queue.
             </p>
 
-
-
             <form class="forms-sample" method="post" action="{% url 'consultation_payment_create' %}" id="payment-form">
                 {% csrf_token %}
 

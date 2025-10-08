@@ -179,17 +179,12 @@
                             <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#processClaimModal">
                                 <i class="fas fa-check me-2"></i>Process / Approve
                             </button>
-                            <a href="{% url 'insurance_claim_decline' pk=claim.pk %}" class="btn btn-danger">
-                                <i class="fas fa-times me-2"></i>Reject Claim
-                            </a>
+<!--                            <a href="{% url 'insurance_claim_decline' pk=claim.pk %}" class="btn btn-danger">-->
+<!--                                <i class="fas fa-times me-2"></i>Reject Claim-->
+<!--                            </a>-->
                             <hr>
                         {% endif %}
 
-                        {% if claim.status == 'pending' %}
-                        <a href="% url 'insurance_claim_delete' pk=claim.pk %}" class="btn btn-outline-danger">
-                            <i class="fas fa-trash me-2"></i>Delete Claim
-                        </a>
-                        {% endif %}
                     </div>
                 </div>
             </div>

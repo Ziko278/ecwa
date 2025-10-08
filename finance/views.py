@@ -213,6 +213,8 @@ def calculate_insurance_amount(base_amount, coverage_percentage):
 @login_required
 def verify_patient_ajax(request):
     """Verify patient by card number and return wallet details with pending payments"""
+    from insurance.claim_helpers import get_orders_with_claim_info, get_pending_claim_for_order
+
     card_number = request.GET.get('card_number', '').strip()
 
     if not card_number:
@@ -223,7 +225,6 @@ def verify_patient_ajax(request):
         patient = PatientModel.objects.get(card_number__iexact=card_number)
 
         # Get or create wallet
-        # NOTE: PatientWalletModel is assumed to be defined and imported
         wallet, created = PatientWalletModel.objects.get_or_create(
             patient=patient,
             defaults={'amount': Decimal('0.00')}
@@ -242,10 +243,6 @@ def verify_patient_ajax(request):
         ).select_related(
             'service', 'service__category',
             'service_item', 'service_item__category'
-        ).only(
-            'id', 'service__name', 'service__category__name',
-            'service_item__name', 'service_item__category__name',
-            'total_amount', 'quantity', 'status', 'created_at'
         )
 
         # 2. Get pending drug orders
@@ -253,21 +250,21 @@ def verify_patient_ajax(request):
             patient=patient,
             status__in=['pending'],
             ordered_at__gte=thirty_days_ago
-        ).select_related('drug')  # Drug model assumed to have selling_price
+        ).select_related('drug')
 
         # 3. Get pending lab orders
         pending_labs = LabTestOrderModel.objects.filter(
             patient=patient,
             status__in=['pending'],
             ordered_at__gte=thirty_days_ago
-        ).select_related('template')  # Template model assumed to have price
+        ).select_related('template')
 
         # 4. Get pending scan orders
         pending_scans = ScanOrderModel.objects.filter(
             patient=patient,
             status__in=['pending'],
             ordered_at__gte=thirty_days_ago
-        ).select_related('template')  # Template model assumed to have price
+        ).select_related('template')
 
         # --- INSURANCE CHECK ---
         active_insurance = None
@@ -277,14 +274,14 @@ def verify_patient_ajax(request):
                 valid_to__gte=date.today()
             ).select_related('hmo', 'coverage_plan').first()
 
-        # --- PROCESSING ---
+        # --- PROCESSING WITH CLAIM-BASED LOGIC ---
 
         # 1. Process Service/Item Orders
         service_items_list = []
         service_total = Decimal('0.00')
 
         for transaction in pending_services_items:
-            # Determine the name, category, and coverage check
+            # Determine the name and category
             category_obj = None
             if transaction.service:
                 name = transaction.service.name
@@ -296,21 +293,12 @@ def verify_patient_ajax(request):
                 continue
 
             base_amount = transaction.total_amount
+
+            # Get claim info
+            pending_claim = get_pending_claim_for_order(transaction)
+
+            # For services, use base amount (no auto claims yet in your system)
             patient_amount = base_amount
-
-            # Apply insurance
-            if active_insurance and category_obj:
-                coverage_plan = active_insurance.coverage_plan
-
-                # IMPORTANT: Assumes CoveragePlan has these methods for Service Categories
-                if hasattr(coverage_plan, 'is_service_category_covered') and \
-                        coverage_plan.is_service_category_covered(category_obj):
-                    # Assumes CoveragePlan has a 'service_coverage_percentage' attribute
-                    coverage_percentage = getattr(coverage_plan, 'service_coverage_percentage', 0)
-                    patient_amount = calculate_insurance_amount(
-                        base_amount,
-                        coverage_percentage
-                    )
 
             service_items_list.append({
                 'id': transaction.id,
@@ -318,98 +306,98 @@ def verify_patient_ajax(request):
                 'quantity': transaction.quantity,
                 'base_amount': float(base_amount),
                 'patient_amount': float(patient_amount),
+                'covered_amount': 0.00,
                 'status': transaction.status,
-                'ordered_date': transaction.created_at.strftime('%Y-%m-%d')
+                'ordered_date': transaction.created_at.strftime('%Y-%m-%d'),
+                'has_approved_claim': False,
+                'claim_number': None,
+                'claim_status': None,
+                'has_pending_claim': pending_claim['has_pending_claim'],
+                'pending_claim_number': pending_claim['claim_number'],
+                'insurance_applied': False
             })
             service_total += patient_amount
 
-        # 2. Process drug orders (Original Logic)
+        # 2. Process drug orders with claim-based logic
+        drug_results = get_orders_with_claim_info(pending_drugs, 'drug')
         drug_items = []
         drug_total = Decimal('0.00')
-        for order in pending_drugs:
-            base_amount = (order.drug.selling_price * Decimal(order.quantity_ordered)) if hasattr(order.drug,
-                                                                                         'selling_price') else Decimal(
-                '0.00')
-            if active_insurance and hasattr(active_insurance.coverage_plan,
-                                            'is_drug_covered') and active_insurance.coverage_plan.is_drug_covered(
-                    order.drug):
-                patient_amount = calculate_insurance_amount(
-                    base_amount,
-                    active_insurance.coverage_plan.drug_coverage_percentage
-                )
-            else:
-                patient_amount = base_amount
 
+        for result in drug_results:
+            order = result['order']
             drug_items.append({
                 'id': order.id,
                 'name': f"{order.drug.__str__()} (x{float(order.quantity_ordered)})",
                 'quantity': float(order.quantity_ordered),
-                'base_amount': float(base_amount),
-                'patient_amount': float(patient_amount),
+                'base_amount': float(result['base_amount']),
+                'patient_amount': float(result['patient_amount']),
+                'covered_amount': float(result['covered_amount']),
                 'order_number': order.order_number,
                 'status': order.status,
-                'ordered_date': order.ordered_at.strftime('%Y-%m-%d')
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d'),
+                'has_approved_claim': result['has_approved_claim'],
+                'claim_number': result['claim_number'],
+                'claim_status': result['claim_status'],
+                'has_pending_claim': result['has_pending_claim'],
+                'pending_claim_number': result['pending_claim_number'],
+                'insurance_applied': result['has_approved_claim']
             })
-            drug_total += patient_amount
+            drug_total += result['patient_amount']
 
-        # 3. Process lab orders (Original Logic)
+        # 3. Process lab orders with claim-based logic
+        lab_results = get_orders_with_claim_info(pending_labs, 'lab')
         lab_items = []
         lab_total = Decimal('0.00')
-        for order in pending_labs:
-            base_amount = order.amount_charged or order.template.price
 
-            if active_insurance and hasattr(active_insurance.coverage_plan,
-                                            'is_lab_covered') and active_insurance.coverage_plan.is_lab_covered(
-                    order.template):
-                patient_amount = calculate_insurance_amount(
-                    base_amount,
-                    active_insurance.coverage_plan.lab_coverage_percentage
-                )
-            else:
-                patient_amount = base_amount
-
+        for result in lab_results:
+            order = result['order']
             lab_items.append({
                 'id': order.id,
                 'name': order.template.name,
-                'base_amount': float(base_amount),
-                'patient_amount': float(patient_amount),
+                'base_amount': float(result['base_amount']),
+                'patient_amount': float(result['patient_amount']),
+                'covered_amount': float(result['covered_amount']),
                 'order_number': order.order_number,
                 'status': order.status,
-                'ordered_date': order.ordered_at.strftime('%Y-%m-%d')
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d'),
+                'has_approved_claim': result['has_approved_claim'],
+                'claim_number': result['claim_number'],
+                'claim_status': result['claim_status'],
+                'has_pending_claim': result['has_pending_claim'],
+                'pending_claim_number': result['pending_claim_number'],
+                'insurance_applied': result['has_approved_claim']
             })
-            lab_total += patient_amount
+            lab_total += result['patient_amount']
 
-        # 4. Process scan orders (Original Logic)
+        # 4. Process scan orders with claim-based logic
+        scan_results = get_orders_with_claim_info(pending_scans, 'scan')
         scan_items = []
         scan_total = Decimal('0.00')
-        for order in pending_scans:
-            base_amount = order.amount_charged or order.template.price
 
-            if active_insurance and hasattr(active_insurance.coverage_plan,
-                                            'is_radiology_covered') and active_insurance.coverage_plan.is_radiology_covered(
-                    order.template):
-                patient_amount = calculate_insurance_amount(
-                    base_amount,
-                    active_insurance.coverage_plan.radiology_coverage_percentage
-                )
-            else:
-                patient_amount = base_amount
-
+        for result in scan_results:
+            order = result['order']
             scan_items.append({
                 'id': order.id,
                 'name': order.template.name,
-                'base_amount': float(base_amount),
-                'patient_amount': float(patient_amount),
+                'base_amount': float(result['base_amount']),
+                'patient_amount': float(result['patient_amount']),
+                'covered_amount': float(result['covered_amount']),
                 'order_number': order.order_number,
                 'status': order.status,
-                'ordered_date': order.ordered_at.strftime('%Y-%m-%d')
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d'),
+                'has_approved_claim': result['has_approved_claim'],
+                'claim_number': result['claim_number'],
+                'claim_status': result['claim_status'],
+                'has_pending_claim': result['has_pending_claim'],
+                'pending_claim_number': result['pending_claim_number'],
+                'insurance_applied': result['has_approved_claim']
             })
-            scan_total += patient_amount
+            scan_total += result['patient_amount']
 
         # Calculate grand total
         grand_total = drug_total + lab_total + scan_total + service_total
 
-        # Active Admissions and Surgeries (Original Logic)
+        # Active Admissions and Surgeries
         active_admissions = Admission.objects.filter(
             patient=patient,
             status='active'
@@ -459,7 +447,6 @@ def verify_patient_ajax(request):
                     'total': float(scan_total),
                     'count': len(scan_items)
                 },
-                # --- NEW: Service/Item Data in response ---
                 'services': {
                     'items': service_items_list,
                     'total': float(service_total),
@@ -467,7 +454,6 @@ def verify_patient_ajax(request):
                 },
                 'admissions': {'count': admission_count, 'total': 0},
                 'surgeries': {'count': surgery_count, 'total': 0},
-
                 'grand_total': float(grand_total),
                 'formatted_grand_total': f'₦{grand_total:,.2f}'
             }
@@ -481,7 +467,6 @@ def verify_patient_ajax(request):
         return JsonResponse({
             'error': f'Error verifying patient: {type(e).__name__}: {str(e)}'
         }, status=500)
-
 
 @login_required
 @permission_required('finance.add_patienttransactionmodel', raise_exception=True)
@@ -579,7 +564,9 @@ def process_wallet_funding(request):
 
 @login_required
 def calculate_payment_total_ajax(request):
-    """Calculate total based on selected items"""
+    """Calculate total based on selected items - CLAIM-BASED VERSION"""
+    from insurance.claim_helpers import calculate_patient_amount_with_claim
+
     try:
         patient_id = request.GET.get('patient_id')
         selected_drugs = request.GET.getlist('drugs[]')
@@ -591,7 +578,7 @@ def calculate_payment_total_ajax(request):
 
         patient = get_object_or_404(PatientModel, id=patient_id)
 
-        # Get active insurance
+        # Get active insurance for display
         active_insurance = None
         if hasattr(patient, 'insurance_policies'):
             active_insurance = patient.insurance_policies.filter(
@@ -599,15 +586,14 @@ def calculate_payment_total_ajax(request):
                 valid_to__gte=date.today()
             ).select_related('coverage_plan').first()
 
-        def calculate_insurance_amount(base_amount, coverage_percentage):
-            if coverage_percentage and coverage_percentage > 0:
-                covered_amount = base_amount * (coverage_percentage / 100)
-                return base_amount - covered_amount
-            return base_amount
-
         total_amount = Decimal('0.00')
+        items_breakdown = {
+            'drugs': [],
+            'labs': [],
+            'scans': []
+        }
 
-        # Calculate drug totals
+        # Calculate drug totals using claims
         if selected_drugs:
             drug_orders = DrugOrderModel.objects.filter(
                 id__in=selected_drugs,
@@ -615,17 +601,27 @@ def calculate_payment_total_ajax(request):
             ).select_related('drug')
 
             for order in drug_orders:
-                base_amount = order.amount_charged or order.drug.selling_price
-                if active_insurance and active_insurance.coverage_plan.is_drug_covered(order.drug):
-                    patient_amount = calculate_insurance_amount(
-                        base_amount,
-                        active_insurance.coverage_plan.drug_coverage_percentage
-                    )
-                else:
-                    patient_amount = base_amount
-                total_amount += patient_amount
+                base_amount = (
+                    order.drug.selling_price * Decimal(str(order.quantity_ordered))
+                    if hasattr(order, 'drug') and hasattr(order.drug, 'selling_price')
+                    else Decimal('0.00')
+                )
 
-        # Calculate lab totals
+                # Use claim-based calculation
+                claim_info = calculate_patient_amount_with_claim(order, base_amount)
+                patient_amount = claim_info['patient_amount']
+
+                total_amount += patient_amount
+                items_breakdown['drugs'].append({
+                    'id': order.id,
+                    'base_amount': float(base_amount),
+                    'patient_amount': float(patient_amount),
+                    'covered_amount': float(claim_info['covered_amount']),
+                    'has_claim': claim_info['has_approved_claim'],
+                    'claim_number': claim_info['claim_number']
+                })
+
+        # Calculate lab totals using claims
         if selected_labs:
             lab_orders = LabTestOrderModel.objects.filter(
                 id__in=selected_labs,
@@ -634,16 +630,22 @@ def calculate_payment_total_ajax(request):
 
             for order in lab_orders:
                 base_amount = order.amount_charged or order.template.price
-                if active_insurance and active_insurance.coverage_plan.is_lab_covered(order.template):
-                    patient_amount = calculate_insurance_amount(
-                        base_amount,
-                        active_insurance.coverage_plan.lab_coverage_percentage
-                    )
-                else:
-                    patient_amount = base_amount
-                total_amount += patient_amount
 
-        # Calculate scan totals
+                # Use claim-based calculation
+                claim_info = calculate_patient_amount_with_claim(order, base_amount)
+                patient_amount = claim_info['patient_amount']
+
+                total_amount += patient_amount
+                items_breakdown['labs'].append({
+                    'id': order.id,
+                    'base_amount': float(base_amount),
+                    'patient_amount': float(patient_amount),
+                    'covered_amount': float(claim_info['covered_amount']),
+                    'has_claim': claim_info['has_approved_claim'],
+                    'claim_number': claim_info['claim_number']
+                })
+
+        # Calculate scan totals using claims
         if selected_scans:
             scan_orders = ScanOrderModel.objects.filter(
                 id__in=selected_scans,
@@ -652,19 +654,45 @@ def calculate_payment_total_ajax(request):
 
             for order in scan_orders:
                 base_amount = order.amount_charged or order.template.price
-                if active_insurance and active_insurance.coverage_plan.is_radiology_covered(order.template):
-                    patient_amount = calculate_insurance_amount(
-                        base_amount,
-                        active_insurance.coverage_plan.radiology_coverage_percentage
-                    )
-                else:
-                    patient_amount = base_amount
+
+                # Use claim-based calculation
+                claim_info = calculate_patient_amount_with_claim(order, base_amount)
+                patient_amount = claim_info['patient_amount']
+
                 total_amount += patient_amount
+                items_breakdown['scans'].append({
+                    'id': order.id,
+                    'base_amount': float(base_amount),
+                    'patient_amount': float(patient_amount),
+                    'covered_amount': float(claim_info['covered_amount']),
+                    'has_claim': claim_info['has_approved_claim'],
+                    'claim_number': claim_info['claim_number']
+                })
+
+        # Calculate summary statistics
+        total_claims_applied = sum(
+            1 for item_list in items_breakdown.values()
+            for item in item_list
+            if item['has_claim']
+        )
+
+        total_covered = sum(
+            item['covered_amount']
+            for item_list in items_breakdown.values()
+            for item in item_list
+        )
 
         return JsonResponse({
             'success': True,
             'total_amount': float(total_amount),
-            'formatted_total': f'₦{total_amount:,.2f}'
+            'formatted_total': f'₦{total_amount:,.2f}',
+            'insurance_info': {
+                'has_insurance': bool(active_insurance),
+                'claims_applied': total_claims_applied,
+                'total_covered': float(total_covered),
+                'formatted_covered': f'₦{total_covered:,.2f}'
+            },
+            'breakdown': items_breakdown
         })
 
     except PatientModel.DoesNotExist:
@@ -910,7 +938,10 @@ def finance_payment_select(request):
 def finance_verify_patient_ajax(request):
     """
     AJAX endpoint to verify patient and return pending payments summary
+    UPDATED: Uses claim-based insurance calculation
     """
+    from insurance.claim_helpers import get_orders_with_claim_info
+
     card_number = request.GET.get('card_number', '').strip()
     if not card_number:
         return JsonResponse({'success': False, 'error': 'Card number is required'})
@@ -928,7 +959,6 @@ def finance_verify_patient_ajax(request):
         balance = float(wallet.amount)
         formatted_balance = f'₦{wallet.amount:,.2f}'
     except:
-        # Create wallet if it doesn't exist
         from patient.models import PatientWalletModel
         wallet = PatientWalletModel.objects.create(patient=patient, amount=Decimal('0.00'))
         has_wallet = True
@@ -953,80 +983,37 @@ def finance_verify_patient_ajax(request):
     # Calculate pending payments for last 30 days
     thirty_days_ago = timezone.now() - timedelta(days=THIRTY_DAYS)
 
-    # Drugs
+    # Get pending orders
     pending_drugs = DrugOrderModel.objects.filter(
         patient=patient,
         status__in=['pending'],
         ordered_at__gte=thirty_days_ago
     ).select_related('drug')
 
-    drug_total = Decimal('0.00')
-    drug_count = 0
-    for order in pending_drugs:
-        base_amount = _to_decimal(order.drug.selling_price)
-        patient_amount = base_amount
-
-        if active_insurance and hasattr(active_insurance.coverage_plan, 'is_drug_covered'):
-            try:
-                if active_insurance.coverage_plan.is_drug_covered(order.drug):
-                    pct = _to_decimal(getattr(active_insurance.coverage_plan, 'drug_coverage_percentage', 0))
-                    covered = (base_amount * (pct / Decimal('100')))
-                    patient_amount = base_amount - covered
-            except Exception:
-                patient_amount = base_amount
-
-        drug_total += _quantize_money(patient_amount)
-        drug_count += 1
-
-    # Labs
     pending_labs = LabTestOrderModel.objects.filter(
         patient=patient,
         status__in=['pending', 'unpaid', 'awaiting_payment'],
         ordered_at__gte=thirty_days_ago
     ).select_related('template')
 
-    lab_total = Decimal('0.00')
-    lab_count = 0
-    for order in pending_labs:
-        base_amount = _to_decimal(getattr(order, 'amount_charged', None) or order.template.price)
-        patient_amount = base_amount
-
-        if active_insurance and hasattr(active_insurance.coverage_plan, 'is_lab_covered'):
-            try:
-                if active_insurance.coverage_plan.is_lab_covered(order.template):
-                    pct = _to_decimal(getattr(active_insurance.coverage_plan, 'lab_coverage_percentage', 0))
-                    covered = (base_amount * (pct / Decimal('100')))
-                    patient_amount = base_amount - covered
-            except Exception:
-                patient_amount = base_amount
-
-        lab_total += _quantize_money(patient_amount)
-        lab_count += 1
-
-    # Scans
     pending_scans = ScanOrderModel.objects.filter(
         patient=patient,
         status__in=['pending', 'unpaid', 'awaiting_payment'],
         ordered_at__gte=thirty_days_ago
     ).select_related('template')
 
-    scan_total = Decimal('0.00')
-    scan_count = 0
-    for order in pending_scans:
-        base_amount = _to_decimal(getattr(order, 'amount_charged', None) or order.template.price)
-        patient_amount = base_amount
+    # Process with claim-based logic
+    drug_results = get_orders_with_claim_info(pending_drugs, 'drug')
+    drug_total = sum(r['patient_amount'] for r in drug_results)
+    drug_count = len(drug_results)
 
-        if active_insurance and hasattr(active_insurance.coverage_plan, 'is_radiology_covered'):
-            try:
-                if active_insurance.coverage_plan.is_radiology_covered(order.template):
-                    pct = _to_decimal(getattr(active_insurance.coverage_plan, 'radiology_coverage_percentage', 0))
-                    covered = (base_amount * (pct / Decimal('100')))
-                    patient_amount = base_amount - covered
-            except Exception:
-                patient_amount = base_amount
+    lab_results = get_orders_with_claim_info(pending_labs, 'lab')
+    lab_total = sum(r['patient_amount'] for r in lab_results)
+    lab_count = len(lab_results)
 
-        scan_total += _quantize_money(patient_amount)
-        scan_count += 1
+    scan_results = get_orders_with_claim_info(pending_scans, 'scan')
+    scan_total = sum(r['patient_amount'] for r in scan_results)
+    scan_count = len(scan_results)
 
     grand_total = drug_total + lab_total + scan_total
 
@@ -1238,49 +1225,6 @@ class AdmissionSurgeryFundingView(LoginRequiredMixin, PermissionRequiredMixin, T
 
         context['funding_targets'] = funding_targets
         return context
-
-
-@login_required
-@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
-def ajax_process_admission_funding(request):
-    if request.method == 'POST':
-        try:
-            patient_id = request.POST.get('patient_id')
-            admission_id = request.POST.get('admission_id')
-            # surgery_id = request.POST.get('surgery_id') # For when you add surgery
-            amount = Decimal(request.POST.get('amount', '0'))
-            payment_method = request.POST.get('payment_method', 'cash')
-
-            patient = get_object_or_404(PatientModel, pk=patient_id)
-            admission = get_object_or_404(Admission, pk=admission_id) if admission_id else None
-
-            if amount <= 0:
-                return JsonResponse({'success': False, 'error': 'Amount must be positive.'}, status=400)
-
-            with transaction.atomic():
-                # Unlike other payments, funding an admission does not use the wallet.
-                # It's a direct payment record linked to the admission.
-                PatientTransactionModel.objects.create(
-                    patient=patient,
-                    transaction_type='admission_payment',
-                    transaction_direction='in',  # This is a credit/deposit
-                    admission=admission,
-                    amount=amount,
-                    old_balance=0,  # Not wallet-based
-                    new_balance=0,  # Not wallet-based
-                    date=timezone.now().date(),
-                    received_by=request.user,
-                    payment_method=payment_method,
-                    status='completed'
-                )
-
-            return JsonResponse({
-                'success': True,
-                'message': f'Successfully deposited ₦{amount:,.2f} for admission {admission.admission_number}.'
-            })
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=400)
-    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
 
 
 @login_required
@@ -1517,23 +1461,23 @@ def finance_consultation_patient_payment(request, patient_id):
 @require_http_methods(["GET", "POST"])
 def finance_pharmacy_patient_payment(request, patient_id):
     """
-    Pharmacy (drug) payment UI + processing:
-    - GET: render list of pending drug orders (last 30 days)
-    - POST: process selected orders, deduct wallet, mark orders paid
+    Pharmacy (drug) payment UI + processing - CLAIM-BASED VERSION
+    - GET: render list of pending drug orders with claim status
+    - POST: process selected orders using approved claims
     """
+    from insurance.claim_helpers import get_orders_with_claim_info, calculate_patient_amount_with_claim
+
     patient = get_object_or_404(PatientModel, id=patient_id)
     thirty_days_ago = timezone.now() - timedelta(days=THIRTY_DAYS)
 
     if request.method == 'GET':
-        # choose statuses that represent unpaid/pending in your app
         pending_drugs = DrugOrderModel.objects.filter(
             patient=patient,
             status__in=['pending'],
             ordered_at__gte=thirty_days_ago
         ).select_related('drug')
 
-        # compute patient_amount for each order using the same logic you used in verify_patient_ajax
-        # We'll attempt to detect active insurance similarly if you use the same related name
+        # Get active insurance for display
         active_insurance = None
         try:
             policies_qs = patient.insurance_policies.all()
@@ -1542,99 +1486,106 @@ def finance_pharmacy_patient_payment(request, patient_id):
                 policies_qs = patient.insurancepolicy_set.all()
             except:
                 policies_qs = PatientInsuranceModel.objects.none()
-        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo',
-                                                                                                                  'coverage_plan').first()
+
+        active_insurance = policies_qs.filter(
+            is_active=True,
+            valid_to__gte=timezone.now().date()
+        ).select_related('hmo', 'coverage_plan').first()
+
+        # Process with claim-based logic
+        drug_results = get_orders_with_claim_info(pending_drugs, 'drug')
 
         items = []
         total = Decimal('0.00')
-        for o in pending_drugs:
-            base_amount = (o.drug.selling_price * Decimal(o.quantity_ordered)) if hasattr(o.drug,
-                                                                                                  'selling_price') else Decimal(
-                '0.00')
-            # insurance logic, protection if coverage_plan missing methods
-            patient_amount = base_amount
-            if active_insurance and hasattr(active_insurance.coverage_plan, 'is_drug_covered'):
-                try:
-                    if active_insurance.coverage_plan.is_drug_covered(o.drug):
-                        pct = _to_decimal(getattr(active_insurance.coverage_plan, 'drug_coverage_percentage', 0))
-                        covered = (base_amount * (pct / Decimal('100')))
-                        patient_amount = base_amount - covered
-                except Exception:
-                    patient_amount = base_amount
-            patient_amount = _quantize_money(patient_amount)
+
+        for result in drug_results:
+            order = result['order']
             items.append({
-                'id': o.id,
-                'order_number': getattr(o, 'order_number', ''),
-                'name': f"{getattr(o.drug, 'brand_name', '') or getattr(o.drug, 'generic_name', '')}",
-                'quantity': getattr(o, 'quantity_ordered', 1),
-                'base_amount': float(base_amount),
-                'patient_amount': float(patient_amount),
-                'formatted_patient_amount': f'₦{patient_amount:,.2f}',
-                'status': o.status,
-                'ordered_date': getattr(o, 'ordered_at').date().isoformat() if getattr(o, 'ordered_at', None) else '',
-                'insurance_covered': patient_amount < base_amount
+                'id': order.id,
+                'order_number': getattr(order, 'order_number', ''),
+                'name': f"{order.drug.__str__()}",
+                'quantity': getattr(order, 'quantity_ordered', 1),
+                'base_amount': float(result['base_amount']),
+                'patient_amount': float(result['patient_amount']),
+                'covered_amount': float(result['covered_amount']),
+                'formatted_patient_amount': f'₦{result["patient_amount"]:,.2f}',
+                'status': order.status,
+                'ordered_date': getattr(order, 'ordered_at').date().isoformat() if getattr(order, 'ordered_at',
+                                                                                           None) else '',
+                'has_approved_claim': result['has_approved_claim'],
+                'claim_number': result['claim_number'],
+                'claim_status': result['claim_status'],
+                'has_pending_claim': result['has_pending_claim'],
+                'pending_claim_number': result['pending_claim_number'],
+                'insurance_covered': result['has_approved_claim']
             })
-            total += patient_amount
+            total += result['patient_amount']
+
+        pending_claims_count = sum(1 for item in items if item.get('has_pending_claim'))
 
         context = {
             'patient': patient,
             'items': items,
             'total': _quantize_money(total),
-            'insurance': active_insurance
+            'insurance': active_insurance,
+            'pending_claims_count': pending_claims_count
         }
         return render(request, 'finance/payment/pharmacy.html', context)
 
-    # POST - process payment (existing logic remains the same)
+    # POST - process payment with claim validation
     selected_ids = request.POST.getlist('selected_items[]') or request.POST.getlist('selected_items')
     if not selected_ids:
         return JsonResponse({'success': False, 'error': 'No items selected for payment.'}, status=400)
 
     try:
-        # re-fetch the selected orders and compute final sum (server-side authority)
         selected_orders = list(
-            DrugOrderModel.objects.filter(id__in=selected_ids, patient=patient).select_related('drug'))
+            DrugOrderModel.objects.filter(
+                id__in=selected_ids,
+                patient=patient,
+                status='pending'
+            ).select_related('drug')
+        )
+
         if not selected_orders:
             return JsonResponse({'success': False, 'error': 'Selected orders not found.'}, status=404)
 
         total_amount = Decimal('0.00')
-        thirty_days_ago = timezone.now() - timedelta(days=THIRTY_DAYS)
-        # compute patient portion for each (same insurance logic as above)
-        try:
-            policies_qs = patient.insurance_policies.all()
-        except Exception:
-            try:
-                policies_qs = patient.insurancepolicy_set.all()
-            except:
-                policies_qs = PatientInsuranceModel.objects.none()
-        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo',
-                                                                                                                  'coverage_plan').first()
+        order_details = []
 
-        for o in selected_orders:
-            if getattr(o, 'ordered_at', timezone.now()) < thirty_days_ago:
-                return JsonResponse({'success': False,
-                                     'error': 'One or more selected orders are older than 30 days and cannot be paid here.'},
-                                    status=400)
-            base_amount = (o.drug.selling_price * Decimal(o.quantity_ordered)) if hasattr(o.drug,
-                                                                                                  'selling_price') else Decimal(
-                '0.00')
-            patient_amount = base_amount
-            if active_insurance and hasattr(active_insurance.coverage_plan, 'is_drug_covered'):
-                try:
-                    if active_insurance.coverage_plan.is_drug_covered(o.drug):
-                        pct = _to_decimal(getattr(active_insurance.coverage_plan, 'drug_coverage_percentage', 0))
-                        covered = (base_amount * (pct / Decimal('100')))
-                        patient_amount = base_amount - covered
-                except Exception:
-                    patient_amount = base_amount
+        # Calculate amounts using claim-based logic
+        for order in selected_orders:
+            if getattr(order, 'ordered_at', timezone.now()) < thirty_days_ago:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'One or more selected orders are older than 30 days and cannot be paid here.'
+                }, status=400)
+
+            base_amount = (
+                order.drug.selling_price * Decimal(str(order.quantity_ordered))
+                if hasattr(order, 'drug') and hasattr(order.drug, 'selling_price')
+                else Decimal('0.00')
+            )
+
+            # Use claim-based calculation
+            claim_info = calculate_patient_amount_with_claim(order, base_amount)
+            patient_amount = claim_info['patient_amount']
+
             total_amount += _quantize_money(patient_amount)
+            order_details.append({
+                'order': order,
+                'base_amount': base_amount,
+                'patient_amount': patient_amount,
+                'covered_amount': claim_info['covered_amount'],
+                'has_claim': claim_info['has_approved_claim'],
+                'claim_number': claim_info['claim_number']
+            })
 
-        # process wallet deduction inside a transaction with row lock
+        # Process wallet deduction
         with transaction.atomic():
             wallet_qs = PatientWalletModel.objects.select_for_update().filter(patient=patient)
             if wallet_qs.exists():
                 wallet = wallet_qs.first()
             else:
-                # create if missing
                 wallet = PatientWalletModel.objects.create(patient=patient, amount=Decimal('0.00'))
 
             if wallet.amount < total_amount:
@@ -1646,24 +1597,27 @@ def finance_pharmacy_patient_payment(request, patient_id):
                     'formatted_shortfall': f'₦{shortfall:,.2f}'
                 }, status=400)
 
-            # deduct
+            old_balance = wallet.amount
             wallet.amount = _quantize_money(wallet.amount - total_amount)
             wallet.save()
 
-            # mark orders as paid (update status field). Adjust status value to suit your app
-            for o in selected_orders:
-                o.status = 'paid'
-                o.save(update_fields=['status'])
+            # Mark orders as paid
+            for detail in order_details:
+                order = detail['order']
+                order.status = 'paid'
+                order.payment_status = True
+                order.payment_date = timezone.now()
+                order.payment_by = request.user
+                order.save(update_fields=['status', 'payment_status', 'payment_date', 'payment_by'])
 
             # Create transaction record
             try:
-
                 payment = PatientTransactionModel.objects.create(
                     patient=patient,
                     transaction_type='drug_payment',
                     transaction_direction='out',
                     amount=total_amount,
-                    old_balance=wallet.amount + total_amount,
+                    old_balance=old_balance,
                     new_balance=wallet.amount,
                     date=timezone.now().date(),
                     received_by=request.user,
@@ -1671,15 +1625,21 @@ def finance_pharmacy_patient_payment(request, patient_id):
                     status='completed'
                 )
             except Exception:
-                pass
+                payment = None
 
-        # success
+        # Build success message
+        claims_count = sum(1 for d in order_details if d['has_claim'])
+        message = f'Payment successful. ₦{total_amount:,.2f} deducted from wallet.'
+        if claims_count > 0:
+            message += f' Insurance claims applied to {claims_count} order(s).'
+
         return JsonResponse({
             'success': True,
-            'message': f'Payment successful. ₦{total_amount:,.2f} deducted from wallet.',
+            'message': message,
             'new_balance': float(wallet.amount),
             'formatted_new_balance': f'₦{wallet.amount:,.2f}',
-            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}),
+            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}) if payment else reverse(
+                'finance:payment_select'),
         })
 
     except Exception as e:
@@ -1910,24 +1870,24 @@ def finance_service_patient_payment(request, patient_id):
 @require_http_methods(["GET", "POST"])
 def finance_generic_order_payment(request, patient_id, order_type):
     """
-    Generic handler used for lab/scan payments.
+    Generic handler used for lab/scan payments - CLAIM-BASED VERSION
     order_type: 'lab' or 'scan'
     """
+    from insurance.claim_helpers import get_orders_with_claim_info, calculate_patient_amount_with_claim
+
     patient = get_object_or_404(PatientModel, id=patient_id)
     thirty_days_ago = timezone.now() - timedelta(days=THIRTY_DAYS)
 
     if order_type == 'lab':
         Model = LabTestOrderModel
         template = 'finance/payment/lab.html'
-        coverage_fn_name = 'is_lab_covered'
-        coverage_pct_attr = 'lab_coverage_percentage'
         transaction_type = 'lab_payment'
+        order_type_key = 'lab'
     elif order_type == 'scan':
         Model = ScanOrderModel
         template = 'finance/payment/scan.html'
-        coverage_fn_name = 'is_radiology_covered'
-        coverage_pct_attr = 'radiology_coverage_percentage'
         transaction_type = 'scan_payment'
+        order_type_key = 'scan'
     else:
         return HttpResponseBadRequest('Invalid order type')
 
@@ -1938,7 +1898,8 @@ def finance_generic_order_payment(request, patient_id, order_type):
             ordered_at__gte=thirty_days_ago
         ).select_related('template')
 
-        # insurance lookup
+        # Get active insurance for display
+        active_insurance = None
         try:
             policies_qs = patient.insurance_policies.all()
         except Exception:
@@ -1946,85 +1907,99 @@ def finance_generic_order_payment(request, patient_id, order_type):
                 policies_qs = patient.insurancepolicy_set.all()
             except:
                 policies_qs = PatientInsuranceModel.objects.none()
-        active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related('hmo',
-                                                                                                                  'coverage_plan').first()
+
+        active_insurance = policies_qs.filter(
+            is_active=True,
+            valid_to__gte=timezone.now().date()
+        ).select_related('hmo', 'coverage_plan').first()
+
+        # Process with claim-based logic
+        order_results = get_orders_with_claim_info(pending, order_type_key)
 
         items = []
         total = Decimal('0.00')
-        for o in pending:
-            base_amount = _to_decimal(getattr(o, 'amount_charged', None) or getattr(o, 'template').price)
-            patient_amount = base_amount
-            if active_insurance and hasattr(active_insurance.coverage_plan, coverage_fn_name):
-                try:
-                    coverage_fn = getattr(active_insurance.coverage_plan, coverage_fn_name)
-                    if coverage_fn(o.template):
-                        pct = _to_decimal(getattr(active_insurance.coverage_plan, coverage_pct_attr, 0))
-                        covered = (base_amount * (pct / Decimal('100')))
-                        patient_amount = base_amount - covered
-                except Exception:
-                    patient_amount = base_amount
-            patient_amount = _quantize_money(patient_amount)
+
+        for result in order_results:
+            order = result['order']
             items.append({
-                'id': o.id,
-                'order_number': getattr(o, 'order_number', ''),
-                'name': getattr(o.template, 'name', ''),
-                'base_amount': float(base_amount),
-                'patient_amount': float(patient_amount),
-                'formatted_patient_amount': f'₦{patient_amount:,.2f}',
-                'status': o.status,
-                'ordered_date': getattr(o, 'ordered_at').date().isoformat() if getattr(o, 'ordered_at', None) else '',
-                'insurance_covered': patient_amount < base_amount
+                'id': order.id,
+                'order_number': getattr(order, 'order_number', ''),
+                'name': getattr(order.template, 'name', ''),
+                'base_amount': float(result['base_amount']),
+                'patient_amount': float(result['patient_amount']),
+                'covered_amount': float(result['covered_amount']),
+                'formatted_patient_amount': f'₦{result["patient_amount"]:,.2f}',
+                'status': order.status,
+                'ordered_date': getattr(order, 'ordered_at').date().isoformat() if getattr(order, 'ordered_at',
+                                                                                           None) else '',
+                'has_approved_claim': result['has_approved_claim'],
+                'claim_number': result['claim_number'],
+                'claim_status': result['claim_status'],
+                'has_pending_claim': result['has_pending_claim'],
+                'pending_claim_number': result['pending_claim_number'],
+                'insurance_covered': result['has_approved_claim']
             })
-            total += patient_amount
+            total += result['patient_amount']
+
+        pending_claims_count = sum(1 for item in items if item.get('has_pending_claim'))
 
         context = {
             'patient': patient,
             'items': items,
             'total': _quantize_money(total),
             'order_type': order_type,
-            'insurance': active_insurance
+            'insurance': active_insurance,
+            'pending_claims_count': pending_claims_count
         }
         return render(request, template, context)
 
-    # POST - process payment for lab/scan (existing logic with transaction record)
+    # POST - process payment with claim validation
     selected_ids = request.POST.getlist('selected_items[]') or request.POST.getlist('selected_items')
     if not selected_ids:
         return JsonResponse({'success': False, 'error': 'No items selected for payment.'}, status=400)
 
     try:
-        selected_orders = list(Model.objects.filter(id__in=selected_ids, patient=patient).select_related('template'))
+        selected_orders = list(
+            Model.objects.filter(
+                id__in=selected_ids,
+                patient=patient,
+                status__in=['pending', 'unpaid', 'awaiting_payment']
+            ).select_related('template')
+        )
+
         if not selected_orders:
             return JsonResponse({'success': False, 'error': 'Selected orders not found.'}, status=404)
 
         total_amount = Decimal('0.00')
-        for o in selected_orders:
-            if getattr(o, 'ordered_at', timezone.now()) < thirty_days_ago:
-                return JsonResponse({'success': False, 'error': 'One or more selected orders are older than 30 days.'},
-                                    status=400)
-            base_amount = _to_decimal(getattr(o, 'amount_charged', None) or getattr(o, 'template').price)
-            patient_amount = base_amount
-            # insurance
-            try:
-                policies_qs = patient.insurance_policies.all()
-            except Exception:
-                try:
-                    policies_qs = patient.insurancepolicy_set.all()
-                except:
-                    policies_qs = PatientInsuranceModel.objects.none()
-            active_insurance = policies_qs.filter(is_active=True, valid_to__gte=timezone.now().date()).select_related(
-                'hmo', 'coverage_plan').first()
-            if active_insurance and hasattr(active_insurance.coverage_plan, coverage_fn_name):
-                try:
-                    coverage_fn = getattr(active_insurance.coverage_plan, coverage_fn_name)
-                    if coverage_fn(o.template):
-                        pct = _to_decimal(getattr(active_insurance.coverage_plan, coverage_pct_attr, 0))
-                        covered = (base_amount * (pct / Decimal('100')))
-                        patient_amount = base_amount - covered
-                except Exception:
-                    patient_amount = base_amount
-            total_amount += _quantize_money(patient_amount)
+        order_details = []
 
-        # process payment with wallet locking
+        # Calculate amounts using claim-based logic
+        for order in selected_orders:
+            if getattr(order, 'ordered_at', timezone.now()) < thirty_days_ago:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'One or more selected orders are older than 30 days and cannot be paid here.'
+                }, status=400)
+
+            base_amount = _to_decimal(
+                getattr(order, 'amount_charged', None) or getattr(order.template, 'price', 0)
+            )
+
+            # Use claim-based calculation
+            claim_info = calculate_patient_amount_with_claim(order, base_amount)
+            patient_amount = claim_info['patient_amount']
+
+            total_amount += _quantize_money(patient_amount)
+            order_details.append({
+                'order': order,
+                'base_amount': base_amount,
+                'patient_amount': patient_amount,
+                'covered_amount': claim_info['covered_amount'],
+                'has_claim': claim_info['has_approved_claim'],
+                'claim_number': claim_info['claim_number']
+            })
+
+        # Process wallet deduction
         with transaction.atomic():
             wallet_qs = PatientWalletModel.objects.select_for_update().filter(patient=patient)
             if wallet_qs.exists():
@@ -2041,44 +2016,53 @@ def finance_generic_order_payment(request, patient_id, order_type):
                     'formatted_shortfall': f'₦{shortfall:,.2f}'
                 }, status=400)
 
+            old_balance = wallet.amount
             wallet.amount = _quantize_money(wallet.amount - total_amount)
             wallet.save()
 
-            for o in selected_orders:
-                o.status = 'paid'
-                o.save(update_fields=['status'])
+            # Mark orders as paid
+            for detail in order_details:
+                order = detail['order']
+                order.status = 'paid'
+                order.save(update_fields=['status'])
 
             # Create transaction record
             try:
-
                 payment = PatientTransactionModel.objects.create(
                     patient=patient,
                     transaction_type=transaction_type,
                     transaction_direction='out',
                     amount=total_amount,
-                    old_balance=wallet.amount + total_amount,
+                    old_balance=old_balance,
                     new_balance=wallet.amount,
                     date=timezone.now().date(),
                     received_by=request.user,
                     payment_method='wallet',
-                    status='completed',
+                    status='completed'
                 )
             except Exception:
-                pass
+                payment = None
+
+        # Build success message
+        claims_count = sum(1 for d in order_details if d['has_claim'])
+        message = f'Payment successful. ₦{total_amount:,.2f} deducted from wallet.'
+        if claims_count > 0:
+            message += f' Insurance claims applied to {claims_count} order(s).'
 
         return JsonResponse({
             'success': True,
-            'message': 'Payment successful',
+            'message': message,
             'new_balance': float(wallet.amount),
             'formatted_new_balance': f'₦{wallet.amount:,.2f}',
-            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk})
+            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}) if payment else reverse(
+                'finance:payment_select'),
         })
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': f'Error processing payment: {str(e)}'}, status=500)
 
 
-# convenience wrappers
+# convenience wrappers (keep these as-is)
 @login_required
 def finance_laboratory_patient_payment(request, patient_id):
     return finance_generic_order_payment(request, patient_id, 'lab')

@@ -20,12 +20,26 @@
       <h4>Pharmacy Payment - {{ patient }} (Wallet: ₦{{ patient.wallet.amount|default:0|intcomma }})</h4>
     </div>
     <div class="card-body">
+
+
       {% if items %}
+    <!-- NEW: Check for pending claims -->
+    {% if pending_claims_count > 0 %}
+<div class="alert alert-warning border-start border-warning border-4 mb-3" role="alert">
+  <i class="fas fa-exclamation-triangle"></i>
+  <strong>⚠️ {{ pending_claims_count }} Pending Insurance Claim{{ pending_claims_count|pluralize }}</strong>
+  <p class="mb-0 mt-2">
+    <small>Some orders have pending insurance claims. Patient will pay <strong>full amount</strong>
+    until claims are approved by the insurance department.</small>
+  </p>
+</div>
+{% endif %}
       <form id="pharmacy-payment-form" method="post" action="{% url 'finance_pharmacy_patient_payment' patient.id %}">
         {% csrf_token %}
         <div class="mb-3">
           <h5>Pending Medication Orders (last 30 days)</h5>
         </div>
+
 
         <div id="items-list">
           {% for it in items %}
@@ -33,9 +47,19 @@
             <div>
               <input type="checkbox" class="form-check-input item-checkbox" name="selected_items" value="{{ it.id }}" checked>
               <strong class="ms-2">{{ it.name }}</strong>
+              <!-- REPLACE the existing item row small tag section with: -->
               <small class="d-block text-muted ms-4">
                 Order: {{ it.order_number }} | Date: {{ it.ordered_date }} | Qty: {{ it.quantity }}
-                {% if it.insurance_covered %}
+
+                {% if it.has_approved_claim %}
+                  <span class="badge bg-success">
+                    <i class="fas fa-check-circle"></i> Claim Approved: {{ it.claim_number }}
+                  </span>
+                {% elif it.has_pending_claim %}
+                  <span class="badge bg-warning text-dark">
+                    <i class="fas fa-clock"></i> Pending Claim: {{ it.pending_claim_number }}
+                  </span>
+                {% elif it.insurance_covered %}
                   <span class="badge bg-success">Insured</span>
                 {% endif %}
               </small>

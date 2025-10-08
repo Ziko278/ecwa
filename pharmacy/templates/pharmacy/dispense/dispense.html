@@ -219,6 +219,8 @@
                 </div>
 
                 <div class="col-md-8">
+                    <!-- Insurance Warning Alert -->
+                    <div id="insurance-warning-alert" style="display: none;"></div>
                     <div id="ready-to-dispense-section"></div>
 
                     <div id="unpaid-orders-section"></div>
@@ -280,7 +282,8 @@
         let selectedActions = [];
         let notificationModal; // <-- Modal instance variable
         let loadingModal;
-
+        // track items that failed stock validation (optional)
+        let _stockValidationErrors = {}; // orderId -> message
 
         // ---- Page Ready Function ----
         $(document).ready(function() {
@@ -390,6 +393,37 @@
                     $('#drug-search-results').hide();
                 }
             });
+
+            // --- New: Delegated handlers for dispense validations ---
+            // When a dispense checkbox is toggled
+            $(document).on('change', '.dispense-checkbox', function() {
+                const orderId = $(this).val();
+                const checked = $(this).is(':checked');
+                const qtyInput = $(`.dispense-qty[data-order-id="${orderId}"]`);
+                if (checked) {
+                    const ok = validateDispenseSelection(orderId);
+                    if (!ok) {
+                        // if validation failed, uncheck and update summary
+                        $(this).prop('checked', false);
+                    }
+                }
+                updateActionSummary();
+            });
+
+            // When a dispense qty is changed
+            $(document).on('change', '.dispense-qty', function() {
+                const orderId = $(this).data('order-id');
+                // if corresponding checkbox is checked, validate immediately
+                const checkbox = $(`.dispense-checkbox[value="${orderId}"]`);
+                if (checkbox.is(':checked')) {
+                    const ok = validateDispenseSelection(orderId);
+                    if (!ok) {
+                        // unchecked inside validation, update qty back to available max if possible
+                        // handled in validateDispenseSelection
+                    }
+                }
+                updateActionSummary();
+            });
         });
 
         // --- Core Functions ----
@@ -428,16 +462,56 @@
         }
 
         function displayPatientInfo(data) {
-            const patient = data.patient;
-            $('#patient-info').html(`
-                <h5>${patient.full_name}</h5>
-                <p class="mb-1"><strong>Card Number:</strong> ${patient.card_number}</p>
-                <p class="mb-1"><strong>Phone:</strong> ${patient.phone || 'N/A'}</p>
-                <p class="mb-1"><strong>Age:</strong> ${patient.age || 'N/A'}</p>
-                <p class="mb-1"><strong>Gender:</strong> ${patient.gender || 'N/A'}</p>
-            `);
-            $('#wallet-balance').text(data.wallet.formatted_balance);
-        }
+                const patient = data.patient;
+
+                // Build insurance info HTML
+                let insuranceHtml = '';
+                if (data.insurance && data.insurance.has_active) {
+                    insuranceHtml = `
+                        <p class="mb-1">
+                            <strong>Insurance:</strong>
+                            <span class="badge bg-success">
+                                <i class="fas fa-shield-alt"></i> ${data.insurance.hmo_name}
+                            </span>
+                        </p>
+                        <p class="mb-1"><strong>Plan:</strong> ${data.insurance.plan_name}</p>
+                    `;
+                } else {
+                    insuranceHtml = `
+                        <p class="mb-1">
+                            <strong>Insurance:</strong>
+                            <span class="badge bg-secondary">No Active Coverage</span>
+                        </p>
+                    `;
+                }
+
+                $('#patient-info').html(`
+                    <h5>${patient.full_name}</h5>
+                    <p class="mb-1"><strong>Card Number:</strong> ${patient.card_number}</p>
+                    <p class="mb-1"><strong>Phone:</strong> ${patient.phone || 'N/A'}</p>
+                    <p class="mb-1"><strong>Age:</strong> ${patient.age || 'N/A'}</p>
+                    <p class="mb-1"><strong>Gender:</strong> ${patient.gender || 'N/A'}</p>
+                    <hr>
+                    ${insuranceHtml}
+                `);
+                $('#wallet-balance').text(data.wallet.formatted_balance);
+
+                // Show insurance warning if there are pending claims
+                if (data.pending_claims_count > 0) {
+                    $('#insurance-warning-alert').html(`
+                        <div class="alert alert-warning border-start border-warning border-4 mb-3" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>⚠️ ${data.pending_claims_count} Pending Insurance Claim${data.pending_claims_count > 1 ? 's' : ''}</strong>
+                            <p class="mb-0 mt-2">
+                                <small>Some orders have pending insurance claims. Patient will pay <strong>full amount</strong>
+                                until claims are approved by the insurance department.</small>
+                            </p>
+                        </div>
+                    `).show();
+                } else {
+                    $('#insurance-warning-alert').hide();
+                }
+            }
 
         function displayDrugOrders(orders) {
             // FIX: Clear existing content to prevent duplication
@@ -492,12 +566,19 @@
                     '<span class="badge bg-warning text-dark status-badge">Partially Dispensed</span>';
 
                 const maxQuantity = order.remaining_quantity;
+                // store_qty: backend provided as 'quantity_left' (string). parse to number
+                const storeQty = parseFloat(order.quantity_left) || 0;
+
+                // If storeQty is less than remaining, show inline small warning and mark data attribute
+                const stockWarning = storeQty < maxQuantity ? `<br><small class="text-danger">Only ${storeQty} unit(s) in stock. You must reduce the qty or restock.</small>` : '';
 
                 html += `
                     <div class="item-row">
                         <div class="form-check">
                             <input class="form-check-input dispense-checkbox" type="checkbox"
-                                   value="${order.id}" data-type="dispense" onchange="updateActionSummary()">
+                                   value="${order.id}"
+                                   data-type="dispense"
+                                   data-store-qty="${storeQty}">
                             <label class="form-check-label">
                                 <strong>${order.drug_name}</strong>
                                 ${statusBadge}
@@ -511,13 +592,15 @@
                                     Dispensed: ${order.quantity_dispensed} |
                                     Remaining: ${order.remaining_quantity}
                                 </small>
+                                ${stockWarning}
                             </label>
                         </div>
                         <div class="quantity-controls">
                             <label class="form-label small mb-0">Qty:</label>
                             <input type="number" class="form-control form-control-sm quantity-input dispense-qty"
-                                   data-order-id="${order.id}" min="1" max="${maxQuantity}"
-                                   value="${maxQuantity}" onchange="updateActionSummary()">
+                                   data-order-id="${order.id}"
+                                   min="1" max="${maxQuantity}"
+                                   value="${Math.min(maxQuantity, storeQty) > 0 ? Math.min(maxQuantity, storeQty) : 1}">
                             <small class="text-muted">/ ${maxQuantity}</small>
                         </div>
                     </div>
@@ -544,16 +627,55 @@
                         </div>
                     </div>
             `;
+
             orders.forEach(order => {
+                // Determine if there's insurance coverage
+                const hasApprovedClaim = order.has_approved_claim || false;
+                const hasPendingClaim = order.has_pending_claim || false;
+                const baseAmount = order.base_amount || order.total_amount;
+                const patientAmount = order.patient_amount || order.total_amount;
+
+                // Build claim badge
+                let claimBadge = '';
+                if (hasApprovedClaim) {
+                    claimBadge = `<span class="badge bg-success ms-2">
+                        <i class="fas fa-check-circle"></i> Claim Approved: ${order.claim_number}
+                    </span>`;
+                } else if (hasPendingClaim) {
+                    claimBadge = `<span class="badge bg-warning text-dark ms-2">
+                        <i class="fas fa-clock"></i> Pending Claim: ${order.pending_claim_number}
+                    </span>`;
+                }
+
+                // Show strikethrough base amount if different from patient amount
+                let priceHtml = '';
+                if (baseAmount !== patientAmount && (hasApprovedClaim || order.covered_amount > 0)) {
+                    priceHtml = `
+                        <div class="text-end">
+                            <div><small class="text-danger text-decoration-line-through">₦${parseFloat(baseAmount).toLocaleString()}</small></div>
+                            <div class="fw-bold text-success">₦${parseFloat(patientAmount).toLocaleString()}</div>
+                            <small class="text-muted">@ ₦${order.price_per_unit}/unit</small>
+                        </div>
+                    `;
+                } else {
+                    priceHtml = `
+                        <div class="text-end">
+                            <div class="fw-bold">₦${parseFloat(patientAmount).toLocaleString()}</div>
+                            <small class="text-muted">@ ₦${order.price_per_unit}/unit</small>
+                        </div>
+                    `;
+                }
+
                 html += `
                     <div class="item-row">
                         <div class="form-check">
                             <input class="form-check-input payment-checkbox" type="checkbox"
                                    value="${order.id}" data-type="payment"
-                                   data-amount="${order.total_amount}" onchange="updateActionSummary()">
+                                   data-amount="${patientAmount}" onchange="updateActionSummary()">
                             <label class="form-check-label">
                                 <strong>${order.drug_name}</strong>
                                 <span class="badge bg-danger status-badge">Unpaid</span>
+                                ${claimBadge}
                                 <br>
                                 <small class="text-muted">
                                     Order: ${order.order_number} | Qty: ${order.quantity_ordered}
@@ -564,13 +686,11 @@
                                 </small>
                             </label>
                         </div>
-                        <div class="text-end">
-                            <div class="fw-bold">₦${parseFloat(order.total_amount).toLocaleString()}</div>
-                            <small class="text-muted">@ ₦${order.price_per_unit}/unit</small>
-                        </div>
+                        ${priceHtml}
                     </div>
                 `;
             });
+
             html += '</div>';
             return html;
         }
@@ -578,7 +698,22 @@
         function selectAllDispense() {
             const checkboxes = $('.dispense-checkbox');
             const allChecked = checkboxes.length > 0 && checkboxes.filter(':checked').length === checkboxes.length;
-            checkboxes.prop('checked', !allChecked);
+
+            // If selecting all, validate each item first; if any fails, do not check that one
+            checkboxes.each(function() {
+                const $cb = $(this);
+                const orderId = $cb.val();
+                if (!allChecked) {
+                    // try to check
+                    const ok = validateDispenseSelection(orderId, $cb);
+                    if (ok) $cb.prop('checked', true);
+                    else $cb.prop('checked', false);
+                } else {
+                    // uncheck all
+                    $cb.prop('checked', false);
+                }
+            });
+
             updateActionSummary();
         }
 
@@ -634,7 +769,83 @@
             }
         }
 
+        // Validate a single dispense selection (orderId). If $checkbox param passed use it,
+        // otherwise find the checkbox in DOM. Returns true if OK, false if invalid.
+        function validateDispenseSelection(orderId, $checkbox) {
+            if (!$checkbox) $checkbox = $(`.dispense-checkbox[value="${orderId}"]`);
+            const $qtyInput = $(`.dispense-qty[data-order-id="${orderId}"]`);
+            if ($checkbox.length === 0 || $qtyInput.length === 0) return true;
+
+            const storeQty = parseFloat($checkbox.data('store-qty')) || 0;
+            let requestedQty = parseFloat($qtyInput.val()) || 0;
+
+            // If requested qty is 0 or NaN, set to 1 minimal
+            if (!requestedQty || requestedQty < 1) {
+                requestedQty = 1;
+                $qtyInput.val('1');
+            }
+
+            // If the requestedQty exceeds the remaining allowed (max attr), cap to max
+            const maxAllowed = parseFloat($qtyInput.attr('max')) || requestedQty;
+            if (requestedQty > maxAllowed) {
+                // cap it
+                requestedQty = maxAllowed;
+                $qtyInput.val(maxAllowed);
+            }
+
+            // Now check against storeQty
+            if (requestedQty > storeQty) {
+                // show modal telling them to uncheck or stock
+                const drugLabel = $checkbox.closest('.item-row').find('strong').first().text().trim();
+                const message = `
+                    <div>
+                        <p><strong>${drugLabel}</strong> has insufficient stock.</p>
+                        <p>Requested: <strong>${requestedQty}</strong> unit(s)</p>
+                        <p>Available in store: <strong>${storeQty}</strong> unit(s)</p>
+                        <hr>
+                        <p>Please either:</p>
+                        <ul style="text-align:left;">
+                            <li>Uncheck this item to skip dispensing it now, or</li>
+                            <li>Stock the drug in inventory and try again.</li>
+                        </ul>
+                    </div>
+                `;
+                showNotificationModal(message, "Insufficient Stock", true);
+
+                // Uncheck the box to prevent processing
+                $checkbox.prop('checked', false);
+                // Optionally set the qty input to the available storeQty (but keep it editable)
+                if (storeQty >= 1) $qtyInput.val(Math.min(maxAllowed, storeQty));
+                _stockValidationErrors[orderId] = `Insufficient stock: requested ${requestedQty}, available ${storeQty}`;
+                return false;
+            } else {
+                // no error
+                if (_stockValidationErrors[orderId]) delete _stockValidationErrors[orderId];
+                return true;
+            }
+        }
+
+        // Validate all selected dispense items before processing; returns {ok: boolean, problems: []}
+        function validateAllBeforeProcess() {
+            const problems = [];
+            $('.dispense-checkbox:checked').each(function() {
+                const orderId = $(this).val();
+                const ok = validateDispenseSelection(orderId, $(this));
+                if (!ok) {
+                    problems.push(orderId);
+                }
+            });
+            return { ok: problems.length === 0, problems };
+        }
+
         function processActions() {
+            // final validation before sending
+            const validation = validateAllBeforeProcess();
+            if (!validation.ok) {
+                showNotificationModal("One or more selected dispense items have insufficient stock. Please uncheck them or restock before proceeding.", "Cannot Process", true);
+                return;
+            }
+
             const dispenseItems = [];
             const paymentItems = [];
 

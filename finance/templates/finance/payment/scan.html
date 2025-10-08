@@ -21,6 +21,16 @@
     </div>
     <div class="card-body">
       {% if items %}
+      {% if pending_claims_count > 0 %}
+      <div class="alert alert-warning border-start border-warning border-4 mb-3" role="alert">
+        <i class="fas fa-exclamation-triangle"></i>
+        <strong>⚠️ {{ pending_claims_count }} Pending Insurance Claim{{ pending_claims_count|pluralize }}</strong>
+        <p class="mb-0 mt-2">
+          <small>Some orders have pending insurance claims. Patient will pay <strong>full amount</strong>
+          until claims are approved by the insurance department.</small>
+        </p>
+      </div>
+      {% endif %}
       <form id="scan-payment-form" method="post" action="{% url 'finance_scan_patient_payment' patient.id %}">
         {% csrf_token %}
         <div class="mb-3">
@@ -31,16 +41,28 @@
           {% for it in items %}
           <div class="d-flex justify-content-between align-items-center item-row">
             <div>
-              <input type="checkbox" class="form-check-input item-checkbox" name="selected_items" value="{{ it.id }}" checked>
-              <strong class="ms-2">{{ it.name }}</strong>
-              <small class="d-block text-muted ms-4">
-                Order: {{ it.order_number }}{% if it.ordered_date %} | Date: {{ it.ordered_date }}{% endif %}
-                {% if it.insurance_covered %}
-                  <span class="badge bg-success">Insured</span>
-                {% endif %}
-              </small>
-            </div>
-            <div class="text-end fw-bold" data-amount="{{ it.patient_amount }}">{{ it.formatted_patient_amount }}</div>
+  <input type="checkbox" class="form-check-input item-checkbox" name="selected_items" value="{{ it.id }}" checked>
+  <strong class="ms-2">{{ it.name }}</strong>
+  <small class="d-block text-muted ms-4">
+    Order: {{ it.order_number }}{% if it.ordered_date %} | Date: {{ it.ordered_date }}{% endif %}
+
+    {% if it.has_approved_claim %}
+      <span class="badge bg-success">
+        <i class="fas fa-check-circle"></i> Claim Approved: {{ it.claim_number }}
+      </span>
+    {% elif it.has_pending_claim %}
+      <span class="badge bg-warning text-dark">
+        <i class="fas fa-clock"></i> Pending Claim: {{ it.pending_claim_number }}
+      </span>
+    {% elif it.insurance_covered %}
+      <span class="badge bg-success">Insured</span>
+    {% endif %}
+  </small>
+  {% if it.base_amount and it.base_amount != it.patient_amount %}
+    <div class="ms-4"><small class="text-danger"><s>₦{{ it.base_amount|floatformat:2|intcomma }}</s></small></div>
+  {% endif %}
+</div>
+<div class="text-end fw-bold" data-amount="{{ it.patient_amount }}">{{ it.formatted_patient_amount }}</div>
           </div>
           {% endfor %}
         </div>

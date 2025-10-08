@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum, Count, Q, Avg, F
+from django.db.models import Sum, Count, Q, Avg, F, DecimalField, ExpressionWrapper
 from django.db.models.functions import Lower
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -1695,7 +1695,7 @@ def reject_claim(request, pk):
         reason = request.POST.get("rejection_reason", "").strip()
         if not reason:
             messages.error(request, "Rejection reason is required.")
-            return render(request, "insurance/claims/reject.html", {"claim": claim})
+            return redirect("insurance_claim_detail", pk=pk)
 
         try:
             with transaction.atomic():
@@ -1713,7 +1713,7 @@ def reject_claim(request, pk):
             messages.error(request, "An error occurred while rejecting the claim.")
         return redirect("insurance_claim_detail", pk=pk)
 
-    return render(request, "insurance/claims/reject.html", {"claim": claim})
+    return redirect("insurance_claim_detail", pk=pk)
 
 
 @login_required
@@ -1943,3 +1943,360 @@ def verify_patient_by_card(request):
             'error': 'An error occurred while verifying patient'
         })
 
+
+def insurance_dashboard(request):
+    today = timezone.now().date()
+    thirty_days_ago = today - timedelta(days=30)
+    seven_days_ago = today - timedelta(days=7)
+    this_week_start = today - timedelta(days=today.weekday())
+    this_month_start = today.replace(day=1)
+    last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+    last_month_end = this_month_start - timedelta(days=1)
+
+    # =====================================
+    # ALERT CARDS
+    # =====================================
+
+    # Pending claims count
+    pending_claims_count = InsuranceClaimModel.objects.filter(
+        status='pending'
+    ).count()
+
+    # Expired policies (valid_to date has passed but still marked active)
+    expired_policies_count = PatientInsuranceModel.objects.filter(
+        valid_to__lt=today,
+        is_active=True
+    ).count()
+
+    # Expiring soon policies (within 30 days)
+    expiring_soon_count = PatientInsuranceModel.objects.filter(
+        valid_to__gte=today,
+        valid_to__lte=thirty_days_ago + timedelta(days=60),  # 30 days from now
+        is_active=True
+    ).count()
+
+    # Unverified policies
+    unverified_policies_count = PatientInsuranceModel.objects.filter(
+        is_verified=False,
+        is_active=True
+    ).count()
+
+    # =====================================
+    # FINANCIAL SUMMARY
+    # =====================================
+
+    # Total claims value
+    claims_summary = InsuranceClaimModel.objects.aggregate(
+        total_claimed=Sum('total_amount'),
+        total_approved=Sum('approved_amount'),
+        total_covered=Sum('covered_amount'),
+        total_patient_portion=Sum('patient_amount')
+    )
+
+    # Active policies count
+    active_policies_count = PatientInsuranceModel.objects.filter(
+        is_active=True,
+        valid_to__gte=today
+    ).count()
+
+    # Total HMOs and Providers
+    total_hmos = HMOModel.objects.count()
+    total_providers = InsuranceProviderModel.objects.filter(status='active').count()
+    total_coverage_plans = HMOCoveragePlanModel.objects.filter(is_active=True).count()
+
+    # =====================================
+    # CLAIMS STATISTICS
+    # =====================================
+
+    # Today's claims
+    today_claims = InsuranceClaimModel.objects.filter(
+        claim_date__date=today
+    ).aggregate(
+        count=Count('id'),
+        total_amount=Sum('total_amount'),
+        approved_amount=Sum('approved_amount')
+    )
+
+    # This week's claims
+    week_claims = InsuranceClaimModel.objects.filter(
+        claim_date__date__gte=this_week_start
+    ).aggregate(
+        count=Count('id'),
+        total_amount=Sum('total_amount'),
+        approved_amount=Sum('approved_amount')
+    )
+
+    # This month's claims
+    month_claims = InsuranceClaimModel.objects.filter(
+        claim_date__date__gte=this_month_start
+    ).aggregate(
+        count=Count('id'),
+        total_amount=Sum('total_amount'),
+        approved_amount=Sum('approved_amount')
+    )
+
+    # Last month's claims for comparison
+    last_month_claims = InsuranceClaimModel.objects.filter(
+        claim_date__date__gte=last_month_start,
+        claim_date__date__lte=last_month_end
+    ).aggregate(
+        total_amount=Sum('total_amount')
+    )
+
+    # Calculate growth percentage
+    claims_growth = 0
+    if last_month_claims['total_amount'] and month_claims['total_amount']:
+        if last_month_claims['total_amount'] > 0:
+            claims_growth = (
+                    (month_claims['total_amount'] - last_month_claims['total_amount'])
+                    / last_month_claims['total_amount']
+                    * 100
+            )
+
+    # =====================================
+    # CLAIMS BY STATUS
+    # =====================================
+
+    claims_by_status = InsuranceClaimModel.objects.values('status').annotate(
+        count=Count('id'),
+        total_amount=Sum('total_amount')
+    ).order_by('-count')
+
+    # =====================================
+    # CLAIMS BY TYPE
+    # =====================================
+
+    claims_by_type = InsuranceClaimModel.objects.values('claim_type').annotate(
+        count=Count('id'),
+        total_amount=Sum('total_amount'),
+        approved_amount=Sum('approved_amount')
+    ).order_by('-total_amount')
+
+    # =====================================
+    # TOP HMOS BY CLAIMS
+    # =====================================
+
+    top_hmos = InsuranceClaimModel.objects.filter(
+        claim_date__date__gte=this_month_start
+    ).values(
+        'patient_insurance__hmo__name'
+    ).annotate(
+        total_claims=Count('id'),
+        total_amount=Sum('total_amount'),
+        approved_amount=Sum('approved_amount'),
+        covered_amount=Sum('covered_amount')
+    ).order_by('-total_amount')[:10]
+
+    # =====================================
+    # APPROVAL RATE STATISTICS
+    # =====================================
+
+    approval_stats = InsuranceClaimModel.objects.filter(
+        status__in=['approved', 'rejected', 'partially_approved']
+    ).aggregate(
+        total_processed=Count('id'),
+        approved_count=Count('id', filter=Q(status='approved')),
+        rejected_count=Count('id', filter=Q(status='rejected')),
+        partial_count=Count('id', filter=Q(status='partially_approved'))
+    )
+    # Make sure this code is AFTER the approval_stats aggregate:
+
+    approval_rate = 0
+    if approval_stats['total_processed'] > 0:
+        approval_rate = (
+                (approval_stats['approved_count'] + approval_stats['partial_count'])
+                / approval_stats['total_processed']
+                * 100
+        )
+
+    claims_with_approval = InsuranceClaimModel.objects.filter(
+        status__in=['approved', 'rejected', 'partially_approved'],
+        approved_amount__isnull=False,
+        total_amount__gt=0
+    ).annotate(
+        approval_pct=ExpressionWrapper(
+            F('approved_amount') * 100.0 / F('total_amount'),
+            output_field=DecimalField()
+        )
+    )
+
+    avg_approval_pct = claims_with_approval.aggregate(
+        avg=Avg('approval_pct')
+    )['avg'] or 0
+
+    # =====================================
+    # DAILY CLAIMS CHART (Last 7 days)
+    # =====================================
+
+    daily_claims = []
+    for i in range(6, -1, -1):
+        date = today - timedelta(days=i)
+        day_data = InsuranceClaimModel.objects.filter(
+            claim_date__date=date
+        ).aggregate(
+            total_amount=Sum('total_amount'),
+            approved_amount=Sum('approved_amount'),
+            count=Count('id')
+        )
+
+        daily_claims.append({
+            'date': date.strftime('%Y-%m-%d'),
+            'total_amount': float(day_data['total_amount'] or 0),
+            'approved_amount': float(day_data['approved_amount'] or 0),
+            'count': day_data['count'] or 0
+        })
+
+    # =====================================
+    # MONTHLY TRENDS (Last 12 months)
+    # =====================================
+
+    monthly_trends = []
+    for i in range(11, -1, -1):
+        month_date = today - timedelta(days=30 * i)
+        month_start = month_date.replace(day=1)
+
+        if i > 0:
+            next_month = month_start + timedelta(days=32)
+            month_end = next_month.replace(day=1) - timedelta(days=1)
+        else:
+            month_end = today
+
+        month_data = InsuranceClaimModel.objects.filter(
+            claim_date__date__gte=month_start,
+            claim_date__date__lte=month_end
+        ).aggregate(
+            total_amount=Sum('total_amount'),
+            approved_amount=Sum('approved_amount'),
+            count=Count('id')
+        )
+
+        new_policies = PatientInsuranceModel.objects.filter(
+            created_at__date__gte=month_start,
+            created_at__date__lte=month_end
+        ).count()
+
+        monthly_trends.append({
+            'month': month_start.strftime('%b %Y'),
+            'total_amount': float(month_data['total_amount'] or 0),
+            'approved_amount': float(month_data['approved_amount'] or 0),
+            'count': month_data['count'] or 0,
+            'new_policies': new_policies
+        })
+
+    # =====================================
+    # CLAIMS STATUS DISTRIBUTION (Pie Chart)
+    # =====================================
+
+    status_distribution = [
+        {
+            'name': dict(InsuranceClaimModel.CLAIM_STATUS_CHOICES).get(item['status'], item['status']),
+            'value': item['count']
+        }
+        for item in claims_by_status
+    ]
+
+    # =====================================
+    # RECENT CLAIMS
+    # =====================================
+
+    recent_claims = InsuranceClaimModel.objects.select_related(
+        'patient_insurance__patient',
+        'patient_insurance__hmo',
+        'patient_insurance__coverage_plan'
+    ).order_by('-claim_date')[:10]
+
+    # =====================================
+    # EXPIRING POLICIES
+    # =====================================
+
+    expiring_policies = PatientInsuranceModel.objects.filter(
+        valid_to__gte=today,
+        valid_to__lte=thirty_days_ago + timedelta(days=60),
+        is_active=True
+    ).select_related(
+        'patient',
+        'hmo',
+        'coverage_plan'
+    ).order_by('valid_to')[:10]
+
+    # =====================================
+    # UNVERIFIED POLICIES
+    # =====================================
+
+    unverified_policies = PatientInsuranceModel.objects.filter(
+        is_verified=False,
+        is_active=True
+    ).select_related(
+        'patient',
+        'hmo',
+        'coverage_plan'
+    ).order_by('-created_at')[:10]
+
+    # =====================================
+    # COVERAGE PLAN UTILIZATION
+    # =====================================
+
+    plan_utilization = HMOCoveragePlanModel.objects.annotate(
+        active_policies=Count('patientinsurancemodel', filter=Q(
+            patientinsurancemodel__is_active=True,
+            patientinsurancemodel__valid_to__gte=today
+        )),
+        total_claims=Count('patientinsurancemodel__claims'),
+        total_claimed_amount=Sum('patientinsurancemodel__claims__total_amount')
+    ).filter(is_active=True).order_by('-active_policies')[:10]
+
+    context = {
+        # Alert Cards
+        'pending_claims_count': pending_claims_count,
+        'expired_policies_count': expired_policies_count,
+        'expiring_soon_count': expiring_soon_count,
+        'unverified_policies_count': unverified_policies_count,
+
+        # Financial Summary
+        'total_claimed': claims_summary['total_claimed'] or 0,
+        'total_approved': claims_summary['total_approved'] or 0,
+        'total_covered': claims_summary['total_covered'] or 0,
+        'total_patient_portion': claims_summary['total_patient_portion'] or 0,
+
+        # Counts
+        'active_policies_count': active_policies_count,
+        'total_hmos': total_hmos,
+        'total_providers': total_providers,
+        'total_coverage_plans': total_coverage_plans,
+
+        # Claims Stats
+        'today_claims_count': today_claims['count'] or 0,
+        'today_claims_amount': today_claims['total_amount'] or 0,
+        'today_claims_approved': today_claims['approved_amount'] or 0,
+
+        'week_claims_count': week_claims['count'] or 0,
+        'week_claims_amount': week_claims['total_amount'] or 0,
+        'week_claims_approved': week_claims['approved_amount'] or 0,
+
+        'month_claims_count': month_claims['count'] or 0,
+        'month_claims_amount': month_claims['total_amount'] or 0,
+        'month_claims_approved': month_claims['approved_amount'] or 0,
+        'claims_growth': round(claims_growth, 1),
+
+        # Approval Stats
+        'approval_rate': round(approval_rate, 1),
+        'approved_count': approval_stats['approved_count'] or 0,
+        'rejected_count': approval_stats['rejected_count'] or 0,
+        'partial_count': approval_stats['partial_count'] or 0,
+        'avg_approval_percentage': round(avg_approval_pct, 1),
+
+        # Charts Data
+        'daily_claims_chart': daily_claims,
+        'monthly_trends': monthly_trends,
+        'status_distribution': status_distribution,
+
+        # Lists
+        'claims_by_type': claims_by_type,
+        'top_hmos': top_hmos,
+        'recent_claims': recent_claims,
+        'expiring_policies': expiring_policies,
+        'unverified_policies': unverified_policies,
+        'plan_utilization': plan_utilization,
+    }
+
+    return render(request, 'insurance/dashboard.html', context)

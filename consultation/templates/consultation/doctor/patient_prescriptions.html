@@ -1,0 +1,159 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="row">
+    <div class="col-lg-12 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">
+                    Consultation Details: {{ patient|title }}
+                    <span class="badge bg-secondary ms-2">{{ consultation.queue_entry.queue_number }}</span>
+                    <div class="float-end">
+                        <a onclick="window.close()" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Back
+                        </a>
+                    </div>
+                </h4>
+                <p class="card-description">
+                    Patient: {{ patient.card_number|upper }} |
+                    {{ patient.age }} yrs, {{ patient.gender|title }} |
+                    Date: {{ consultation.created_at|date:"M d, Y H:i" }}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-3">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Patient Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="patient-info">
+                    <strong>{{ patient|title }}</strong><br>
+                    <small class="text-muted">ID: {{ patient.card_number }}</small><br>
+                    <small>{{ patient.age }} years, {{ patient.gender|title }}</small><br>
+                    <small>Phone: {{ patient.phone_number|default:"Not provided" }}</small>
+                </div>
+            </div>
+        </div>
+
+        {% if consultation.queue_entry.vitals %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">Vitals Recorded</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <small class="text-muted">BP:</small><br>
+                        <strong>{{ consultation.queue_entry.vitals.blood_pressure }}</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">Pulse:</small><br>
+                        <strong>{{ consultation.queue_entry.vitals.pulse_rate|default:"--" }} BPM</strong>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-6">
+                        <small class="text-muted">Temp:</small><br>
+                        <strong>{{ consultation.queue_entry.vitals.temperature|default:"--" }}°C</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">SpO2:</small><br>
+                        <strong>{{ consultation.queue_entry.vitals.oxygen_saturation|default:"--" }}%</strong>
+                    </div>
+                </div>
+                {% if consultation.queue_entry.vitals.chief_complaint %}
+                <div class="mt-3">
+                    <small class="text-muted">Chief Complaint:</small><br>
+                    <p class="mb-0">{{ consultation.queue_entry.vitals.chief_complaint }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+
+    </div>
+
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="consultationTabs" role="tablist">
+
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="prescriptions-tab" data-bs-toggle="tab" data-bs-target="#prescriptions-pane" type="button" role="tab">
+                            <i class="bi bi-prescription2"></i> Prescriptions
+                        </button>
+                    </li>
+
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="consultationTabContent">
+
+                    <div class="tab-pane fade show active p-3" id="prescriptions-pane" role="tabpanel">
+                        <h6 class="mb-3">Prescribed Medications</h6>
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="prescriptionsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Drug</th>
+                                        <th>Dosage</th>
+                                        <th>Duration</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for prescription in prescriptions %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ prescription.drug.brand_name|default:prescription.drug.generic_name }}</strong>
+                                            <small class="text-muted d-block">{{ prescription.drug.formulation }}</small>
+                                        </td>
+                                        <td>{{ prescription.dosage_instructions|truncatechars:30 }}</td>
+                                        <td>{{ prescription.duration }}</td>
+                                        <td>
+                                            <span class="badge bg-{% if prescription.status == 'dispensed' %}success{% else %}warning{% endif %}">
+                                                {{ prescription.get_status_display }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-3">
+                                            No medications were prescribed.
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block 'script' %}
+<script>
+// Functions to view results (read-only actions)
+function viewTestResult(testId) {
+    // You'll need to create the URL pattern for this
+    window.open(`/portal/laboratory/results/${testId}/detail/`, '_blank');
+}
+
+function viewScanResult(scanId) {
+    // You'll need to create the URL pattern for this
+    window.open(`/portal/radiology/results/${scanId}/detail/`, '_blank');
+}
+</script>
+{% endblock %}

@@ -83,7 +83,7 @@
                             <th scope="row">{{ forloop.counter }}</th>
                             <td>{{ transfer.drug|title }}</td>
                             <td>{{ transfer.quantity|floatformat:2 }}</td>
-                            <td>{% if transfer.transferred_by %}{{ transfer.transferred_by.username }}{% else %}N/A{% endif %}</td>
+                            <td>{% if transfer.transferred_by %}{{ transfer.transferred_by.user_staff_profile }}{% else %}N/A{% endif %}</td>
                             <td>{{ transfer.transferred_at|date:"F d, Y H:i" }}</td>
                             <td>{% if transfer.notes %}{{ transfer.notes|truncatechars:50 }}{% else %}---{% endif %}</td>
                             {# Example action buttons (uncomment if you have corresponding views) #}

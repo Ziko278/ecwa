@@ -1,0 +1,785 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+{% load humanize %}
+
+<div class="pagetitle">
+    <h1>Insurance Dashboard</h1>
+</div>
+
+<section class="section dashboard">
+    <div class="row">
+        <!-- Alert Cards Row -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card {% if pending_claims_count > 0 %}border-primary{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Claims</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-clock-history {% if pending_claims_count > 0 %}text-primary{% else %}text-muted{% endif %}"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 class="{% if pending_claims_count > 0 %}text-primary{% endif %}">{{ pending_claims_count }}</h6>
+                            {% if pending_claims_count > 0 %}
+                                <span class="text-primary small pt-2 ps-1">Awaiting processing</span>
+                            {% else %}
+                                <span class="text-success small pt-2 ps-1">All caught up</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card {% if unverified_policies_count > 0 %}border-warning{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title">Unverified Policies</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-shield-exclamation {% if unverified_policies_count > 0 %}text-warning{% else %}text-muted{% endif %}"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 class="{% if unverified_policies_count > 0 %}text-warning{% endif %}">{{ unverified_policies_count }}</h6>
+                            {% if unverified_policies_count > 0 %}
+                                <span class="text-warning small pt-2 ps-1">Need verification</span>
+                            {% else %}
+                                <span class="text-success small pt-2 ps-1">All verified</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card {% if expiring_soon_count > 0 %}border-info{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title">Expiring Soon</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-calendar-x {% if expiring_soon_count > 0 %}text-info{% else %}text-muted{% endif %}"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 class="{% if expiring_soon_count > 0 %}text-info{% endif %}">{{ expiring_soon_count }}</h6>
+                            {% if expiring_soon_count > 0 %}
+                                <span class="text-info small pt-2 ps-1">Next 30 days</span>
+                            {% else %}
+                                <span class="text-success small pt-2 ps-1">All current</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card info-card {% if expired_policies_count > 0 %}border-danger{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title">Expired Policies</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-x-octagon {% if expired_policies_count > 0 %}text-danger{% else %}text-muted{% endif %}"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6 class="{% if expired_policies_count > 0 %}text-danger{% endif %}">{{ expired_policies_count }}</h6>
+                            {% if expired_policies_count > 0 %}
+                                <span class="text-danger small pt-2 ps-1">Need renewal</span>
+                            {% else %}
+                                <span class="text-success small pt-2 ps-1">None expired</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Financial Summary Row -->
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card info-card sales-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Claimed</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-file-earmark-medical text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_claimed|floatformat:2|intcomma }}</h6>
+                            <span class="text-muted small pt-2 ps-1">All time</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card info-card customers-card">
+                <div class="card-body">
+                    <h5 class="card-title">Insurance Covered</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-shield-check text-info"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_covered|floatformat:2|intcomma }}</h6>
+                            <span class="text-muted small pt-2 ps-1">HMO pays</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Patient Portion</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-person-badge text-warning"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_patient_portion|floatformat:2|intcomma }}</h6>
+                            <span class="text-muted small pt-2 ps-1">Patient pays</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Row -->
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Active Policies</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-file-earmark-check text-success"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ active_policies_count }}</h6>
+                            <span class="text-muted small pt-2 ps-1">Current</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">HMO Partners</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-building text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ total_hmos }}</h6>
+                            <span class="text-muted small pt-2 ps-1">Partners</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Coverage Plans</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-card-list text-info"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ total_coverage_plans }}</h6>
+                            <span class="text-muted small pt-2 ps-1">Active plans</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Approval Rate</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-graph-up text-success"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ approval_rate|floatformat:1 }}%</h6>
+                            <span class="text-muted small pt-2 ps-1">Approved/Partial</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Claims Statistics -->
+    <div class="row">
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Today's Claims</h5>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="ps-3">
+                                    <h6 class="text-primary">₦{{ today_claims_amount|floatformat:2|intcomma }}</h6>
+                                    <span class="text-muted small">Total Claimed</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ today_claims_count }}</h6>
+                                    <span class="text-muted small">Claims Filed</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-success">₦{{ today_claims_approved|floatformat:2|intcomma }}</h6>
+                                    <span class="text-muted small">Approved</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">This Week</h5>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="ps-3">
+                                    <h6 class="text-info">₦{{ week_claims_amount|floatformat:2|intcomma }}</h6>
+                                    <span class="text-muted small">Total Claimed</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ week_claims_count }}</h6>
+                                    <span class="text-muted small">Claims Filed</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-success">₦{{ week_claims_approved|floatformat:2|intcomma }}</h6>
+                                    <span class="text-muted small">Approved</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">This Month</h5>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="ps-3">
+                                    <h6 class="text-warning">₦{{ month_claims_amount|floatformat:2|intcomma }}</h6>
+                                    <span class="text-muted small">Total Claimed</span>
+                                    {% if claims_growth > 0 %}
+                                        <br><span class="text-success small fw-bold">+{{ claims_growth }}%</span>
+                                    {% elif claims_growth < 0 %}
+                                        <br><span class="text-danger small fw-bold">{{ claims_growth }}%</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ month_claims_count }}</h6>
+                                    <span class="text-muted small">Claims Filed</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-success">₦{{ month_claims_approved|floatformat:2|intcomma }}</h6>
+                                    <span class="text-muted small">Approved</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row">
+        <!-- Daily Claims Chart -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Daily Claims Trends <span>/Last 7 Days</span></h5>
+                    <div id="claimsChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Claims Status Distribution -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Claims by Status</h5>
+                    <div id="statusChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Trends and Top HMOs -->
+    <div class="row">
+        <!-- Monthly Trends Chart -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Trends <span>/Last 12 Months</span></h5>
+                    <div id="monthlyTrendChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top HMOs -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Top HMOs <span>/This Month</span></h5>
+                    <div class="activity">
+                        {% for hmo in top_hmos %}
+                        <div class="activity-item d-flex">
+                            <div class="activite-label">{{ hmo.total_claims }}</div>
+                            <i class="bi bi-circle-fill activity-badge text-primary align-self-start"></i>
+                            <div class="activity-content">
+                                {{ hmo.patient_insurance__hmo__name }}
+                                <br><small class="text-muted">Claimed: ₦{{ hmo.total_amount|floatformat:2|intcomma }}</small>
+                                <br><small class="text-success">Approved: ₦{{ hmo.approved_amount|floatformat:2|intcomma }}</small>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="text-muted text-center py-3">
+                            <i class="bi bi-graph-down"></i><br>
+                            No HMO data available
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Claims by Type -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Claims by Type</h5>
+                    
+                    {% if claims_by_type %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Claim Type</th>
+                                    <th scope="col">Count</th>
+                                    <th scope="col">Total Amount</th>
+                                    <th scope="col">Approved Amount</th>
+                                    <th scope="col">Approval %</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for claim_type in claims_by_type %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-primary">{{ claim_type.claim_type|title }}</span>
+                                    </td>
+                                    <td>{{ claim_type.count }}</td>
+                                    <td>₦{{ claim_type.total_amount|floatformat:2|intcomma }}</td>
+                                    <td>₦{{ claim_type.approved_amount|floatformat:2|intcomma }}</td>
+                                    <td>
+                                        {% if claim_type.total_amount %}
+                                            {% widthratio claim_type.approved_amount claim_type.total_amount 100 %}%
+                                        {% else %}
+                                            0%
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                        <p>No claims data available</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts and Recent Activity -->
+    <div class="row">
+        <!-- Unverified Policies -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Unverified Policies</h5>
+                    {% for policy in unverified_policies %}
+                    <div class="d-flex align-items-center mb-2 p-2 border rounded border-warning">
+                        <i class="bi bi-shield-exclamation text-warning me-2"></i>
+                        <div class="flex-grow-1">
+                            <strong>{{ policy.patient.get_full_name }}</strong>
+                            <br><small>{{ policy.hmo.name }}</small>
+                            <br><small class="text-muted">Policy: {{ policy.policy_number }}</small>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-success py-3">
+                        <i class="bi bi-check-circle"></i><br>
+                        All policies verified!
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Expiring Soon -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Expiring Soon (30 days)</h5>
+                    {% for policy in expiring_policies %}
+                    <div class="d-flex align-items-center mb-2 p-2 border rounded border-info">
+                        <i class="bi bi-calendar-x text-info me-2"></i>
+                        <div class="flex-grow-1">
+                            <strong>{{ policy.patient.get_full_name }}</strong>
+                            <br><small>{{ policy.hmo.name }}</small>
+                            <br><small class="text-muted">Expires: {{ policy.valid_to }}</small>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-success py-3">
+                        <i class="bi bi-calendar-check"></i><br>
+                        All policies are current!
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Claims -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Recent Claims</h5>
+                    {% for claim in recent_claims %}
+                    <div class="d-flex align-items-center mb-2 p-2 border rounded">
+                        <i class="bi bi-file-earmark-medical 
+                            {% if claim.status == 'approved' %}text-success
+                            {% elif claim.status == 'rejected' %}text-danger
+                            {% elif claim.status == 'pending' %}text-primary
+                            {% else %}text-warning{% endif %} me-2"></i>
+                        <div class="flex-grow-1">
+                            <strong>{{ claim.patient_insurance.patient.get_full_name }}</strong>
+                            <br><small>{{ claim.claim_type|title }} - ₦{{ claim.total_amount|floatformat:2|intcomma }}</small>
+                            <br><small class="text-muted">
+                                <span class="badge 
+                                    {% if claim.status == 'approved' %}bg-success
+                                    {% elif claim.status == 'rejected' %}bg-danger
+                                    {% elif claim.status == 'pending' %}bg-primary
+                                    {% else %}bg-warning{% endif %}">
+                                    {{ claim.get_status_display }}
+                                </span>
+                            </small>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-inbox"></i><br>
+                        No recent claims
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Coverage Plan Utilization -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Coverage Plan Utilization</h5>
+                    
+                    {% if plan_utilization %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless datatable">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Plan Name</th>
+                                    <th scope="col">HMO</th>
+                                    <th scope="col">Active Policies</th>
+                                    <th scope="col">Total Claims</th>
+                                    <th scope="col">Total Claimed Amount</th>
+                                    <th scope="col">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for plan in plan_utilization %}
+                                <tr>
+                                    <td><strong>{{ plan.name }}</strong></td>
+                                    <td>{{ plan.hmo.name }}</td>
+                                    <td>{{ plan.active_policies }}</td>
+                                    <td>{{ plan.total_claims }}</td>
+                                    <td>₦{{ plan.total_claimed_amount|floatformat:2|intcomma|default:"0.00" }}</td>
+                                    <td>
+                                        <span class="badge {% if plan.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {% if plan.is_active %}Active{% else %}Inactive{% endif %}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                        <p>No coverage plan data available</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<!-- Chart Scripts -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    
+    // Daily Claims Chart (Last 7 days)
+    const claimsData = {{ daily_claims_chart|safe }};
+    
+    new ApexCharts(document.querySelector("#claimsChart"), {
+        series: [
+            {
+                name: 'Total Claimed (₦)',
+                data: claimsData.map(d => d.total_amount),
+                yAxisIndex: 0
+            },
+            {
+                name: 'Approved (₦)',
+                data: claimsData.map(d => d.approved_amount),
+                yAxisIndex: 0
+            },
+            {
+                name: 'Claims Count',
+                data: claimsData.map(d => d.count),
+                yAxisIndex: 1
+            }
+        ],
+        chart: {
+            height: 350,
+            type: 'line',
+            toolbar: { show: false }
+        },
+        stroke: {
+            width: [3, 3, 2],
+            curve: 'smooth'
+        },
+        colors: ['#4154f1', '#2eca6a', '#ff771d'],
+        xaxis: {
+            categories: claimsData.map(d => d.date),
+            type: 'datetime'
+        },
+        yaxis: [
+            {
+                title: { text: 'Amount (₦)' },
+                labels: {
+                    formatter: function(val) {
+                        return "₦" + val.toFixed(0);
+                    }
+                }
+            },
+            {
+                opposite: true,
+                title: { text: 'Claims Count' }
+            }
+        ],
+        markers: { size: 4 },
+        tooltip: {
+            shared: true,
+            intersect: false,
+            y: [
+                {
+                    formatter: function(val) {
+                        return "₦" + val.toFixed(2);
+                    }
+                },
+                {
+                    formatter: function(val) {
+                        return "₦" + val.toFixed(2);
+                    }
+                },
+                {
+                    formatter: function(val) {
+                        return val + " claims";
+                    }
+                }
+            ]
+        }
+    }).render();
+
+    // Claims Status Distribution Pie Chart
+    const statusData = {{ status_distribution|safe }};
+    
+    if (statusData && statusData.length > 0) {
+        echarts.init(document.querySelector("#statusChart")).setOption({
+            tooltip: {
+                trigger: 'item',
+                formatter: '{a} <br/>{b}: {c} claims ({d}%)'
+            },
+            legend: {
+                top: '5%',
+                left: 'center'
+            },
+            series: [{
+                name: 'Claims Status',
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: false,
+                label: {
+                    show: false,
+                    position: 'center'
+                },
+                emphasis: {
+                    label: {
+                        show: true,
+                        fontSize: '18',
+                        fontWeight: 'bold'
+                    }
+                },
+                labelLine: { show: false },
+                data: statusData
+            }]
+        });
+    } else {
+        document.querySelector("#statusChart").innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-pie-chart" style="font-size: 3rem;"></i><p>No status data available</p></div>';
+    }
+
+    // Monthly Trends Chart
+    const monthlyData = {{ monthly_trends|safe }};
+    
+    if (monthlyData && monthlyData.length > 0) {
+        new ApexCharts(document.querySelector("#monthlyTrendChart"), {
+            series: [
+                {
+                    name: 'Total Claimed (₦)',
+                    data: monthlyData.map(d => d.total_amount),
+                    type: 'column'
+                },
+                {
+                    name: 'Approved (₦)',
+                    data: monthlyData.map(d => d.approved_amount),
+                    type: 'line'
+                },
+                {
+                    name: 'Claims Count',
+                    data: monthlyData.map(d => d.count),
+                    type: 'line'
+                },
+                {
+                    name: 'New Policies',
+                    data: monthlyData.map(d => d.new_policies),
+                    type: 'line'
+                }
+            ],
+            chart: {
+                height: 350,
+                type: 'line',
+                toolbar: { show: false }
+            },
+            stroke: {
+                width: [0, 3, 3, 3],
+                curve: 'smooth'
+            },
+            colors: ['#4154f1', '#2eca6a', '#ff771d', '#a855f7'],
+            xaxis: {
+                categories: monthlyData.map(d => d.month)
+            },
+            yaxis: [
+                {
+                    title: { text: 'Amount (₦)' },
+                    labels: {
+                        formatter: function(val) {
+                            return "₦" + (val/1000).toFixed(0) + "k";
+                        }
+                    }
+                }
+            ],
+            markers: { size: [0, 4, 4, 4] },
+            tooltip: {
+                shared: true,
+                intersect: false,
+                y: [
+                    {
+                        formatter: function(val) {
+                            return "₦" + val.toFixed(2);
+                        }
+                    },
+                    {
+                        formatter: function(val) {
+                            return "₦" + val.toFixed(2);
+                        }
+                    },
+                    {
+                        formatter: function(val) {
+                            return val + " claims";
+                        }
+                    },
+                    {
+                        formatter: function(val) {
+                            return val + " policies";
+                        }
+                    }
+                ]
+            }
+        }).render();
+    }
+
+});
+</script>
+
+{% endblock %}

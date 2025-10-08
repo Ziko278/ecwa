@@ -28,6 +28,15 @@
                 </div>
             </div>
 
+            <!-- Info Container for Existing Payment -->
+            <div id="info-container" style="display: none;">
+                <div class="alert alert-info d-flex align-items-center" role="alert">
+                    <i class="mdi mdi-information me-2"></i>
+                    <span id="info-message"></span>
+                    <button type="button" class="btn-close ms-auto" onclick="hideInfo()"></button>
+                </div>
+            </div>
+
             <form class="forms-sample" method="post" id="consultation-payment-form">
                 {% csrf_token %}
 
@@ -126,8 +135,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const fundWalletBtn = document.getElementById('fund-wallet-btn');
     const errorContainer = document.getElementById('error-container');
     const successContainer = document.getElementById('success-container');
+    const infoContainer = document.getElementById('info-container');
     const errorMessage = document.getElementById('error-message');
     const successMessage = document.getElementById('success-message');
+    const infoMessage = document.getElementById('info-message');
 
     // Hidden form fields
     const feeStructureField = document.getElementById('fee-structure-field');
@@ -138,12 +149,15 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentFee = null;
     let walletBalance = 0;
     let patientInsurance = null;
+    let actionType = null;
+    let existingPaymentId = null;
 
-    // Error handling functions
+    // Message handling functions
     function showError(message) {
         errorMessage.innerHTML = `<strong>${message}</strong>`;
         errorContainer.style.display = 'block';
         successContainer.style.display = 'none';
+        infoContainer.style.display = 'none';
         errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
@@ -151,7 +165,16 @@ document.addEventListener('DOMContentLoaded', function () {
         successMessage.innerHTML = `<strong>${message}</strong>`;
         successContainer.style.display = 'block';
         errorContainer.style.display = 'none';
+        infoContainer.style.display = 'none';
         successContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function showInfo(message) {
+        infoMessage.innerHTML = `<strong>${message}</strong>`;
+        infoContainer.style.display = 'block';
+        errorContainer.style.display = 'none';
+        successContainer.style.display = 'none';
+        infoContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     window.hideError = function() {
@@ -162,6 +185,10 @@ document.addEventListener('DOMContentLoaded', function () {
         successContainer.style.display = 'none';
     }
 
+    window.hideInfo = function() {
+        infoContainer.style.display = 'none';
+    }
+
     // Load patient wallet information on page load
     function loadPatientWallet() {
         fetch(`/portal/finance/verify-patient/?card_number={{ patient.card_number }}`)
@@ -170,14 +197,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     walletBalance = data.wallet.balance;
                     patientInsurance = data.insurance;
-                    
+
                     const walletClass = data.wallet.balance > 0 ? 'text-success' : 'text-warning';
                     let walletInfo = `<span class="${walletClass}">Balance: ${data.wallet.formatted_balance}</span>`;
-                    
+
                     if (data.insurance.has_insurance) {
                         walletInfo += `<br><small class="text-info"><i class="mdi mdi-shield-alt me-1"></i>Insurance: ${data.insurance.hmo_name} - ${data.insurance.plan_name}</small>`;
                     }
-                    
+
                     document.getElementById('wallet-info').innerHTML = walletInfo;
                 } else {
                     document.getElementById('wallet-info').innerHTML = '<span class="text-danger">Error loading wallet information</span>';
@@ -189,30 +216,49 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // Specialization Selection
+    // Reset action state
+    function resetActionState() {
+        feeInfoSection.style.display = 'none';
+        paymentSection.style.display = 'none';
+        actionType = null;
+        existingPaymentId = null;
+        currentFee = null;
+        processPaymentBtn.disabled = true;
+    }
+
+    // Specialization Selection - NOW USES get_consultation_status_ajax
     specializationSelect.addEventListener('change', function() {
         const specializationId = this.value;
+        resetActionState();
 
         if (!specializationId) {
-            feeInfoSection.style.display = 'none';
-            paymentSection.style.display = 'none';
             return;
         }
 
-        // Load consultation fee
-        fetch(`/portal/consultation/get-consultation-fees?specialization_id=${specializationId}&patient_id={{ patient.id }}`)
+        // Use the powerful consultation status check (same as first template)
+        fetch(`{% url 'get_consultation_status_ajax' %}?patient_id={{ patient.id }}&specialization_id=${specializationId}`)
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
+                actionType = data.status;
+
+                if (actionType === 'block') {
+                    showError(data.message);
+                    return;
+                }
+
+                if (actionType === 'reuse_payment') {
+                    // Patient has valid payment
+                    existingPaymentId = data.payment_id;
+                    showInfo(`${data.message}<br><br><strong>Note:</strong> This patient already has a valid payment. Please use the "Process Consultation Payment" page to add them to the queue directly.`);
+                    return;
+                }
+
+                if (actionType === 'new_payment') {
                     currentFee = data.fee;
 
                     // Display fee information
                     let feeHtml = `<strong>Amount: ${data.fee.formatted_amount}</strong><br>`;
-                    feeHtml += `<small>Category: ${data.fee.patient_category}`;
-                    if (data.fee.coverage_applied) {
-                        feeHtml += ` | <span class="text-success">Insurance coverage applied</span>`;
-                    }
-                    feeHtml += `</small>`;
+                    feeHtml += `<small>Category: ${data.fee.patient_category}</small>`;
 
                     document.getElementById('fee-details').innerHTML = feeHtml;
 
@@ -223,13 +269,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     feeInfoSection.style.display = 'block';
                     updatePaymentSection();
-                } else {
-                    showError(data.error);
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                showError('Error loading consultation fees. Please try again.');
+                showError('Error checking consultation status. Please try again.');
             });
     });
 
@@ -290,9 +334,14 @@ document.addEventListener('DOMContentLoaded', function () {
     // Form submission
     document.getElementById('consultation-payment-form').addEventListener('submit', function(e) {
         e.preventDefault();
-        
+
         if (!currentFee) {
             showError('Please select a consultation type first');
+            return;
+        }
+
+        if (actionType !== 'new_payment') {
+            showError('Invalid payment action. Please refresh the page and try again.');
             return;
         }
 
@@ -306,7 +355,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Submit form data via AJAX
         const formData = new FormData(this);
-        
+
         fetch(window.location.href, {
             method: 'POST',
             body: formData,
@@ -319,16 +368,14 @@ document.addEventListener('DOMContentLoaded', function () {
             if (data.success) {
                 showSuccess(data.message);
                 walletBalance = data.new_balance;
-                
+
                 // Update wallet display
                 const walletClass = data.new_balance > 0 ? 'text-success' : 'text-warning';
                 document.getElementById('wallet-info').innerHTML = `<span class="${walletClass}">Balance: ${data.formatted_new_balance}</span>`;
-                
+
                 // Reset form
                 specializationSelect.value = '';
-                feeInfoSection.style.display = 'none';
-                paymentSection.style.display = 'none';
-                currentFee = null;
+                resetActionState();
                 
                 // Redirect after success if URL provided
                 if (data.redirect_url) {

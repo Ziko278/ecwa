@@ -69,7 +69,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-6">
+                        <div class="col-12">
                             <div class="card text-center bg-success mb-2">
                                 <div class="card-body py-1">
                                     <h6 class="text-white">{{ stats.completed|default:0 }}</h6>
@@ -77,7 +77,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-6">
+                        <div class="col-12">
                             <div class="card text-center bg-info mb-2">
                                 <div class="card-body py-1">
                                     <h6 class="text-white">{{ stats.avg_duration|default:0 }}</h6>
@@ -85,7 +85,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-6">
+                        <div class="col-12">
                             <div class="card text-center bg-warning mb-2">
                                 <div class="card-body py-1">
                                     <h6 class="text-white">{{ stats.prescriptions|default:0 }}</h6>
@@ -93,7 +93,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-6">
+                        <div class="col-12">
                             <div class="card text-center bg-secondary mb-2">
                                 <div class="card-body py-1">
                                     <h6 class="text-white">{{ stats.tests_ordered|default:0 }}</h6>
@@ -189,10 +189,12 @@
                                             </button>
                                             <ul class="dropdown-menu">
                                                 <li><a class="dropdown-item" href="#" onclick="viewPrescriptions({{ consultation.queue_entry.patient.id }})">View Prescriptions</a></li>
-                                                <li><a class="dropdown-item" href="#" onclick="viewTestResults({{ consultation.queue_entry.patient.id }})">View Test Results</a></li>
+<!--                                                <li><a class="dropdown-item" href="#" onclick="viewTestResults({{ consultation.queue_entry.patient.id }})">View Test Results</a></li>-->
+<!--                                                -->
                                                 <li><a class="dropdown-item" href="#" onclick="viewPatientHistory({{ consultation.queue_entry.patient.id }})">Patient History</a></li>
                                                 <li><hr class="dropdown-divider"></li>
-                                                <li><a class="dropdown-item" href="#" onclick="printConsultation({{ consultation.id }})">Print Report</a></li>
+<!--                                                <li><a class="dropdown-item" href="#" onclick="printConsultation({{ consultation.id }})">Print Report</a></li>-->
+<!--                                            -->
                                             </ul>
                                         </div>
                                     </div>
