@@ -207,6 +207,10 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(`{% url 'create_queue_from_payment_ajax' %}`, {
                 method: 'POST',
                 body: formData,
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                credentials: 'same-origin'
             })
             .then(response => response.json())
             .then(data => {
