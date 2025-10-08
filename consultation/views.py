@@ -3625,7 +3625,7 @@ def ajax_search_drugs(request):
 
             drugs_data.append({
                 'id': drug.id,
-                'brand_name': drug.brand_name,
+                'brand_name': drug.__str__(),
                 'generic_name': drug.formulation.generic_drug.generic_name,
                 'pharmacy_quantity': drug.pharmacy_quantity,
                 'formulation': str(drug.formulation),
