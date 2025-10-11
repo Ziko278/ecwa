@@ -1801,7 +1801,7 @@ def verify_patient_pharmacy_ajax(request):
                 'id': order.id,
                 'order_number': order.order_number,
                 'drug_name': f"{order.drug.__str__()}",
-                'quantity_left': float(order.drug.store_quantity),
+                'quantity_left': float(order.drug.pharmacy_quantity),
                 'quantity_ordered': float(order.quantity_ordered),
                 'quantity_dispensed': float(order.quantity_dispensed),
                 'remaining_quantity': float(order.remaining_to_dispense),

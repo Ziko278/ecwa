@@ -568,6 +568,7 @@
                 const maxQuantity = order.remaining_quantity;
                 // store_qty: backend provided as 'quantity_left' (string). parse to number
                 const storeQty = parseFloat(order.quantity_left) || 0;
+                alert(storeQty)
 
                 // If storeQty is less than remaining, show inline small warning and mark data attribute
                 const stockWarning = storeQty < maxQuantity ? `<br><small class="text-danger">Only ${storeQty} unit(s) in stock. You must reduce the qty or restock.</small>` : '';
