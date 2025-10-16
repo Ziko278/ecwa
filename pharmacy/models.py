@@ -601,6 +601,11 @@ class DrugOrderModel(models.Model):
     def remaining_to_dispense(self):
         return self.quantity_ordered - self.quantity_dispensed
 
+    @property
+    def total_amount(self):
+        """Calculate total amount for the drug order"""
+        return Decimal(str(self.quantity_ordered)) * self.drug.selling_price
+
 
 class ExternalPrescription(models.Model):
     """

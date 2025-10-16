@@ -69,7 +69,9 @@ from .views import (
     OtherPaymentServiceUpdateView, OtherPaymentServiceDeleteView, process_other_payment_ajax, OtherPaymentView,
     ajax_process_admission_funding, AdmissionSurgeryFundingView, staff_remittance_detail_view,
     finance_service_patient_payment, finance_wallet_tools_entry, finance_wallet_history, finance_wallet_withdrawal,
-    finance_process_refund,
+    finance_process_refund, process_direct_payment, transaction_list, transaction_detail, wallet_funding_only_page,
+    UnifiedPaymentView, ajax_process_consultation_payment, ajax_reuse_consultation_payment,
+    ajax_get_admission_surgery_details, ajax_process_other_payment,
 )
 
 urlpatterns = [
@@ -91,7 +93,7 @@ urlpatterns = [
     path('payment/scan/<int:patient_id>/', finance_scan_patient_payment, name='finance_scan_patient_payment'),
     path('payment/service/<int:patient_id>/', finance_service_patient_payment, name='finance_service_patient_payment'),
     path('transactions/', PatientTransactionListView.as_view(), name='patient_transaction_index'),
-    path('transactions/<int:pk>/', PatientTransactionDetailView.as_view(), name='patient_transaction_detail'),
+    #path('transactions/<int:pk>/', PatientTransactionDetailView.as_view(), name='patient_transaction_detail'),
     path('payment/other/', OtherPaymentView.as_view(), name='finance_other_payment'),
     path('ajax/payment/other/process/', process_other_payment_ajax, name='ajax_process_other_payment'),
     path('funding/admission/<int:patient_id>/', AdmissionSurgeryFundingView.as_view(), name='finance_admission_funding'),
@@ -170,6 +172,42 @@ urlpatterns = [
     path('wallet/history/<int:patient_id>/', finance_wallet_history, name='finance_wallet_history'),
     path('wallet/withdrawal/<int:patient_id>/', finance_wallet_withdrawal, name='finance_wallet_withdrawal'),
     path('wallet/refund/<int:patient_id>/', finance_process_refund, name='finance_process_refund'),
+
+    # NEW: Direct payment processing
+    path('process-direct-payment/', process_direct_payment, name='process_direct_payment'),
+
+    # EXISTING: Keep wallet funding for those who want to fund wallet only
+    path('process-wallet-funding/', process_wallet_funding, name='process_wallet_funding'),
+
+    # NEW: Separate wallet funding page (optional)
+    path('wallet-funding-only/', wallet_funding_only_page, name='wallet_funding_only'),
+
+    # Transaction views
+    path('transactions/', transaction_list, name='patient_transaction_index'),
+    path('transactions/<int:transaction_id>/', transaction_detail, name='transaction_detail'),
+
+    # Patient verification AJAX
+    path('verify-patient-ajax/', verify_patient_ajax, name='finance_verify_patient_ajax'),
+
+    # Print receipt
+    path('transactions/<int:transaction_id>/print/', print_receipt, name='print_receipt'),
+
+    path('payment/unified/', UnifiedPaymentView.as_view(), name='finance_unified_payment'),
+
+
+    # AJAX endpoints for consultation
+    path('ajax/consultation/payment/', ajax_process_consultation_payment,
+         name='ajax_process_consultation_payment'),
+    path('ajax/consultation/reuse/', ajax_reuse_consultation_payment, name='ajax_reuse_consultation_payment'),
+
+    # AJAX endpoints for admission/surgery
+    path('ajax/admission-surgery/details/', ajax_get_admission_surgery_details,
+         name='ajax_get_admission_surgery_details'),
+    path('ajax/admission-surgery/payment/', ajax_process_admission_funding,
+         name='ajax_process_admission_funding'),
+
+    # AJAX endpoint for other payments
+    path('ajax/payment/other/', ajax_process_other_payment, name='ajax_process_other_payment'),
 
 ]
 

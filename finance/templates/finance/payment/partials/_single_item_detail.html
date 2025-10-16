@@ -1,0 +1,167 @@
+{% load humanize %}
+
+{# Save this as: templates/finance/transaction/partials/_single_item_detail.html #}
+
+{% comment %}
+This partial displays details for a single service/item transaction (standalone or child)
+{% endcomment %}
+
+{% if transaction.lab_structure %}
+    <div class="card mt-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-prescription2"></i> Laboratory Test Details
+            </h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Test Name:</dt>
+                <dd class="col-sm-9">{{ transaction.lab_structure.template.name }}</dd>
+
+                <dt class="col-sm-3">Order Number:</dt>
+                <dd class="col-sm-9">{{ transaction.lab_structure.order_number }}</dd>
+
+                <dt class="col-sm-3">Amount:</dt>
+                <dd class="col-sm-9">₦{{ transaction.amount|floatformat:2|intcomma }}</dd>
+
+                <dt class="col-sm-3">Status:</dt>
+                <dd class="col-sm-9">
+                    <span class="badge bg-success">{{ transaction.lab_structure.status|upper }}</span>
+                </dd>
+            </dl>
+        </div>
+    </div>
+
+{% elif transaction.service %}
+    <div class="card mt-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-gear-fill"></i> Service Details
+            </h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Service Name:</dt>
+                <dd class="col-sm-9">
+                    {% if transaction.service.service %}
+                        {{ transaction.service.service.category.name }} - {{ transaction.service.service.name }}
+                    {% elif transaction.service.service_item %}
+                        {{ transaction.service.service_item.category.name }} - {{ transaction.service.service_item.name }}
+                    {% else %}
+                        Service
+                    {% endif %}
+                </dd>
+
+                <dt class="col-sm-3">Quantity:</dt>
+                <dd class="col-sm-9">{{ transaction.service.quantity }}</dd>
+
+                <dt class="col-sm-3">Amount:</dt>
+                <dd class="col-sm-9">₦{{ transaction.amount|floatformat:2|intcomma }}</dd>
+
+                <dt class="col-sm-3">Status:</dt>
+                <dd class="col-sm-9">
+                    <span class="badge bg-success">{{ transaction.service.status|upper }}</span>
+                </dd>
+            </dl>
+        </div>
+    </div>
+
+{% elif transaction.other_service %}
+    <div class="card mt-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-tag-fill"></i> Service Details
+            </h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Service Name:</dt>
+                <dd class="col-sm-9">{{ transaction.other_service.name }}</dd>
+
+                <dt class="col-sm-3">Category:</dt>
+                <dd class="col-sm-9">{{ transaction.other_service.get_category_display }}</dd>
+
+                <dt class="col-sm-3">Amount:</dt>
+                <dd class="col-sm-9">₦{{ transaction.amount|floatformat:2|intcomma }}</dd>
+            </dl>
+        </div>
+    </div>
+
+{% elif transaction.fee_structure %}
+    <div class="card mt-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-person-check-fill"></i> Consultation Details
+            </h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Consultation Type:</dt>
+                <dd class="col-sm-9">{{ transaction.fee_structure|title }}</dd>
+
+                <dt class="col-sm-3">Amount:</dt>
+                <dd class="col-sm-9">₦{{ transaction.amount|floatformat:2|intcomma }}</dd>
+            </dl>
+        </div>
+    </div>
+
+{% elif transaction.admission %}
+    <div class="card mt-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-hospital"></i> Admission Details
+            </h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Ward:</dt>
+                <dd class="col-sm-9">{{ transaction.admission.ward }}</dd>
+
+                <dt class="col-sm-3">Bed Number:</dt>
+                <dd class="col-sm-9">{{ transaction.admission.bed_number }}</dd>
+
+                <dt class="col-sm-3">Amount:</dt>
+                <dd class="col-sm-9">₦{{ transaction.amount|floatformat:2|intcomma }}</dd>
+            </dl>
+        </div>
+    </div>
+
+{% elif transaction.surgery %}
+    <div class="card mt-4">
+        <div class="card-header bg-danger text-white">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-heart-pulse-fill"></i> Surgery Details
+            </h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Procedure:</dt>
+                <dd class="col-sm-9">{{ transaction.surgery.procedure_name }}</dd>
+
+                <dt class="col-sm-3">Amount:</dt>
+                <dd class="col-sm-9">₦{{ transaction.amount|floatformat:2|intcomma }}</dd>
+            </dl>
+        </div>
+    </div>
+
+{% elif transaction.transaction_type == 'drug_payment' %}
+    <div class="card mt-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-capsule"></i> Drug Payment
+            </h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Amount:</dt>
+                <dd class="col-sm-9">₦{{ transaction.amount|floatformat:2|intcomma }}</dd>
+                
+                <dt class="col-sm-3">Note:</dt>
+                <dd class="col-sm-9 text-muted">
+                    <small>Drug details not directly linked. This may be an older transaction.</small>
+                </dd>
+            </dl>
+        </div>
+    </div>
+
+{% endif %}

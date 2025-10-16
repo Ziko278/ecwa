@@ -308,6 +308,11 @@ class ScanOrderModel(models.Model):
 
         super().save(*args, **kwargs)
 
+    @property
+    def total_amount(self):
+        """Return the amount charged for this scan"""
+        return self.amount_charged or Decimal('0.00')
+
 
 class ExternalScanOrder(models.Model):
     """Scans/Imaging performed externally (template.is_active=False)"""

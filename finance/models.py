@@ -134,7 +134,8 @@ class PatientTransactionModel(models.Model):
         ('other_refund', 'OTHER REFUND'),
         ('wallet_withdrawal', 'WALLET WITHDRAWAL'),
         ('refund_to_wallet', 'REFUND TO WALLET'),
-        ('wallet_correction', 'WALLET CORRECTION')
+        ('wallet_correction', 'WALLET CORRECTION'),
+        ('direct_payment', 'DIRECT PAYMENT'),  # NEW: For parent multi-payment transactions
     )
 
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPE)
@@ -143,11 +144,42 @@ class PatientTransactionModel(models.Model):
     # Related service records
     fee_structure = models.ForeignKey('consultation.ConsultationFeeModel', on_delete=models.SET_NULL, null=True,
                                       blank=True)
-    lab_structure = models.ForeignKey('laboratory.LabTestOrderModel', on_delete=models.SET_NULL, null=True, blank=True)
+    lab_structure = models.ForeignKey('laboratory.LabTestOrderModel', on_delete=models.SET_NULL, null=True,
+                                      blank=True)
     admission = models.ForeignKey('inpatient.Admission', on_delete=models.SET_NULL, null=True, blank=True)
     surgery = models.ForeignKey('inpatient.Surgery', on_delete=models.SET_NULL, null=True, blank=True)
-    service = models.ForeignKey('service.PatientServiceTransaction', on_delete=models.SET_NULL, null=True, blank=True)
+    service = models.ForeignKey('service.PatientServiceTransaction', on_delete=models.SET_NULL, null=True,
+                                blank=True)
     other_service = models.ForeignKey(OtherPaymentService, on_delete=models.SET_NULL, null=True, blank=True)
+    drug_order = models.ForeignKey('pharmacy.DrugOrderModel', on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='transactions')
+
+    scan_order = models.ForeignKey('scan.ScanOrderModel', on_delete=models.SET_NULL, null=True,  blank=True,  related_name='transactions')
+    # NEW FIELDS
+    parent_transaction = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='child_transactions',
+        help_text="Links child transactions to parent payment transaction"
+    )
+
+    wallet_amount_used = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Amount deducted from wallet for this transaction (for mixed payments)"
+    )
+
+    direct_payment_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Amount paid directly (cash/card/transfer) for this transaction"
+    )
 
     amount = models.DecimalField(
         max_digits=12,
@@ -291,12 +323,35 @@ class PatientTransactionModel(models.Model):
     def is_debit(self):
         return self.transaction_direction == 'out'
 
+    @property
+    def is_parent_transaction(self):
+        """Check if this is a parent transaction with children"""
+        return self.parent_transaction is None and self.child_transactions.exists()
+
+    @property
+    def is_child_transaction(self):
+        """Check if this is a child transaction"""
+        return self.parent_transaction is not None
+
+    @property
+    def is_standalone_transaction(self):
+        """Check if this is a standalone transaction (old style)"""
+        return self.parent_transaction is None and not self.child_transactions.exists()
+
+    @property
+    def total_items_count(self):
+        """Get total count of items in this transaction"""
+        if self.is_parent_transaction:
+            return self.child_transactions.count()
+        return 1 if self.is_standalone_transaction else 0
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['patient', 'transaction_type']),
             models.Index(fields=['date']),
             models.Index(fields=['status']),
+            models.Index(fields=['parent_transaction']),  # NEW INDEX
         ]
 
 

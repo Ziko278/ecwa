@@ -155,36 +155,15 @@
             {% if perms.finance.add_patienttransactionmodel %}
             <li>
                 <a href="{% url 'patient_funding' %}">
-                    <i class="bi bi-circle"></i><span>Fund and Pay</span>
-                </a>
-            </li>
-            <li>
-                <a href="{% url 'finance_payment_select' %}">
                     <i class="bi bi-circle"></i><span>Make Payment</span>
                 </a>
             </li>
+
             {% endif %}
-            {% if perms.finance.add_otherpaymentservice %}
+            {% if perms.finance.add_patienttransactionmodel %}
             <li>
-                <a href="{% url 'finance_other_payment' %}">
+                <a href="{% url 'finance_unified_payment' %}">
                     <i class="bi bi-circle"></i><span>Make Other Payment</span>
-                </a>
-            </li>
-            {% endif %}
-             {% if perms.finance.view_patienttransactionmodel %}
-            <li>
-                <a href="{% url 'finance_wallet_tools_entry' %}">
-                    <i class="bi bi-circle"></i><span>Patient Wallet</span>
-                </a>
-            </li>
-            <li>
-                <a href="{% url 'finance_dashboard' %}">
-                    <i class="bi bi-circle"></i><span>Dashboard</span>
-                </a>
-            </li>
-            <li>
-                <a href="{% url 'patient_transaction_index' %}">
-                    <i class="bi bi-circle"></i><span>All Payments</span>
                 </a>
             </li>
             {% endif %}
@@ -202,10 +181,32 @@
                 </a>
             </li>
             {% endif %}
+             {% if perms.finance.view_patienttransactionmodel %}
+            <li>
+                <a href="{% url 'patient_transaction_index' %}">
+                    <i class="bi bi-circle"></i><span>All Payments</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="{% url 'finance_dashboard' %}">
+                    <i class="bi bi-circle"></i><span>Dashboard</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="{% url 'finance_wallet_tools_entry' %}">
+                    <i class="bi bi-circle"></i><span>Patient Wallet</span>
+                </a>
+            </li>
+
+            {% endif %}
+
+
             {% if perms.finance.view_otherpaymentservice %}
             <li>
                 <a href="{% url 'other_payment_service_list' %}">
-                    <i class="bi bi-circle"></i><span>Other Payments</span>
+                    <i class="bi bi-circle"></i><span>Other Payments Setup</span>
                 </a>
             </li>
             {% endif %}

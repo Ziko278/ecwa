@@ -160,7 +160,7 @@ urlpatterns = [
     path('consultation/<int:consultation_id>/', consultation_page, name='consultation_page'),
     path('consultations/history/', consultation_history, name='consultation_history'),
 
-    path('patient/<int:patient_id>/history/', patient_history_view, name='patient_history_view'),
+    path('patient/<int:patient_id>/history-view/', patient_history_view, name='patient_history_view'),
     path('ajax/patient/<int:patient_id>/history-page/', patient_history_ajax, name='patient_history_ajax'),
 
     # AJAX endpoints for queue management

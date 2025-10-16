@@ -18,7 +18,7 @@ from django.utils.timezone import now
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, ListView, DetailView, UpdateView, DeleteView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.db.models import Q, Sum, Avg, F, Count, ExpressionWrapper, DecimalField
+from django.db.models import Q, Sum, Avg, F, Count, ExpressionWrapper, DecimalField, Prefetch
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
@@ -198,7 +198,6 @@ def patient_wallet_funding(request):
         pass
 
     return render(request, 'finance/wallet/funding.html', context)
-
 
 
 def calculate_insurance_amount(base_amount, coverage_percentage):
@@ -467,6 +466,7 @@ def verify_patient_ajax(request):
         return JsonResponse({
             'error': f'Error verifying patient: {type(e).__name__}: {str(e)}'
         }, status=500)
+
 
 @login_required
 @permission_required('finance.add_patienttransactionmodel', raise_exception=True)
@@ -1098,7 +1098,7 @@ def process_other_payment_ajax(request):
                 return JsonResponse({
                     'success': True,
                     'message': 'Payment successful!',
-                    'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': new_transaction.pk})
+                    'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': new_transaction.pk})
                 })
             except Exception as e:
                 return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=400)
@@ -1445,7 +1445,7 @@ def finance_consultation_patient_payment(request, patient_id):
             'message': 'Consultation payment successful.',
             'new_balance': float(wallet.amount),
             'formatted_new_balance': f'₦{wallet.amount:,.2f}',
-            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.id})
+            'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': payment.id})
         })
 
     except ConsultationFeeModel.DoesNotExist:
@@ -1634,7 +1634,7 @@ def finance_pharmacy_patient_payment(request, patient_id):
             'message': message,
             'new_balance': float(wallet.amount),
             'formatted_new_balance': f'₦{wallet.amount:,.2f}',
-            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}) if payment else reverse(
+            'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': payment.pk}) if payment else reverse(
                 'finance:payment_select'),
         })
 
@@ -1853,7 +1853,7 @@ def finance_service_patient_payment(request, patient_id):
             'message': f'Payment successful. {total_amount:,.2f} deducted from wallet.',
             'new_balance': float(wallet.amount),
             'formatted_new_balance': f'₦{wallet.amount:,.2f}',
-            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}),
+            'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': payment.pk}),
         })
 
     except Exception as e:
@@ -2050,7 +2050,7 @@ def finance_generic_order_payment(request, patient_id, order_type):
             'message': message,
             'new_balance': float(wallet.amount),
             'formatted_new_balance': f'₦{wallet.amount:,.2f}',
-            'redirect_url': reverse('patient_transaction_detail', kwargs={'pk': payment.pk}) if payment else reverse(
+            'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': payment.pk}) if payment else reverse(
                 'finance:payment_select'),
         })
 
@@ -3901,3 +3901,952 @@ def finance_wallet_tools_entry(request):
     """Central entry point for wallet tools (Verification -> Options)."""
     # This view just renders the HTML containing the verification form.
     return render(request, 'finance/wallet/tools_entry.html')
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+@require_http_methods(["POST"])
+def process_direct_payment(request):
+    """
+    Process direct payment for selected items with optional wallet usage.
+    This replaces the old fund-then-pay flow.
+    """
+    try:
+        # Get form data
+        patient_id = request.POST.get('patient_id')
+        use_wallet = request.POST.get('use_wallet') == 'true'
+        payment_method = request.POST.get('payment_method', 'cash')
+        direct_amount = Decimal(request.POST.get('direct_amount', '0'))
+
+        # Get selected items (sent as arrays from frontend)
+        selected_items = request.POST.getlist('selected_items[]')
+        selected_types = request.POST.getlist('selected_types[]')
+
+        # Validate inputs
+        if not patient_id:
+            return JsonResponse({'error': 'Patient ID required'}, status=400)
+
+        if not selected_items or not selected_types:
+            return JsonResponse({'error': 'No items selected for payment'}, status=400)
+
+        if len(selected_items) != len(selected_types):
+            return JsonResponse({'error': 'Items and types mismatch'}, status=400)
+
+        # Get patient and wallet
+        patient = get_object_or_404(PatientModel, id=patient_id)
+        wallet, created = PatientWalletModel.objects.get_or_create(
+            patient=patient,
+            defaults={'amount': Decimal('0.00')}
+        )
+
+        # Group items by type for processing
+        items_by_type = {
+            'drugs': [],
+            'labs': [],
+            'scans': [],
+            'services': []
+        }
+
+        for item_id, item_type in zip(selected_items, selected_types):
+            if item_type in items_by_type:
+                items_by_type[item_type].append(item_id)
+
+        # Fetch all orders
+        drug_orders = DrugOrderModel.objects.filter(
+            id__in=items_by_type['drugs'],
+            patient=patient,
+            status='pending'
+        ).select_related('drug')
+
+        lab_orders = LabTestOrderModel.objects.filter(
+            id__in=items_by_type['labs'],
+            patient=patient,
+            status='pending'
+        ).select_related('template')
+
+        scan_orders = ScanOrderModel.objects.filter(
+            id__in=items_by_type['scans'],
+            patient=patient,
+            status='pending'
+        ).select_related('template')
+
+        service_transactions = PatientServiceTransaction.objects.filter(
+            id__in=items_by_type['services'],
+            patient=patient,
+            status='pending_payment'
+        ).select_related('service', 'service_item')
+
+        # Calculate total amount needed
+        total_amount = Decimal('0.00')
+
+        for order in drug_orders:
+            total_amount += order.total_amount
+
+        for order in lab_orders:
+            # Use amount_charged for lab orders
+            total_amount += order.amount_charged or Decimal('0.00')
+
+        for order in scan_orders:
+            # Use amount_charged for scan orders (assuming same structure)
+            total_amount += order.amount_charged or Decimal('0.00')
+
+        for trans in service_transactions:
+            total_amount += trans.total_amount
+
+        # Calculate wallet usage
+        wallet_amount_to_use = Decimal('0.00')
+        if use_wallet and wallet.amount > 0:
+            wallet_amount_to_use = min(wallet.amount, total_amount)
+
+        remaining_amount = total_amount - wallet_amount_to_use
+
+        # Validate direct payment amount matches remaining
+        if abs(direct_amount - remaining_amount) > Decimal('0.01'):
+            return JsonResponse({
+                'error': f'Direct payment amount (₦{direct_amount}) does not match required amount (₦{remaining_amount})'
+            }, status=400)
+
+        # Start atomic transaction
+        with transaction.atomic():
+            old_wallet_balance = wallet.amount
+            parent_transaction = None
+            wallet_withdrawal_transaction = None
+
+            # Step 1: Deduct from wallet if applicable
+            if wallet_amount_to_use > 0:
+                wallet.amount -= wallet_amount_to_use
+                wallet.save()
+
+                wallet_withdrawal_transaction = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='wallet_withdrawal',
+                    transaction_direction='out',
+                    amount=wallet_amount_to_use,
+                    old_balance=old_wallet_balance,
+                    new_balance=wallet.amount,
+                    payment_method='wallet',
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    wallet_amount_used=wallet_amount_to_use,
+                    direct_payment_amount=Decimal('0.00')
+                )
+
+            # Step 2: Create parent transaction for direct payment (if any)
+            if direct_amount > 0:
+                parent_transaction = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='direct_payment',
+                    transaction_direction='in',
+                    amount=direct_amount,
+                    old_balance=wallet.amount,
+                    new_balance=wallet.amount,  # Wallet unchanged by direct payment
+                    payment_method=payment_method,
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    wallet_amount_used=Decimal('0.00'),
+                    direct_payment_amount=direct_amount
+                )
+
+            # Step 3: Create child transactions and update orders
+            child_transactions_created = []
+
+            # Process drug orders
+            for order in drug_orders:
+                order_amount = order.total_amount
+                wallet_portion = min(wallet_amount_to_use, order_amount)
+                direct_portion = order_amount - wallet_portion
+                wallet_amount_to_use -= wallet_portion
+
+                child_trans = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='drug_payment',
+                    transaction_direction='out',
+                    amount=order_amount,
+                    old_balance=wallet.amount,
+                    new_balance=wallet.amount,
+                    payment_method=payment_method if direct_portion > 0 else 'wallet',
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    parent_transaction=parent_transaction if direct_portion > 0 else wallet_withdrawal_transaction,
+                    wallet_amount_used=wallet_portion,
+                    direct_payment_amount=direct_portion,
+                    drug_order=order
+                )
+
+                # Update order status
+                order.status = 'paid'
+                order.save()
+
+                child_transactions_created.append(child_trans)
+
+            # Process lab orders
+            for order in lab_orders:
+                order_amount = order.amount_charged or Decimal('0.00')
+
+                wallet_portion = min(wallet_amount_to_use, order_amount)
+                direct_portion = order_amount - wallet_portion
+                wallet_amount_to_use -= wallet_portion
+
+                child_trans = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='lab_payment',
+                    transaction_direction='out',
+                    amount=order_amount,
+                    old_balance=wallet.amount,
+                    new_balance=wallet.amount,
+                    payment_method=payment_method if direct_portion > 0 else 'wallet',
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    parent_transaction=parent_transaction if direct_portion > 0 else wallet_withdrawal_transaction,
+                    wallet_amount_used=wallet_portion,
+                    direct_payment_amount=direct_portion,
+                    lab_structure=order
+                )
+
+                order.status = 'paid'
+                order.save()
+
+                child_transactions_created.append(child_trans)
+
+            # Process scan orders
+            for order in scan_orders:
+                order_amount = order.amount_charged or Decimal('0.00')
+
+                wallet_portion = min(wallet_amount_to_use, order_amount)
+                direct_portion = order_amount - wallet_portion
+                wallet_amount_to_use -= wallet_portion
+
+                child_trans = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='scan_payment',
+                    transaction_direction='out',
+                    amount=order_amount,
+                    old_balance=wallet.amount,
+                    new_balance=wallet.amount,
+                    payment_method=payment_method if direct_portion > 0 else 'wallet',
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    parent_transaction=parent_transaction if direct_portion > 0 else wallet_withdrawal_transaction,
+                    wallet_amount_used=wallet_portion,
+                    direct_payment_amount=direct_portion,
+                    scan_order=order
+                )
+
+                order.status = 'paid'
+                order.save()
+
+                child_transactions_created.append(child_trans)
+
+            # Process service transactions
+            for svc_trans in service_transactions:
+                order_amount = svc_trans.total_amount
+                wallet_portion = min(wallet_amount_to_use, order_amount)
+                direct_portion = order_amount - wallet_portion
+                wallet_amount_to_use -= wallet_portion
+
+                child_trans = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='service',
+                    transaction_direction='out',
+                    amount=order_amount,
+                    old_balance=wallet.amount,
+                    new_balance=wallet.amount,
+                    payment_method=payment_method if direct_portion > 0 else 'wallet',
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    parent_transaction=parent_transaction if direct_portion > 0 else wallet_withdrawal_transaction,
+                    wallet_amount_used=wallet_portion,
+                    direct_payment_amount=direct_portion,
+                    service=svc_trans
+                )
+
+                svc_trans.status = 'completed'
+                svc_trans.save()
+
+                child_transactions_created.append(child_trans)
+
+            # Determine which transaction to show in detail
+            detail_transaction_id = parent_transaction.id if parent_transaction else wallet_withdrawal_transaction.id
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Payment successful! ₦{total_amount:,.2f} paid for {len(child_transactions_created)} item(s)',
+                'total_paid': float(total_amount),
+                'wallet_used': float(wallet_amount_to_use + (old_wallet_balance - wallet.amount)),
+                'direct_paid': float(direct_amount),
+                'new_wallet_balance': float(wallet.amount),
+                'items_paid': len(child_transactions_created),
+                'redirect_url': reverse('transaction_detail', args=[detail_transaction_id])
+            })
+
+    except PatientModel.DoesNotExist:
+        return JsonResponse({'error': 'Patient not found'}, status=404)
+    except ValueError as e:
+        return JsonResponse({'error': f'Invalid amount: {str(e)}'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'Error processing payment: {str(e)}'}, status=500)
+
+
+@login_required
+def transaction_detail(request, transaction_id):
+    """
+    Display transaction details with support for:
+    - Standalone transactions (old style)
+    - Parent transactions (with multiple child items)
+    - Child transactions (part of a parent payment)
+    """
+    transaction = get_object_or_404(
+        PatientTransactionModel.objects.select_related(
+            'patient',
+            'received_by',
+            'received_by__user_staff_profile',
+            'received_by__user_staff_profile__staff',
+            'parent_transaction',
+            'lab_structure',
+            'lab_structure__template',
+            'service',
+            'service__service',
+            'service__service__category',
+            'service__service_item',
+            'service__service_item__category',
+            'other_service',
+            'fee_structure',
+            'admission',
+            'surgery',
+        ).prefetch_related(
+            Prefetch(
+                'child_transactions',
+                queryset=PatientTransactionModel.objects.select_related(
+                    'lab_structure',
+                    'lab_structure__template',
+                    'service',
+                    'service__service',
+                    'service__service__category',
+                    'service__service_item',
+                    'service__service_item__category',
+                ).order_by('transaction_type', 'created_at')
+            ),
+        ),
+        id=transaction_id
+    )
+
+    # Determine transaction structure
+    is_parent = transaction.is_parent_transaction
+    is_child = transaction.is_child_transaction
+    is_standalone = transaction.is_standalone_transaction
+
+    # Group child transactions by type for easier template rendering
+    child_transactions_by_type = None
+    if is_parent:
+        child_transactions_by_type = {
+            'drugs': [],
+            'labs': [],
+            'scans': [],
+            'services': []
+        }
+
+        for child in transaction.child_transactions.all():
+            if child.transaction_type == 'drug_payment':
+                child_transactions_by_type['drugs'].append(child)
+            elif child.transaction_type == 'lab_payment':
+                child_transactions_by_type['labs'].append(child)
+            elif child.transaction_type == 'scan_payment':
+                child_transactions_by_type['scans'].append(child)
+            elif child.transaction_type == 'service':
+                child_transactions_by_type['services'].append(child)
+
+    context = {
+        'transaction': transaction,
+        'is_parent': is_parent,
+        'is_child': is_child,
+        'is_standalone': is_standalone,
+        'child_transactions_by_type': child_transactions_by_type,
+    }
+
+    return render(request, 'finance/payment/detail.html', context)
+
+
+@login_required
+def transaction_list(request):
+    """
+    List all transactions with support for filtering
+    Shows item count badge for parent transactions
+    EXCLUDES child transactions (they're part of parent payments)
+    """
+    # Only show top-level transactions (no parent)
+    # This includes:
+    # 1. Direct payment (parent of multi-item payments)
+    # 2. Wallet withdrawal (parent of wallet-only multi-item payments)
+    # 3. Standalone transactions (old style single payments)
+    transactions = PatientTransactionModel.objects.filter(
+        parent_transaction__isnull=True  # Only show top-level transactions
+    ).select_related(
+        'patient',
+        'received_by',
+        'received_by__user_staff_profile',
+        'received_by__user_staff_profile__staff',
+    ).prefetch_related(
+        'child_transactions'
+    ).order_by('-created_at')
+
+    # Apply filters if any
+    patient_id = request.GET.get('patient')
+    if patient_id:
+        transactions = transactions.filter(patient_id=patient_id)
+
+    transaction_type = request.GET.get('transaction_type')
+    if transaction_type:
+        transactions = transactions.filter(transaction_type=transaction_type)
+
+    date_from = request.GET.get('date_from')
+    if date_from:
+        transactions = transactions.filter(date__gte=date_from)
+
+    date_to = request.GET.get('date_to')
+    if date_to:
+        transactions = transactions.filter(date__lte=date_to)
+
+    direction = request.GET.get('transaction_direction')
+    if direction:
+        transactions = transactions.filter(transaction_direction=direction)
+
+    # Calculate totals for displayed transactions
+    total_inflow = sum(
+        t.amount for t in transactions if t.transaction_direction == 'in'
+    )
+    total_outflow = sum(
+        t.amount for t in transactions if t.transaction_direction == 'out'
+    )
+
+    # Pagination
+    from django.core.paginator import Paginator
+    paginator = Paginator(transactions, 50)  # 50 transactions per page
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+
+    # Get transaction type choices for filter dropdown
+    transaction_types = PatientTransactionModel.TRANSACTION_TYPE
+
+    context = {
+        'transactions': page_obj,
+        'page_obj': page_obj,
+        'is_paginated': page_obj.has_other_pages(),
+        'paginator': paginator,
+        'total_inflow': total_inflow,
+        'total_outflow': total_outflow,
+        'transaction_types': transaction_types,
+        'timeframe': 'All Time',
+    }
+
+    return render(request, 'finance/transaction/index.html', context)
+
+
+@login_required
+def print_receipt(request, transaction_id):
+    """
+    Generate a printable receipt for a transaction.
+    Shows ALL items regardless of count.
+    """
+    transaction = get_object_or_404(
+        PatientTransactionModel.objects.select_related(
+            'patient',
+            'received_by',
+            'received_by__user_staff_profile',
+            'received_by__user_staff_profile__staff',
+            'parent_transaction',
+            'lab_structure',
+            'lab_structure__template',
+            'service',
+            'service__service',
+            'service__service__category',
+            'service__service_item',
+            'service__service_item__category',
+            'other_service',
+            'fee_structure',
+            'admission',
+            'surgery',
+        ).prefetch_related(
+            Prefetch(
+                'child_transactions',
+                queryset=PatientTransactionModel.objects.select_related(
+                    'lab_structure',
+                    'lab_structure__template',
+                    'service',
+                    'service__service',
+                    'service__service__category',
+                    'service__service_item',
+                    'service__service_item__category',
+                ).order_by('transaction_type', 'created_at')
+            ),
+        ),
+        id=transaction_id
+    )
+
+    # Get hospital/facility info (adjust based on your models)
+    site_info = SiteInfoModel.objects.first()
+    hospital_info = {
+        'name': site_info.name.title() or 'Hospital Name',
+        'address': site_info.address.title() or 'Hospital Address',
+        'phone': site_info.mobile_1 or 'Phone Number',
+        'email': site_info.email.lower() or 'Hospital Email',
+    }
+
+    context = {
+        'transaction': transaction,
+        'hospital_info': hospital_info,
+        'is_parent': transaction.is_parent_transaction,
+        'is_child': transaction.is_child_transaction,
+        'is_standalone': transaction.is_standalone_transaction,
+    }
+
+    return render(request, 'finance/payment/print.html', context)
+
+
+# OPTIONAL: Create a simple wallet-only funding page
+@login_required
+def wallet_funding_only_page(request):
+    """
+    Simple page for wallet funding only (no payment processing)
+    """
+    patient_id = request.GET.get('patient')
+    patient = None
+
+    if patient_id:
+        patient = get_object_or_404(PatientModel, id=patient_id)
+
+    context = {
+        'patient': patient,
+    }
+
+    return render(request, 'finance/wallet_funding_only.html', context)
+
+
+from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.views.generic import TemplateView
+from django.shortcuts import get_object_or_404
+from django.http import JsonResponse
+from django.db import transaction
+from django.db.models import Sum, F, DecimalField, ExpressionWrapper
+from django.utils import timezone
+from django.urls import reverse
+from decimal import Decimal
+from datetime import date, timedelta, time
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class UnifiedPaymentView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    """Unified payment page for Consultation, Admission, Surgery, and Other Payments"""
+    template_name = 'finance/payment/unified_payment.html'
+    permission_required = 'finance.add_patienttransactionmodel'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['specializations'] = SpecializationModel.objects.order_by('name')
+        context['other_services'] = OtherPaymentService.objects.filter(is_active=True).order_by('category', 'name')
+        return context
+
+
+@login_required
+def ajax_get_admission_surgery_details(request):
+    """Get details for active admissions or surgeries"""
+    patient_id = request.GET.get('patient_id')
+    record_type = request.GET.get('type')  # 'admission' or 'surgery'
+
+    if not patient_id or not record_type:
+        return JsonResponse({'success': False, 'error': 'Missing parameters'}, status=400)
+
+    patient = get_object_or_404(PatientModel, pk=patient_id)
+
+    paid_statuses_drug = ['paid', 'partially_dispensed', 'dispensed']
+    paid_statuses_lab_scan = ['paid', 'collected', 'processing', 'completed']
+
+    records = []
+
+    if record_type == 'admission':
+        active_records = Admission.objects.filter(patient=patient, status='active')
+
+        for admission in active_records:
+            drug_orders = admission.drug_orders.all()
+            lab_orders = admission.lab_test_orders.all()
+            scan_orders = admission.scan_orders.all()
+            other_services = admission.service_drug_orders.all()
+
+            drug_costs = drug_orders.aggregate(
+                total=Sum(ExpressionWrapper(
+                    F('quantity_ordered') * F('drug__selling_price'),
+                    output_field=DecimalField()
+                ))
+            )['total'] or 0
+
+            lab_costs = lab_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
+            scan_costs = scan_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
+            other_services_costs = other_services.aggregate(total=Sum('total_amount'))['total'] or 0
+
+            base_fee = (admission.admission_fee_charged or 0) + (admission.bed_fee_charged or 0)
+            total_bill = base_fee + drug_costs + lab_costs + scan_costs + other_services_costs
+
+            total_paid = PatientTransactionModel.objects.filter(
+                admission=admission,
+                status='completed',
+            ).aggregate(total=Sum('amount'))['total'] or 0
+
+            total_paid += sum(
+                order.drug.selling_price * Decimal(order.quantity_ordered)
+                for order in drug_orders if order.status in paid_statuses_drug
+            )
+            total_paid += sum(order.amount_charged for order in lab_orders if order.status in paid_statuses_lab_scan)
+            total_paid += sum(order.amount_charged for order in scan_orders if order.status in paid_statuses_lab_scan)
+            total_paid += sum(
+                service.total_amount for service in other_services
+                if service.status in ['paid', 'fully_dispensed', 'partially_dispensed']
+            )
+
+            balance = total_paid - total_bill
+
+            records.append({
+                'id': admission.id,
+                'identifier': admission.admission_number,
+                'base_fee': float(base_fee),
+                'drug_costs': float(drug_costs),
+                'lab_costs': float(lab_costs),
+                'scan_costs': float(scan_costs),
+                'other_costs': float(other_services_costs),
+                'total_bill': float(total_bill),
+                'total_paid': float(total_paid),
+                'balance': float(balance),
+                'abs_balance': float(abs(balance)),
+                'status': admission.status
+            })
+
+    elif record_type == 'surgery':
+        active_records = Surgery.objects.filter(patient=patient, status__in=['scheduled', 'in_progress'])
+
+        for surgery in active_records:
+            drug_orders = surgery.drug_orders.all()
+            lab_orders = surgery.lab_test_orders.all()
+            scan_orders = surgery.scan_orders.all()
+            other_services = surgery.service_drug_orders.all()
+
+            drug_costs = drug_orders.aggregate(
+                total=Sum(ExpressionWrapper(
+                    F('quantity_ordered') * F('drug__selling_price'),
+                    output_field=DecimalField()
+                ))
+            )['total'] or 0
+
+            lab_costs = lab_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
+            scan_costs = scan_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
+            other_services_costs = other_services.aggregate(total=Sum('total_amount'))['total'] or 0
+
+            base_fee = surgery.total_surgery_cost
+            total_bill = base_fee + drug_costs + lab_costs + scan_costs + other_services_costs
+
+            total_paid = PatientTransactionModel.objects.filter(
+                surgery=surgery,
+                status='completed',
+            ).aggregate(total=Sum('amount'))['total'] or 0
+
+            total_paid += sum(
+                order.drug.selling_price * Decimal(order.quantity_ordered)
+                for order in drug_orders if order.status in paid_statuses_drug
+            )
+            total_paid += sum(order.amount_charged for order in lab_orders if order.status in paid_statuses_lab_scan)
+            total_paid += sum(order.amount_charged for order in scan_orders if order.status in paid_statuses_lab_scan)
+            total_paid += sum(
+                service.total_amount for service in other_services
+                if service.status in ['paid', 'fully_dispensed', 'partially_dispensed']
+            )
+
+            balance = total_paid - total_bill
+
+            records.append({
+                'id': surgery.id,
+                'identifier': surgery.surgery_number,
+                'base_fee': float(base_fee),
+                'drug_costs': float(drug_costs),
+                'lab_costs': float(lab_costs),
+                'scan_costs': float(scan_costs),
+                'other_costs': float(other_services_costs),
+                'total_bill': float(total_bill),
+                'total_paid': float(total_paid),
+                'balance': float(balance),
+                'abs_balance': float(abs(balance)),
+                'status': surgery.status
+            })
+
+    return JsonResponse({
+        'success': True,
+        'records': records,
+        'count': len(records)
+    })
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+def ajax_process_consultation_payment(request):
+    """Process consultation payment with direct payment or wallet"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
+
+    try:
+        patient_id = request.POST.get('patient_id')
+        specialization_id = request.POST.get('specialization_id')
+        fee_structure_id = request.POST.get('fee_structure_id')
+        payment_method = request.POST.get('payment_method', 'cash')
+        use_wallet = request.POST.get('use_wallet', 'false').lower() == 'true'
+
+        patient = get_object_or_404(PatientModel, pk=patient_id)
+        specialization = get_object_or_404(SpecializationModel, pk=specialization_id)
+        fee_structure = get_object_or_404(ConsultationFeeModel, pk=fee_structure_id)
+        wallet = get_object_or_404(PatientWalletModel, patient=patient)
+
+        total_amount = fee_structure.amount
+        wallet_used = Decimal('0.00')
+        direct_payment = total_amount
+
+        # Calculate wallet usage
+        if use_wallet and wallet.amount > 0:
+            wallet_used = min(wallet.amount, total_amount)
+            direct_payment = total_amount - wallet_used
+
+        with transaction.atomic():
+            old_balance = wallet.amount
+
+            # Deduct from wallet if applicable
+            if wallet_used > 0:
+                wallet.amount -= wallet_used
+                wallet.save()
+
+            new_balance = wallet.amount
+
+            # Calculate validity
+            validity_days = fee_structure.validity_in_days
+            today = date.today()
+            cutoff_time = time(20, 0)
+            start_date_for_validity = today if timezone.now().time() < cutoff_time else today + timedelta(days=1)
+            valid_till = start_date_for_validity + timedelta(days=validity_days - 1)
+
+            # Create consultation payment transaction
+            consult_payment = PatientTransactionModel.objects.create(
+                patient=patient,
+                fee_structure=fee_structure,
+                transaction_type='consultation_payment',
+                transaction_direction='out',
+                amount=total_amount,
+                wallet_amount_used=wallet_used,
+                direct_payment_amount=direct_payment,
+                date=today,
+                payment_method=payment_method,
+                status='completed',
+                received_by=request.user,
+                old_balance=old_balance,
+                new_balance=new_balance,
+                valid_till=valid_till
+            )
+
+            # Add patient to queue
+            PatientQueueModel.objects.create(
+                patient=patient,
+                payment=consult_payment,
+                specialization=specialization,
+                status='waiting_vitals'
+            )
+
+            logger.info(f"Consultation payment {consult_payment.transaction_id} created for patient {patient.pk}")
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Payment successful! Patient added to {specialization.name} queue.',
+            'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': consult_payment.pk})
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing consultation payment: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+def ajax_process_admission_funding(request):
+    """Process admission/surgery funding with direct payment or wallet"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
+
+    try:
+        patient_id = request.POST.get('patient_id')
+        admission_id = request.POST.get('admission_id')
+        surgery_id = request.POST.get('surgery_id')
+        amount = Decimal(request.POST.get('amount', '0'))
+        payment_method = request.POST.get('payment_method', 'cash')
+        use_wallet = request.POST.get('use_wallet', 'false').lower() == 'true'
+
+        if amount <= 0:
+            return JsonResponse({'success': False, 'error': 'Amount must be a positive number.'}, status=400)
+
+        patient = get_object_or_404(PatientModel, pk=patient_id)
+        wallet = get_object_or_404(PatientWalletModel, patient=patient)
+
+        admission = get_object_or_404(Admission, pk=admission_id) if admission_id else None
+        surgery = get_object_or_404(Surgery, pk=surgery_id) if surgery_id else None
+
+        wallet_used = Decimal('0.00')
+        direct_payment = amount
+
+        # Calculate wallet usage
+        if use_wallet and wallet.amount > 0:
+            wallet_used = min(wallet.amount, amount)
+            direct_payment = amount - wallet_used
+
+        with transaction.atomic():
+            old_balance = wallet.amount
+
+            # Deduct from wallet if applicable
+            if wallet_used > 0:
+                wallet.amount -= wallet_used
+                wallet.save()
+
+            new_balance = wallet.amount
+
+            payment_transaction = PatientTransactionModel.objects.create(
+                patient=patient,
+                transaction_type='admission_payment' if admission else 'surgery_payment',
+                transaction_direction='out',
+                admission=admission,
+                surgery=surgery,
+                amount=amount,
+                wallet_amount_used=wallet_used,
+                direct_payment_amount=direct_payment,
+                old_balance=old_balance,
+                new_balance=new_balance,
+                date=timezone.now().date(),
+                received_by=request.user,
+                payment_method=payment_method,
+                status='completed'
+            )
+
+        record_identifier = admission.admission_number if admission else surgery.surgery_number
+        success_message = f'Successfully paid ₦{amount:,.2f} for {record_identifier}.'
+
+        return JsonResponse({
+            'success': True,
+            'message': success_message,
+            'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': payment_transaction.pk})
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing admission/surgery funding: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+def ajax_process_other_payment(request):
+    """Process other payment with direct payment or wallet"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
+
+    try:
+        patient_id = request.POST.get('patient_id')
+        service_id = request.POST.get('other_service')
+        amount = Decimal(request.POST.get('amount', '0'))
+        payment_method = request.POST.get('payment_method', 'cash')
+        use_wallet = request.POST.get('use_wallet', 'false').lower() == 'true'
+
+        patient = get_object_or_404(PatientModel, pk=patient_id)
+        service = get_object_or_404(OtherPaymentService, pk=service_id)
+        wallet = get_object_or_404(PatientWalletModel, patient=patient)
+
+        # Validate fixed amount
+        if service.is_fixed_amount and service.default_amount != amount:
+            return JsonResponse({'success': False, 'error': 'The amount for this service is fixed.'}, status=400)
+
+        if amount <= 0:
+            return JsonResponse({'success': False, 'error': 'Amount must be greater than zero.'}, status=400)
+
+        wallet_used = Decimal('0.00')
+        direct_payment = amount
+
+        # Calculate wallet usage
+        if use_wallet and wallet.amount > 0:
+            wallet_used = min(wallet.amount, amount)
+            direct_payment = amount - wallet_used
+
+        with transaction.atomic():
+            old_balance = wallet.amount
+
+            # Deduct from wallet if applicable
+            if wallet_used > 0:
+                wallet.amount -= wallet_used
+                wallet.save()
+
+            new_balance = wallet.amount
+
+            new_transaction = PatientTransactionModel.objects.create(
+                patient=patient,
+                transaction_type='other_payment',
+                transaction_direction='out',
+                other_service=service,
+                amount=amount,
+                wallet_amount_used=wallet_used,
+                direct_payment_amount=direct_payment,
+                old_balance=old_balance,
+                new_balance=new_balance,
+                date=timezone.now().date(),
+                received_by=request.user,
+                payment_method=payment_method,
+                status='completed'
+            )
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Payment of ₦{amount:,.2f} for {service.name} successful!',
+            'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': new_transaction.pk})
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing other payment: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+def ajax_reuse_consultation_payment(request):
+    """Add patient to queue using existing valid payment"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
+
+    try:
+        patient_id = request.POST.get('patient_id')
+        payment_id = request.POST.get('payment_id')
+        specialization_id = request.POST.get('specialization_id')
+
+        patient = get_object_or_404(PatientModel, pk=patient_id)
+        payment = get_object_or_404(PatientTransactionModel, pk=payment_id)
+        specialization = get_object_or_404(SpecializationModel, pk=specialization_id)
+
+        with transaction.atomic():
+            PatientQueueModel.objects.create(
+                patient=patient,
+                payment=payment,
+                specialization=specialization,
+                status='waiting_vitals'
+            )
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Patient added to {specialization.name} queue successfully!',
+            'redirect_url': reverse('finance_unified_payment')
+        })
+
+    except Exception as e:
+        logger.error(f"Error reusing consultation payment: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)

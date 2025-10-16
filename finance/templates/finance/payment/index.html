@@ -61,7 +61,7 @@
                 <table class="table table-hover">
                     <thead class="table-light">
                         <tr>
-                            <th>#</th>
+
                             <th>Patient Details</th>
                             <th>Type</th>
                             <th>Amount</th>
@@ -73,8 +73,9 @@
                     </thead>
                     <tbody>
                         {% for t in transactions %}
+                        {% if not t.is_child_transaction %}
                         <tr>
-                            <td>{{ forloop.counter }}</td>
+
                             <td>
                                 <div>
                                     <strong>{{ t.patient|default:"N/A"|title }}</strong>
@@ -93,7 +94,7 @@
                                 {% if t.transaction_direction == 'in' %}
                                     <strong class="text-success">+₦{{ t.amount|floatformat:2 }}</strong>
                                 {% else %}
-                                    <strong class="text-danger">-₦{{ t.amount|floatformat:2 }}</strong>
+                                    <strong class="text-success">-₦{{ t.amount|floatformat:2 }}</strong>
                                 {% endif %}
                             </td>
                             <td>
@@ -115,12 +116,13 @@
                                 </span>
                             </td>
                             <td>
-                                <a href="{% url 'patient_transaction_detail' t.pk %}"
+                                <a href="{% url 'transaction_detail' t.pk %}"
                                    class="btn btn-sm btn-outline-primary" title="View Details">
                                     <i class="bi bi-eye"></i>
                                 </a>
                             </td>
                         </tr>
+                        {% endif %}
                         {% empty %}
                         <tr>
                             <td colspan="8" class="text-center py-5">

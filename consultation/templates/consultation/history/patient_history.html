@@ -67,11 +67,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (loadMoreBtn) {
         loadMoreBtn.addEventListener('click', function() {
             const nextPage = this.getAttribute('data-next-page');
-            
+
             // Show spinner and hide button
             loadMoreBtn.classList.add('d-none');
             loadingSpinner.classList.remove('d-none');
-            
+
             fetch(`/ajax/patient/{{ patient.id }}/history-page/?page=${nextPage}`)
                 .then(response => response.json())
                 .then(data => {

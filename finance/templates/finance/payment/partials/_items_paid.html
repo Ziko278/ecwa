@@ -1,0 +1,229 @@
+{% load humanize %}
+{% load transaction_filters %}
+{# Save this as: templates/finance/transaction/partials/_items_paid.html #}
+
+{% comment %}
+This partial displays all items paid in a parent transaction
+Usage: {% include 'finance/transaction/partials/_items_paid.html' with child_transactions=transaction.child_transactions.all %}
+{% endcomment %}
+
+{% with drugs=child_transactions|filter_by_type:'drug_payment' labs=child_transactions|filter_by_type:'lab_payment' scans=child_transactions|filter_by_type:'scan_payment' services=child_transactions|filter_by_type:'service' %}
+
+<!-- Drugs Section -->
+{% if drugs %}
+<div class="section-header">
+    <h6 class="mb-0"><i class="bi bi-capsule"></i> Medications ({{ drugs|length }} items)</h6>
+</div>
+<table class="table table-striped items-table">
+    <thead>
+        <tr>
+            <th width="5%">#</th>
+            <th width="45%">Drug Name</th>
+            <th width="15%">Order Number</th>
+            <th width="10%">Quantity</th>
+            <th width="15%">Amount</th>
+            <th width="10%">Payment</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for drug_trans in drugs %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>
+                <strong>{{ drug_trans.drug_order.drug }}</strong>
+                <br>
+                <small class="text-muted">{{ drug_trans.date|date:"M d, Y" }}</small>
+            </td>
+            <td>{{ drug_trans.drug_order.order_number|default:"N/A" }}</td>
+            <td>{{ drug_trans.drug_order.quantity_ordered|floatformat:0 }}</td>
+            <td>₦{{ drug_trans.amount|floatformat:2|intcomma }}</td>
+            <td>
+                {% if drug_trans.wallet_amount_used > 0 and drug_trans.direct_payment_amount > 0 %}
+                    <small>
+                        Wallet: ₦{{ drug_trans.wallet_amount_used|floatformat:2|intcomma }}<br>
+                        Direct: ₦{{ drug_trans.direct_payment_amount|floatformat:2|intcomma }}
+                    </small>
+                {% elif drug_trans.wallet_amount_used > 0 %}
+                    <span class="badge bg-success">Wallet</span>
+                {% else %}
+                    <span class="badge bg-primary">{{ drug_trans.payment_method|upper }}</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal-row">
+            <td colspan="4" class="text-end"><strong>Drugs Subtotal:</strong></td>
+            <td colspan="2"><strong>₦{{ drugs|sum_amount|floatformat:2|intcomma }}</strong></td>
+        </tr>
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Labs Section -->
+{% if labs %}
+<div class="section-header">
+    <h6 class="mb-0"><i class="bi bi-prescription2"></i> Laboratory Tests ({{ labs|length }} items)</h6>
+</div>
+<table class="table table-striped items-table">
+    <thead>
+        <tr>
+            <th width="5%">#</th>
+            <th width="50%">Test Name</th>
+            <th width="20%">Order Number</th>
+            <th width="15%">Amount</th>
+            <th width="10%">Payment</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for lab_trans in labs %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>
+                <strong>{{ lab_trans.lab_structure.template.name }}</strong>
+                <br>
+                <small class="text-muted">{{ lab_trans.date|date:"M d, Y" }}</small>
+            </td>
+            <td>{{ lab_trans.lab_structure.order_number }}</td>
+            <td>₦{{ lab_trans.amount|floatformat:2|intcomma }}</td>
+            <td>
+                {% if lab_trans.wallet_amount_used > 0 and lab_trans.direct_payment_amount > 0 %}
+                    <small>
+                        Wallet: ₦{{ lab_trans.wallet_amount_used|floatformat:2|intcomma }}<br>
+                        Direct: ₦{{ lab_trans.direct_payment_amount|floatformat:2|intcomma }}
+                    </small>
+                {% elif lab_trans.wallet_amount_used > 0 %}
+                    <span class="badge bg-success">Wallet</span>
+                {% else %}
+                    <span class="badge bg-primary">{{ lab_trans.payment_method|upper }}</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal-row">
+            <td colspan="3" class="text-end"><strong>Labs Subtotal:</strong></td>
+            <td colspan="2"><strong>₦{{ labs|sum_amount|floatformat:2|intcomma }}</strong></td>
+        </tr>
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Scans Section -->
+{% if scans %}
+<div class="section-header">
+    <h6 class="mb-0"><i class="bi bi-image"></i> Scans/Radiology ({{ scans|length }} items)</h6>
+</div>
+<table class="table table-striped items-table">
+    <thead>
+        <tr>
+            <th width="5%">#</th>
+            <th width="50%">Scan Name</th>
+            <th width="20%">Order Number</th>
+            <th width="15%">Amount</th>
+            <th width="10%">Payment</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for scan_trans in scans %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>
+                <strong>{{ scan_trans.scan_order.template.name }}</strong>
+                <br>
+                <small class="text-muted">{{ scan_trans.date|date:"M d, Y" }}</small>
+            </td>
+            <td>{{ scan_trans.scan_order.order_number }}</td>
+            <td>₦{{ scan_trans.amount|floatformat:2|intcomma }}</td>
+            <td>
+                {% if scan_trans.wallet_amount_used > 0 and scan_trans.direct_payment_amount > 0 %}
+                    <small>
+                        Wallet: ₦{{ scan_trans.wallet_amount_used|floatformat:2|intcomma }}<br>
+                        Direct: ₦{{ scan_trans.direct_payment_amount|floatformat:2|intcomma }}
+                    </small>
+                {% elif scan_trans.wallet_amount_used > 0 %}
+                    <span class="badge bg-success">Wallet</span>
+                {% else %}
+                    <span class="badge bg-primary">{{ scan_trans.payment_method|upper }}</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal-row">
+            <td colspan="3" class="text-end"><strong>Scans Subtotal:</strong></td>
+            <td colspan="2"><strong>₦{{ scans|sum_amount|floatformat:2|intcomma }}</strong></td>
+        </tr>
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Services Section -->
+{% if services %}
+<div class="section-header">
+    <h6 class="mb-0"><i class="bi bi-gear"></i> Services & Items ({{ services|length }} items)</h6>
+</div>
+<table class="table table-striped items-table">
+    <thead>
+        <tr>
+            <th width="5%">#</th>
+            <th width="45%">Service Name</th>
+            <th width="15%">Ref Number</th>
+            <th width="10%">Quantity</th>
+            <th width="15%">Amount</th>
+            <th width="10%">Payment</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for svc_trans in services %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>
+                <strong>
+                    {% if svc_trans.service.service %}
+                        {{ svc_trans.service.service.category.name }} - {{ svc_trans.service.service.name }}
+                    {% elif svc_trans.service.service_item %}
+                        {{ svc_trans.service.service_item.category.name }} - {{ svc_trans.service.service_item.name }}
+                    {% else %}
+                        Service
+                    {% endif %}
+                </strong>
+                <br>
+                <small class="text-muted">{{ svc_trans.date|date:"M d, Y" }}</small>
+            </td>
+            <td>{{ svc_trans.service.id }}</td>
+            <td>{{ svc_trans.service.quantity|floatformat:0 }}</td>
+            <td>₦{{ svc_trans.amount|floatformat:2|intcomma }}</td>
+            <td>
+                {% if svc_trans.wallet_amount_used > 0 and svc_trans.direct_payment_amount > 0 %}
+                    <small>
+                        Wallet: ₦{{ svc_trans.wallet_amount_used|floatformat:2|intcomma }}<br>
+                        Direct: ₦{{ svc_trans.direct_payment_amount|floatformat:2|intcomma }}
+                    </small>
+                {% elif svc_trans.wallet_amount_used > 0 %}
+                    <span class="badge bg-success">Wallet</span>
+                {% else %}
+                    <span class="badge bg-primary">{{ svc_trans.payment_method|upper }}</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal-row">
+            <td colspan="4" class="text-end"><strong>Services Subtotal:</strong></td>
+            <td colspan="2"><strong>₦{{ services|sum_amount|floatformat:2|intcomma }}</strong></td>
+        </tr>
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Grand Total -->
+<div class="grand-total-card">
+    <div class="row align-items-center">
+        <div class="col-6">
+            <h5 class="mb-0">Grand Total</h5>
+            <small>{{ child_transactions|length }} item(s)</small>
+        </div>
+        <div class="col-6 text-end">
+            <h3 class="mb-0">₦{{ child_transactions|sum_amount|floatformat:2|intcomma }}</h3>
+        </div>
+    </div>
+</div>
+
+{% endwith %}

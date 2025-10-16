@@ -1,0 +1,1186 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<style>
+    .card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    .patient-info-card {
+        border-left: 4px solid #28a745;
+    }
+    .wallet-balance {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #28a745;
+    }
+    .hidden {
+        display: none;
+    }
+    .step-indicator {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 30px;
+    }
+    .step {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #dee2e6;
+        color: #6c757d;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 10px;
+        position: relative;
+    }
+    .step.active {
+        background: #007bff;
+        color: white;
+    }
+    .step.completed {
+        background: #28a745;
+        color: white;
+    }
+    .step::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 100%;
+        width: 20px;
+        height: 2px;
+        background: #dee2e6;
+        transform: translateY(-50%);
+    }
+    .step:last-child::after {
+        display: none;
+    }
+    .payment-type-btn {
+        height: 150px;
+        font-size: 1.2rem;
+        font-weight: bold;
+        border: 2px solid #dee2e6;
+        transition: all 0.3s ease;
+    }
+    .payment-type-btn:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    .payment-type-btn i {
+        font-size: 2.5rem;
+        display: block;
+        margin-bottom: 15px;
+    }
+    .payment-breakdown-card {
+        border: 2px solid #17a2b8;
+        border-radius: 8px;
+        background: #f8f9fa;
+    }
+    .breakdown-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 15px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .breakdown-row:last-child {
+        border-bottom: none;
+        background: #e9ecef;
+        font-weight: bold;
+    }
+    .record-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .record-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-color: #007bff;
+    }
+    .record-card.selected {
+        border-color: #28a745;
+        background: #f0fff4;
+        border-width: 2px;
+    }
+</style>
+
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-money-bill-wave"></i> Unified Payment System
+                    </h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step Indicator -->
+    <div class="step-indicator">
+        <div class="step active" id="step-1">1</div>
+        <div class="step" id="step-2">2</div>
+        <div class="step" id="step-3">3</div>
+    </div>
+
+    <!-- Step 1: Patient Verification -->
+    <div id="patient-verification-section">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-search"></i> Verify Patient</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="patient-verification-form">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="card_number" class="form-label">Patient Card Number</label>
+                                <input type="text" class="form-control form-control-lg"
+                                       id="card_number" name="card_number"
+                                       placeholder="Enter patient card number" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-lg w-100">
+                                <i class="fas fa-search"></i> Verify Patient
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Payment Type Selection -->
+    <div id="payment-type-section" class="hidden">
+        <div class="row">
+            <!-- Patient Info -->
+            <div class="col-md-4">
+                <div class="card patient-info-card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-user"></i> Patient Information</h5>
+                    </div>
+                    <div class="card-body" id="patient-info"></div>
+                </div>
+
+                <!-- Wallet Balance -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-wallet"></i> Wallet Balance</h5>
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="wallet-balance" id="wallet-balance">₦0.00</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Type Buttons -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-clipboard-list"></i> Select Payment Type</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <button class="btn btn-outline-primary payment-type-btn w-100" onclick="selectPaymentType('consultation')">
+                                    <i class="fas fa-user-md"></i>
+                                    Consultation Payment
+                                </button>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <button class="btn btn-outline-success payment-type-btn w-100" onclick="selectPaymentType('admission')">
+                                    <i class="fas fa-procedures"></i>
+                                    Admission Funding
+                                </button>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <button class="btn btn-outline-danger payment-type-btn w-100" onclick="selectPaymentType('surgery')">
+                                    <i class="fas fa-briefcase-medical"></i>
+                                    Surgery Funding
+                                </button>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <button class="btn btn-outline-info payment-type-btn w-100" onclick="selectPaymentType('other')">
+                                    <i class="fas fa-hand-holding-usd"></i>
+                                    Other Payment
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: Payment Processing -->
+    <div id="payment-processing-section" class="hidden">
+        <!-- Consultation Payment -->
+        <div id="consultation-section" class="hidden">
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5><i class="fas fa-user-md"></i> Consultation Payment</h5>
+                            <button class="btn btn-sm btn-light" onclick="goBackToTypeSelection()">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="specialization-select" class="form-label">Select Specialization</label>
+                                <select class="form-control form-control-lg" id="specialization-select" required>
+                                    <option value="">--- Select Specialization ---</option>
+                                    {% for spec in specializations %}
+                                        <option value="{{ spec.id }}">{{ spec.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div id="consultation-action-area" class="hidden"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admission Funding -->
+        <div id="admission-section" class="hidden">
+            <div class="row justify-content-center">
+                <div class="col-md-10">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5><i class="fas fa-procedures"></i> Admission Funding</h5>
+                            <button class="btn btn-sm btn-light" onclick="goBackToTypeSelection()">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="admission-records-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Surgery Funding -->
+        <div id="surgery-section" class="hidden">
+            <div class="row justify-content-center">
+                <div class="col-md-10">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5><i class="fas fa-briefcase-medical"></i> Surgery Funding</h5>
+                            <button class="btn btn-sm btn-light" onclick="goBackToTypeSelection()">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="surgery-records-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Other Payment -->
+        <div id="other-payment-section" class="hidden">
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5><i class="fas fa-hand-holding-usd"></i> Other Payment</h5>
+                            <button class="btn btn-sm btn-light" onclick="goBackToTypeSelection()">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="other-service-select" class="form-label">Select Service</label>
+                                <select class="form-control form-control-lg" id="other-service-select" required>
+                                    <option value="">--- Select a Service ---</option>
+                                    {% for service in other_services %}
+                                        <option value="{{ service.pk }}"
+                                                data-amount="{{ service.default_amount|default_if_none:'' }}"
+                                                data-fixed="{{ service.is_fixed_amount|yesno:'true,false' }}">
+                                            {{ service.name }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div id="other-payment-area" class="hidden"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Central Error/Success Modal -->
+<div class="modal fade" id="centralModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" id="modalHeader">
+                <h5 class="modal-title" id="modalTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script>
+    let patientData = null;
+    let walletBalance = 0;
+    let currentPaymentType = null;
+    let selectedRecord = null;
+    let consultationStatus = null;
+    
+    const centralModal = new bootstrap.Modal(document.getElementById('centralModal'));
+
+    $(document).ready(function() {
+        $('#patient-verification-form').on('submit', verifyPatient);
+        $('#specialization-select').on('change', handleSpecializationChange);
+        $('#other-service-select').on('change', handleOtherServiceChange);
+    });
+
+    function showModal(title, message, isError = false) {
+        $('#modalTitle').text(title);
+        $('#modalBody').html(message);
+        $('#modalHeader').removeClass('bg-success bg-danger').addClass(isError ? 'bg-danger' : 'bg-success');
+        $('#modalHeader h5, #modalHeader button').css('color', 'white');
+        centralModal.show();
+    }
+
+    function formatCurrency(amount) {
+        return '₦' + parseFloat(amount).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+
+    function verifyPatient(e) {
+        e.preventDefault();
+        const cardNumber = $('#card_number').val().trim();
+        if (!cardNumber) {
+            showModal('Error', 'Please enter a patient card number.', true);
+            return;
+        }
+
+        $('#patient-verification-form button').prop('disabled', true)
+            .html('<span class="spinner-border spinner-border-sm"></span> Verifying...');
+
+        $.ajax({
+            url: "{% url 'verify_patient_ajax' %}",
+            method: 'GET',
+            data: { card_number: cardNumber },
+            success: function(response) {
+                if (response.success) {
+                    patientData = response.patient;
+                    walletBalance = response.wallet.balance;
+                    displayPatientInfo(response);
+                    
+                    $('#step-1').removeClass('active').addClass('completed');
+                    $('#step-2').addClass('active');
+                    $('#patient-verification-section').addClass('hidden');
+                    $('#payment-type-section').removeClass('hidden');
+                }
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                showModal('Verification Error', response.error || 'Error verifying patient', true);
+            },
+            complete: function() {
+                $('#patient-verification-form button').prop('disabled', false)
+                    .html('<i class="fas fa-search"></i> Verify Patient');
+            }
+        });
+    }
+
+    function displayPatientInfo(data) {
+        const patient = data.patient;
+        let insuranceInfo = '';
+        if (data.insurance.has_insurance) {
+            insuranceInfo = `
+                <div class="mt-2">
+                    <span class="badge bg-success">
+                        <i class="fas fa-shield-alt"></i> Insured
+                    </span>
+                    <small class="d-block text-muted mt-1">
+                        ${data.insurance.hmo_name} - ${data.insurance.plan_name}
+                    </small>
+                </div>
+            `;
+        }
+
+        $('#patient-info').html(`
+            <h5>${patient.full_name}</h5>
+            <p class="mb-1"><strong>Card Number:</strong> ${patient.card_number}</p>
+            <p class="mb-1"><strong>Phone:</strong> ${patient.phone}</p>
+            <p class="mb-1"><strong>Age:</strong> ${patient.age}</p>
+            <p class="mb-1"><strong>Gender:</strong> ${patient.gender}</p>
+            ${insuranceInfo}
+        `);
+
+        $('#wallet-balance').text(data.wallet.formatted_balance);
+    }
+
+    function selectPaymentType(type) {
+        currentPaymentType = type;
+        $('#step-2').removeClass('active').addClass('completed');
+        $('#step-3').addClass('active');
+        $('#payment-type-section').addClass('hidden');
+        $('#payment-processing-section').removeClass('hidden');
+
+        $('.payment-processing-section > div').addClass('hidden');
+        
+        if (type === 'consultation') {
+            $('#consultation-section').removeClass('hidden');
+        } else if (type === 'admission') {
+            $('#admission-section').removeClass('hidden');
+            loadAdmissionRecords();
+        } else if (type === 'surgery') {
+            $('#surgery-section').removeClass('hidden');
+            loadSurgeryRecords();
+        } else if (type === 'other') {
+            $('#other-payment-section').removeClass('hidden');
+        }
+    }
+
+    function goBackToTypeSelection() {
+        $('#step-3').removeClass('active');
+        $('#step-2').addClass('active').removeClass('completed');
+        $('#payment-processing-section').addClass('hidden');
+        $('#consultation-section, #admission-section, #surgery-section, #other-payment-section').addClass('hidden');
+        $('#consultation-action-area, #other-payment-area').addClass('hidden').html('');
+        $('#payment-type-section').removeClass('hidden');
+        $('#specialization-select, #other-service-select').val('');
+        selectedRecord = null;
+        consultationStatus = null;
+    }
+
+    // === CONSULTATION PAYMENT ===
+    function handleSpecializationChange() {
+        const specializationId = $(this).val();
+        $('#consultation-action-area').addClass('hidden').html('');
+        
+        if (!specializationId) return;
+
+        $('#consultation-action-area').html('<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Checking status...</div>').removeClass('hidden');
+
+        $.ajax({
+            url: "{% url 'get_consultation_status_ajax' %}",
+            method: 'GET',
+            data: {
+                patient_id: patientData.id,
+                specialization_id: specializationId
+            },
+            success: function(response) {
+                consultationStatus = response;
+                if (response.status === 'block') {
+                    $('#consultation-action-area').html(`
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i> ${response.message}
+                        </div>
+                    `);
+                } else if (response.status === 'reuse_payment') {
+                    displayReusePaymentOption(response);
+                } else if (response.status === 'new_payment') {
+                    displayNewPaymentOption(response);
+                }
+            },
+            error: function(xhr) {
+                showModal('Error', xhr.responseJSON?.error || 'Error checking consultation status', true);
+                $('#consultation-action-area').addClass('hidden');
+            }
+        });
+    }
+
+    function displayReusePaymentOption(data) {
+        $('#consultation-action-area').html(`
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> ${data.message}
+            </div>
+            <button class="btn btn-success btn-lg w-100" onclick="reuseConsultationPayment()">
+                <i class="fas fa-user-plus"></i> Add to Queue
+            </button>
+        `);
+    }
+
+    function displayNewPaymentOption(data) {
+        const fee = data.fee;
+        const canUseWallet = walletBalance > 0;
+        const walletCover = Math.min(walletBalance, fee.amount);
+        const remaining = fee.amount - walletCover;
+
+        $('#consultation-action-area').html(`
+            <div class="payment-breakdown-card mb-3">
+                <div class="p-3 bg-primary text-white">
+                    <h6 class="mb-0">Payment Summary</h6>
+                </div>
+                <div class="breakdown-row">
+                    <span>Consultation Fee:</span>
+                    <strong>${fee.formatted_amount}</strong>
+                </div>
+                ${canUseWallet ? `
+                <div class="breakdown-row">
+                    <span>
+                        <input type="checkbox" id="consultation-use-wallet" checked>
+                        <label for="consultation-use-wallet" class="ms-2">Use Wallet Balance</label>
+                    </span>
+                    <strong class="text-success" id="consultation-wallet-amount">- ${formatCurrency(walletCover)}</strong>
+                </div>
+                ` : ''}
+                <div class="breakdown-row">
+                    <span>Amount to Pay Now:</span>
+                    <strong class="text-primary" id="consultation-remaining">${formatCurrency(remaining)}</strong>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="consultation-payment-method" class="form-label">Payment Method</label>
+                <select class="form-control form-control-lg" id="consultation-payment-method">
+                    <option value="cash">CASH</option>
+                    <option value="transfer">BANK TRANSFER</option>
+                    <option value="card">CARD (POS)</option>
+                </select>
+            </div>
+
+            <button class="btn btn-success btn-lg w-100" onclick="processConsultationPayment()">
+                <i class="fas fa-check-circle"></i> Process Payment & Add to Queue
+            </button>
+        `);
+
+        $('#consultation-use-wallet').on('change', function() {
+            const useWallet = $(this).is(':checked');
+            const walletAmount = useWallet ? walletCover : 0;
+            const remainingAmount = fee.amount - walletAmount;
+            $('#consultation-wallet-amount').text('- ' + formatCurrency(walletAmount));
+            $('#consultation-remaining').text(formatCurrency(remainingAmount));
+        });
+    }
+
+    function reuseConsultationPayment() {
+        const specializationId = $('#specialization-select').val();
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('patient_id', patientData.id);
+        formData.append('payment_id', consultationStatus.payment_id);
+        formData.append('specialization_id', specializationId);
+
+        $.ajax({
+            url: "{% url 'ajax_reuse_consultation_payment' %}",
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    showModal('Success', response.message);
+                    setTimeout(() => window.location.href = response.redirect_url, 2000);
+                }
+            },
+            error: function(xhr) {
+                showModal('Error', xhr.responseJSON?.error || 'Error processing request', true);
+            }
+        });
+    }
+
+    function processConsultationPayment() {
+        const specializationId = $('#specialization-select').val();
+        const paymentMethod = $('#consultation-payment-method').val();
+        const useWallet = $('#consultation-use-wallet').is(':checked');
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('patient_id', patientData.id);
+        formData.append('specialization_id', specializationId);
+        formData.append('fee_structure_id', consultationStatus.fee.id);
+        formData.append('payment_method', paymentMethod);
+        formData.append('use_wallet', useWallet);
+
+        $.ajax({
+            url: "{% url 'ajax_process_consultation_payment' %}",
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    showModal('Success', response.message);
+                    setTimeout(() => window.location.href = response.redirect_url, 2000);
+                }
+            },
+            error: function(xhr) {
+                showModal('Error', xhr.responseJSON?.error || 'Error processing payment', true);
+            }
+        });
+    }
+
+    // === ADMISSION FUNDING ===
+    function loadAdmissionRecords() {
+        $('#admission-records-list').html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Loading admissions...</p></div>');
+
+        $.ajax({
+            url: "{% url 'ajax_get_admission_surgery_details' %}",
+            method: 'GET',
+            data: {
+                patient_id: patientData.id,
+                type: 'admission'
+            },
+            success: function(response) {
+                if (response.success && response.count > 0) {
+                    displayAdmissionRecords(response.records);
+                } else {
+                    $('#admission-records-list').html(`
+                        <div class="text-center py-4">
+                            <i class="fas fa-info-circle fa-3x text-muted mb-3"></i>
+                            <h5>No Active Admissions Found</h5>
+                            <p class="text-muted">This patient has no active admissions.</p>
+                            <button class="btn btn-primary mt-3" onclick="goBackToTypeSelection()">
+                                <i class="fas fa-arrow-left"></i> Go Back
+                            </button>
+                        </div>
+                    `);
+                }
+            },
+            error: function(xhr) {
+                showModal('Error', xhr.responseJSON?.error || 'Error loading admissions', true);
+                $('#admission-records-list').html('<div class="alert alert-danger">Error loading admissions</div>');
+            }
+        });
+    }
+
+    function displayAdmissionRecords(records) {
+        let html = '';
+        records.forEach((record, index) => {
+            const isOwing = record.balance < 0;
+            html += `
+                <div class="record-card ${records.length === 1 ? 'selected' : ''}" data-record-id="${record.id}" onclick="selectAdmissionRecord(${record.id}, ${index})">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <h5 class="mb-1">${record.identifier}</h5>
+                            <span class="badge bg-info">Active</span>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-muted small">Total Bill</div>
+                            <div class="h5 mb-0">${formatCurrency(record.total_bill)}</div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-3">
+                            <small class="text-muted">Base Fee</small>
+                            <div><strong>${formatCurrency(record.base_fee)}</strong></div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted">Drugs</small>
+                            <div><strong>${formatCurrency(record.drug_costs)}</strong></div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted">Labs</small>
+                            <div><strong>${formatCurrency(record.lab_costs)}</strong></div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted">Scans</small>
+                            <div><strong>${formatCurrency(record.scan_costs)}</strong></div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Total Paid</small>
+                            <div><strong>${formatCurrency(record.total_paid)}</strong></div>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">Balance</small>
+                            <div class="${isOwing ? 'text-danger' : 'text-success'}">
+                                <strong>${isOwing ? '-' : '+'}${formatCurrency(record.abs_balance)}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '<div id="admission-payment-form" class="mt-4"></div>';
+        $('#admission-records-list').html(html);
+
+        if (records.length === 1) {
+            selectAdmissionRecord(records[0].id, 0);
+        }
+    }
+
+    function selectAdmissionRecord(recordId, index) {
+        $('.record-card').removeClass('selected');
+        $(`.record-card[data-record-id="${recordId}"]`).addClass('selected');
+        selectedRecord = { id: recordId, type: 'admission' };
+        displayAdmissionPaymentForm();
+    }
+
+    function displayAdmissionPaymentForm() {
+        const canUseWallet = walletBalance > 0;
+
+        $('#admission-payment-form').html(`
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0">Fund Admission</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="admission-amount" class="form-label">Amount to Pay (₦)</label>
+                        <input type="number" class="form-control form-control-lg" id="admission-amount" 
+                               step="0.01" min="0.01" placeholder="Enter amount" required>
+                    </div>
+
+                    ${canUseWallet ? `
+                    <div class="payment-breakdown-card mb-3" id="admission-breakdown" style="display:none;">
+                        <div class="p-2 bg-info text-white">
+                            <small>Payment Breakdown</small>
+                        </div>
+                        <div class="breakdown-row">
+                            <span>
+                                <input type="checkbox" id="admission-use-wallet" checked>
+                                <label for="admission-use-wallet" class="ms-2">Use Wallet Balance</label>
+                            </span>
+                            <strong class="text-success" id="admission-wallet-amount">₦0.00</strong>
+                        </div>
+                        <div class="breakdown-row">
+                            <span>Amount to Pay Now:</span>
+                            <strong class="text-primary" id="admission-remaining">₦0.00</strong>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <div class="mb-3">
+                        <label for="admission-payment-method" class="form-label">Payment Method</label>
+                        <select class="form-control form-control-lg" id="admission-payment-method">
+                            <option value="cash">CASH</option>
+                            <option value="transfer">BANK TRANSFER</option>
+                            <option value="card">CARD (POS)</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-success btn-lg w-100" onclick="processAdmissionPayment()">
+                        <i class="fas fa-check-circle"></i> Process Payment
+                    </button>
+                </div>
+            </div>
+        `);
+
+        $('#admission-amount').on('input', function() {
+            const amount = parseFloat($(this).val()) || 0;
+            if (amount > 0 && canUseWallet) {
+                $('#admission-breakdown').show();
+                updateAdmissionBreakdown();
+            } else {
+                $('#admission-breakdown').hide();
+            }
+        });
+
+        if (canUseWallet) {
+            $('#admission-use-wallet').on('change', updateAdmissionBreakdown);
+        }
+    }
+
+    function updateAdmissionBreakdown() {
+        const amount = parseFloat($('#admission-amount').val()) || 0;
+        const useWallet = $('#admission-use-wallet').is(':checked');
+        const walletUsed = useWallet ? Math.min(walletBalance, amount) : 0;
+        const remaining = amount - walletUsed;
+
+        $('#admission-wallet-amount').text('- ' + formatCurrency(walletUsed));
+        $('#admission-remaining').text(formatCurrency(remaining));
+    }
+
+    function processAdmissionPayment() {
+        const amount = parseFloat($('#admission-amount').val());
+        if (!amount || amount <= 0) {
+            showModal('Error', 'Please enter a valid amount.', true);
+            return;
+        }
+
+        const paymentMethod = $('#admission-payment-method').val();
+        const useWallet = $('#admission-use-wallet').is(':checked');
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('patient_id', patientData.id);
+        formData.append('admission_id', selectedRecord.id);
+        formData.append('amount', amount);
+        formData.append('payment_method', paymentMethod);
+        formData.append('use_wallet', useWallet);
+
+        $.ajax({
+            url: "{% url 'ajax_process_admission_funding' %}",
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    showModal('Success', response.message);
+                    setTimeout(() => window.location.href = response.redirect_url, 2000);
+                }
+            },
+            error: function(xhr) {
+                showModal('Error', xhr.responseJSON?.error || 'Error processing payment', true);
+            }
+        });
+    }
+
+    // === SURGERY FUNDING ===
+    function loadSurgeryRecords() {
+        $('#surgery-records-list').html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Loading surgeries...</p></div>');
+
+        $.ajax({
+            url: "{% url 'ajax_get_admission_surgery_details' %}",
+            method: 'GET',
+            data: {
+                patient_id: patientData.id,
+                type: 'surgery'
+            },
+            success: function(response) {
+                if (response.success && response.count > 0) {
+                    displaySurgeryRecords(response.records);
+                } else {
+                    $('#surgery-records-list').html(`
+                        <div class="text-center py-4">
+                            <i class="fas fa-info-circle fa-3x text-muted mb-3"></i>
+                            <h5>No Active Surgeries Found</h5>
+                            <p class="text-muted">This patient has no active surgeries.</p>
+                            <button class="btn btn-primary mt-3" onclick="goBackToTypeSelection()">
+                                <i class="fas fa-arrow-left"></i> Go Back
+                            </button>
+                        </div>
+                    `);
+                }
+            },
+            error: function(xhr) {
+                showModal('Error', xhr.responseJSON?.error || 'Error loading surgeries', true);
+                $('#surgery-records-list').html('<div class="alert alert-danger">Error loading surgeries</div>');
+            }
+        });
+    }
+
+    function displaySurgeryRecords(records) {
+        let html = '';
+        records.forEach((record, index) => {
+            const isOwing = record.balance < 0;
+            html += `
+                <div class="record-card ${records.length === 1 ? 'selected' : ''}" data-record-id="${record.id}" onclick="selectSurgeryRecord(${record.id}, ${index})">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <h5 class="mb-1">${record.identifier}</h5>
+                            <span class="badge bg-warning text-dark">${record.status}</span>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-muted small">Total Bill</div>
+                            <div class="h5 mb-0">${formatCurrency(record.total_bill)}</div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-3">
+                            <small class="text-muted">Base Fee</small>
+                            <div><strong>${formatCurrency(record.base_fee)}</strong></div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted">Drugs</small>
+                            <div><strong>${formatCurrency(record.drug_costs)}</strong></div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted">Labs</small>
+                            <div><strong>${formatCurrency(record.lab_costs)}</strong></div>
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted">Scans</small>
+                            <div><strong>${formatCurrency(record.scan_costs)}</strong></div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Total Paid</small>
+                            <div><strong>${formatCurrency(record.total_paid)}</strong></div>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">Balance</small>
+                            <div class="${isOwing ? 'text-danger' : 'text-success'}">
+                                <strong>${isOwing ? '-' : '+'}${formatCurrency(record.abs_balance)}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '<div id="surgery-payment-form" class="mt-4"></div>';
+        $('#surgery-records-list').html(html);
+
+        if (records.length === 1) {
+            selectSurgeryRecord(records[0].id, 0);
+        }
+    }
+
+    function selectSurgeryRecord(recordId, index) {
+        $('.record-card').removeClass('selected');
+        $(`.record-card[data-record-id="${recordId}"]`).addClass('selected');
+        selectedRecord = { id: recordId, type: 'surgery' };
+        displaySurgeryPaymentForm();
+    }
+
+    function displaySurgeryPaymentForm() {
+        const canUseWallet = walletBalance > 0;
+
+        $('#surgery-payment-form').html(`
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h6 class="mb-0">Fund Surgery</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="surgery-amount" class="form-label">Amount to Pay (₦)</label>
+                        <input type="number" class="form-control form-control-lg" id="surgery-amount" 
+                               step="0.01" min="0.01" placeholder="Enter amount" required>
+                    </div>
+
+                    ${canUseWallet ? `
+                    <div class="payment-breakdown-card mb-3" id="surgery-breakdown" style="display:none;">
+                        <div class="p-2 bg-info text-white">
+                            <small>Payment Breakdown</small>
+                        </div>
+                        <div class="breakdown-row">
+                            <span>
+                                <input type="checkbox" id="surgery-use-wallet" checked>
+                                <label for="surgery-use-wallet" class="ms-2">Use Wallet Balance</label>
+                            </span>
+                            <strong class="text-success" id="surgery-wallet-amount">₦0.00</strong>
+                        </div>
+                        <div class="breakdown-row">
+                            <span>Amount to Pay Now:</span>
+                            <strong class="text-primary" id="surgery-remaining">₦0.00</strong>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <div class="mb-3">
+                        <label for="surgery-payment-method" class="form-label">Payment Method</label>
+                        <select class="form-control form-control-lg" id="surgery-payment-method">
+                            <option value="cash">CASH</option>
+                            <option value="transfer">BANK TRANSFER</option>
+                            <option value="card">CARD (POS)</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-success btn-lg w-100" onclick="processSurgeryPayment()">
+                        <i class="fas fa-check-circle"></i> Process Payment
+                    </button>
+                </div>
+            </div>
+        `);
+
+        $('#surgery-amount').on('input', function() {
+            const amount = parseFloat($(this).val()) || 0;
+            if (amount > 0 && canUseWallet) {
+                $('#surgery-breakdown').show();
+                updateSurgeryBreakdown();
+            } else {
+                $('#surgery-breakdown').hide();
+            }
+        });
+
+        if (canUseWallet) {
+            $('#surgery-use-wallet').on('change', updateSurgeryBreakdown);
+        }
+    }
+
+    function updateSurgeryBreakdown() {
+        const amount = parseFloat($('#surgery-amount').val()) || 0;
+        const useWallet = $('#surgery-use-wallet').is(':checked');
+        const walletUsed = useWallet ? Math.min(walletBalance, amount) : 0;
+        const remaining = amount - walletUsed;
+
+        $('#surgery-wallet-amount').text('- ' + formatCurrency(walletUsed));
+        $('#surgery-remaining').text(formatCurrency(remaining));
+    }
+
+    function processSurgeryPayment() {
+        const amount = parseFloat($('#surgery-amount').val());
+        if (!amount || amount <= 0) {
+            showModal('Error', 'Please enter a valid amount.', true);
+            return;
+        }
+
+        const paymentMethod = $('#surgery-payment-method').val();
+        const useWallet = $('#surgery-use-wallet').is(':checked');
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('patient_id', patientData.id);
+        formData.append('surgery_id', selectedRecord.id);
+        formData.append('amount', amount);
+        formData.append('payment_method', paymentMethod);
+        formData.append('use_wallet', useWallet);
+
+        $.ajax({
+            url: "{% url 'ajax_process_admission_funding' %}",
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    showModal('Success', response.message);
+                    setTimeout(() => window.location.href = response.redirect_url, 2000);
+                }
+            },
+            error: function(xhr) {
+                showModal('Error', xhr.responseJSON?.error || 'Error processing payment', true);
+            }
+        });
+    }
+
+    // === OTHER PAYMENT ===
+    function handleOtherServiceChange() {
+        const selectedOption = $(this).find('option:selected');
+        const serviceId = $(this).val();
+        
+        $('#other-payment-area').addClass('hidden').html('');
+        
+        if (!serviceId) return;
+
+        const amount = selectedOption.data('amount') || '';
+        const isFixed = selectedOption.data('fixed') === true;
+        const serviceName = selectedOption.text();
+
+        displayOtherPaymentForm(serviceId, serviceName, amount, isFixed);
+    }
+
+    function displayOtherPaymentForm(serviceId, serviceName, defaultAmount, isFixed) {
+        const canUseWallet = walletBalance > 0;
+
+        $('#other-payment-area').html(`
+            <div class="mb-3">
+                <label for="other-amount" class="form-label">Amount (₦)</label>
+                <input type="number" class="form-control form-control-lg" id="other-amount" 
+                       value="${defaultAmount}" step="0.01" min="0.01" 
+                       ${isFixed ? 'readonly' : ''} placeholder="Enter amount" required>
+                ${isFixed ? '<small class="text-muted">This service has a fixed amount.</small>' : ''}
+            </div>
+
+            ${canUseWallet ? `
+            <div class="payment-breakdown-card mb-3" id="other-breakdown" style="display:none;">
+                <div class="p-2 bg-info text-white">
+                    <small>Payment Breakdown</small>
+                </div>
+                <div class="breakdown-row">
+                    <span>
+                        <input type="checkbox" id="other-use-wallet" checked>
+                        <label for="other-use-wallet" class="ms-2">Use Wallet Balance</label>
+                    </span>
+                    <strong class="text-success" id="other-wallet-amount">₦0.00</strong>
+                </div>
+                <div class="breakdown-row">
+                    <span>Amount to Pay Now:</span>
+                    <strong class="text-primary" id="other-remaining">₦0.00</strong>
+                </div>
+            </div>
+            ` : ''}
+
+            <div class="mb-3">
+                <label for="other-payment-method" class="form-label">Payment Method</label>
+                <select class="form-control form-control-lg" id="other-payment-method">
+                    <option value="cash">CASH</option>
+                    <option value="transfer">BANK TRANSFER</option>
+                    <option value="card">CARD (POS)</option>
+                </select>
+            </div>
+
+            <button class="btn btn-success btn-lg w-100" onclick="processOtherPayment()">
+                <i class="fas fa-check-circle"></i> Process Payment
+            </button>
+        `).removeClass('hidden');
+
+        $('#other-amount').on('input', function() {
+            const amount = parseFloat($(this).val()) || 0;
+            if (amount > 0 && canUseWallet) {
+                $('#other-breakdown').show();
+                updateOtherBreakdown();
+            } else {
+                $('#other-breakdown').hide();
+            }
+        });
+
+        if (canUseWallet) {
+            $('#other-use-wallet').on('change', updateOtherBreakdown);
+            if (defaultAmount && parseFloat(defaultAmount) > 0) {
+                $('#other-breakdown').show();
+                updateOtherBreakdown();
+            }
+        }
+    }
+
+    function updateOtherBreakdown() {
+        const amount = parseFloat($('#other-amount').val()) || 0;
+        const useWallet = $('#other-use-wallet').is(':checked');
+        const walletUsed = useWallet ? Math.min(walletBalance, amount) : 0;
+        const remaining = amount - walletUsed;
+
+        $('#other-wallet-amount').text('- ' + formatCurrency(walletUsed));
+        $('#other-remaining').text(formatCurrency(remaining));
+    }
+
+    function processOtherPayment() {
+        const serviceId = $('#other-service-select').val();
+        const amount = parseFloat($('#other-amount').val());
+        
+        if (!serviceId) {
+            showModal('Error', 'Please select a service.', true);
+            return;
+        }
+        
+        if (!amount || amount <= 0) {
+            showModal('Error', 'Please enter a valid amount.', true);
+            return;
+        }
+
+        const paymentMethod = $('#other-payment-method').val();
+        const useWallet = $('#other-use-wallet').is(':checked');
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        formData.append('patient_id', patientData.id);
+        formData.append('other_service', serviceId);
+        formData.append('amount', amount);
+        formData.append('payment_method', paymentMethod);
+        formData.append('use_wallet', useWallet);
+
+        $.ajax({
+            url: "{% url 'ajax_process_other_payment' %}",
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    showModal('Success', response.message);
+                    setTimeout(() => window.location.href = response.redirect_url, 2000);
+                }
+            },
+            error: function(xhr) {
+                showModal('Error', xhr.responseJSON?.error || 'Error processing payment', true);
+            }
+        });
+    }
+</script>
+
+{% endblock %}

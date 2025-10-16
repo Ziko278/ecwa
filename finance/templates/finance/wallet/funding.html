@@ -151,232 +151,232 @@
 }
     </style>
 
-    <div class="container-fluid mt-4">
-        <!-- Header -->
-        <div class="row mb-4">
-            <div class="col-12">
+<style>
+    /* Keep all existing styles from your original template */
+    .card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    .patient-info-card {
+        border-left: 4px solid #28a745;
+    }
+    .wallet-balance {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #28a745;
+    }
+    /* ... all other existing styles ... */
+
+    /* NEW: Payment breakdown styles */
+    .payment-breakdown-card {
+        border: 2px solid #17a2b8;
+        border-radius: 8px;
+        background: #f8f9fa;
+    }
+    .breakdown-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 15px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .breakdown-row:last-child {
+        border-bottom: none;
+        background: #e9ecef;
+        font-weight: bold;
+    }
+</style>
+
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-money-bill-wave"></i> Make Payment
+                    </h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step Indicator -->
+    <div class="step-indicator">
+        <div class="step active" id="step-1">1</div>
+        <div class="step" id="step-2">2</div>
+        <div class="step" id="step-3">3</div>
+    </div>
+
+    <!-- Step 1: Patient Verification -->
+    <div id="patient-verification-section">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
-                        <h4 class="mb-0">
-                            <i class="fas fa-wallet"></i> Patient Wallet Funding
-                        </h4>
+                        <h5><i class="fas fa-search"></i> Verify Patient</h5>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step Indicator -->
-        <div class="step-indicator">
-            <div class="step active" id="step-1">1</div>
-            <div class="step" id="step-2">2</div>
-            <div class="step" id="step-3">3</div>
-        </div>
-
-        <!-- Step 1: Patient Verification -->
-        <div id="patient-verification-section">
-            <div class="row justify-content-center">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-search"></i> Verify Patient</h5>
-                        </div>
-                        <div class="card-body">
-                            <form id="patient-verification-form">
-                                {% csrf_token %}
-                                <div class="mb-3">
-                                    <label for="card_number" class="form-label">Patient Card Number</label>
-                                    <input type="text" class="form-control form-control-lg"
-                                           id="card_number" name="card_number"
-                                           placeholder="Enter patient card number" required>
-                                </div>
-                                <button type="submit" class="btn btn-primary btn-lg w-100">
-                                    <i class="fas fa-search"></i> Verify Patient
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 2: Patient Details & Pending Payments -->
-        <div id="patient-details-section" class="hidden">
-            <div class="row">
-                <!-- Patient Info -->
-                <div class="col-md-4">
-                    <div class="card patient-info-card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-user"></i> Patient Information</h5>
-                        </div>
-                        <div class="card-body" id="patient-info">
-                            <!-- Patient details will be loaded here -->
-                        </div>
-                    </div>
-
-                    <!-- Wallet Balance -->
-                    <div class="card mt-3">
-                        <div class="card-header">
-                            <h5><i class="fas fa-wallet"></i> Current Wallet Balance</h5>
-                        </div>
-                        <div class="card-body text-center">
-                            <div class="wallet-balance" id="wallet-balance">₦0.00</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pending Payments -->
-                <div class="col-md-8">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-clipboard-list"></i> Pending Payments (Last 30 Days)</h5>
-                            <small class="text-light">Select items to include in payment calculation</small>
-                        </div>
-                        <div class="card-body" id="pending-payments-section">
-                            <!-- Pending payments will be loaded here -->
-                        </div>
-                    </div>
-
-                    <!-- Total & Action Section -->
-                    <div class="total-section">
-                        <div class="row align-items-center">
-                            <div class="col-md-6">
-                                <h4>Total Selected: <span id="selected-total">₦0.00</span></h4>
-                                <small>Insurance coverage applied where applicable</small>
+                    <div class="card-body">
+                        <form id="patient-verification-form">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="card_number" class="form-label">Patient Card Number</label>
+                                <input type="text" class="form-control form-control-lg"
+                                       id="card_number" name="card_number"
+                                       placeholder="Enter patient card number" required>
                             </div>
-                            <div class="col-md-6 text-end">
-                                <button class="btn btn-light btn-lg" onclick="proceedToFunding()">
-                                    <i class="fas fa-arrow-right"></i> Proceed to Funding
-                                </button>
-                            </div>
-                        </div>
+                            <button type="submit" class="btn btn-primary btn-lg w-100">
+                                <i class="fas fa-search"></i> Verify Patient
+                            </button>
+                        </form>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 3: Funding & Payment -->
-        <div id="funding-section" class="hidden">
-            <div class="row justify-content-center">
-                <div class="col-md-8">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-money-bill-wave"></i> Wallet Funding</h5>
-                        </div>
-                        <div class="card-body">
-                            <form id="funding-form">
-                                {% csrf_token %}
-                                <input type="hidden" id="patient_id" name="patient_id">
-
-                                <!-- Funding Amount -->
-                                <div class="mb-4">
-                                    <label for="funding_amount" class="form-label">Funding Amount (₦) </label>
-                                    <input type="number" class="form-control form-control-lg"
-                                           id="funding_amount" name="funding_amount"
-                                           min="{{finance_setting.minimum_funding}}" placeholder="Minimum Funding is ₦{{finance_setting.minimum_funding|intcomma}}" step="0.01" required>
-                                    <div class="form-text">
-                                        Suggested amount based on selected payments:
-                                        <strong id="suggested-amount">₦0.00</strong>
-                                    </div>
-                                </div>
-
-                                <div class="mb-4">
-                                    <label for="payment_method" class="form-label">Payment Method</label>
-                                    <select class="form-control" id="payment_method" required name="payment_method">
-                                        <option value="cash">CASH</option>
-                                        <option value="transfer">TRANSFER</option>
-                                        <option value="card">CARD</option>
-                                    </select>
-                                </div>
-
-                                <!-- Action Type -->
-                                <div class="mb-4">
-                                    <label class="form-label">Action</label>
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="radio"
-                                                       name="action_type" id="fund_only"
-                                                       value="fund_only" checked>
-                                                <label class="form-check-label" for="fund_only">
-                                                    <strong>Fund Only</strong>
-                                                    <small class="d-block text-muted">Add money to wallet</small>
-                                                </label>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="radio"
-                                                       name="action_type" id="fund_and_pay"
-                                                       value="fund_and_pay">
-                                                <label class="form-check-label" for="fund_and_pay">
-                                                    <strong>Fund & Pay</strong>
-                                                    <small class="d-block text-muted">Add money and pay selected items</small>
-                                                </label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Payment Type Selection (Hidden by default) -->
-                                <div id="payment-type-section" class="mb-4 hidden">
-                                    <label for="payment_type" class="form-label">Payment Type</label>
-                                    <select class="form-select" id="payment_type" name="payment_type">
-                                        <option value="">Select payment type...</option>
-                                        <option value="consultation">Consultation</option>
-                                        <option value="lab">Laboratory Tests</option>
-                                        <option value="scan">Scans/Radiology</option>
-                                        <option value="drug">Medications</option>
-                                        <option value="service">Services / Items</option>
-                                        <option value="inpatient">Admission / Surgery</option>
-                                    </select>
-                                </div>
-
-                                <!-- Submit Buttons -->
-                                <div class="d-flex justify-content-between">
-                                    <button type="button" class="btn btn-secondary" onclick="goBackToDetails()">
-                                        <i class="fas fa-arrow-left"></i> Back
-                                    </button>
-                                    <button type="submit" class="btn btn-success btn-lg" id="submit-funding">
-                                        <i class="fas fa-credit-card"></i> Process Funding
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
-    </div>
-
-    <!-- ======================================================= -->
-    <!-- START: NEW SUCCESS MODAL                                -->
-    <!-- ======================================================= -->
-    <div class="modal fade" id="success-modal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="successModalLabel"><i class="fas fa-check-circle"></i> Success</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body text-center">
-                    <div class="success-icon mb-3">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <p class="lead" id="success-message-text"></p>
-                </div>
-                <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-primary" id="modal-ok-button">OK</button>
                 </div>
             </div>
         </div>
     </div>
-    <!-- ======================================================= -->
-    <!-- END: NEW SUCCESS MODAL                                  -->
-    <!-- ======================================================= -->
 
+    <!-- Step 2: Patient Details & Pending Payments -->
+    <div id="patient-details-section" class="hidden">
+        <div class="row">
+            <!-- Patient Info -->
+            <div class="col-md-4">
+                <div class="card patient-info-card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-user"></i> Patient Information</h5>
+                    </div>
+                    <div class="card-body" id="patient-info">
+                        <!-- Patient details will be loaded here -->
+                    </div>
+                </div>
 
+                <!-- Wallet Balance -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-wallet"></i> Current Wallet Balance</h5>
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="wallet-balance" id="wallet-balance">₦0.00</div>
+                        <small class="text-muted">Available for use</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pending Payments -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-clipboard-list"></i> Pending Payments (Last 30 Days)</h5>
+                        <small class="text-light">Select items to pay for</small>
+                    </div>
+                    <div class="card-body" id="pending-payments-section">
+                        <!-- Pending payments will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="mt-3 d-flex justify-content-between">
+<!--                    <button class="btn btn-outline-primary" onclick="goToWalletFunding()">-->
+<!--                        <i class="fas fa-wallet"></i> Fund Wallet Only-->
+<!--                    </button>-->
+                    <button class="btn btn-success btn-lg" onclick="proceedToPayment()">
+                        <i class="fas fa-arrow-right"></i> Proceed to Payment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: Direct Payment -->
+    <div id="payment-section" class="hidden">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-credit-card"></i> Payment Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="payment-form">
+                            {% csrf_token %}
+                            <input type="hidden" id="patient_id" name="patient_id">
+                            <input type="hidden" id="selected_items_data" name="selected_items_data">
+
+                            <!-- Payment Breakdown -->
+                            <div class="payment-breakdown-card mb-4">
+                                <div class="p-3 bg-info text-white">
+                                    <h6 class="mb-0">Payment Summary</h6>
+                                </div>
+                                <div class="breakdown-row">
+                                    <span>Total Amount Due:</span>
+                                    <strong id="total-amount-display">₦0.00</strong>
+                                </div>
+                                <div class="breakdown-row" id="wallet-usage-row">
+                                    <span>
+                                        <input type="checkbox" id="use_wallet" name="use_wallet" checked>
+                                        <label for="use_wallet" class="ms-2">Use Wallet Balance</label>
+                                    </span>
+                                    <strong class="text-success" id="wallet-amount-display">- ₦0.00</strong>
+                                </div>
+                                <div class="breakdown-row">
+                                    <span>Amount to Pay Now:</span>
+                                    <strong class="text-primary" id="remaining-amount-display">₦0.00</strong>
+                                </div>
+                            </div>
+
+                            <!-- Payment Method -->
+                            <div class="mb-4">
+                                <label for="payment_method" class="form-label">Payment Method</label>
+                                <select class="form-control form-control-lg" id="payment_method" name="payment_method" required>
+                                    <option value="cash">CASH</option>
+                                    <option value="transfer">BANK TRANSFER</option>
+                                    <option value="card">CARD (POS)</option>
+                                </select>
+                            </div>
+
+                            <!-- Amount Confirmation -->
+                            <div class="mb-4">
+                                <label for="direct_amount" class="form-label">Amount to Pay (₦)</label>
+                                <input type="number" class="form-control form-control-lg"
+                                       id="direct_amount" name="direct_amount"
+                                       step="0.01" readonly required>
+                                <small class="text-muted">This amount will be paid via <span id="method-text">CASH</span></small>
+                            </div>
+
+                            <!-- Submit Buttons -->
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" onclick="goBackToDetails()">
+                                    <i class="fas fa-arrow-left"></i> Back
+                                </button>
+                                <button type="submit" class="btn btn-success btn-lg" id="submit-payment">
+                                    <i class="fas fa-check-circle"></i> Complete Payment
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="success-modal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="successModalLabel"><i class="fas fa-check-circle"></i> Success</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <div class="success-icon mb-3">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <p class="lead" id="success-message-text"></p>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-primary" id="modal-ok-button">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -384,163 +384,56 @@
 <script>
     let patientData = null;
     let pendingPayments = null;
-    // UPDATED: Added 'services' to track selected service/item transactions
     let selectedItems = {
         drugs: [],
         labs: [],
         scans: [],
-        services: [] // NEW
+        services: []
     };
+    let walletBalance = 0;
 
-    // Server-provided auto-open values (if any)
-{% if patient %}
-  const AUTO_PATIENT_ID = "{{ patient.id }}";
-  const AUTO_PATIENT_CARD = "{{ patient.card_number|escapejs }}";
-  const AUTO_PATIENT_NAME = "{{ patient.full_name|escapejs }}";
-  const AUTO_PATIENT_PHONE = "{{ patient.phone|escapejs }}";
-  const AUTO_PATIENT_AGE = "{{ patient.age|default:''|escapejs }}";
-  const AUTO_PATIENT_GENDER = "{{ patient.gender|default:''|escapejs }}";
-  const SERVER_WALLET_BALANCE = {{ patient.wallet.amount|default:0 }};
-{% else %}
-  const AUTO_PATIENT_ID = null;
-  const AUTO_PATIENT_CARD = null;
-  const AUTO_PATIENT_NAME = null;
-  const AUTO_PATIENT_PHONE = null;
-  const AUTO_PATIENT_AGE = null;
-  const AUTO_PATIENT_GENDER = null;
-  const SERVER_WALLET_BALANCE = 0;
-{% endif %}
-
-{% if amount %}
-  const AUTO_AMOUNT = {{ amount }};
-{% else %}
-  const AUTO_AMOUNT = null;
-{% endif %}
-
-{% if redirect %}
-  const AUTO_REDIRECT = "{{ redirect|escapejs }}";
-{% else %}
-  const AUTO_REDIRECT = null;
-{% endif %}
-
-
-// Populate patient info UI using server-provided values (no AJAX)
-function populatePatientFromServer() {
-    if (!AUTO_PATIENT_ID) return;
-
-    // build a minimal object compatible with displayPatientInfo expectations
-    const serverData = {
-        patient: {
-            id: AUTO_PATIENT_ID,
-            full_name: AUTO_PATIENT_NAME || 'Unknown',
-            card_number: AUTO_PATIENT_CARD || '',
-            phone: AUTO_PATIENT_PHONE || '',
-            age: AUTO_PATIENT_AGE || '',
-            gender: AUTO_PATIENT_GENDER || ''
-        },
-        wallet: {
-            // we'll format on the client
-            balance: parseFloat(SERVER_WALLET_BALANCE || 0),
-            formatted_balance: formatCurrency(parseFloat(SERVER_WALLET_BALANCE || 0))
-        },
-        insurance: {
-            has_insurance: false,
-            hmo_name: '',
-            plan_name: ''
-        }
-    };
-
-    // Use the same DOM targets as displayPatientInfo
-    $('#patient-info').html(`
-        <h5>${serverData.patient.full_name}</h5>
-        <p class="mb-1"><strong>Card Number:</strong> ${serverData.patient.card_number}</p>
-        <p class="mb-1"><strong>Phone:</strong> ${serverData.patient.phone}</p>
-        <p class="mb-1"><strong>Age:</strong> ${serverData.patient.age}</p>
-        <p class="mb-1"><strong>Gender:</strong> ${serverData.patient.gender}</p>
-    `);
-
-    $('#wallet-balance').text(serverData.wallet.formatted_balance);
-
-    // set hidden field patient id
-    $('#patient_id').val(serverData.patient.id);
-    $('#fund_and_pay').attr('checked', true);
-    $('#payment-type-section').removeClass('hidden');
-    $('#payment_type').val(AUTO_REDIRECT);
-
-}
-
-
-    // NOTE: Replace this with the actual URL for your funding process view
-    const processFundingUrl = "{% url 'process_funding' %}";
+    const processPaymentUrl = "{% url 'process_direct_payment' %}";
 
     $(document).ready(function() {
-        // If the view provided a patient, skip verification and show the funding form directly
-if (AUTO_PATIENT_ID) {
-    // 1. Populate patient info from server data (no need to click Verify)
-    populatePatientFromServer();
-
-    // 2. Update step indicators: mark step1 & step2 completed, step3 active
-    $('#step-1').removeClass('active').addClass('completed');
-    $('#step-2').removeClass('active').addClass('completed');
-    $('#step-3').addClass('active');
-
-    // 3. Hide verification and details sections, show funding section
-    $('#patient-verification-section, #patient-details-section').addClass('hidden');
-    $('#funding-section').removeClass('hidden');
-
-    // 4. If an amount was passed, prefill funding amount + suggested amount
-    if (AUTO_AMOUNT && parseFloat(AUTO_AMOUNT) > 0) {
-        const amt = parseFloat(AUTO_AMOUNT);
-        $('#funding_amount').val(amt.toFixed(2));
-        $('#suggested-amount').text(formatCurrency(amt));
-    } else {
-        // If you want to default suggested amount to 0 or to pending total, keep as-is
-    }
-
-    // Optional: scroll to funding form (UX)
-    setTimeout(function() {
-        document.getElementById('funding_amount').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 200);
-}
-
+        // Auto-open logic if patient is provided
+        {% if patient %}
+        const AUTO_PATIENT_ID = "{{ patient.id }}";
+        walletBalance = {{ patient.wallet.amount|default:0 }};
+        populatePatientFromServer();
+        $('#step-1').removeClass('active').addClass('completed');
+        $('#step-2').addClass('active');
+        $('#patient-verification-section').addClass('hidden');
+        $('#patient-details-section').removeClass('hidden');
+        {% endif %}
 
         // Patient verification form
         $('#patient-verification-form').on('submit', function(e) {
             e.preventDefault();
             const cardNumber = $('#card_number').val().trim();
-
             if (!cardNumber) {
                 alert('Please enter a card number');
                 return;
             }
-
             verifyPatient(cardNumber);
         });
 
-        // Funding form
-        $('#funding-form').on('submit', function(e) {
+        // Payment form
+        $('#payment-form').on('submit', function(e) {
             e.preventDefault();
-            processFunding();
+            processPayment();
         });
 
-        // Action type change
-        $('input[name="action_type"]').on('change', function() {
-            if ($(this).val() === 'fund_and_pay') {
-                $('#payment-type-section').removeClass('hidden');
-                $('#submit-funding').html('<i class="fas fa-credit-card"></i> Fund & Pay');
-            } else {
-                $('#payment-type-section').addClass('hidden');
-                $('#submit-funding').html('<i class="fas fa-credit-card"></i> Fund Only');
-            }
+        // Wallet checkbox change
+        $('#use_wallet').on('change', function() {
+            updatePaymentBreakdown();
         });
 
-        // Funding amount input
-        $('#funding_amount').on('input', function() {
-            updateFundingDisplay();
+        // Payment method change
+        $('#payment_method').on('change', function() {
+            $('#method-text').text($(this).find('option:selected').text());
         });
     });
 
-    // Helper function to format currency client-side
     function formatCurrency(amount) {
         if (typeof amount === 'number') {
             return '₦' + amount.toLocaleString(undefined, {
@@ -552,18 +445,21 @@ if (AUTO_PATIENT_ID) {
     }
 
     function verifyPatient(cardNumber) {
-        // Use inline loading messages instead of modals if no modal is defined
-        $('#patient-verification-form button').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Verifying...');
+        $('#patient-verification-form button').prop('disabled', true)
+            .html('<span class="spinner-border spinner-border-sm"></span> Verifying...');
 
         $.ajax({
             url: "{% url 'finance_verify_patient_ajax' %}",
             method: 'GET',
             data: { card_number: cardNumber },
             success: function(response) {
-                $('#patient-verification-form button').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
+                $('#patient-verification-form button').prop('disabled', false)
+                    .html('<i class="fas fa-search"></i> Verify Patient');
+
                 if (response.success) {
                     patientData = response.patient;
                     pendingPayments = response.pending_payments;
+                    walletBalance = response.wallet.balance;
 
                     displayPatientInfo(response);
                     displayPendingPayments(response.pending_payments);
@@ -574,12 +470,12 @@ if (AUTO_PATIENT_ID) {
                     $('#patient-verification-section').addClass('hidden');
                     $('#patient-details-section').removeClass('hidden');
 
-                    // Set patient ID for funding form
                     $('#patient_id').val(response.patient.id);
                 }
             },
             error: function(xhr) {
-                $('#patient-verification-form button').prop('disabled', false).html('<i class="fas fa-search"></i> Verify Patient');
+                $('#patient-verification-form button').prop('disabled', false)
+                    .html('<i class="fas fa-search"></i> Verify Patient');
                 const response = xhr.responseJSON;
                 alert(response.error || 'Error verifying patient');
             }
@@ -619,46 +515,41 @@ if (AUTO_PATIENT_ID) {
     function displayPendingPayments(payments) {
         let html = '';
 
-    // NEW: Check for pending claims across all categories
-    let pendingClaimsCount = 0;
-    ['drugs', 'labs', 'scans', 'services'].forEach(category => {
-        if (payments[category] && payments[category].items) {
-            pendingClaimsCount += payments[category].items.filter(
-                item => item.has_pending_claim
-            ).length;
+        // Check for pending claims
+        let pendingClaimsCount = 0;
+        ['drugs', 'labs', 'scans', 'services'].forEach(category => {
+            if (payments[category] && payments[category].items) {
+                pendingClaimsCount += payments[category].items.filter(
+                    item => item.has_pending_claim
+                ).length;
+            }
+        });
+
+        if (pendingClaimsCount > 0) {
+            html += `
+                <div class="pending-claim-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>⚠️ ${pendingClaimsCount} Pending Insurance Claim(s)</strong>
+                    <p class="mb-0 mt-1">
+                        <small>Some items have pending insurance claims. Patient will pay full amount
+                        until claims are approved.</small>
+                    </p>
+                </div>
+            `;
         }
-    });
 
-    // Show warning if pending claims exist
-    if (pendingClaimsCount > 0) {
-        html += `
-            <div class="pending-claim-warning">
-                <i class="fas fa-exclamation-triangle"></i>
-                <strong>⚠️ ${pendingClaimsCount} Pending Insurance Claim(s)</strong>
-                <p class="mb-0 mt-1">
-                    <small>Some items have pending insurance claims. Patient will pay full amount
-                    until claims are approved. Claims marked in <span class="text-warning">yellow</span>.</small>
-                </p>
-            </div>
-        `;
-    }
-
-        // Drugs Section
         if (payments.drugs.count > 0) {
             html += createServiceSection('Medications', 'drugs', payments.drugs, 'fas fa-pills', '#17a2b8');
         }
 
-        // Labs Section
         if (payments.labs.count > 0) {
             html += createServiceSection('Laboratory Tests', 'labs', payments.labs, 'fas fa-vial', '#28a745');
         }
 
-        // Scans Section
         if (payments.scans.count > 0) {
             html += createServiceSection('Scans/Radiology', 'scans', payments.scans, 'fas fa-x-ray', '#dc3545');
         }
 
-        // NEW: Services Section
         if (payments.services.count > 0) {
             html += createServiceSection('Services & Items', 'services', payments.services, 'fas fa-hand-holding-medical', '#fd7e14');
         }
@@ -674,17 +565,16 @@ if (AUTO_PATIENT_ID) {
         }
 
         $('#pending-payments-section').html(html);
-        updateSelectedTotal();
+        updateSelectedItems();
     }
 
     function createServiceSection(title, type, data, icon, color) {
         let itemsHtml = '';
 
         data.items.forEach(item => {
-            // Note: Service/Item transactions may not have an 'order_number' field, but the unique ID works as a reference.
             const orderRef = item.order_number || `Trans. ID: ${item.id}`;
             const insuranceDiscount = item.base_amount - item.patient_amount;
-            const hasDiscount = insuranceDiscount > 0.01; // Use 0.01 for decimal comparison safety
+            const hasDiscount = insuranceDiscount > 0.01;
 
             itemsHtml += `
                 <div class="item-row">
@@ -706,10 +596,6 @@ if (AUTO_PATIENT_ID) {
                             ` : item.has_pending_claim ? `
                                 <br><small class="text-warning">
                                     <i class="fas fa-clock"></i> Pending Claim: ${item.pending_claim_number}
-                                </small>
-                            ` : hasDiscount ? `
-                                <br><small class="text-muted">
-                                    <i class="fas fa-info-circle"></i> No claim
                                 </small>
                             ` : ''}
                         </label>
@@ -747,151 +633,181 @@ if (AUTO_PATIENT_ID) {
         `;
     }
 
-    // Event delegation for checkboxes
     $(document).on('change', '.item-checkbox', function() {
         updateSelectedItems();
-        updateSelectedTotal();
     });
 
     function toggleAllItems(type) {
         const checkboxes = $(`.item-checkbox[data-type="${type}"]`);
         const allChecked = checkboxes.filter(':checked').length === checkboxes.length;
-
         checkboxes.prop('checked', !allChecked);
         updateSelectedItems();
-        updateSelectedTotal();
     }
 
     function updateSelectedItems() {
-        // UPDATED: Added 'services' to clear and populate
         selectedItems = { drugs: [], labs: [], scans: [], services: [] };
+        let total = 0;
 
         $('.item-checkbox:checked').each(function() {
             const type = $(this).data('type');
             const id = $(this).val();
+            const amount = parseFloat($(this).data('amount'));
 
-            if (selectedItems.hasOwnProperty(type)) { // Use hasOwnProperty for safety
+            if (selectedItems.hasOwnProperty(type)) {
                 selectedItems[type].push(id);
             }
+            total += amount;
         });
+
+        return total;
     }
 
-    function updateSelectedTotal() {
-        let total = 0;
+    function proceedToPayment() {
+        const totalAmount = updateSelectedItems();
 
-        $('.item-checkbox:checked').each(function() {
-            total += parseFloat($(this).data('amount'));
-        });
-
-        $('#selected-total').text(formatCurrency(total));
-        $('#suggested-amount').text(formatCurrency(total));
-
-        // Update funding amount suggestion
-        if (total > 0) {
-            $('#funding_amount').attr('placeholder', `Suggested: ${formatCurrency(total).replace('₦','')}`);
+        if (totalAmount === 0) {
+            alert('Please select at least one item to pay for');
+            return;
         }
-    }
-
-    function proceedToFunding() {
-        updateSelectedItems();
 
         // Move to step 3
         $('#step-2').removeClass('active').addClass('completed');
         $('#step-3').addClass('active');
         $('#patient-details-section').addClass('hidden');
-        $('#funding-section').removeClass('hidden');
+        $('#payment-section').removeClass('hidden');
 
-        // Set suggested funding amount
-        const totalText = $('#selected-total').text().replace(/[^\d.-]/g, '');
-        const total = parseFloat(totalText);
+        // Update payment breakdown
+        $('#total-amount-display').text(formatCurrency(totalAmount));
+        updatePaymentBreakdown();
+    }
 
-        if (total > 0) {
-            $('#funding_amount').val(total.toFixed(2));
+    function updatePaymentBreakdown() {
+        const totalAmount = parseFloat($('#total-amount-display').text().replace(/[^\d.-]/g, ''));
+        const useWallet = $('#use_wallet').is(':checked');
+
+        let walletUsed = 0;
+        if (useWallet && walletBalance > 0) {
+            walletUsed = Math.min(walletBalance, totalAmount);
+        }
+
+        const remaining = totalAmount - walletUsed;
+
+        $('#wallet-amount-display').text('- ' + formatCurrency(walletUsed));
+        $('#remaining-amount-display').text(formatCurrency(remaining));
+        $('#direct_amount').val(remaining.toFixed(2));
+
+        // Show/hide wallet row based on balance
+        if (walletBalance > 0) {
+            $('#wallet-usage-row').show();
+        } else {
+            $('#wallet-usage-row').hide();
+            $('#use_wallet').prop('checked', false);
         }
     }
 
     function goBackToDetails() {
         $('#step-3').removeClass('active');
         $('#step-2').addClass('active').removeClass('completed');
-        $('#funding-section').addClass('hidden');
+        $('#payment-section').addClass('hidden');
         $('#patient-details-section').removeClass('hidden');
     }
 
-    function processFunding() {
-        const formData = new FormData($('#funding-form')[0]);
+    function goToWalletFunding() {
+        const patientId = $('#patient_id').val();
+        if (patientId) {
+            window.location.href = "{% url 'wallet_funding_only' %}?patient=" + patientId;
+        }
+    }
 
-        // Add all selected item IDs to the form data
+    function processPayment() {
+        const formData = new FormData($('#payment-form')[0]);
+
+        // Add selected items
         Object.keys(selectedItems).forEach(type => {
-            selectedItems[type].forEach(id => formData.append('selected_items[]', id));
-            // Also append the type, so the backend knows which model to look up
-            selectedItems[type].forEach(id => formData.append('selected_types[]', type));
+            selectedItems[type].forEach(id => {
+                formData.append('selected_items[]', id);
+                formData.append('selected_types[]', type);
+            });
         });
 
-        // Ensure you have logic in your process_funding view to handle multiple selected_types and selected_items
+        // Add wallet usage flag
+        formData.set('use_wallet', $('#use_wallet').is(':checked'));
 
-        // Consider showing a spinner on the submit button
-        $('#submit-funding').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...');
+        $('#submit-payment').prop('disabled', true)
+            .html('<span class="spinner-border spinner-border-sm"></span> Processing...');
 
         $.ajax({
-            url: processFundingUrl, // Use the defined constant
+            url: processPaymentUrl,
             method: 'POST',
             data: formData,
             processData: false,
             contentType: false,
             success: function(response) {
                 if (response.success) {
-                    // 1. Populate the modal with the success message
                     $('#success-message-text').text(response.message);
-
-                    // 2. Create and show the Bootstrap modal
                     const successModal = new bootstrap.Modal(document.getElementById('success-modal'));
                     successModal.show();
 
-                    // 3. Handle the redirect when the 'OK' button is clicked
                     $('#modal-ok-button').off('click').on('click', function() {
                         if (response.redirect_url) {
                             window.location.href = response.redirect_url;
                         } else {
-                            // If no redirect, just hide the modal and reset
                             successModal.hide();
                             resetForm();
                         }
                     });
-
                 }
             },
             error: function(xhr) {
                 const response = xhr.responseJSON;
-                alert(response.error || 'Error processing funding');
+                alert(response.error || 'Error processing payment');
             },
             complete: function() {
-                // Re-enable the submit button
-                $('#submit-funding').prop('disabled', false).html('<i class="fas fa-credit-card"></i> Process Funding');
+                $('#submit-payment').prop('disabled', false)
+                    .html('<i class="fas fa-check-circle"></i> Complete Payment');
             }
         });
     }
 
-    function updateFundingDisplay() {
-        // This function seems unused or needs complex logic for new balance calculation.
-        // Keeping it simple for now, focusing on the core funding process.
-    }
-
     function resetForm() {
         $('#patient-verification-form')[0].reset();
-        $('#funding-form')[0].reset();
-
-        // Reset steps
+        $('#payment-form')[0].reset();
         $('.step').removeClass('active completed');
         $('#step-1').addClass('active');
-
-        // Show initial section
-        $('#patient-details-section, #funding-section').addClass('hidden');
+        $('#patient-details-section, #payment-section').addClass('hidden');
         $('#patient-verification-section').removeClass('hidden');
-
-        // Reset data
         patientData = null;
         pendingPayments = null;
         selectedItems = { drugs: [], labs: [], scans: [], services: [] };
+    }
+
+    // Auto-populate function for server-provided patient
+    function populatePatientFromServer() {
+        {% if patient %}
+        const serverData = {
+            patient: {
+                id: "{{ patient.id }}",
+                full_name: "{{ patient.full_name|escapejs }}",
+                card_number: "{{ patient.card_number|escapejs }}",
+                phone: "{{ patient.phone|escapejs }}",
+                age: "{{ patient.age|default:''|escapejs }}",
+                gender: "{{ patient.gender|default:''|escapejs }}"
+            },
+            wallet: {
+                balance: {{ patient.wallet.amount|default:0 }},
+                formatted_balance: formatCurrency({{ patient.wallet.amount|default:0 }})
+            },
+            insurance: {
+                has_insurance: false
+            }
+        };
+
+        displayPatientInfo(serverData);
+        $('#patient_id').val(serverData.patient.id);
+
+        // Fetch pending payments
+        verifyPatient("{{ patient.card_number|escapejs }}");
+        {% endif %}
     }
 </script>
 

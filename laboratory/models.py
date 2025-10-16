@@ -210,6 +210,11 @@ class LabTestOrderModel(models.Model):
 
         super().save(*args, **kwargs)
 
+    @property
+    def total_amount(self):
+        """Return the amount charged for this lab test"""
+        return self.amount_charged or Decimal('0.00')
+
 
 class ExternalLabTestOrder(models.Model):
     """Lab tests performed externally (template.is_active=False)"""

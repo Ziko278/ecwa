@@ -125,9 +125,9 @@
                         {% if scan_order.status == 'completed' and scan_order.result %}
                             <div class="mt-3">
                                 {% with result=scan_order.result %}
-                                    {% if result.findings %}<p class="mb-1"><strong>Findings:</strong> {{ result.findings|linebreaksbr }}</p>{% endif %}
-                                    {% if result.impression %}<p class="mb-1"><strong>Impression:</strong> {{ result.impression|linebreaksbr }}</p>{% endif %}
-                                    {% if result.recommendations %}<p class="mb-1"><strong>Recommendations:</strong> {{ result.recommendations|linebreaksbr }}</p>{% endif %}
+                                    {% if result.findings %}<p class="mb-1"><strong>Findings:</strong> {{ result.findings|safe }}</p>{% endif %}
+                                    {% if result.impression %}<p class="mb-1"><strong>Impression:</strong> {{ result.impression|safe }}</p>{% endif %}
+                                    {% if result.recommendations %}<p class="mb-1"><strong>Recommendations:</strong> {{ result.recommendations|safe }}</p>{% endif %}
                                     
                                     {% if result.images.all %}
                                         <p class="mt-2 mb-1"><strong>Images:</strong></p>

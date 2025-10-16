@@ -39,7 +39,7 @@
                             <option value="all">All Time</option>
                         </select>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label class="form-label">Status</label>
                         <select class="form-control" name="status" onchange="applyFilters()">
@@ -49,15 +49,15 @@
                             <option value="paused">Paused</option>
                         </select>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label class="form-label">Search Patient</label>
                         <input type="text" class="form-control" name="patient_search" placeholder="Patient name or ID" onkeyup="applyFilters()">
                     </div>
                 </form>
-                
+
                 <hr class="my-4">
-                
+
                 <h5 class="card-title">Statistics</h5>
                 <div class="stats">
                     <div class="row">
@@ -106,7 +106,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Consultation List -->
     <div class="col-lg-9 grid-margin stretch-card">
         <div class="card">
@@ -116,7 +116,7 @@
                         <i class="bi bi-download"></i> Export
                     </button>
                 </h5>
-                
+
                 <div class="table-responsive">
                     <table class="table table-hover" id="consultationsTable">
                         <thead class="table-light">
@@ -211,7 +211,7 @@
                         </tbody>
                     </table>
                 </div>
-                
+
                 <!-- Pagination -->
                 {% if consultations.has_other_pages %}
                 <nav aria-label="Consultation pagination" class="mt-3">
@@ -224,13 +224,13 @@
                                 <a class="page-link" href="?page={{ consultations.previous_page_number }}{% if request.GET.date_range %}&date_range={{ request.GET.date_range }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Previous</a>
                             </li>
                         {% endif %}
-                        
+
                         <li class="page-item active">
                             <span class="page-link">
                                 Page {{ consultations.number }} of {{ consultations.paginator.num_pages }}
                             </span>
                         </li>
-                        
+
                         {% if consultations.has_next %}
                             <li class="page-item">
                                 <a class="page-link" href="?page={{ consultations.next_page_number }}{% if request.GET.date_range %}&date_range={{ request.GET.date_range }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Next</a>
@@ -290,13 +290,13 @@ function applyFilters() {
     const form = document.getElementById('filterForm');
     const formData = new FormData(form);
     const params = new URLSearchParams();
-    
+
     for (let [key, value] of formData.entries()) {
         if (value) {
             params.append(key, value);
         }
     }
-    
+
     // Update URL and reload
     window.location.search = params.toString();
 }
@@ -305,7 +305,7 @@ function applyFilters() {
 function viewConsultation(consultationId) {
     currentConsultationId = consultationId;
     const modal = new bootstrap.Modal(document.getElementById('consultationDetailModal'));
-    
+
     // Show loading
     document.getElementById('consultationDetailContent').innerHTML = `
         <div class="text-center py-4">
@@ -315,9 +315,9 @@ function viewConsultation(consultationId) {
             <p class="mt-2">Loading consultation details...</p>
         </div>
     `;
-    
+
     modal.show();
-    
+
     // Load consultation details
     fetch(`/portal/consultation/ajax/consultation/${consultationId}/details/`)
     .then(response => response.json())
@@ -398,15 +398,15 @@ function exportHistory() {
     const form = document.getElementById('filterForm');
     const formData = new FormData(form);
     const params = new URLSearchParams();
-    
+
     for (let [key, value] of formData.entries()) {
         if (value) {
             params.append(key, value);
         }
     }
-    
+
     params.append('export', 'csv');
-    
+
     // Create download link
     const link = document.createElement('a');
     link.href = `/portal/consultation/consultations/history/?${params.toString()}`;

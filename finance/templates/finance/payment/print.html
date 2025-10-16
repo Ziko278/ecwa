@@ -1,0 +1,436 @@
+{% load humanize %}
+{% load transaction_filters %}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt - {{ transaction.transaction_id }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            padding: 20px;
+        }
+
+        .receipt {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 2px solid #000;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            border-bottom: 2px dashed #000;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 11px;
+            margin: 2px 0;
+        }
+
+        .section {
+            margin-bottom: 15px;
+        }
+
+        .section-title {
+            font-weight: bold;
+            font-size: 13px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #000;
+            padding-bottom: 3px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+        }
+
+        .info-label {
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+
+        table th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: left;
+            padding: 8px 5px;
+            border: 1px solid #000;
+            font-size: 11px;
+        }
+
+        table td {
+            padding: 6px 5px;
+            border: 1px solid #000;
+            font-size: 11px;
+        }
+
+        .subtotal-row {
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }
+
+        .total-section {
+            border-top: 2px solid #000;
+            margin-top: 15px;
+            padding-top: 10px;
+        }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+
+        .grand-total {
+            font-size: 16px;
+            border-top: 2px solid #000;
+            padding-top: 8px;
+            margin-top: 8px;
+        }
+
+        .footer {
+            margin-top: 30px;
+            border-top: 2px dashed #000;
+            padding-top: 15px;
+            text-align: center;
+        }
+
+        .footer p {
+            margin: 3px 0;
+            font-size: 11px;
+        }
+
+        .signature-section {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .signature-box {
+            width: 45%;
+            text-align: center;
+        }
+
+        .signature-line {
+            border-top: 1px solid #000;
+            margin-top: 40px;
+            padding-top: 5px;
+        }
+
+        @media print {
+            body {
+                padding: 0;
+            }
+
+            .receipt {
+                border: none;
+            }
+
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="receipt">
+        <!-- Header -->
+        <div class="header">
+            <h1>{{ hospital_info.name|upper }}</h1>
+            <p>{{ hospital_info.address }}</p>
+            <p>Tel: {{ hospital_info.phone }} | Email: {{ hospital_info.email }}</p>
+            <p style="margin-top: 10px; font-weight: bold; font-size: 14px;">PAYMENT RECEIPT</p>
+        </div>
+
+        <!-- Transaction Info -->
+        <div class="section">
+            <div class="section-title">Transaction Details</div>
+            <div class="info-row">
+                <span class="info-label">Receipt No:</span>
+                <span>{{ transaction.transaction_id }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Date:</span>
+                <span>{{ transaction.date|date:"F d, Y" }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Time:</span>
+                <span>{{ transaction.created_at|date:"h:i A" }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Received By:</span>
+                <span>{{ transaction.received_by.user_staff_profile.staff|default:"SYSTEM"|upper }}</span>
+            </div>
+        </div>
+
+        <!-- Patient Info -->
+        {% if transaction.patient %}
+        <div class="section">
+            <div class="section-title">Patient Information</div>
+            <div class="info-row">
+                <span class="info-label">Name:</span>
+                <span>{{ transaction.patient|upper }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Card Number:</span>
+                <span>{{ transaction.patient.card_number }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Phone:</span>
+                <span>{{ transaction.patient.phone_number|default:"N/A" }}</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Payment Breakdown -->
+        {% if transaction.wallet_amount_used > 0 or transaction.direct_payment_amount > 0 %}
+        <div class="section">
+            <div class="section-title">Payment Method</div>
+            {% if transaction.wallet_amount_used > 0 %}
+            <div class="info-row">
+                <span class="info-label">From Wallet:</span>
+                <span>₦{{ transaction.wallet_amount_used|floatformat:2|intcomma }}</span>
+            </div>
+            {% endif %}
+            {% if transaction.direct_payment_amount > 0 %}
+            <div class="info-row">
+                <span class="info-label">{{ transaction.payment_method|upper }}:</span>
+                <span>₦{{ transaction.direct_payment_amount|floatformat:2|intcomma }}</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Items Paid (for parent transactions) -->
+        {% if is_parent %}
+        <div class="section">
+            <div class="section-title">Items Paid</div>
+
+            {% with drugs=transaction.child_transactions.all|filter_by_type:'drug_payment' %}
+            {% if drugs %}
+            <p style="font-weight: bold; margin: 10px 0 5px 0;">MEDICATIONS ({{ drugs|length }})</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="5%">#</th>
+                        <th width="50%">Drug Name</th>
+                        <th width="15%">Order No.</th>
+                        <th width="10%">Qty</th>
+                        <th width="20%">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for drug_trans in drugs %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ drug_trans.drug_order.drug }}</td>
+                        <td>{{ drug_trans.drug_order.order_number }}</td>
+                        <td>{{ drug_trans.drug_order.quantity_ordered|floatformat:0 }}</td>
+                        <td>₦{{ drug_trans.amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="subtotal-row">
+                        <td colspan="4" style="text-align: right;">Subtotal:</td>
+                        <td>₦{{ drugs|sum_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            {% endif %}
+            {% endwith %}
+
+            {% with labs=transaction.child_transactions.all|filter_by_type:'lab_payment' %}
+            {% if labs %}
+            <p style="font-weight: bold; margin: 10px 0 5px 0;">LABORATORY TESTS ({{ labs|length }})</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="5%">#</th>
+                        <th width="60%">Test Name</th>
+                        <th width="15%">Order No.</th>
+                        <th width="20%">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lab_trans in labs %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ lab_trans.lab_structure.template.name }}</td>
+                        <td>{{ lab_trans.lab_structure.order_number }}</td>
+                        <td>₦{{ lab_trans.amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="subtotal-row">
+                        <td colspan="3" style="text-align: right;">Subtotal:</td>
+                        <td>₦{{ labs|sum_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            {% endif %}
+            {% endwith %}
+
+            {% with scans=transaction.child_transactions.all|filter_by_type:'scan_payment' %}
+            {% if scans %}
+            <p style="font-weight: bold; margin: 10px 0 5px 0;">SCANS/RADIOLOGY ({{ scans|length }})</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="5%">#</th>
+                        <th width="60%">Scan Name</th>
+                        <th width="15%">Order No.</th>
+                        <th width="20%">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for scan_trans in scans %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ scan_trans.scan_order.template.name }}</td>
+                        <td>{{ scan_trans.scan_order.order_number }}</td>
+                        <td>₦{{ scan_trans.amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="subtotal-row">
+                        <td colspan="3" style="text-align: right;">Subtotal:</td>
+                        <td>₦{{ scans|sum_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            {% endif %}
+            {% endwith %}
+
+            {% with services=transaction.child_transactions.all|filter_by_type:'service' %}
+            {% if services %}
+            <p style="font-weight: bold; margin: 10px 0 5px 0;">SERVICES & ITEMS ({{ services|length }})</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="5%">#</th>
+                        <th width="50%">Service Name</th>
+                        <th width="15%">Ref No.</th>
+                        <th width="10%">Qty</th>
+                        <th width="20%">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for svc_trans in services %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>
+                            {% if svc_trans.service.service %}
+                                {{ svc_trans.service.service.name }}
+                            {% elif svc_trans.service.service_item %}
+                                {{ svc_trans.service.service_item.name }}
+                            {% else %}
+                                Service
+                            {% endif %}
+                        </td>
+                        <td>{{ svc_trans.service.id }}</td>
+                        <td>{{ svc_trans.service.quantity|floatformat:0 }}</td>
+                        <td>₦{{ svc_trans.amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="subtotal-row">
+                        <td colspan="4" style="text-align: right;">Subtotal:</td>
+                        <td>₦{{ services|sum_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            {% endif %}
+            {% endwith %}
+        </div>
+        {% elif is_standalone %}
+        <!-- Single item for standalone transactions -->
+        <div class="section">
+            <div class="section-title">Service Details</div>
+            <div class="info-row">
+                <span class="info-label">Type:</span>
+                <span>{{ transaction.get_transaction_type_display }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Amount:</span>
+                <span>₦{{ transaction.amount|floatformat:2|intcomma }}</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Total Section -->
+        <div class="total-section">
+            <div class="total-row grand-total">
+                <span>TOTAL AMOUNT PAID:</span>
+                <span>₦{{ transaction.amount|floatformat:2|intcomma }}</span>
+            </div>
+
+            {% if transaction.patient %}
+            <div class="info-row" style="margin-top: 10px;">
+                <span class="info-label">Wallet Balance After Payment:</span>
+                <span>₦{{ transaction.new_balance|floatformat:2|intcomma }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Signature Section -->
+        <div class="signature-section">
+            <div class="signature-box">
+                <div class="signature-line">
+                    Patient/Representative Signature
+                </div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">
+                    Cashier Signature
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>Thank you for choosing {{ hospital_info.name }}!</strong></p>
+            <p>This is a computer-generated receipt and requires no signature.</p>
+            <p>For inquiries, please contact: {{ hospital_info.phone }}</p>
+        </div>
+    </div>
+
+    <!-- Print Button (hidden on print) -->
+    <div class="no-print" style="text-align: center; margin-top: 20px;">
+        <button onclick="window.print()" style="padding: 10px 30px; font-size: 14px; cursor: pointer;">
+            Print Receipt
+        </button>
+        <button onclick="window.close()" style="padding: 10px 30px; font-size: 14px; cursor: pointer; margin-left: 10px;">
+            Close
+        </button>
+    </div>
+
+    <script>
+        // Auto-print on load (optional)
+        // window.onload = function() { window.print(); }
+    </script>
+</body>
+</html>

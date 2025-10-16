@@ -1,12 +1,52 @@
 {% extends 'admin_site/layout.html' %}
+{% load transaction_filters %}
+{% load humanize %}
+
 {% block 'main' %}
+<style>
+    .items-table {
+        font-size: 0.95rem;
+    }
+    .items-table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
+    .section-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 5px;
+        margin-top: 20px;
+        margin-bottom: 15px;
+    }
+    .subtotal-row {
+        background-color: #e9ecef;
+        font-weight: bold;
+    }
+    .grand-total-card {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 20px;
+    }
+    .payment-breakdown-box {
+        border: 2px solid #17a2b8;
+        border-radius: 8px;
+        padding: 15px;
+        background: #f8f9fa;
+        margin-bottom: 20px;
+    }
+</style>
+
 <div class="col-12">
     <div class="card">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h4 class="card-title mb-0">Transaction Details</h4>
                 <div>
-                    <a href="#" class="btn btn-success me-2"> <i class="bi bi-printer"></i> Print Receipt
+                    <a href="{% url 'print_receipt' transaction.id %}" target="_blank" class="btn btn-success me-2">
+                        <i class="bi bi-printer"></i> Print Receipt
                     </a>
                     <a href="{% url 'patient_transaction_index' %}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> Back to List
@@ -16,31 +56,45 @@
 
             <div class="row">
                 <div class="col-md-8">
+                    <!-- Transaction Information Card -->
                     <div class="card mb-4">
                         <div class="card-header bg-primary text-white">
-                            <h5 class="card-title mb-0"><i class="bi bi-receipt-cutoff"></i> Transaction Information</h5>
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-receipt-cutoff"></i> Transaction Information
+                            </h5>
                         </div>
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-md-6">
                                     <dl class="row">
                                         <dt class="col-sm-5">Transaction ID:</dt>
-                                        <dd class="col-sm-7"><span class="badge bg-primary fs-6">{{ transaction.transaction_id }}</span></dd>
+                                        <dd class="col-sm-7">
+                                            <span class="badge bg-primary fs-6">{{ transaction.transaction_id }}</span>
+                                        </dd>
 
                                         <dt class="col-sm-5">Type:</dt>
-                                        <dd class="col-sm-7">{{ transaction.get_transaction_type_display }}</dd>
+                                        <dd class="col-sm-7">
+                                            {{ transaction.get_transaction_type_display }}
+                                            {% if transaction.is_parent_transaction %}
+                                                <span class="badge bg-info ms-2">{{ transaction.total_items_count }} items</span>
+                                            {% endif %}
+                                        </dd>
 
                                         <dt class="col-sm-5">Direction:</dt>
                                         <dd class="col-sm-7">
                                             {% if transaction.transaction_direction == 'in' %}
-                                                <span class="text-success fw-bold">CREDIT</span> <i class="bi bi-arrow-down-circle-fill text-success"></i>
+                                                <span class="text-success fw-bold">CREDIT</span>
+                                                <i class="bi bi-arrow-down-circle-fill text-success"></i>
                                             {% else %}
-                                                <span class="text-danger fw-bold">DEBIT</span> <i class="bi bi-arrow-up-circle-fill text-danger"></i>
+                                                <span class="text-danger fw-bold">DEBIT</span>
+                                                <i class="bi bi-arrow-up-circle-fill text-danger"></i>
                                             {% endif %}
                                         </dd>
 
                                         <dt class="col-sm-5">Payment Method:</dt>
-                                        <dd class="col-sm-7"><span class="badge bg-info">{{ transaction.payment_method|default:"N/A"|title }}</span></dd>
+                                        <dd class="col-sm-7">
+                                            <span class="badge bg-info">{{ transaction.payment_method|default:"N/A"|upper }}</span>
+                                        </dd>
                                     </dl>
                                 </div>
                                 <div class="col-md-6">
@@ -50,7 +104,7 @@
 
                                         <dt class="col-sm-5">Time:</dt>
                                         <dd class="col-sm-7">{{ transaction.created_at|date:"H:i A" }}</dd>
-                                        
+
                                         <dt class="col-sm-5">Status:</dt>
                                         <dd class="col-sm-7">
                                             <span class="badge fs-6
@@ -63,17 +117,51 @@
                                         </dd>
 
                                         <dt class="col-sm-5">Processed By:</dt>
-                                        <dd class="col-sm-7">{{ transaction.received_by.user_staff_profile.staff|default:"SYSTEM"|title }}</dd>
+                                        <dd class="col-sm-7">
+                                            {{ transaction.received_by.user_staff_profile.staff|default:"SYSTEM"|title }}
+                                        </dd>
                                     </dl>
                                 </div>
                             </div>
                         </div>
                     </div>
 
+                    <!-- Payment Breakdown (for mixed payments) -->
+                    {% if transaction.wallet_amount_used > 0 or transaction.direct_payment_amount > 0 %}
+                    <div class="payment-breakdown-box">
+                        <h6 class="text-info mb-3">
+                            <i class="bi bi-cash-stack"></i> Payment Breakdown
+                        </h6>
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                {% if transaction.wallet_amount_used > 0 %}
+                                <tr>
+                                    <td><i class="bi bi-wallet2 text-success"></i> From Wallet:</td>
+                                    <td class="text-end"><strong>₦{{ transaction.wallet_amount_used|floatformat:2|intcomma }}</strong></td>
+                                </tr>
+                                {% endif %}
+                                {% if transaction.direct_payment_amount > 0 %}
+                                <tr>
+                                    <td><i class="bi bi-cash text-primary"></i> Direct Payment ({{ transaction.payment_method|upper }}):</td>
+                                    <td class="text-end"><strong>₦{{ transaction.direct_payment_amount|floatformat:2|intcomma }}</strong></td>
+                                </tr>
+                                {% endif %}
+                                <tr class="table-active">
+                                    <td><strong>Total Paid:</strong></td>
+                                    <td class="text-end"><strong>₦{{ transaction.amount|floatformat:2|intcomma }}</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    <!-- Patient Information -->
                     {% if transaction.patient %}
-                    <div class="card">
+                    <div class="card mb-4">
                         <div class="card-header bg-info text-white">
-                            <h5 class="card-title mb-0"><i class="bi bi-person-circle"></i> Patient Information</h5>
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-person-circle"></i> Patient Information
+                            </h5>
                         </div>
                         <div class="card-body">
                             <dl class="row">
@@ -90,46 +178,52 @@
                     </div>
                     {% endif %}
 
-                    {# In templates/finance/transaction/detail.html, after the Patient Information card #}
-                        {% if transaction.other_service %}
-                        <div class="card mt-4">
-                            <div class="card-header bg-secondary text-white">
-                                <h5 class="card-title mb-0"><i class="bi bi-tag-fill"></i> Service Details</h5>
-                            </div>
-                            <div class="card-body">
-                                <dl class="row mb-0">
-                                    <dt class="col-sm-3">Service Name:</dt>
-                                    <dd class="col-sm-9">{{ transaction.other_service.name }}</dd>
-
-                                    <dt class="col-sm-3">Category:</dt>
-                                    <dd class="col-sm-9">{{ transaction.other_service.get_category_display }}</dd>
-                                </dl>
-                            </div>
+                    <!-- Items Paid Section (for parent transactions or child with parent link) -->
+                    {% if transaction.is_parent_transaction %}
+                        {% include 'finance/payment/partials/_items_paid.html' with child_transactions=transaction.child_transactions.all %}
+                    {% elif transaction.is_child_transaction %}
+                        <div class="alert alert-info">
+                            <i class="bi bi-link-45deg"></i> This is part of a larger payment.
+                            <a href="{% url 'transaction_detail' transaction.parent_transaction.id %}" class="alert-link">
+                                View complete payment details ({{ transaction.parent_transaction.transaction_id }})
+                            </a>
                         </div>
-                        {% endif %}
+                        {% include 'finance/payment/partials/_single_item_detail.html' %}
+                    {% else %}
+                        <!-- Standalone transaction (old style) -->
+                        {% include 'finance/payment/partials/_single_item_detail.html' %}
+                    {% endif %}
+
                 </div>
 
+                <!-- Sidebar: Wallet Impact -->
                 <div class="col-md-4">
                     <div class="card">
                         <div class="card-header bg-dark text-white">
-                            <h5 class="card-title mb-0"><i class="bi bi-wallet2"></i> Wallet Impact</h5>
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-wallet2"></i> Wallet Impact
+                            </h5>
                         </div>
                         <div class="card-body text-center">
                             <h6 class="text-muted">Balance Before</h6>
-                            <p class="fs-4">₦{{ transaction.old_balance|floatformat:2 }}</p>
-                            
+                            <p class="fs-4">₦{{ transaction.old_balance|floatformat:2|intcomma }}</p>
+
                             {% if transaction.transaction_direction == 'in' %}
                                 <h6 class="text-success">Amount Credited</h6>
-                                <p class="display-6 text-success fw-bold">+ ₦{{ transaction.amount|floatformat:2 }}</p>
+                                <p class="display-6 text-success fw-bold">
+                                    + ₦{{ transaction.amount|floatformat:2|intcomma }}
+                                </p>
                             {% else %}
                                 <h6 class="text-danger">Amount Debited</h6>
-                                <p class="display-6 text-danger fw-bold">- ₦{{ transaction.amount|floatformat:2 }}</p>
+                                <p class="display-6 text-danger fw-bold">
+                                    - ₦{{ transaction.amount|floatformat:2|intcomma }}
+                                </p>
                             {% endif %}
-                            
+
                             <hr>
-                            
+
                             <h6 class="text-muted">Balance After</h6>
-                            <p class="fs-3 fw-bold">₦{{ transaction.new_balance|floatformat:2 }}</p>
+                            <p class="fs-3 fw-bold">₦{{ transaction.new_balance|floatformat:2|intcomma }}</p>
                         </div>
                     </div>
                 </div>
