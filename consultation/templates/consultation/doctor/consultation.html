@@ -1,6 +1,46 @@
 {% extends 'admin_site/layout.html' %}
 {% block 'main' %}
 {% load static %}
+<style>
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 9999;
+}
+
+.mini-toast {
+    min-width: 250px;
+    margin-bottom: 10px;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.mini-toast.hiding {
+    animation: slideOut 0.3s ease-out forwards;
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+}
+</style>
 
 <div class="row">
     <div class="col-lg-12 grid-margin stretch-card">
@@ -276,7 +316,7 @@
                                 </thead>
                                 <tbody>
                                     {% for prescription in prescriptions %}
-                                    <tr>
+                                    <tr data-prescription-id="{{ prescription.id }}" data-type="internal">
                                         <td>
                                             <strong>{{ prescription.drug.brand_name|default:prescription.drug.generic_name }}</strong>
                                             <small class="text-muted d-block">{{ prescription.drug.formulation }}</small>
@@ -289,10 +329,12 @@
                                             </span>
                                         </td>
                                         <td>
-
-<!--                                            <button class="btn btn-sm btn-outline-danger" onclick="cancelPrescription({{ prescription.id }})">-->
-<!--                                                <i class="bi bi-x"></i>-->
-<!--                                            </button>-->
+                                            <button class="btn btn-sm btn-warning" onclick="editDrugPrescription({{ prescription.id }}, {{ prescription.drug.id }}, '{{ prescription.dosage_instructions|escapejs }}', '{{ prescription.duration|escapejs }}', {{ prescription.quantity_ordered }}, '{{ prescription.notes|escapejs }}')" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDrugPrescription({{ prescription.id }})" title="Delete">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
                                         </td>
                                     </tr>
                                     {% empty %}
@@ -310,20 +352,29 @@
                             <h6 class="mt-4 mb-3">Unavailable / External Prescriptions</h6>
                             <div class="list-group">
                                 {% for rx in external_prescriptions %}
-                                <div class="list-group-item">
-                                    <div class="d-flex w-100 justify-content-between">
-                                        <h5 class="mb-1">{{ rx.drug_name|title }}</h5>
-                                        <small class="text-muted">{{ rx.ordered_at|date:"M d, Y" }}</small>
+                                <div class="list-group-item" data-external-id="{{ rx.id }}">
+                                    <div class="d-flex w-100 justify-content-between align-items-start">
+                                        <div>
+                                            <h5 class="mb-1">{{ rx.drug_name|title }}</h5>
+                                            <p class="mb-1">
+                                                {% if rx.dosage_instructions %}
+                                                    <strong>Dosage:</strong> {{ rx.dosage_instructions }}
+                                                {% endif %}
+                                                {% if rx.duration %}
+                                                    <span class="ms-2"><strong>Duration:</strong> {{ rx.duration }}</span>
+                                                {% endif %}
+                                            </p>
+                                            <small class="text-muted"><strong>Quantity:</strong> {{ rx.quantity }}</small>
+                                        </div>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-warning" onclick="editExternalPrescription({{ rx.id }}, '{{ rx.drug_name|escapejs }}', '{{ rx.dosage_instructions|escapejs }}', '{{ rx.duration|escapejs }}', '{{ rx.quantity|escapejs }}', '{{ rx.notes|escapejs }}')" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteExternalPrescription({{ rx.id }})" title="Delete">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
                                     </div>
-                                    <p class="mb-1">
-                                        {% if rx.dosage_instructions %}
-                                            <strong>Dosage:</strong> {{ rx.dosage_instructions }}
-                                        {% endif %}
-                                        {% if rx.duration %}
-                                            <span class="ms-2"><strong>Duration:</strong> {{ rx.duration }}</span>
-                                        {% endif %}
-                                    </p>
-                                    <small class="text-muted"><strong>Quantity:</strong> {{ rx.quantity }}</small>
                                 </div>
                                 {% endfor %}
                             </div>
@@ -342,12 +393,23 @@
                                 </div>
 
                                 <!-- INTERNAL LAB TESTS -->
+                                <!-- INTERNAL LAB TESTS -->
                                 <div class="list-group">
                                     {% for test in lab_tests %}
-                                    <div class="list-group-item">
-                                        <div>
-                                            <strong>{{ test.template.name }}</strong>
-                                            <small class="text-muted d-block">{{ test.order_number }}</small>
+                                    <div class="list-group-item" data-lab-id="{{ test.id }}" data-type="internal">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ test.template.name }}</strong>
+                                                <small class="text-muted d-block">{{ test.order_number }}</small>
+                                            </div>
+                                            <div class="btn-group">
+                                                <button class="btn btn-xs btn-warning" onclick="editLabTest({{ test.id }}, {{ test.template.id }}, '{{ test.template.name|escapejs }}', '{{ test.special_instructions|escapejs }}')" title="Edit">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-xs btn-outline-danger" onclick="deleteLabTest({{ test.id }})" title="Delete">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                         <div class="mt-2 d-flex justify-content-between align-items-center">
                                             <span class="badge bg-secondary">{{ test.get_status_display }}</span>
@@ -372,30 +434,39 @@
                                     {% endfor %}
                                 </div>
 
-                                <!-- NEW: EXTERNAL LAB TESTS SECTION -->
+                                <!-- EXTERNAL LAB TESTS SECTION -->
                                 {% if external_lab_tests %}
                                 <h6 class="mt-4 mb-3">External Lab Tests</h6>
                                 <div class="list-group">
                                     {% for test in external_lab_tests %}
-                                    <div class="list-group-item">
+                                    <div class="list-group-item" data-external-lab-id="{{ test.id }}">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
                                                 <strong>{{ test.test_name }}</strong>
                                                 <span class="badge bg-warning text-dark ms-2">External</span>
                                                 <small class="text-muted d-block">{{ test.order_number }}</small>
                                             </div>
-                                            {% if test.has_result %}
-                                                <a href="{{ test.result_file.url }}" target="_blank" class="btn btn-xs btn-outline-primary">
-                                                    <i class="bi bi-file-earmark-pdf"></i> View Result
-                                                </a>
-                                            {% else %}
-                                                <span class="badge bg-light text-dark">Result Not Available</span>
-                                            {% endif %}
+                                            <div class="btn-group">
+                                                <button class="btn btn-xs btn-warning" onclick="editExternalLabTest({{ test.id }}, '{{ test.test_name|escapejs }}', '{{ test.special_instructions|escapejs }}')" title="Edit">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-xs btn-outline-danger" onclick="deleteExternalLabTest({{ test.id }})" title="Delete">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                                {% if test.has_result %}
+                                                    <a href="{{ test.result_file.url }}" target="_blank" class="btn btn-xs btn-outline-primary">
+                                                        <i class="bi bi-file-earmark-pdf"></i> View Result
+                                                    </a>
+                                                {% else %}
+                                                    <span class="badge bg-light text-dark">Result Not Available</span>
+                                                {% endif %}
+                                            </div>
                                         </div>
                                     </div>
                                     {% endfor %}
                                 </div>
                                 {% endif %}
+
 
                             </div>
 
@@ -410,10 +481,20 @@
                                 <!-- INTERNAL SCANS -->
                                 <div class="list-group">
                                     {% for scan in scans %}
-                                    <div class="list-group-item">
-                                        <div>
-                                            <strong>{{ scan.template.name }}</strong>
-                                            <small class="text-muted d-block">{{ scan.order_number }}</small>
+                                    <div class="list-group-item" data-scan-id="{{ scan.id }}" data-type="internal">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ scan.template.name }}</strong>
+                                                <small class="text-muted d-block">{{ scan.order_number }}</small>
+                                            </div>
+                                            <div class="btn-group">
+                                                <button class="btn btn-xs btn-warning" onclick="editScan({{ scan.id }}, {{ scan.template.id }}, '{{ scan.template.name|escapejs }}', '{{ scan.clinical_indication|escapejs }}')" title="Edit">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-xs btn-outline-danger" onclick="deleteScan({{ scan.id }})" title="Delete">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                         <div class="mt-2 d-flex justify-content-between align-items-center">
                                             <span class="badge bg-secondary">{{ scan.get_status_display }}</span>
@@ -434,25 +515,33 @@
                                     {% endfor %}
                                 </div>
 
-                                <!-- NEW: EXTERNAL SCANS SECTION -->
+                                <!-- EXTERNAL SCANS SECTION -->
                                 {% if external_scans %}
                                 <h6 class="mt-4 mb-3">External Scans</h6>
                                 <div class="list-group">
                                     {% for scan in external_scans %}
-                                    <div class="list-group-item">
+                                    <div class="list-group-item" data-external-scan-id="{{ scan.id }}">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
                                                 <strong>{{ scan.scan_name }}</strong>
                                                 <span class="badge bg-warning text-dark ms-2">External</span>
                                                 <small class="text-muted d-block">{{ scan.order_number }}</small>
                                             </div>
-                                            {% if scan.has_result %}
-                                                <a href="{{ scan.result_file.url }}" target="_blank" class="btn btn-xs btn-outline-primary">
-                                                    <i class="bi bi-file-earmark-pdf"></i> View Result
-                                                </a>
-                                            {% else %}
-                                                <span class="badge bg-light text-dark">Result Not Available</span>
-                                            {% endif %}
+                                            <div class="btn-group">
+                                                <button class="btn btn-xs btn-warning" onclick="editExternalScan({{ scan.id }}, '{{ scan.scan_name|escapejs }}', '{{ scan.clinical_indication|escapejs }}')" title="Edit">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-xs btn-outline-danger" onclick="deleteExternalScan({{ scan.id }})" title="Delete">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                                {% if scan.has_result %}
+                                                    <a href="{{ scan.result_file.url }}" target="_blank" class="btn btn-xs btn-outline-primary">
+                                                        <i class="bi bi-file-earmark-pdf"></i> View Result
+                                                    </a>
+                                                {% else %}
+                                                    <span class="badge bg-light text-dark">Result Not Available</span>
+                                                {% endif %}
+                                            </div>
                                         </div>
                                     </div>
                                     {% endfor %}
@@ -753,6 +842,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         confirmationModal.hide();
     });
+
+    // Reset modal submit buttons when modals are hidden
+    document.getElementById('drugPrescriptionModal').addEventListener('hidden.bs.modal', function() {
+        const submitBtn = document.getElementById('submit-prescriptions-btn');
+        submitBtn.textContent = 'Save Prescriptions';
+        submitBtn.onclick = () => submitPrescriptions();
+    });
+
+    document.getElementById('labTestModal').addEventListener('hidden.bs.modal', function() {
+        const submitBtn = document.getElementById('submit-lab-orders-btn');
+        submitBtn.textContent = 'Order Tests';
+        submitBtn.onclick = () => submitOrders('lab');
+    });
+
+    document.getElementById('scanModal').addEventListener('hidden.bs.modal', function() {
+        const submitBtn = document.getElementById('submit-imaging-orders-btn');
+        submitBtn.textContent = 'Order Imaging';
+        submitBtn.onclick = () => submitOrders('imaging');
+    });
+
+
 });
 
 // Consultation form submission
@@ -1221,7 +1331,11 @@ function submitOrders(type) {
         if (data.success) {
             bootstrap.Modal.getInstance(document.getElementById(modalId)).hide();
             showAlert(data.message, 'success');
-            setTimeout(() => window.location.reload(), 1500);
+            // NEW: Switch to tests-pane tab after success
+            setTimeout(() => {
+                switchToTab('tests-pane');
+                location.reload();
+            }, 1500);
         } else {
             showAlert(data.error || 'An unknown error occurred.', 'danger');
         }
@@ -1261,6 +1375,12 @@ function initializePrescriptionModal() {
     document.getElementById('add-drug-btn').addEventListener('click', addDrugForm);
     document.getElementById('add-external-drug-btn').addEventListener('click', addExternalDrugForm);
     document.getElementById('submit-prescriptions-btn').addEventListener('click', submitPrescriptions);
+
+    document.getElementById('drugPrescriptionModal').addEventListener('hidden.bs.modal', function() {
+        const submitBtn = document.getElementById('submit-prescriptions-btn');
+        submitBtn.textContent = 'Save Prescriptions';
+        submitBtn.onclick = () => submitPrescriptions();
+    });
 }
 
 function addDrugForm() {
@@ -1343,33 +1463,39 @@ function calculateQuantity(formRowEl) {
     const quantityInput = formRowEl.querySelector('.quantity-input');
     const quantityDisplay = formRowEl.querySelector('.quantity-display');
 
-    if (!quantityInput) return; // Only applies to available drugs with this input
+    if (!quantityInput) return;
+
+    // NEW: For syrup, drops, drip, cream - default to 1
+    const nonCalculableTypes = ['syrup', 'drops', 'drip', 'cream'];
+    if (nonCalculableTypes.includes(unitType.toLowerCase())) {
+        quantityInput.value = 1;
+        updateQuantityDisplay(1, packSize, unitType, quantityDisplay);
+        return;
+    }
 
     let dailyDose = 0;
     let durationDays = 0;
 
-    // 1. Parse Dosage
-    const doseMatch = dosageText.match(/^(\d+(\.\d+)?)/); // "2 tablets..." -> 2
+    // Parse Dosage
+    const doseMatch = dosageText.match(/^(\d+(\.\d+)?)/);
     if (doseMatch) {
         const dose = parseFloat(doseMatch[1]);
-        let frequency = 1; // Default to once daily
+        let frequency = 1;
         if (dosageText.includes('twice') || dosageText.includes('bd')) frequency = 2;
         else if (dosageText.includes('thrice') || dosageText.includes('tds')) frequency = 3;
         else if (dosageText.includes('four times')) frequency = 4;
 
-        // Handle "x times daily"
         const timesMatch = dosageText.match(/(\d+)\s*time/);
         if (timesMatch) frequency = parseInt(timesMatch[1]);
 
-        // Handle "x/x/x" format
         const slashMatch = dosageText.match(/\//g);
         if (slashMatch) frequency = slashMatch.length + 1;
 
         dailyDose = dose * frequency;
     }
 
-    // 2. Parse Duration
-    const durationMatch = durationText.match(/^(\d+)/); // "7 days" -> 7
+    // Parse Duration
+    const durationMatch = durationText.match(/^(\d+)/);
     if (durationMatch) {
         const num = parseInt(durationMatch[1]);
         if (durationText.includes('week') || durationText.includes('w')) {
@@ -1377,11 +1503,10 @@ function calculateQuantity(formRowEl) {
         } else if (durationText.includes('month') || durationText.includes('m')) {
             durationDays = num * 30;
         } else {
-            durationDays = num; // Assume days
+            durationDays = num;
         }
     }
 
-    // 3. Calculate and set quantity (total units)
     if (dailyDose > 0 && durationDays > 0) {
         const totalUnits = dailyDose * durationDays;
         quantityInput.value = totalUnits;
@@ -1430,7 +1555,9 @@ function updateQuantityDisplay(totalUnits, packSize, unitType, displayElement) {
     }
 }
 
-function submitPrescriptions() {
+let pendingPrescriptionData = null; // Store data for force save
+
+function submitPrescriptions(forceSave = false) {
     const submitBtn = document.getElementById('submit-prescriptions-btn');
     const spinner = submitBtn.querySelector('.spinner-border');
 
@@ -1438,7 +1565,8 @@ function submitPrescriptions() {
         patient_id: {{ consultation.queue_entry.patient.id }},
         consultation_id: {{ consultation.id }},
         available_drugs: [],
-        external_drugs: []
+        external_drugs: [],
+        force_save: forceSave // NEW: Add force save flag
     };
 
     const forms = document.querySelectorAll('.prescription-row');
@@ -1461,28 +1589,28 @@ function submitPrescriptions() {
                 notes: form.querySelector('.notes-input').value
             });
         } else if (type === 'external') {
-             const drugName = form.querySelector('.drug-name-input').value;
-             if (!drugName) {
+            const drugName = form.querySelector('.drug-name-input').value;
+            if (!drugName) {
                 isValid = false;
                 form.querySelector('.drug-name-input').classList.add('is-invalid');
                 return;
-             }
-             payload.external_drugs.push({
+            }
+            payload.external_drugs.push({
                 drug_name: drugName,
                 dosage: form.querySelector('.dosage-input').value,
                 duration: form.querySelector('.duration-input').value,
                 quantity: form.querySelector('.quantity-input').value,
                 notes: form.querySelector('.notes-input').value
-             });
+            });
         }
     });
 
     if (!isValid) {
-        showAlert('Please select a drug for all inventory items or provide a name for unavailable drugs.', 'warning');
+        showAlert('Please complete all required fields.', 'warning');
         return;
     }
     if (payload.available_drugs.length === 0 && payload.external_drugs.length === 0) {
-        showAlert('Please add at least one medication to prescribe.', 'info');
+        showAlert('Please add at least one medication.', 'info');
         return;
     }
 
@@ -1502,19 +1630,50 @@ function submitPrescriptions() {
         if (data.success) {
             bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
             showAlert(data.message, 'success');
-            setTimeout(() => window.location.reload(), 1500);
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else if (data.duplicate) {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+                showAlert(data.message, 'success');
+                setTimeout(() => {
+                    // NEW: Switch to prescriptions-pane tab
+                    switchToTab('prescriptions-pane');
+                    location.reload();
+                }, 1500);
+            }
+
+            // NEW: Show duplicate confirmation
+            pendingPrescriptionData = payload;
+            const modalBody = document.getElementById('duplicateModalBody');
+            modalBody.innerHTML = `
+                <p>${data.message}:</p>
+                <ul>
+                    ${data.drugs.map(drug => `<li><strong>${drug}</strong></li>`).join('')}
+                </ul>
+                <p>Do you want to prescribe anyway?</p>
+            `;
+            const duplicateModal = new bootstrap.Modal(document.getElementById('duplicateConfirmModal'));
+            duplicateModal.show();
         } else {
-            showAlert(data.error || 'An unknown error occurred.', 'danger');
+            showAlert(data.error || 'An error occurred.', 'danger');
         }
     })
-    .catch(error => showAlert('A network error occurred. Please try again.', 'danger'))
+    .catch(error => showAlert('A network error occurred.', 'danger'))
     .finally(() => {
         submitBtn.disabled = false;
         spinner.classList.add('d-none');
     });
 }
 
-
+// NEW: Handle force save
+document.getElementById('forceSaveBtn').addEventListener('click', function() {
+    bootstrap.Modal.getInstance(document.getElementById('duplicateConfirmModal')).hide();
+    if (pendingPrescriptionData) {
+        submitPrescriptions(true);
+    }
+});
 
 // REPLACED: showAlert now uses the central modal
 function showAlert(message, type) {
@@ -1543,6 +1702,521 @@ function showAlert(message, type) {
             break;
     }
     messageModal.show();
+}
+
+// Edit internal drug prescription
+function editDrugPrescription(prescriptionId, drugId, dosage, duration, quantity, notes) {
+    const modal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+    document.getElementById('prescription-list').innerHTML = '';
+
+    // Add one form with pre-filled data
+    const template = document.getElementById('available-drug-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.prescription-row');
+    formRow.dataset.editId = prescriptionId; // Mark as edit mode
+
+    document.getElementById('prescription-list').appendChild(clone);
+
+    // Pre-fill data (we'll need to fetch drug details)
+    fetch(`/portal/consultation/ajax/search-drugs-consult/?id=${drugId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.drug) {
+                const drug = data.drug;
+                formRow.querySelector('.drug-search-input').value = `${drug.brand_name || drug.generic_name} (${drug.formulation})`;
+                formRow.querySelector('.drug-id-input').value = drug.id;
+                formRow.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
+                formRow.querySelector('.drug-unit-input').value = drug.unit || 'tablet';
+            }
+        });
+
+    formRow.querySelector('.dosage-input').value = dosage;
+    formRow.querySelector('.duration-input').value = duration;
+    formRow.querySelector('.quantity-input').value = quantity;
+    formRow.querySelector('.notes-input').value = notes;
+
+    // Attach listeners
+    const searchInput = formRow.querySelector('.drug-search-input');
+    const dosageInput = formRow.querySelector('.dosage-input');
+    const durationInput = formRow.querySelector('.duration-input');
+    searchInput.addEventListener('input', () => handleDrugSearch(searchInput));
+    dosageInput.addEventListener('input', () => calculateQuantity(formRow));
+    durationInput.addEventListener('input', () => calculateQuantity(formRow));
+
+    // Change submit button behavior
+    const submitBtn = document.getElementById('submit-prescriptions-btn');
+    submitBtn.textContent = 'Update Prescription';
+    submitBtn.onclick = () => saveEditedDrugPrescription(prescriptionId);
+
+    modal.show();
+}
+
+// ============= LAB TEST EDIT/DELETE FUNCTIONS =============
+
+function editLabTest(orderId, templateId, templateName, instructions) {
+    const modal = new bootstrap.Modal(document.getElementById('labTestModal'));
+    document.getElementById('lab-test-list').innerHTML = '';
+
+    // Add one pre-filled row
+    const template = document.getElementById('lab-test-row-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    formRow.dataset.editId = orderId;
+
+    document.getElementById('lab-test-list').appendChild(clone);
+
+    formRow.querySelector('.search-input').value = templateName;
+    formRow.querySelector('.template-id-input').value = templateId;
+    formRow.querySelector('.instructions-input').value = instructions;
+
+    // Attach search listener
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'lab'));
+
+    // Change submit button
+    const submitBtn = document.getElementById('submit-lab-orders-btn');
+    submitBtn.textContent = 'Update Test';
+    submitBtn.onclick = () => saveEditedLabTest(orderId);
+
+    modal.show();
+}
+
+function saveEditedLabTest(orderId) {
+    const formRow = document.querySelector('.order-row[data-edit-id]');
+    const payload = {
+        template_id: formRow.querySelector('.template-id-input').value,
+        instructions: formRow.querySelector('.instructions-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-lab-test/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('labTestModal')).hide();
+            showMiniToast('Lab test updated successfully', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteLabTest(orderId) {
+    if (!confirm('Delete this lab test order?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-lab-test/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('Lab test deleted', 'success');
+            document.querySelector(`div[data-lab-id="${orderId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function editExternalLabTest(orderId, testName, instructions) {
+    const modal = new bootstrap.Modal(document.getElementById('labTestModal'));
+    document.getElementById('lab-test-list').innerHTML = '';
+
+    const template = document.getElementById('lab-test-row-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    formRow.dataset.editId = orderId;
+    formRow.dataset.isExternal = 'true';
+
+    document.getElementById('lab-test-list').appendChild(clone);
+
+    formRow.querySelector('.search-input').value = testName;
+    formRow.querySelector('.instructions-input').value = instructions;
+
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'lab'));
+
+    const submitBtn = document.getElementById('submit-lab-orders-btn');
+    submitBtn.textContent = 'Update External Test';
+    submitBtn.onclick = () => saveEditedExternalLabTest(orderId);
+
+    modal.show();
+}
+
+function saveEditedExternalLabTest(orderId) {
+    const formRow = document.querySelector('.order-row[data-edit-id]');
+    const payload = {
+        template_id: formRow.querySelector('.template-id-input').value,
+        instructions: formRow.querySelector('.instructions-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-external-lab/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('labTestModal')).hide();
+            showMiniToast('External lab test updated', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteExternalLabTest(orderId) {
+    if (!confirm('Delete this external lab test?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-external-lab/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('External lab test deleted', 'success');
+            document.querySelector(`div[data-external-lab-id="${orderId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+// ============= SCAN EDIT/DELETE FUNCTIONS =============
+
+function editScan(orderId, templateId, templateName, indication) {
+    const modal = new bootstrap.Modal(document.getElementById('scanModal'));
+    document.getElementById('imaging-list').innerHTML = '';
+
+    const template = document.getElementById('imaging-row-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    formRow.dataset.editId = orderId;
+
+    document.getElementById('imaging-list').appendChild(clone);
+
+    formRow.querySelector('.search-input').value = templateName;
+    formRow.querySelector('.template-id-input').value = templateId;
+    formRow.querySelector('.indication-input').value = indication;
+
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'imaging'));
+
+    const submitBtn = document.getElementById('submit-imaging-orders-btn');
+    submitBtn.textContent = 'Update Scan';
+    submitBtn.onclick = () => saveEditedScan(orderId);
+
+    modal.show();
+}
+
+function saveEditedScan(orderId) {
+    const formRow = document.querySelector('.order-row[data-edit-id]');
+    const payload = {
+        template_id: formRow.querySelector('.template-id-input').value,
+        indication: formRow.querySelector('.indication-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-scan/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
+            showMiniToast('Scan updated successfully', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteScan(orderId) {
+    if (!confirm('Delete this scan order?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-scan/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('Scan deleted', 'success');
+            document.querySelector(`div[data-scan-id="${orderId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function editExternalScan(orderId, scanName, indication) {
+    const modal = new bootstrap.Modal(document.getElementById('scanModal'));
+    document.getElementById('imaging-list').innerHTML = '';
+
+    const template = document.getElementById('imaging-row-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    formRow.dataset.editId = orderId;
+    formRow.dataset.isExternal = 'true';
+
+    document.getElementById('imaging-list').appendChild(clone);
+
+    formRow.querySelector('.search-input').value = scanName;
+    formRow.querySelector('.indication-input').value = indication;
+
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'imaging'));
+
+    const submitBtn = document.getElementById('submit-imaging-orders-btn');
+    submitBtn.textContent = 'Update External Scan';
+    submitBtn.onclick = () => saveEditedExternalScan(orderId);
+
+    modal.show();
+}
+
+function saveEditedExternalScan(orderId) {
+    const formRow = document.querySelector('.order-row[data-edit-id]');
+    const payload = {
+        template_id: formRow.querySelector('.template-id-input').value,
+        indication: formRow.querySelector('.indication-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-external-scan/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
+            showMiniToast('External scan updated', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteExternalScan(orderId) {
+    if (!confirm('Delete this external scan?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-external-scan/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('External scan deleted', 'success');
+            document.querySelector(`div[data-external-scan-id="${orderId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function saveEditedDrugPrescription(prescriptionId) {
+    const formRow = document.querySelector('.prescription-row[data-edit-id]');
+    const payload = {
+        drug_id: formRow.querySelector('.drug-id-input').value,
+        dosage: formRow.querySelector('.dosage-input').value,
+        duration: formRow.querySelector('.duration-input').value,
+        quantity: formRow.querySelector('.quantity-input').value,
+        notes: formRow.querySelector('.notes-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-drug/${prescriptionId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+            showMiniToast('Prescription updated successfully', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error occurred', 'error'));
+}
+
+function deleteDrugPrescription(prescriptionId) {
+    if (!confirm('Delete this prescription?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-drug/${prescriptionId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('Prescription deleted', 'success');
+            document.querySelector(`tr[data-prescription-id="${prescriptionId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+// Edit external prescription
+function editExternalPrescription(prescriptionId, drugName, dosage, duration, quantity, notes) {
+    const modal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+    document.getElementById('prescription-list').innerHTML = '';
+
+    const template = document.getElementById('external-drug-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.prescription-row');
+    formRow.dataset.editId = prescriptionId;
+
+    document.getElementById('prescription-list').appendChild(clone);
+
+    formRow.querySelector('.drug-name-input').value = drugName;
+    formRow.querySelector('.dosage-input').value = dosage;
+    formRow.querySelector('.duration-input').value = duration;
+    formRow.querySelector('.quantity-input').value = quantity;
+    formRow.querySelector('.notes-input').value = notes;
+
+    const submitBtn = document.getElementById('submit-prescriptions-btn');
+    submitBtn.textContent = 'Update Prescription';
+    submitBtn.onclick = () => saveEditedExternalPrescription(prescriptionId);
+
+    modal.show();
+}
+
+function saveEditedExternalPrescription(prescriptionId) {
+    const formRow = document.querySelector('.prescription-row[data-edit-id]');
+    const payload = {
+        drug_name: formRow.querySelector('.drug-name-input').value,
+        dosage: formRow.querySelector('.dosage-input').value,
+        duration: formRow.querySelector('.duration-input').value,
+        quantity: formRow.querySelector('.quantity-input').value,
+        notes: formRow.querySelector('.notes-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-external-drug/${prescriptionId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+            showMiniToast('External prescription updated', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteExternalPrescription(prescriptionId) {
+    if (!confirm('Delete this external prescription?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-external-drug/${prescriptionId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('External prescription deleted', 'success');
+            document.querySelector(`div[data-external-id="${prescriptionId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+// Toast notification system
+function showMiniToast(message, type = 'success') {
+    const toastContainer = document.querySelector('.toast-container');
+    const toastId = 'toast-' + Date.now();
+
+    const bgColor = type === 'success' ? 'bg-success' : 'bg-danger';
+    const icon = type === 'success' ? 'bi-check-circle' : 'bi-x-circle';
+
+    const toastHTML = `
+        <div class="alert alert-dismissible fade show mini-toast ${bgColor} text-white" role="alert" id="${toastId}">
+            <i class="bi ${icon} me-2"></i>${message}
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+
+    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        const toast = document.getElementById(toastId);
+        if (toast) {
+            toast.classList.add('hiding');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 3000);
+}
+
+// Switch to a specific tab
+function switchToTab(tabId) {
+    const tabButton = document.querySelector(`button[data-bs-target="#${tabId}"]`);
+    if (tabButton) {
+        const tab = new bootstrap.Tab(tabButton);
+        tab.show();
+    }
 }
 
 // Cleanup on page unload
@@ -1602,6 +2276,30 @@ window.addEventListener('beforeunload', function() {
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="saveAllergy()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container for Mini Notifications -->
+<div class="toast-container"></div>
+
+<!-- Duplicate Confirmation Modal -->
+<div class="modal fade" id="duplicateConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle"></i> Duplicate Detected
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="duplicateModalBody">
+                <!-- Dynamic content -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="forceSaveBtn">Continue Anyway</button>
             </div>
         </div>
     </div>

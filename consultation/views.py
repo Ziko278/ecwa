@@ -3620,6 +3620,10 @@ def ajax_search_drugs(request):
             is_active=True
         ).select_related('formulation__generic_drug', 'manufacturer')[:20]
 
+        print('ooooooooooooooooooooooooooooooooooooooo')
+        print(drugs)
+        print('ooooooooooooooooooooooooooooooooooooooo')
+
         drugs_data = []
         for drug in drugs:
 
@@ -3647,6 +3651,57 @@ def ajax_search_drugs(request):
             'success': False,
             'error': 'An unexpected error occurred during drug search.'
         })
+
+
+@login_required
+def ajax_drug_search_consult(request):
+    """Search for drugs by name or get single drug by ID"""
+    try:
+        drug_id = request.GET.get('id')
+
+        # If ID provided, return single drug
+        if drug_id:
+            drug = get_object_or_404(DrugModel, id=drug_id)
+            drug_data = {
+                'id': drug.id,
+                'brand_name': drug.brand_name,
+                'generic_name': drug.generic_name,
+                'formulation': str(drug.formulation),
+                'pharmacy_quantity': float(drug.pharmacy_quantity),
+                'pack_size': drug.pack_size or 1,
+                'unit': drug.formulation.form_type if drug.formulation else 'tablet'
+            }
+            return JsonResponse({'drug': drug_data})
+
+        # Otherwise, search by query
+        query = request.GET.get('q', '')
+        if len(query) < 2:
+            return JsonResponse({'drugs': []})
+
+        drugs = DrugModel.objects.filter(
+            Q(brand_name__icontains=query) | Q(formulation__generic_drug__generic_name__icontains=query),
+            is_active=True,
+            pharmacy_quantity__gt=0
+        ).select_related('formulation__generic_drug')[:15]
+
+        print('ooooooooooooooooooooooooooooooooooooooo')
+        print(drugs)
+        print('ooooooooooooooooooooooooooooooooooooooo')
+
+        drugs_data = [{
+            'id': drug.id,
+            'brand_name': drug.brand_name,
+            'generic_name': drug.generic_name,
+            'formulation': str(drug.formulation),
+            'pharmacy_quantity': float(drug.pharmacy_quantity),
+            'pack_size': drug.pack_size or 1,
+            'unit': drug.formulation.form_type if drug.formulation else 'tablet'
+        } for drug in drugs]
+
+        return JsonResponse({'drugs': drugs_data})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 @login_required
@@ -3913,6 +3968,7 @@ def ajax_imaging_templates_search(request):
 
 # --- NEW MULTI-ORDER VIEWS ---
 
+
 @login_required
 @require_POST
 def ajax_order_multiple_lab_tests(request):
@@ -3938,6 +3994,16 @@ def ajax_order_multiple_lab_tests(request):
 
                 # NEW: Route based on is_active
                 if template.is_active:
+                    exists = LabTestOrderModel.objects.filter(
+                        consultation=consultation,
+                        template=template
+                    ).exists()
+                    if exists:
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'{template.name} already ordered for this consultation'
+                        }, status=400)
+
                     # Internal order
                     LabTestOrderModel.objects.create(
                         patient=patient,
@@ -4001,6 +4067,16 @@ def ajax_order_multiple_imaging(request):
 
                 # NEW: Route based on is_active
                 if template.is_active:
+                    exists = ScanOrderModel.objects.filter(
+                        consultation=consultation,
+                        template=template
+                    ).exists()
+                    if exists:
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'{template.name} already ordered for this consultation'
+                        }, status=400)
+
                     # Internal order
                     ScanOrderModel.objects.create(
                         patient=patient,
@@ -4485,28 +4561,25 @@ def _create_queue_entry_with_vitals_check(patient, payment_transaction, speciali
     return new_queue_entry
 
 
-# --- Start: New AJAX Views ---
 @login_required
 def get_consultation_status_ajax(request):
     """
-    A powerful single-point checker for consultation status.
-    1. Checks if patient is already in an active queue (BLOCK).
-    2. Checks for valid, un-used payments (RE-USE).
-    3. Fetches the fee for a new payment (NEW).
+    Checks consultation status with a strict insurance validity check.
+    1. Blocks if patient is already in an active queue.
+    2. Strictly checks if the patient's insurance policy is active and not expired.
+    3. Fetches the correct fee (insurance or regular).
     """
     patient_id = request.GET.get('patient_id')
     specialization_id = request.GET.get('specialization_id')
-    today = date.today()
+    today = timezone.now().date()
 
     patient = get_object_or_404(PatientModel, pk=patient_id)
     specialization = get_object_or_404(SpecializationModel, pk=specialization_id)
 
-    # --- Start: New, More Robust Check ---
     # 1. Check if patient is already in an active queue for this specialization today.
-    # An active queue is one not marked as completed or cancelled.
     active_queue_entry = PatientQueueModel.objects.filter(
         patient=patient,
-        specialization=specialization,  # <-- The corrected line
+        specialization=specialization,
         joined_queue_at__date=today
     ).exclude(
         status__in=['consultation_completed', 'cancelled']
@@ -4518,36 +4591,42 @@ def get_consultation_status_ajax(request):
             'reason': 'ACTIVE_QUEUE',
             'message': f"Patient is already in the queue for {specialization.name}. Current status: '{active_queue_entry.get_status_display()}'."
         })
-    # --- End: New Check ---
 
-    # 2. Check for a valid, un-used payment for this specialization's group
-    if specialization.group:
-        valid_payment = PatientTransactionModel.objects.filter(
-            patient=patient,
-            transaction_type='consultation_payment',
-            status='completed',
-            valid_till__gte=today,
-            fee_structure__specialization__group=specialization.group
-        ).order_by('-created_at').first()
+    fee = None
 
-        if valid_payment:
-            return JsonResponse({
-                'status': 'reuse_payment',
-                'reason': 'EXISTING_PAYMENT',
-                'message': f"Patient has a valid payment for the {specialization.group.name} group. You can add them to the queue directly.",
-                'payment_id': valid_payment.id
-            })
+    # 2. Check if the patient has a currently valid insurance policy.
+    # This query handles all the checks: status is active and today's date is within the validity period.
+    active_insurance = PatientInsuranceModel.objects.filter(
+        patient=patient,
+        is_active=True,          # Checks if the policy is marked active
+        valid_from__lte=today,   # Checks if the policy has started
+        valid_to__gte=today      # Checks that the policy has NOT expired
+    ).select_related('coverage_plan').first()
 
-    # 3. If neither of the above, fetch the fee for a new payment
-    fee = ConsultationFeeModel.objects.filter(
-        specialization=specialization,
-        patient_category='regular', # Adapt this as needed
-        is_active=True
-    ).first()
+    if active_insurance:
+        # If insured, try to find a fee specific to their coverage plan
+        fee = ConsultationFeeModel.objects.filter(
+            specialization=specialization,
+            patient_category='insurance',
+            insurance=active_insurance.coverage_plan,
+            is_active=True
+        ).first()
 
+    # 3. If no insurance-specific fee was found (or patient isn't insured), get the regular fee
     if not fee:
-        return JsonResponse({'status': 'block', 'reason': 'NO_FEE', 'message': f"No active consultation fee found for {specialization.name}."})
+        fee = ConsultationFeeModel.objects.filter(
+            specialization=specialization,
+            patient_category='regular',
+            insurance__isnull=True,
+            is_active=True
+        ).first()
 
+    # 4. If no fee is found at all, block the process
+    if not fee:
+        message = (f"No active consultation fee found for {specialization.name} for this patient category.")
+        return JsonResponse({'status': 'block', 'reason': 'NO_FEE', 'message': message})
+
+    # 5. Return the correct fee for a new payment
     return JsonResponse({
         'status': 'new_payment',
         'fee': {
@@ -4555,6 +4634,7 @@ def get_consultation_status_ajax(request):
             'amount': float(fee.amount),
             'formatted_amount': f'₦{fee.amount:,.2f}',
             'patient_category': fee.get_patient_category_display(),
+            'insurance_plan': active_insurance.coverage_plan.name if active_insurance and fee.patient_category == 'insurance' else None,
         }
     })
 
@@ -4622,12 +4702,34 @@ def prescribe_multiple_view(request):
         data = json.loads(request.body)
         patient_id = data.get('patient_id')
         consultation_id = data.get('consultation_id')
+        force_save = data.get('force_save', False)  # NEW: Allow override
 
         available_drugs = data.get('available_drugs', [])
         external_drugs = data.get('external_drugs', [])
 
         patient = PatientModel.objects.get(id=patient_id)
         consultation = ConsultationSessionModel.objects.get(id=consultation_id)
+
+        # NEW: Check for duplicates
+        if not force_save:
+            duplicates = []
+            for drug_data in available_drugs:
+                exists = DrugOrderModel.objects.filter(
+                    consultation=consultation,
+                    drug_id=drug_data.get('drug_id'),
+                    dosage_instructions=drug_data.get('dosage')
+                ).exists()
+                if exists:
+                    drug = DrugModel.objects.get(id=drug_data.get('drug_id'))
+                    duplicates.append(f"{drug.brand_name or drug.generic_name}")
+
+            if duplicates:
+                return JsonResponse({
+                    'success': False,
+                    'duplicate': True,
+                    'drugs': duplicates,
+                    'message': 'Some drugs already prescribed with same dosage'
+                })
 
         with transaction.atomic():
             # Process drugs from inventory
@@ -4642,7 +4744,7 @@ def prescribe_multiple_view(request):
                     duration=drug_data.get('duration'),
                     quantity_ordered=float(drug_data.get('quantity', 0)),
                     notes=drug_data.get('notes'),
-                    status='pending',  # Default status
+                    status='pending',
                 )
 
             # Process drugs not in inventory
@@ -4661,8 +4763,237 @@ def prescribe_multiple_view(request):
         return JsonResponse({'success': True, 'message': 'Prescriptions saved successfully.'})
 
     except Exception as e:
-        # Log the error e for debugging
         return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=500)
+
+
+@login_required
+@require_POST
+def edit_drug_prescription(request, prescription_id):
+    """Edit an existing drug prescription (internal)"""
+    try:
+        data = json.loads(request.body)
+        prescription = get_object_or_404(DrugOrderModel, id=prescription_id)
+
+        # Check for duplicates (excluding current prescription)
+        drug_id = data.get('drug_id')
+        dosage = data.get('dosage')
+        existing = DrugOrderModel.objects.filter(
+            consultation=prescription.consultation,
+            drug_id=drug_id,
+            dosage_instructions=dosage
+        ).exclude(id=prescription_id).exists()
+
+        if existing:
+            return JsonResponse({
+                'success': False,
+                'duplicate': True,
+                'message': 'This drug with same dosage already exists. Continue anyway?'
+            })
+
+        # Update prescription
+        drug = DrugModel.objects.get(id=drug_id)
+        prescription.drug = drug
+        prescription.dosage_instructions = dosage
+        prescription.duration = data.get('duration')
+        prescription.quantity_ordered = float(data.get('quantity', 0))
+        prescription.notes = data.get('notes', '')
+        prescription.save()
+
+        return JsonResponse({'success': True, 'message': 'Prescription updated successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def delete_drug_prescription(request, prescription_id):
+    """Delete a drug prescription"""
+    try:
+        prescription = get_object_or_404(DrugOrderModel, id=prescription_id)
+        prescription.delete()
+        return JsonResponse({'success': True, 'message': 'Prescription deleted successfully'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def edit_external_prescription(request, prescription_id):
+    """Edit an external prescription"""
+    try:
+        data = json.loads(request.body)
+        prescription = get_object_or_404(ExternalPrescription, id=prescription_id)
+
+        # Check for duplicates
+        drug_name = data.get('drug_name')
+        dosage = data.get('dosage')
+        existing = ExternalPrescription.objects.filter(
+            consultation=prescription.consultation,
+            drug_name__iexact=drug_name,
+            dosage_instructions=dosage
+        ).exclude(id=prescription_id).exists()
+
+        if existing:
+            return JsonResponse({
+                'success': False,
+                'duplicate': True,
+                'message': 'This external drug with same dosage already exists. Continue anyway?'
+            })
+
+        prescription.drug_name = drug_name
+        prescription.dosage_instructions = dosage
+        prescription.duration = data.get('duration')
+        prescription.quantity = data.get('quantity')
+        prescription.notes = data.get('notes', '')
+        prescription.save()
+
+        return JsonResponse({'success': True, 'message': 'External prescription updated'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def delete_external_prescription(request, prescription_id):
+    """Delete an external prescription"""
+    try:
+        prescription = get_object_or_404(ExternalPrescription, id=prescription_id)
+        prescription.delete()
+        return JsonResponse({'success': True, 'message': 'External prescription deleted'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def edit_lab_test_order(request, order_id):
+    """Edit a lab test order"""
+    try:
+        data = json.loads(request.body)
+        order = get_object_or_404(LabTestOrderModel, id=order_id)
+
+        template_id = data.get('template_id')
+        template = get_object_or_404(LabTestTemplateModel, id=template_id)
+
+        order.template = template
+        order.special_instructions = data.get('instructions', '')
+        order.save()
+
+        return JsonResponse({'success': True, 'message': 'Lab test updated'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def delete_lab_test_order(request, order_id):
+    """Delete a lab test order"""
+    try:
+        order = get_object_or_404(LabTestOrderModel, id=order_id)
+        order.delete()
+        return JsonResponse({'success': True, 'message': 'Lab test deleted'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def edit_external_lab_test(request, order_id):
+    """Edit an external lab test"""
+    try:
+        data = json.loads(request.body)
+        order = get_object_or_404(ExternalLabTestOrder, id=order_id)
+
+        template_id = data.get('template_id')
+        template = get_object_or_404(LabTestTemplateModel, id=template_id)
+
+        order.test_name = template.name
+        order.test_code = template.code
+        order.category_name = template.category.name if template.category else ''
+        order.special_instructions = data.get('instructions', '')
+        order.save()
+
+        return JsonResponse({'success': True, 'message': 'External lab test updated'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def delete_external_lab_test(request, order_id):
+    """Delete an external lab test"""
+    try:
+        order = get_object_or_404(ExternalLabTestOrder, id=order_id)
+        order.delete()
+        return JsonResponse({'success': True, 'message': 'External lab test deleted'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def edit_scan_order(request, order_id):
+    """Edit a scan order"""
+    try:
+        data = json.loads(request.body)
+        order = get_object_or_404(ScanOrderModel, id=order_id)
+
+        template_id = data.get('template_id')
+        template = get_object_or_404(ScanTemplateModel, id=template_id)
+
+        order.template = template
+        order.clinical_indication = data.get('indication', '')
+        order.save()
+
+        return JsonResponse({'success': True, 'message': 'Scan updated'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def delete_scan_order(request, order_id):
+    """Delete a scan order"""
+    try:
+        order = get_object_or_404(ScanOrderModel, id=order_id)
+        order.delete()
+        return JsonResponse({'success': True, 'message': 'Scan deleted'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def edit_external_scan(request, order_id):
+    """Edit an external scan"""
+    try:
+        data = json.loads(request.body)
+        order = get_object_or_404(ExternalScanOrder, id=order_id)
+
+        template_id = data.get('template_id')
+        template = get_object_or_404(ScanTemplateModel, id=template_id)
+
+        order.scan_name = template.name
+        order.scan_code = template.code
+        order.category_name = template.category.name if template.category else ''
+        order.clinical_indication = data.get('indication', '')
+        order.save()
+
+        return JsonResponse({'success': True, 'message': 'External scan updated'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def delete_external_scan(request, order_id):
+    """Delete an external scan"""
+    try:
+        order = get_object_or_404(ExternalScanOrder, id=order_id)
+        order.delete()
+        return JsonResponse({'success': True, 'message': 'External scan deleted'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 # --- End: New AJAX Views ---

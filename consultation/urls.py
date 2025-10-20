@@ -180,6 +180,7 @@ urlpatterns = [
 
     # AJAX endpoints for prescriptions
     path('ajax/search-drugs/', ajax_search_drugs, name='ajax_search_drugs'),
+    path('ajax/search-drugs-consult/', ajax_drug_search_consult, name='ajax_drug_search_consult'),
     path('ajax/prescribe-drug/', ajax_prescribe_drug, name='ajax_prescribe_drug'),
 
     # AJAX endpoints for lab tests
@@ -213,5 +214,19 @@ urlpatterns = [
     path('ajax/create-consultation/', ajax_create_consultation, name='ajax_create_consultation'),
     path('ajax/update-allergy/<int:patient_id>/', update_patient_allergy, name='update_patient_allergy'),
     path('ajax/prescribe-multiple/', prescribe_multiple_view, name='prescribe_multiple'),
+    
+    # Add these to your urls.py
+    path('ajax/edit-drug/<int:prescription_id>/', edit_drug_prescription, name='edit_drug_prescription'),
+    path('ajax/delete-drug/<int:prescription_id>/', delete_drug_prescription, name='delete_drug_prescription'),
+    path('ajax/edit-external-drug/<int:prescription_id>/', edit_external_prescription, name='edit_external_prescription'),
+    path('ajax/delete-external-drug/<int:prescription_id>/', delete_external_prescription, name='delete_external_prescription'),
+    path('ajax/edit-lab-test/<int:order_id>/', edit_lab_test_order, name='edit_lab_test_order'),
+    path('ajax/delete-lab-test/<int:order_id>/', delete_lab_test_order, name='delete_lab_test_order'),
+    path('ajax/edit-external-lab/<int:order_id>/', edit_external_lab_test, name='edit_external_lab_test'),
+    path('ajax/delete-external-lab/<int:order_id>/', delete_external_lab_test, name='delete_external_lab_test'),
+    path('ajax/edit-scan/<int:order_id>/', edit_scan_order, name='edit_scan_order'),
+    path('ajax/delete-scan/<int:order_id>/', delete_scan_order, name='delete_scan_order'),
+    path('ajax/edit-external-scan/<int:order_id>/', edit_external_scan, name='edit_external_scan'),
+    path('ajax/delete-external-scan/<int:order_id>/', delete_external_scan, name='delete_external_scan'),
 
 ]

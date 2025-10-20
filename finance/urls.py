@@ -83,7 +83,7 @@ urlpatterns = [
 
     # Wallet & Patient Payments
     path('funding/', patient_wallet_funding, name='patient_funding'),
-    path('verify-patient/', verify_patient_ajax, name='finance_verify_patient_ajax'),
+    #path('verify-patient/', verify_patient_ajax, name='finance_verify_patient_ajax'),
     path('process-funding/', process_wallet_funding, name='process_funding'),
     path('wallet/dashboard/<int:patient_id>/', patient_wallet_dashboard, name='patient_wallet_dashboard'),
     path('payment/select/', finance_payment_select, name='finance_payment_select'),

@@ -35,6 +35,7 @@ from finance.models import PatientTransactionModel, FinanceSettingModel, Expense
 from human_resource.models import DepartmentModel, StaffModel
 from human_resource.views import FlashFormErrorsMixin
 from inpatient.models import Admission, Surgery
+from insurance.claim_helpers import get_orders_with_claim_info
 from insurance.models import PatientInsuranceModel
 from laboratory.models import LabTestOrderModel
 from patient.forms import RegistrationPaymentForm
@@ -3909,20 +3910,20 @@ def finance_wallet_tools_entry(request):
 def process_direct_payment(request):
     """
     Process direct payment for selected items with optional wallet usage.
-    This replaces the old fund-then-pay flow.
+    Uses the same claim_helpers (get_orders_with_claim_info) to compute patient_amounts,
+    ensuring totals match the frontend verify_patient_ajax output.
     """
     try:
-        # Get form data
         patient_id = request.POST.get('patient_id')
-        use_wallet = request.POST.get('use_wallet') == 'true'
+        # frontend sends 'true'/'false' as string; handle both cases
+        use_wallet_raw = request.POST.get('use_wallet', 'false')
+        use_wallet = (use_wallet_raw == 'true' or use_wallet_raw == 'True' or use_wallet_raw == '1')
         payment_method = request.POST.get('payment_method', 'cash')
-        direct_amount = Decimal(request.POST.get('direct_amount', '0'))
+        direct_amount = _to_decimal(request.POST.get('direct_amount', '0'))
 
-        # Get selected items (sent as arrays from frontend)
         selected_items = request.POST.getlist('selected_items[]')
         selected_types = request.POST.getlist('selected_types[]')
 
-        # Validate inputs
         if not patient_id:
             return JsonResponse({'error': 'Patient ID required'}, status=400)
 
@@ -3932,89 +3933,117 @@ def process_direct_payment(request):
         if len(selected_items) != len(selected_types):
             return JsonResponse({'error': 'Items and types mismatch'}, status=400)
 
-        # Get patient and wallet
         patient = get_object_or_404(PatientModel, id=patient_id)
-        wallet, created = PatientWalletModel.objects.get_or_create(
-            patient=patient,
-            defaults={'amount': Decimal('0.00')}
-        )
 
-        # Group items by type for processing
-        items_by_type = {
-            'drugs': [],
-            'labs': [],
-            'scans': [],
-            'services': []
-        }
+        # Group selected ids by type
+        items_by_type = {'drugs': [], 'labs': [], 'scans': [], 'services': []}
+        for iid, itype in zip(selected_items, selected_types):
+            if itype in items_by_type:
+                # ensure ints
+                try:
+                    items_by_type[itype].append(int(iid))
+                except Exception:
+                    items_by_type[itype].append(iid)
 
-        for item_id, item_type in zip(selected_items, selected_types):
-            if item_type in items_by_type:
-                items_by_type[item_type].append(item_id)
-
-        # Fetch all orders
-        drug_orders = DrugOrderModel.objects.filter(
+        # Fetch DB objects for the selected items (only pending ones)
+        drug_qs = DrugOrderModel.objects.filter(
             id__in=items_by_type['drugs'],
             patient=patient,
-            status='pending'
+            status__in=['pending']
         ).select_related('drug')
 
-        lab_orders = LabTestOrderModel.objects.filter(
+        lab_qs = LabTestOrderModel.objects.filter(
             id__in=items_by_type['labs'],
             patient=patient,
-            status='pending'
+            status__in=['pending']
         ).select_related('template')
 
-        scan_orders = ScanOrderModel.objects.filter(
+        scan_qs = ScanOrderModel.objects.filter(
             id__in=items_by_type['scans'],
             patient=patient,
-            status='pending'
+            status__in=['pending']
         ).select_related('template')
 
-        service_transactions = PatientServiceTransaction.objects.filter(
+        service_qs = PatientServiceTransaction.objects.filter(
             id__in=items_by_type['services'],
             patient=patient,
             status='pending_payment'
         ).select_related('service', 'service_item')
 
-        # Calculate total amount needed
+        # Use the claim helper to compute patient-facing amounts for drugs/labs/scans
+        # get_orders_with_claim_info expects a queryset and a type string similar to verify_patient_ajax
+        drug_results = get_orders_with_claim_info(drug_qs, 'drug') if drug_qs.exists() else []
+        lab_results = get_orders_with_claim_info(lab_qs, 'lab') if lab_qs.exists() else []
+        scan_results = get_orders_with_claim_info(scan_qs, 'scan') if scan_qs.exists() else []
+
+        # Build mapping from order id -> patient_amount (Decimal) for exact allocations
+        patient_amount_map = {}
+
         total_amount = Decimal('0.00')
 
-        for order in drug_orders:
-            total_amount += order.total_amount
+        # Drugs
+        for res in drug_results:
+            order = res.get('order')  # original model instance
+            patient_amt = _to_decimal(res.get('patient_amount', 0))
+            pid = getattr(order, 'id', None)
+            if pid is not None:
+                patient_amount_map[('drugs', pid)] = patient_amt
+            total_amount += patient_amt
 
-        for order in lab_orders:
-            # Use amount_charged for lab orders
-            total_amount += order.amount_charged or Decimal('0.00')
+        # Labs
+        for res in lab_results:
+            order = res.get('order')
+            patient_amt = _to_decimal(res.get('patient_amount', 0))
+            pid = getattr(order, 'id', None)
+            if pid is not None:
+                patient_amount_map[('labs', pid)] = patient_amt
+            total_amount += patient_amt
 
-        for order in scan_orders:
-            # Use amount_charged for scan orders (assuming same structure)
-            total_amount += order.amount_charged or Decimal('0.00')
+        # Scans
+        for res in scan_results:
+            order = res.get('order')
+            patient_amt = _to_decimal(res.get('patient_amount', 0))
+            pid = getattr(order, 'id', None)
+            if pid is not None:
+                patient_amount_map[('scans', pid)] = patient_amt
+            total_amount += patient_amt
 
-        for trans in service_transactions:
-            total_amount += trans.total_amount
+        # Services: in your verify_patient_ajax you set patient_amount = transaction.total_amount
+        for svc in service_qs:
+            amt = _to_decimal(getattr(svc, 'total_amount', 0))
+            patient_amount_map[('services', getattr(svc, 'id'))] = amt
+            total_amount += amt
 
-        # Calculate wallet usage
-        wallet_amount_to_use = Decimal('0.00')
-        if use_wallet and wallet.amount > 0:
-            wallet_amount_to_use = min(wallet.amount, total_amount)
-
-        remaining_amount = total_amount - wallet_amount_to_use
-
-        # Validate direct payment amount matches remaining
-        if abs(direct_amount - remaining_amount) > Decimal('0.01'):
-            return JsonResponse({
-                'error': f'Direct payment amount (₦{direct_amount}) does not match required amount (₦{remaining_amount})'
-            }, status=400)
-
-        # Start atomic transaction
+        # --------- Wallet/Direct validation and allocation ----------
         with transaction.atomic():
-            old_wallet_balance = wallet.amount
+            # Lock the wallet row to avoid race conditions
+            wallet_obj, created = PatientWalletModel.objects.get_or_create(
+                patient=patient,
+                defaults={'amount': Decimal('0.00')}
+            )
+            wallet = PatientWalletModel.objects.select_for_update().get(pk=wallet_obj.pk)
+
+            old_wallet_balance = _to_decimal(wallet.amount)
+
+            wallet_amount_to_use = Decimal('0.00')
+            if use_wallet and old_wallet_balance > Decimal('0.00'):
+                wallet_amount_to_use = min(old_wallet_balance, total_amount)
+
+            remaining_required = (total_amount - wallet_amount_to_use).quantize(Decimal('0.01'))
+            # Compare direct_amount with remaining_required with 1-cent tolerance
+            if abs(direct_amount - remaining_required) > Decimal('0.01'):
+                return JsonResponse({
+                    'error': f'Direct payment amount (₦{direct_amount}) does not match required amount (₦{remaining_required})'
+                }, status=400)
+
+            # Prepare transaction records
             parent_transaction = None
             wallet_withdrawal_transaction = None
+            child_transactions_created = []
 
-            # Step 1: Deduct from wallet if applicable
-            if wallet_amount_to_use > 0:
-                wallet.amount -= wallet_amount_to_use
+            # Deduct wallet in a single operation (create wallet withdrawal transaction)
+            if wallet_amount_to_use > Decimal('0.00'):
+                wallet.amount = (old_wallet_balance - wallet_amount_to_use).quantize(Decimal('0.01'))
                 wallet.save()
 
                 wallet_withdrawal_transaction = PatientTransactionModel.objects.create(
@@ -4032,15 +4061,15 @@ def process_direct_payment(request):
                     direct_payment_amount=Decimal('0.00')
                 )
 
-            # Step 2: Create parent transaction for direct payment (if any)
-            if direct_amount > 0:
+            # Create parent direct payment transaction (if direct_amount > 0)
+            if direct_amount > Decimal('0.00'):
                 parent_transaction = PatientTransactionModel.objects.create(
                     patient=patient,
                     transaction_type='direct_payment',
                     transaction_direction='in',
                     amount=direct_amount,
                     old_balance=wallet.amount,
-                    new_balance=wallet.amount,  # Wallet unchanged by direct payment
+                    new_balance=wallet.amount,
                     payment_method=payment_method,
                     received_by=request.user,
                     status='completed',
@@ -4049,59 +4078,70 @@ def process_direct_payment(request):
                     direct_payment_amount=direct_amount
                 )
 
-            # Step 3: Create child transactions and update orders
-            child_transactions_created = []
+            # Helper to allocate wallet vs direct portion for an order
+            remaining_wallet = _to_decimal(wallet_amount_to_use)
+            def _allocate(order_key):
+                nonlocal remaining_wallet
+                order_amount = patient_amount_map.get(order_key, Decimal('0.00'))
+                wallet_portion = Decimal('0.00')
+                if remaining_wallet > Decimal('0.00'):
+                    wallet_portion = min(remaining_wallet, order_amount)
+                direct_portion = (order_amount - wallet_portion).quantize(Decimal('0.01'))
+                remaining_wallet = (remaining_wallet - wallet_portion).quantize(Decimal('0.01'))
+                return order_amount, wallet_portion, direct_portion
 
-            # Process drug orders
-            for order in drug_orders:
-                order_amount = order.total_amount
-                wallet_portion = min(wallet_amount_to_use, order_amount)
-                direct_portion = order_amount - wallet_portion
-                wallet_amount_to_use -= wallet_portion
+            # ---------------- Create child transactions and update orders ----------------
+            # Drugs
+            # drug_results is a list of dicts with 'order' and claim info (same as verify_patient_ajax)
+            for res in drug_results:
+                order = res.get('order')
+                if not order:
+                    continue
+                order_key = ('drugs', getattr(order, 'id'))
+                order_amount, wallet_portion, direct_portion = _allocate(order_key)
 
                 child_trans = PatientTransactionModel.objects.create(
                     patient=patient,
                     transaction_type='drug_payment',
                     transaction_direction='out',
                     amount=order_amount,
-                    old_balance=wallet.amount,
+                    old_balance=old_wallet_balance,
                     new_balance=wallet.amount,
-                    payment_method=payment_method if direct_portion > 0 else 'wallet',
+                    payment_method=payment_method if direct_portion > Decimal('0.00') else 'wallet',
                     received_by=request.user,
                     status='completed',
                     date=timezone.now().date(),
-                    parent_transaction=parent_transaction if direct_portion > 0 else wallet_withdrawal_transaction,
+                    parent_transaction=(parent_transaction if direct_portion > Decimal('0.00') else wallet_withdrawal_transaction),
                     wallet_amount_used=wallet_portion,
                     direct_payment_amount=direct_portion,
                     drug_order=order
                 )
 
-                # Update order status
+                # Update order status to paid
                 order.status = 'paid'
                 order.save()
-
                 child_transactions_created.append(child_trans)
 
-            # Process lab orders
-            for order in lab_orders:
-                order_amount = order.amount_charged or Decimal('0.00')
-
-                wallet_portion = min(wallet_amount_to_use, order_amount)
-                direct_portion = order_amount - wallet_portion
-                wallet_amount_to_use -= wallet_portion
+            # Labs
+            for res in lab_results:
+                order = res.get('order')
+                if not order:
+                    continue
+                order_key = ('labs', getattr(order, 'id'))
+                order_amount, wallet_portion, direct_portion = _allocate(order_key)
 
                 child_trans = PatientTransactionModel.objects.create(
                     patient=patient,
                     transaction_type='lab_payment',
                     transaction_direction='out',
                     amount=order_amount,
-                    old_balance=wallet.amount,
+                    old_balance=old_wallet_balance,
                     new_balance=wallet.amount,
-                    payment_method=payment_method if direct_portion > 0 else 'wallet',
+                    payment_method=payment_method if direct_portion > Decimal('0.00') else 'wallet',
                     received_by=request.user,
                     status='completed',
                     date=timezone.now().date(),
-                    parent_transaction=parent_transaction if direct_portion > 0 else wallet_withdrawal_transaction,
+                    parent_transaction=(parent_transaction if direct_portion > Decimal('0.00') else wallet_withdrawal_transaction),
                     wallet_amount_used=wallet_portion,
                     direct_payment_amount=direct_portion,
                     lab_structure=order
@@ -4109,29 +4149,28 @@ def process_direct_payment(request):
 
                 order.status = 'paid'
                 order.save()
-
                 child_transactions_created.append(child_trans)
 
-            # Process scan orders
-            for order in scan_orders:
-                order_amount = order.amount_charged or Decimal('0.00')
-
-                wallet_portion = min(wallet_amount_to_use, order_amount)
-                direct_portion = order_amount - wallet_portion
-                wallet_amount_to_use -= wallet_portion
+            # Scans
+            for res in scan_results:
+                order = res.get('order')
+                if not order:
+                    continue
+                order_key = ('scans', getattr(order, 'id'))
+                order_amount, wallet_portion, direct_portion = _allocate(order_key)
 
                 child_trans = PatientTransactionModel.objects.create(
                     patient=patient,
                     transaction_type='scan_payment',
                     transaction_direction='out',
                     amount=order_amount,
-                    old_balance=wallet.amount,
+                    old_balance=old_wallet_balance,
                     new_balance=wallet.amount,
-                    payment_method=payment_method if direct_portion > 0 else 'wallet',
+                    payment_method=payment_method if direct_portion > Decimal('0.00') else 'wallet',
                     received_by=request.user,
                     status='completed',
                     date=timezone.now().date(),
-                    parent_transaction=parent_transaction if direct_portion > 0 else wallet_withdrawal_transaction,
+                    parent_transaction=(parent_transaction if direct_portion > Decimal('0.00') else wallet_withdrawal_transaction),
                     wallet_amount_used=wallet_portion,
                     direct_payment_amount=direct_portion,
                     scan_order=order
@@ -4139,58 +4178,69 @@ def process_direct_payment(request):
 
                 order.status = 'paid'
                 order.save()
-
                 child_transactions_created.append(child_trans)
 
-            # Process service transactions
-            for svc_trans in service_transactions:
-                order_amount = svc_trans.total_amount
-                wallet_portion = min(wallet_amount_to_use, order_amount)
-                direct_portion = order_amount - wallet_portion
-                wallet_amount_to_use -= wallet_portion
+            # Services
+            for svc in service_qs:
+                order_key = ('services', getattr(svc, 'id'))
+                order_amount, wallet_portion, direct_portion = _allocate(order_key)
 
                 child_trans = PatientTransactionModel.objects.create(
                     patient=patient,
                     transaction_type='service',
                     transaction_direction='out',
                     amount=order_amount,
-                    old_balance=wallet.amount,
+                    old_balance=old_wallet_balance,
                     new_balance=wallet.amount,
-                    payment_method=payment_method if direct_portion > 0 else 'wallet',
+                    payment_method=payment_method if direct_portion > Decimal('0.00') else 'wallet',
                     received_by=request.user,
                     status='completed',
                     date=timezone.now().date(),
-                    parent_transaction=parent_transaction if direct_portion > 0 else wallet_withdrawal_transaction,
+                    parent_transaction=(parent_transaction if direct_portion > Decimal('0.00') else wallet_withdrawal_transaction),
                     wallet_amount_used=wallet_portion,
                     direct_payment_amount=direct_portion,
-                    service=svc_trans
+                    service=svc
                 )
 
-                svc_trans.status = 'completed'
-                svc_trans.save()
-
+                svc.status = 'completed'
+                svc.save()
                 child_transactions_created.append(child_trans)
 
-            # Determine which transaction to show in detail
-            detail_transaction_id = parent_transaction.id if parent_transaction else wallet_withdrawal_transaction.id
+            # Determine detail transaction id to redirect to
+            detail_transaction_id = None
+            if parent_transaction:
+                detail_transaction_id = parent_transaction.id
+            elif wallet_withdrawal_transaction:
+                detail_transaction_id = wallet_withdrawal_transaction.id
 
-            return JsonResponse({
+            # Compute actual wallet used
+            wallet_used_total = (_to_decimal(old_wallet_balance) - _to_decimal(wallet.amount)).quantize(Decimal('0.01'))
+
+            payload = {
                 'success': True,
                 'message': f'Payment successful! ₦{total_amount:,.2f} paid for {len(child_transactions_created)} item(s)',
                 'total_paid': float(total_amount),
-                'wallet_used': float(wallet_amount_to_use + (old_wallet_balance - wallet.amount)),
+                'wallet_used': float(wallet_used_total),
                 'direct_paid': float(direct_amount),
                 'new_wallet_balance': float(wallet.amount),
                 'items_paid': len(child_transactions_created),
-                'redirect_url': reverse('transaction_detail', args=[detail_transaction_id])
-            })
+            }
+
+            if detail_transaction_id:
+                try:
+                    payload['redirect_url'] = reverse('transaction_detail', args=[detail_transaction_id])
+                except Exception:
+                    pass
+
+            return JsonResponse(payload)
 
     except PatientModel.DoesNotExist:
         return JsonResponse({'error': 'Patient not found'}, status=404)
     except ValueError as e:
-        return JsonResponse({'error': f'Invalid amount: {str(e)}'}, status=400)
+        return JsonResponse({'error': f'Invalid value: {str(e)}'}, status=400)
     except Exception as e:
-        return JsonResponse({'error': f'Error processing payment: {str(e)}'}, status=500)
+        # In production, log the exception; return safe message for the client
+        return JsonResponse({'error': f'Error processing payment: {type(e).__name__}: {str(e)}'}, status=500)
 
 
 @login_required
