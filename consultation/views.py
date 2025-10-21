@@ -4592,6 +4592,36 @@ def get_consultation_status_ajax(request):
             'message': f"Patient is already in the queue for {specialization.name}. Current status: '{active_queue_entry.get_status_display()}'."
         })
 
+    if specialization.group:
+        valid_payment = PatientTransactionModel.objects.filter(
+            patient=patient,
+            transaction_type='consultation_payment',
+            fee_structure__specialization__group=specialization.group,
+            status='completed',
+            valid_till__gte=today
+        ).first()
+    else:
+        # If specialization has no group, only match same specialization
+        valid_payment = PatientTransactionModel.objects.filter(
+            patient=patient,
+            transaction_type='consultation_payment',
+            fee_structure__specialization=specialization,
+            status='completed',
+            valid_till__gte=today
+        ).first()
+
+    if valid_payment:
+        return JsonResponse({
+            'status': 'reuse_payment',                      # <- frontend looks for this
+            'payment_id': valid_payment.id,
+            'reason': 'VALID_PAYMENT',
+            'message': (
+                f"Patient already has a valid consultation payment "
+                f"for {valid_payment.fee_structure.specialization.name} "
+                f"(valid till {valid_payment.valid_till})."
+            )
+        })
+
     fee = None
 
     # 2. Check if the patient has a currently valid insurance policy.
