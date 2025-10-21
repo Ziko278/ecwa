@@ -4617,7 +4617,7 @@ def get_consultation_status_ajax(request):
             'reason': 'VALID_PAYMENT',
             'message': (
                 f"Patient already has a valid consultation payment "
-                f"for {valid_payment.fee_structure.specialization.name} "
+                f"for {valid_payment.fee_structure.specialization.group.name} "
                 f"(valid till {valid_payment.valid_till})."
             )
         })
