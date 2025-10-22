@@ -11,22 +11,22 @@
         <thead>
             <tr>
                 <th scope="col">Drug Name</th>
-                <th scope="col">Quantity</th>
+                <th scope="col">Qty</th>
+                <th>Unit Price</th>
+                <th>Total Price</th>
                 <th scope="col">Timing</th>
-                <th scope="col">Optional</th>
                 <th scope="col">Action</th>
             </tr>
         </thead>
         <tbody id="drugs-table-body">
-            {% for drug in surgery_drugs %}
-            <tr id="drug-{{ drug.pk }}">
-                <td>{{ drug.drug }}</td>
-                <td>{{ drug.quantity }}</td>
-                <td>{{ drug.timing|default:"N/A" }}</td>
-                <td>{% if drug.is_optional %}Yes{% else %}No{% endif %}</td>
-                <td>
-                    <button class="btn btn-danger btn-sm remove-item-btn" data-type="drug" data-id="{{ drug.pk }}">Remove</button>
-                </td>
+            {% for item in surgery_drugs %}
+            <tr id="drug-{{ item.id }}" data-price="{{ item.drug.price|floatformat:2 }}" data-quantity="{{ item.quantity }}">
+                <td style="min-width:200px">{{ item.drug|default:"N/A" }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>₦{{ item.drug.selling_price|floatformat:2|default:"0.00" }}</td>
+                <td>₦{{ item.total_price|floatformat:2 }}</td>
+                <td>{{ item.timing|default:"N/A" }}</td>
+                <td><button class="btn btn-danger btn-sm remove-item-btn" data-type="drug" data-id="{{ item.id }}"><i class="bi bi-trash"></i></button></td>
             </tr>
             {% endfor %}
             <tr id="no-drugs-row" {% if surgery_drugs %}style="display: none;"{% endif %}>

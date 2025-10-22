@@ -555,8 +555,13 @@
           {% endif %}
           {% if perms.laboratory.view_labtestordermodel %}
           <li>
-            <a href="{% url 'laboratory_dashboard' %}">
+            <a href="{% url 'lab_dashboard' %}">
               <i class="bi bi-circle"></i><span>Lab Dashboard</span>
+            </a>
+          </li>
+            <li>
+            <a href="{% url 'lab_reports' %}">
+              <i class="bi bi-circle"></i><span>Lab Reports</span>
             </a>
           </li>
           {% endif %}
@@ -607,6 +612,18 @@
           <li>
             <a href="{% url 'scan_result_index' %}">
               <i class="bi bi-circle"></i><span>View Scan Results</span>
+            </a>
+          </li>
+          {% endif %}
+            {% if perms.scan.view_scanordermodel %}
+          <li>
+            <a href="{% url 'scan_dashboard' %}">
+              <i class="bi bi-circle"></i><span>Scan Dashboard</span>
+            </a>
+          </li>
+            <li>
+            <a href="{% url 'scan_reports' %}">
+              <i class="bi bi-circle"></i><span>Scan Reports</span>
             </a>
           </li>
           {% endif %}

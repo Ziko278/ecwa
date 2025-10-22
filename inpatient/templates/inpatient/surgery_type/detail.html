@@ -1,6 +1,7 @@
 {% extends 'admin_site/layout.html' %}
 {% block 'main' %}
 {% load static %}
+{% load humanize %}
 
 <div class="pagetitle">
     <h1>Surgery Type Details</h1>
@@ -32,20 +33,30 @@
                     <ul class="list-group list-group-flush">
                         <li class="list-group-item d-flex justify-content-between">
                             <strong>Surgeon Fee</strong>
-                            <span>₦{{ surgery_type.base_surgeon_fee|floatformat:2 }}</span>
+                            <span>₦{{ surgery_type.base_surgeon_fee|floatformat:2|intcomma }}</span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between">
                             <strong>Anesthesia Fee</strong>
-                            <span>₦{{ surgery_type.base_anesthesia_fee|floatformat:2 }}</span>
+                            <span>₦{{ surgery_type.base_anesthesia_fee|floatformat:2|intcomma }}</span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between">
                             <strong>Facility Fee</strong>
-                            <span>₦{{ surgery_type.base_facility_fee|floatformat:2 }}</span>
+                            <span>₦{{ surgery_type.base_facility_fee|floatformat:2|intcomma }}</span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between">
                             <strong>Total Base Fee</strong>
-                            <span class="fw-bold">₦{{ surgery_type.total_base_fee|floatformat:2 }}</span>
+                            <span class="fw-bold">₦{{ surgery_type.total_base_fee|floatformat:2|intcomma }}</span>
                         </li>
+                        <!-- NEW TOTALS -->
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Total Items Fee</strong>
+                            <span class="fw-bold" id="total-items-fee">₦{{ total_package_items_price|floatformat:2|intcomma }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between bg-light">
+                            <strong class="h5">Grand Total</strong>
+                            <span class="fw-bold h5" id="grand-total-fee">₦{{ grand_total|floatformat:2|intcomma }}</span>
+                        </li>
+                        <!-- END NEW TOTALS -->
                         <li class="list-group-item d-flex justify-content-between">
                             <strong>Est. Duration</strong>
                             <span>{{ surgery_type.estimated_duration_hours|default:"N/A" }} hrs</span>
@@ -85,6 +96,8 @@
                         <!-- Drugs Tab Pane -->
                         <div class="tab-pane fade show active" id="drugs-tab">
                             {% include './partials/package_drug.html' %}
+
+                            <!-- End of content from partial -->
                         </div>
 
                         <!-- Labs Tab Pane -->
@@ -141,6 +154,13 @@
   </div>
 </div>
 
+<!-- NOTE: The Modals for Add Drug, Add Lab, and Add Scan are assumed to exist -->
+<!-- and be included elsewhere on the page or in your layout.html -->
+<!-- Example (you must have these): -->
+<!-- <div class="modal fade" id="addDrugModal"> ... </div> -->
+<!-- <div class="modal fade" id="addLabModal"> ... </div> -->
+<!-- <div class="modal fade" id="addScanModal"> ... </div> -->
+
 
 <!-- Include jQuery for AJAX -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -150,6 +170,9 @@ $(document).ready(function() {
     const csrfToken = "{{ csrf_token }}";
     const infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
     const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+
+    // Store base fee from template
+    const baseFee = parseFloat("{{ surgery_type.total_base_fee|default:0 }}");
 
     // Reusable modal functions
     function showInfoModal(title, message, isError = false) {
@@ -174,6 +197,38 @@ $(document).ready(function() {
         confirmModal.show();
     }
 
+    // --- NEW: Function to recalculate all totals ---
+    function updateAllTotals() {
+        let totalDrugs = 0;
+        $('#drugs-table-body tr[id^="drug-"]').each(function() {
+            const price = parseFloat($(this).data('price')) || 0;
+            const quantity = parseInt($(this).data('quantity')) || 0;
+            totalDrugs += price * quantity;
+        });
+
+        let totalLabs = 0;
+        $('#labs-table-body tr[id^="lab-"]').each(function() {
+            totalLabs += parseFloat($(this).data('price')) || 0;
+        });
+
+        let totalScans = 0;
+        $('#scans-table-body tr[id^="scan-"]').each(function() {
+            totalScans += parseFloat($(this).data('price')) || 0;
+        });
+
+        const totalItems = totalDrugs + totalLabs + totalScans;
+        const grandTotal = baseFee + totalItems;
+
+        // Update table footers
+        $('#total-drugs-price').text('₦' + totalDrugs.toFixed(2));
+        $('#total-labs-price').text('₦' + totalLabs.toFixed(2));
+        $('#total-scans-price').text('₦' + totalScans.toFixed(2));
+
+        // Update main details
+        $('#total-items-fee').text('₦' + totalItems.toFixed(2));
+        $('#grand-total-fee').text('₦' + grandTotal.toFixed(2));
+    }
+
 
     // Generic function to handle adding items to the package
     function addItem(type, data, url, tableBodyId, emptyRowId) {
@@ -181,26 +236,64 @@ $(document).ready(function() {
             .done(function(response) {
                 if (response.success) {
                     const item = response[type];
-                    const newRow = `
-                        <tr id="${type}-${item.id}">
+                    // --- UPDATED to include price ---
+                    const unitPrice = parseFloat(item.price || 0);
+                    const quantity = parseInt(item.quantity || 1);
+                    const totalPrice = unitPrice * quantity;
+
+                    let newRow;
+                    if (type === 'drug') {
+                        newRow = `
+                        <tr id="drug-${item.id}" data-price="${unitPrice.toFixed(2)}" data-quantity="${quantity}">
                             <td>${item.name}</td>
-                            ${type === 'drug' ? '<td>' + item.quantity + '</td>' : ''}
+                            <td>${quantity}</td>
+                            <td>₦${unitPrice.toFixed(2)}</td>
+                            <td>₦${totalPrice.toFixed(2)}</td>
                             <td>${item.timing || 'N/A'}</td>
                             <td>${item.is_optional ? 'Yes' : 'No'}</td>
                             <td>
-                                <button class="btn btn-danger btn-sm remove-item-btn" data-type="${type}" data-id="${item.id}">Remove</button>
+                                <button class="btn btn-danger btn-sm remove-item-btn" data-type="drug" data-id="${item.id}"><i class="bi bi-trash"></i></button>
                             </td>
                         </tr>`;
+                    } else { // Lab or Scan
+                         newRow = `
+                        <tr id="${type}-${item.id}" data-price="${unitPrice.toFixed(2)}">
+                            <td>${item.name}</td>
+                            <td>₦${unitPrice.toFixed(2)}</td>
+                            <td>${item.timing || 'N/A'}</td>
+                            <td>${item.is_optional ? 'Yes' : 'No'}</td>
+                            <td>
+                                <button class="btn btn-danger btn-sm remove-item-btn" data-type="${type}" data-id="${item.id}"><i class="bi bi-trash"></i></button>
+                            </td>
+                        </tr>`;
+                    }
+
                     $('#' + tableBodyId).append(newRow);
                     $('#' + emptyRowId).hide();
-                    $(`#add${type.charAt(0).toUpperCase() + type.slice(1)}Modal`).modal('hide'); // e.g. #addDrugModal
+                    $(`#add${type.charAt(0).toUpperCase() + type.slice(1)}Modal`).modal('hide');
                     showInfoModal('Success', response.message);
+                    updateAllTotals(); // --- NEW: Update totals after adding ---
                 } else {
                     showInfoModal('Error', response.error, true);
                 }
             })
-            .fail(function() {
-                showInfoModal('Server Error', 'An unexpected server error occurred.', true);
+            .fail(function(jqXHR, textStatus, errorThrown) {
+                let errorMessage = 'An unexpected server error occurred.'; // Default message
+
+                // Check if the server sent back a specific JSON error message
+                // This is common for 500, 400, or 403 errors
+                if (jqXHR.responseJSON && jqXHR.responseJSON.error) {
+                    errorMessage = jqXHR.responseJSON.error;
+                }
+                // You can also add checks for specific status codes
+                else if (jqXHR.status === 403) {
+                    errorMessage = 'You do not have permission to perform this action.';
+                } else if (jqXHR.status === 404) {
+                    errorMessage = 'The requested item or URL was not found.';
+                }
+
+                // Show the (now more specific) error message in your modal
+                showInfoModal('Server Error (' + jqXHR.status + ')', errorMessage, true);
             });
     }
 
@@ -217,10 +310,11 @@ $(document).ready(function() {
                 .done(function(response) {
                     if (response.success) {
                         $(`#${type}-${itemId}`).remove();
-                        if ($('#' + tableBodyId).children('tr').length === 1 && $('#' + tableBodyId).find('tr[id^="no-"]').length > 0) {
+                        if ($('#' + tableBodyId).children('tr[id^="' + type + '-"]').length === 0) {
                             $('#' + emptyRowId).show();
                         }
                         showInfoModal('Success', response.message);
+                        updateAllTotals(); // --- NEW: Update totals after removing ---
                     } else {
                         showInfoModal('Error', response.error, true);
                     }
@@ -247,6 +341,10 @@ $(document).ready(function() {
             showInfoModal('Validation Error', 'Please search and select a drug.', true);
             return;
         }
+        // --- NOTE ---
+        // This relies on your AJAX view for adding drugs to return
+        // a JSON response like: { "success": true, "drug": { "id": 1, "name": "...", "price": 1000, "quantity": 2, ... } }
+        // If your view doesn't return the 'price', the dynamic row will show ₦0.00
         addItem('drug', data, $(this).attr('action'), 'drugs-table-body', 'no-drugs-row');
     });
 
@@ -263,6 +361,7 @@ $(document).ready(function() {
             showInfoModal('Validation Error', 'Please search and select a lab test.', true);
             return;
         }
+        // This relies on your AJAX view returning 'price' in the 'lab' object
         addItem('lab', data, $(this).attr('action'), 'labs-table-body', 'no-labs-row');
     });
 
@@ -279,6 +378,7 @@ $(document).ready(function() {
             showInfoModal('Validation Error', 'Please search and select a scan.', true);
             return;
         }
+        // This relies on your AJAX view returning 'price' in the 'scan' object
         addItem('scan', data, $(this).attr('action'), 'scans-table-body', 'no-scans-row');
     });
 
@@ -295,7 +395,11 @@ $(document).ready(function() {
                 resultsContainer.empty().show();
                 if (data.results && data.results.length > 0) {
                     data.results.forEach(function(item) {
-                        resultsContainer.append(`<a href="#" class="list-group-item list-group-item-action" data-id="${item.id}" data-name="${item.name}">${item.name}</a>`);
+                        // --- UPDATED ---
+                        // This assumes your search AJAX view returns 'price'
+                        // If not, 'item.price' will be undefined, and data-price will be "0.00"
+                        const price = parseFloat(item.price || 0).toFixed(2);
+                        resultsContainer.append(`<a href="#" class="list-group-item list-group-item-action" data-id="${item.id}" data-name="${item.name}" data-price="${price}">${item.name} - ₦${price}</a>`);
                     });
                 } else {
                     resultsContainer.append('<span class="list-group-item">No results found</span>');
@@ -308,6 +412,10 @@ $(document).ready(function() {
             e.preventDefault();
             const selectedId = $(this).data('id');
             const selectedName = $(this).data('name');
+            // We don't need to store the price in a hidden input
+            // because the 'addItem' AJAX view will return it.
+            // But we'll clear the hidden ID input.
+
             const searchInput = $('#' + inputId);
             const hiddenIdInput = $('#' + inputId.replace('-search', '-search-id')); // e.g. drug-search -> drug-search-id
 
@@ -318,6 +426,9 @@ $(document).ready(function() {
     }
 
     // Initialize searches
+    // --- NOTE ---
+    // For this to work, your AJAX search views (e.g., 'search_drugs_for_surgery')
+    // MUST return a JSON list where each object has 'id', 'name', and 'price'.
     setupSearch('drug-search', 'drug-search-results', "{% url 'search_drugs_for_surgery' %}");
     setupSearch('lab-search', 'lab-search-results', "{% url 'search_lab_tests_for_surgery' %}");
     setupSearch('scan-search', 'scan-search-results', "{% url 'search_scans_for_surgery' %}");
@@ -349,4 +460,3 @@ $(document).ready(function() {
 </style>
 
 {% endblock %}
-

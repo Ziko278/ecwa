@@ -45,9 +45,12 @@ urlpatterns = [
     path('collect-sample/<int:order_id>/', collect_sample, name='collect_sample'),
 
     # Results
-    path('dashboard/', laboratory_dashboard, name='laboratory_dashboard'),
+    path('dashboard/', laboratory_dashboard, name='lab_dashboard'),
     path('dashboard/print/', laboratory_dashboard_print, name='laboratory_dashboard_print'),
     path('dashboard/analytics/', laboratory_analytics_api, name='laboratory_analytics_api'),
+    path('reports/', LabReportView.as_view(), name='lab_reports'),
+    path('reports/export/excel/', LabReportExportExcelView.as_view(), name='lab_report_export_excel'),
+    path('reports/export/pdf/', LabReportExportPDFView.as_view(), name='lab_report_export_pdf'),
 
     path('results/', LabTestResultListView.as_view(), name='lab_result_index'),
     path('results/create/', LabTestResultCreateView.as_view(), name='lab_result_create'),
@@ -83,9 +86,6 @@ urlpatterns = [
     path('setting/<int:pk>/detail', LabSettingDetailView.as_view(), name='lab_setting_detail'),
     path('setting/<int:pk>/edit', LabSettingUpdateView.as_view(), name='lab_setting_edit'),
 
-    # Dashboard & Reports
-    path('dashboard', LabDashboardView.as_view(), name='lab_dashboard'),
-    path('reports', LabReportView.as_view(), name='lab_report_index'),
 
     # Print
     path('order/<int:pk>/print', print_order, name='lab_print_order'),

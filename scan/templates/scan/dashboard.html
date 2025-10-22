@@ -1,0 +1,140 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block main %}
+<div class="report-container">
+    <div class="report-header">
+        <h2>Scan / Imaging Reports</h2>
+        <p class="text-muted">Generate and export scan reports</p>
+    </div>
+
+    <div class="filters-section">
+        <form method="get" id="reportForm">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
+                <div class="form-group">
+                    <label for="from_date">From Date</label>
+                    <input type="date" name="from_date" id="from_date" class="form-control" value="{{ from_date|date:'Y-m-d' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="to_date">To Date</label>
+                    <input type="date" name="to_date" id="to_date" class="form-control" value="{{ to_date|date:'Y-m-d' }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="title">Report Title</label>
+                    <input type="text" name="title" id="title" class="form-control" value="{{ report_title }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="order_by">Order By</label>
+                    <select id="order_by" name="order_by" class="form-control">
+                        <option value="name" {% if order_by=='name' %}selected{% endif %}>Name</option>
+                        <option value="total" {% if order_by=='total' %}selected{% endif %}>Total Orders</option>
+                        <option value="completed" {% if order_by=='completed' %}selected{% endif %}>Completed</option>
+                    </select>
+                </div>
+
+                <div style="display:flex; align-items:flex-end; gap:8px;">
+                    <button type="submit" class="btn btn-primary">Generate Report</button>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-success" onclick="exportToExcel()">
+                            <i class="fas fa-file-excel"></i> Excel
+                        </button>
+                        <button type="button" class="btn btn-info" onclick="exportToPDF('breakdown')">
+                            <i class="fas fa-file-pdf"></i> PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="tabs mt-3">
+        <button class="tab active" onclick="switchTab('breakdown')">Breakdown</button>
+        <button class="tab" onclick="switchTab('summary')">Summary</button>
+    </div>
+
+    <div id="breakdown-tab" class="tab-content active mt-3">
+        <div class="controls-bar d-flex justify-content-between mb-2">
+            <div>
+                <label><input id="showTotal" type="checkbox" checked> Show Total Orders</label>
+                <label class="ms-3"><input id="showCompleted" type="checkbox" checked> Show Completed</label>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="data-table table table-bordered">
+                <thead>
+                    <tr>
+                        <th>S/N</th>
+                        <th>Scan/Test</th>
+                        <th class="total-column">Total Orders</th>
+                        <th class="completed-column">Completed Orders</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for test in test_breakdown %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ test.template__name|title }}</td>
+                        <td class="total-column">{{ test.total_orders }}</td>
+                        <td class="completed-column">{{ test.completed_orders }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted">No data for selected period</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="summary-tab" class="tab-content mt-3">
+        <div class="summary-grid">
+            <div class="summary-card">
+                <h3>Total</h3>
+                <p class="value">{{ total_tests }}</p>
+            </div>
+            <div class="summary-card">
+                <h3>Completed</h3>
+                <p class="value">{{ completed_tests }}</p>
+            </div>
+            <div class="summary-card">
+                <h3>Pending</h3>
+                <p class="value">{{ pending_tests }}</p>
+            </div>
+            <div class="summary-card">
+                <h3>Cancelled</h3>
+                <p class="value">{{ cancelled_tests }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function switchTab(tabName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById(tabName + '-tab').classList.add('active');
+}
+
+document.getElementById('showTotal').addEventListener('change', function() {
+    document.querySelectorAll('.total-column').forEach(c => c.style.display = this.checked ? '' : 'none');
+});
+document.getElementById('showCompleted').addEventListener('change', function() {
+    document.querySelectorAll('.completed-column').forEach(c => c.style.display = this.checked ? '' : 'none');
+});
+
+function exportToExcel() {
+    const params = new URLSearchParams(new FormData(document.getElementById('reportForm')));
+    window.location.href = "{% url 'scan:scan_report_export_excel' %}?" + params.toString();
+}
+
+function exportToPDF(type) {
+    const params = new URLSearchParams(new FormData(document.getElementById('reportForm')));
+    params.append('type', type);
+    window.location.href = "{% url 'scan:scan_report_export_pdf' %}?" + params.toString();
+}
+</script>
+{% endblock %}

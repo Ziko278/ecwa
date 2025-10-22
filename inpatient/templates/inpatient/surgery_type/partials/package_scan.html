@@ -17,14 +17,13 @@
             </tr>
         </thead>
         <tbody id="scans-table-body">
-            {% for scan in surgery_scans %}
-            <tr id="scan-{{ scan.pk }}">
-                <td>{{ scan.scan.name }}</td>
-                <td>{{ scan.timing|default:"N/A" }}</td>
-                <td>{% if scan.is_optional %}Yes{% else %}No{% endif %}</td>
-                <td>
-                    <button class="btn btn-danger btn-sm remove-item-btn" data-type="scan" data-id="{{ scan.pk }}">Remove</button>
-                </td>
+            {% for item in surgery_scans %}
+            <tr id="scan-{{ item.id }}" data-price="{{ item.scan.price|floatformat:2 }}">
+                <td>{{ item.scan.name|default:"N/A" }}</td>
+                <td>₦{{ item.scan.price|floatformat:2|default:"0.00" }}</td>
+                <td>{{ item.timing|default:"N/A" }}</td>
+                <td>{% if item.is_optional %}Yes{% else %}No{% endif %}</td>
+                <td><button class="btn btn-danger btn-sm remove-item-btn" data-type="scan" data-id="{{ item.id }}"><i class="bi bi-trash"></i></button></td>
             </tr>
             {% endfor %}
             <tr id="no-scans-row" {% if surgery_scans %}style="display: none;"{% endif %}>

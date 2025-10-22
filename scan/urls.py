@@ -55,7 +55,7 @@ urlpatterns = [
     # -------------------------
     # Results Dashboard
     # -------------------------
-    path('dashboard/', ScanResultDashboardView.as_view(), name='scan_result_dashboard'),
+    path('result-dashboard/', ScanResultDashboardView.as_view(), name='scan_result_dashboard'),
     path('results/', ScanResultListView.as_view(), name='scan_result_index'),
     path('<int:patient_id>/results/', ScanResultDashboardView.as_view(), name='patient_scan_results'),
     path('results/create/<int:order_id>/', ScanResultCreateView.as_view(), name='scan_result_create_for_order'),
@@ -63,6 +63,13 @@ urlpatterns = [
     path('results/<int:pk>/edit/', ScanResultUpdateView.as_view(), name='scan_result_edit'),
     path('results/<int:pk>/verify/', verify_scan_result, name='verify_scan_result'),
     path('results/<int:pk>/unverify/', unverify_scan_result, name='unverify_scan_result'),
+
+    path('dashboard/', scan_dashboard, name='scan_dashboard'),
+    path('dashboard/print/', scan_dashboard_print, name='scan_dashboard_print'),
+    path('dashboard/analytics/', scan_analytics_api, name='scan_analytics_api'),
+    path('reports/', ScanReportView.as_view(), name='scan_reports'),
+    path('reports/export/excel/', ScanReportExportExcelView.as_view(), name='scan_report_export_excel'),
+    path('reports/export/pdf/', ScanReportExportPDFView.as_view(), name='scan_report_export_pdf'),
 
     # -------------------------
     # Image Management

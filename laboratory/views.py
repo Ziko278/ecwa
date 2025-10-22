@@ -1,8 +1,19 @@
+import calendar
 import logging
 import json
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 
+import openpyxl
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from io import BytesIO
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -19,7 +30,9 @@ from django.views import View
 from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
+from openpyxl.styles import Font, Alignment
 
+from admin_site.models import SiteInfoModel
 from insurance.models import InsuranceClaimModel
 from patient.models import PatientModel, PatientWalletModel
 from .models import *
@@ -763,6 +776,8 @@ class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
     def get_queryset(self):
         queryset = LabTestOrderModel.objects.select_related(
             'patient', 'template', 'ordered_by'
+        ).exclude(
+            status__in=['pending', 'cancelled']
         ).order_by('-ordered_at')
 
         # Get filter values from the request
@@ -1212,6 +1227,462 @@ def laboratory_analytics_api(request):
         return JsonResponse({'data': data})
 
     return JsonResponse({'error': 'Invalid chart type'}, status=400)
+
+
+class LabReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    template_name = 'laboratory/reports/index.html'
+    permission_required = 'laboratory.view_labtestordermodel'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Date range from request or default to this month
+        from_date = self.request.GET.get('from_date')
+        to_date = self.request.GET.get('to_date')
+
+        if not from_date:
+            from_date = date.today().replace(day=1)  # First day of current month
+        else:
+            from_date = datetime.datstrptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            # Last day of current month
+            if date.today().month == 12:
+                to_date = date.today().replace(day=31)
+            else:
+                to_date = (date.today().replace(month=date.today().month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Default title
+        month_year = from_date.strftime('%B %Y')
+        default_title = f'Laboratory Test Report for the Month of {month_year}'
+        report_title = self.request.GET.get('title', default_title)
+
+        # Filter orders - exclude pending and cancelled from total
+        all_orders = LabTestOrderModel.objects.filter(
+            ordered_at__date__range=[from_date, to_date]
+        )
+
+        # Total orders exclude pending and cancelled
+        orders = all_orders.exclude(status__in=['pending', 'cancelled'])
+
+        # Get order by parameter
+        order_by = self.request.GET.get('order_by', 'name')
+
+        # Test type breakdown
+        test_breakdown = orders.values(
+            'template__name', 'template__id'
+        ).annotate(
+            total_orders=Count('id'),
+            completed_orders=Count('id', filter=Q(status='completed'))
+        )
+
+        # Apply ordering
+        if order_by == 'total':
+            test_breakdown = test_breakdown.order_by('-total_orders', 'template__name')
+        elif order_by == 'completed':
+            test_breakdown = test_breakdown.order_by('-completed_orders', 'template__name')
+        else:  # default to name
+            test_breakdown = test_breakdown.order_by('template__name')
+
+        # Summary statistics
+        context.update({
+            'from_date': from_date,
+            'to_date': to_date,
+            'report_title': report_title,
+            'test_breakdown': test_breakdown,
+            'order_by': order_by,
+
+            # Summary stats
+            'total_tests': orders.count(),
+            'completed_tests': all_orders.filter(status='completed').count(),
+            'processing_tests': all_orders.filter(status='processing').count(),
+            'collected_tests': all_orders.filter(status='collected').count(),
+            'paid_tests': all_orders.filter(status='paid').count(),
+            'pending_tests': all_orders.filter(status='pending').count(),
+            'cancelled_tests': all_orders.filter(status='cancelled').count(),
+        })
+
+        return context
+
+
+class LabReportExportExcelView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'laboratory.view_labtestordermodel'
+
+    def get(self, request, *args, **kwargs):
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        report_title = request.GET.get('title', 'Laboratory Test Report')
+        show_total = request.GET.get('show_total', 'true') == 'true'
+        show_completed = request.GET.get('show_completed', 'true') == 'true'
+        order_by = request.GET.get('order_by', 'name')
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            if date.today().month == 12:
+                to_date = date.today().replace(day=31)
+            else:
+                to_date = (date.today().replace(month=date.today().month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Get lab and site info
+        lab_setting = LabSettingModel.objects.first()
+        site_info = SiteInfoModel.objects.first()
+
+        # Query data
+        orders = LabTestOrderModel.objects.filter(
+            ordered_at__date__range=[from_date, to_date]
+        ).exclude(status__in=['pending', 'cancelled'])
+
+        test_breakdown = orders.values(
+            'template__name', 'template__id'
+        ).annotate(
+            total_orders=Count('id'),
+            completed_orders=Count('id', filter=Q(status='completed'))
+        )
+
+        # Apply ordering
+        if order_by == 'total':
+            test_breakdown = test_breakdown.order_by('-total_orders', 'template__name')
+        elif order_by == 'completed':
+            test_breakdown = test_breakdown.order_by('-completed_orders', 'template__name')
+        else:
+            test_breakdown = test_breakdown.order_by('template__name')
+
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Lab Test Report"
+
+        # Styles
+        header_font = Font(bold=True, size=14)
+        title_font = Font(bold=True, size=12)
+        table_header_font = Font(bold=True, size=11, color="FFFFFF")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
+        row = 1
+
+        # Header section
+        if lab_setting and lab_setting.lab_name:
+            ws.merge_cells(f'A{row}:D{row}')
+            cell = ws[f'A{row}']
+            cell.value = lab_setting.lab_name
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center')
+            row += 1
+
+            if lab_setting.mobile or lab_setting.email:
+                ws.merge_cells(f'A{row}:D{row}')
+                cell = ws[f'A{row}']
+                contact = []
+                if lab_setting.mobile:
+                    contact.append(f"Tel: {lab_setting.mobile}")
+                if lab_setting.email:
+                    contact.append(f"Email: {lab_setting.email}")
+                cell.value = " | ".join(contact)
+                cell.alignment = Alignment(horizontal='center')
+                row += 1
+        elif site_info:
+            ws.merge_cells(f'A{row}:D{row}')
+            cell = ws[f'A{row}']
+            cell.value = site_info.name
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center')
+            row += 1
+
+            ws.merge_cells(f'A{row}:D{row}')
+            cell = ws[f'A{row}']
+            contact = []
+            if site_info.mobile_1:
+                contact.append(f"Tel: {site_info.mobile_1}")
+            if site_info.email:
+                contact.append(f"Email: {site_info.email}")
+            cell.value = " | ".join(contact)
+            cell.alignment = Alignment(horizontal='center')
+            row += 1
+
+        row += 1
+
+        # Report title
+        ws.merge_cells(f'A{row}:D{row}')
+        cell = ws[f'A{row}']
+        cell.value = report_title
+        cell.font = title_font
+        cell.alignment = Alignment(horizontal='center')
+        row += 1
+
+        # Date range
+        ws.merge_cells(f'A{row}:D{row}')
+        cell = ws[f'A{row}']
+        cell.value = f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}"
+        cell.alignment = Alignment(horizontal='center')
+        row += 2
+
+        # Table headers
+        col = 1
+        headers = ['S/N', 'Test']
+        if show_total:
+            headers.append('Total Orders')
+        if show_completed:
+            headers.append('Completed Orders')
+
+        for header in headers:
+            cell = ws.cell(row=row, column=col)
+            cell.value = header
+            cell.font = table_header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+            col += 1
+
+        row += 1
+
+        # Data rows
+        for idx, test in enumerate(test_breakdown, 1):
+            col = 1
+
+            # S/N
+            cell = ws.cell(row=row, column=col)
+            cell.value = idx
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center')
+            col += 1
+
+            # Test name
+            cell = ws.cell(row=row, column=col)
+            cell.value = test['template__name']
+            cell.border = border
+            col += 1
+
+            # Total orders
+            if show_total:
+                cell = ws.cell(row=row, column=col)
+                cell.value = test['total_orders']
+                cell.border = border
+                cell.alignment = Alignment(horizontal='center')
+                col += 1
+
+            # Completed orders
+            if show_completed:
+                cell = ws.cell(row=row, column=col)
+                cell.value = test['completed_orders']
+                cell.border = border
+                cell.alignment = Alignment(horizontal='center')
+                col += 1
+
+            row += 1
+
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 8
+        ws.column_dimensions['B'].width = 40
+        if show_total:
+            ws.column_dimensions['C'].width = 15
+        if show_completed:
+            ws.column_dimensions['D'].width = 18
+
+        # Prepare response
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"lab_test_report_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        wb.save(response)
+        return response
+
+
+class LabReportExportPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'laboratory.view_labtestordermodel'
+
+    def get(self, request, *args, **kwargs):
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        report_title = request.GET.get('title', 'Laboratory Test Report')
+        show_total = request.GET.get('show_total', 'true') == 'true'
+        show_completed = request.GET.get('show_completed', 'true') == 'true'
+        order_by = request.GET.get('order_by', 'name')
+        report_type = request.GET.get('type', 'breakdown')  # breakdown or summary
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            if date.today().month == 12:
+                to_date = date.today().replace(day=31)
+            else:
+                to_date = (date.today().replace(month=date.today().month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Get lab and site info
+        lab_setting = LabSettingModel.objects.first()
+        site_info = SiteInfoModel.objects.first()
+
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+        elements = []
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            textColor=colors.HexColor('#1a1a1a'),
+            spaceAfter=12,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#333333'),
+            spaceAfter=6,
+            alignment=TA_CENTER
+        )
+
+        # Header
+        if lab_setting and lab_setting.lab_name:
+            elements.append(Paragraph(lab_setting.lab_name, title_style))
+            if lab_setting.mobile or lab_setting.email:
+                contact = []
+                if lab_setting.mobile:
+                    contact.append(f"Tel: {lab_setting.mobile}")
+                if lab_setting.email:
+                    contact.append(f"Email: {lab_setting.email}")
+                elements.append(Paragraph(" | ".join(contact), subtitle_style))
+        elif site_info:
+            elements.append(Paragraph(site_info.name, title_style))
+            contact = []
+            if site_info.mobile_1:
+                contact.append(f"Tel: {site_info.mobile_1}")
+            if site_info.email:
+                contact.append(f"Email: {site_info.email}")
+            elements.append(Paragraph(" | ".join(contact), subtitle_style))
+
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph(report_title, title_style))
+        elements.append(Paragraph(
+            f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}",
+            subtitle_style
+        ))
+        elements.append(Spacer(1, 0.4 * inch))
+
+        if report_type == 'summary':
+            # Summary report
+            all_orders = LabTestOrderModel.objects.filter(
+                ordered_at__date__range=[from_date, to_date]
+            )
+            orders = all_orders.exclude(status__in=['pending', 'cancelled'])
+
+            summary_data = [
+                ['Metric', 'Count'],
+                ['Total Tests', str(orders.count())],
+                ['Completed Tests', str(all_orders.filter(status='completed').count())],
+                ['Processing Tests', str(all_orders.filter(status='processing').count())],
+                ['Sample Collected', str(all_orders.filter(status='collected').count())],
+                ['Paid (Awaiting Sample)', str(all_orders.filter(status='paid').count())],
+                ['Pending Payment', str(all_orders.filter(status='pending').count())],
+                ['Cancelled Tests', str(all_orders.filter(status='cancelled').count())],
+            ]
+
+            summary_table = Table(summary_data, colWidths=[4 * inch, 2 * inch])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')]),
+            ]))
+            elements.append(summary_table)
+        else:
+            # Breakdown report
+            orders = LabTestOrderModel.objects.filter(
+                ordered_at__date__range=[from_date, to_date]
+            ).exclude(status__in=['pending', 'cancelled'])
+
+            test_breakdown = orders.values(
+                'template__name', 'template__id'
+            ).annotate(
+                total_orders=Count('id'),
+                completed_orders=Count('id', filter=Q(status='completed'))
+            )
+
+            # Apply ordering
+            if order_by == 'total':
+                test_breakdown = test_breakdown.order_by('-total_orders', 'template__name')
+            elif order_by == 'completed':
+                test_breakdown = test_breakdown.order_by('-completed_orders', 'template__name')
+            else:
+                test_breakdown = test_breakdown.order_by('template__name')
+
+            # Build table data
+            headers = ['S/N', 'Test']
+            col_widths = [0.5 * inch, 3 * inch]
+
+            if show_total:
+                headers.append('Total Orders')
+                col_widths.append(1 * inch)
+            if show_completed:
+                headers.append('Completed Orders')
+                col_widths.append(1.2 * inch)
+
+            table_data = [headers]
+
+            for idx, test in enumerate(test_breakdown, 1):
+                row = [str(idx), test['template__name']]
+                if show_total:
+                    row.append(str(test['total_orders']))
+                if show_completed:
+                    row.append(str(test['completed_orders']))
+                table_data.append(row)
+
+            table = Table(table_data, colWidths=col_widths)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')]),
+            ]))
+            elements.append(table)
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        filename = f"lab_test_report_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
 
 class LabTestResultDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
@@ -2157,108 +2628,6 @@ def lab_dashboard_data(request):
     except Exception:
         logger.exception("Failed fetching lab dashboard data")
         return JsonResponse({'error': 'Internal error'}, status=500)
-
-
-# -------------------------
-# Dashboard View
-# -------------------------
-class LabDashboardView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    template_name = 'laboratory/dashboard.html'
-    permission_required = 'laboratory.view_labtestordermodel'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        today = date.today()
-
-        # Basic stats
-        context.update({
-            'total_categories': LabTestCategoryModel.objects.count(),
-            'total_templates': LabTestTemplateModel.objects.filter(is_active=True).count(),
-            'today_orders': LabTestOrderModel.objects.filter(ordered_at__date=today).count(),
-            'pending_payments': LabTestOrderModel.objects.filter(status='pending').count(),
-            'samples_to_collect': LabTestOrderModel.objects.filter(status='paid').count(),
-            'tests_processing': LabTestOrderModel.objects.filter(status='processing').count(),
-            'completed_today': LabTestOrderModel.objects.filter(status='completed', ordered_at__date=today).count(),
-            'pending_verification': LabTestResultModel.objects.filter(is_verified=False).count(),
-        })
-
-        # Recent orders
-        context['recent_orders'] = LabTestOrderModel.objects.select_related(
-            'patient', 'template'
-        ).order_by('-ordered_at')[:10]
-
-        # Alerts
-        context['low_stock_reagents'] = LabReagentModel.objects.filter(
-            current_stock__lte=models.F('minimum_stock'), is_active=True
-        )[:5]
-
-        context['expired_reagents'] = LabReagentModel.objects.filter(
-            expiry_date__lte=today, is_active=True
-        )[:5]
-
-        context['maintenance_due'] = LabEquipmentModel.objects.filter(
-            next_maintenance__lte=today, status='active'
-        )[:5]
-
-        return context
-
-
-# -------------------------
-# Report Views
-# -------------------------
-class LabReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    template_name = 'laboratory/reports/index.html'
-    permission_required = 'laboratory.view_labtestordermodel'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        # Date range from request or default to this month
-        from_date = self.request.GET.get('from_date')
-        to_date = self.request.GET.get('to_date')
-
-        if not from_date:
-            from_date = date.today().replace(day=1)  # First day of current month
-        else:
-            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
-
-        if not to_date:
-            to_date = date.today()
-        else:
-            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
-
-        # Filter orders by date range
-        orders = LabTestOrderModel.objects.filter(
-            ordered_at__date__range=[from_date, to_date]
-        )
-
-        # Statistics
-        context.update({
-            'from_date': from_date,
-            'to_date': to_date,
-            'total_orders': orders.count(),
-            'total_revenue': orders.aggregate(Sum('amount_charged'))['amount_charged__sum'] or 0,
-            'completed_tests': orders.filter(status='completed').count(),
-            'cancelled_tests': orders.filter(status='cancelled').count(),
-        })
-
-        # Test type breakdown
-        context['test_breakdown'] = orders.values(
-            'template__category__name', 'template__name'
-        ).annotate(
-            count=Count('id'),
-            revenue=Sum('amount_charged')
-        ).order_by('-count')
-
-        # Daily orders chart data
-        context['daily_orders'] = orders.extra(
-            select={'day': "date(ordered_at)"}
-        ).values('day').annotate(
-            count=Count('id'),
-            revenue=Sum('amount_charged')
-        ).order_by('day')
-
-        return context
 
 
 # -------------------------

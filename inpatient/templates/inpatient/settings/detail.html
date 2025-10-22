@@ -110,7 +110,7 @@
                         </div>
                     </div>
                      <hr>
-                     <small class="text-muted">Last updated by {{ settings.updated_by|default:'System' }} on {{ settings.updated_at|date:"d M, Y P" }}</small>
+                     <small class="text-muted">Last updated by {{ settings.updated_by.user_staff_profile|default:'System' }} on {{ settings.updated_at|date:"d M, Y P" }}</small>
                 </div>
             </div>
 

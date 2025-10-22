@@ -151,10 +151,6 @@ class PatientServiceTransaction(models.Model):
         if self.service and self.service_item:
             raise ValidationError("Cannot have both service and service_item")
 
-    # In your PatientServiceTransaction model...
-
-    # In your PatientServiceTransaction model...
-
     def save(self, *args, **kwargs):
         """
         Handles financial calculations and triggers stock movements
@@ -265,9 +261,9 @@ class ServiceItemBatch(models.Model):
                     last_number = int(last_batch.name.split('-')[1])
                     next_id = last_number + 1
                 except (IndexError, ValueError):
-                    next_id = 1 # Fallback if parsing fails
+                    next_id = 1  # Fallback if parsing fails
             else:
-                next_id = 1 # No previous batches found
+                next_id = 1  # No previous batches found
 
             # Generate unique batch name, handling potential race conditions
             while True:
@@ -275,7 +271,7 @@ class ServiceItemBatch(models.Model):
                 if not ServiceItemBatch.objects.filter(name=batch_name).exists():
                     self.name = batch_name
                     break
-                next_id += 1 # If name exists, try the next number
+                next_id += 1  # If name exists, try the next number
 
         super().save(*args, **kwargs)
 
@@ -355,8 +351,27 @@ class ServiceResult(models.Model):
     result_file = models.FileField(upload_to='service_results/', null=True, blank=True)
     is_abnormal = models.BooleanField(default=False)
     interpretation = models.TextField(blank=True, null=True)
+
+    # --- NEW FIELDS ---
+    is_verified = models.BooleanField(default=False)
+    verified_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='verified_service_results')
+    verified_at = models.DateTimeField(null=True, blank=True)
+    # --- END NEW FIELDS ---
+
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='created_service_results')
 
     def __str__(self):
         return f"Result for {self.transaction}"
+
+    def save(self, *args, **kwargs):
+        # Automatically set verified_at timestamp when is_verified is set to True
+        if self.is_verified and not self.verified_at:
+            self.verified_at = timezone.now()
+        # If unchecked, clear the timestamp and verifier
+        elif not self.is_verified:
+            self.verified_at = None
+            self.verified_by = None
+        super().save(*args, **kwargs)

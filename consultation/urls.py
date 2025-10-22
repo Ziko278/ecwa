@@ -229,4 +229,10 @@ urlpatterns = [
     path('ajax/edit-external-scan/<int:order_id>/', edit_external_scan, name='edit_external_scan'),
     path('ajax/delete-external-scan/<int:order_id>/', delete_external_scan, name='delete_external_scan'),
 
+    path('ajax/search-services/', ajax_search_services, name='ajax_search_services'),
+    path('ajax/search-service-items/', ajax_search_service_items, name='ajax_search_service_items'),
+    path('ajax/order-services-items/', order_multiple_services_or_items, name='order_multiple_services_or_items'),
+    path('ajax/delete-service-order/<int:order_id>/', delete_service_order, name='delete_service_order'),
+    path('service-result/<int:result_id>/view/', view_service_result, name='view_service_result'),
+
 ]

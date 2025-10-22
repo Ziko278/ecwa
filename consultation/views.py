@@ -31,6 +31,7 @@ from patient.models import PatientModel
 from human_resource.models import StaffModel
 from pharmacy.models import DrugOrderModel, DrugModel, ExternalPrescription
 from scan.models import ScanOrderModel, ScanCategoryModel, ScanTemplateModel, ExternalScanOrder
+from service.models import Service, ServiceItem, PatientServiceTransaction, ServiceResult, ServiceCategory
 
 logger = logging.getLogger(__name__)
 
@@ -3093,61 +3094,72 @@ def doctor_dashboard(request):
 def consultation_page(request, consultation_id):
     """Individual consultation management page"""
     try:
-        consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user)
+        # Assuming ConsultantModel relates directly to User or via a profile
+        # Adjust the filter based on your actual ConsultantModel structure
+        if hasattr(request.user, 'staff_profile') and hasattr(request.user.staff_profile, 'consultant_profile'):
+             consultant = request.user.staff_profile.consultant_profile
+        else:
+             # Fallback or alternative way to get consultant if structure is different
+             # This might need adjustment based on your specific models
+             consultant = get_object_or_404(ConsultantModel, staff__staff_profile__user=request.user) # Keep original as fallback
+
         consultation = get_object_or_404(
             ConsultationSessionModel,
             id=consultation_id,
+            # Ensure the queue entry link is correct
             queue_entry__consultant=consultant
         )
-    except (ConsultantModel.DoesNotExist, ConsultationSessionModel.DoesNotExist):
+    except ConsultantModel.DoesNotExist:
+         messages.error(request, "Consultant profile not found for the current user.")
+         return redirect('doctor_dashboard')
+    except ConsultationSessionModel.DoesNotExist:
         messages.error(request, "Consultation not found or access denied.")
         return redirect('doctor_dashboard')
+    except Exception as e:
+         logger.error(f"Error fetching consultation {consultation_id} for user {request.user.username}: {e}")
+         messages.error(request, "An unexpected error occurred while accessing the consultation.")
+         return redirect('doctor_dashboard')
 
     if consultation.status == 'completed':
         consultation.status = 'in_progress'
-        consultation.completed_at = None  # Clear the completion timestamp
+        consultation.completed_at = None
         consultation.save()
-
-        # Also update the related queue entry status
         if consultation.queue_entry:
             consultation.queue_entry.status = 'with_doctor'
             consultation.queue_entry.save()
+        messages.info(request, "Consultation has been reopened for editing.")
 
-        messages.info(request,
-                      f"Consultation has been reopened for editing.")
-
-    # Get related data
     patient = consultation.queue_entry.patient
 
-    # MODIFIED: Filter directly by the consultation object
-    prescriptions = DrugOrderModel.objects.filter(
-        consultation=consultation
-    ).select_related('drug')
+    # Fetch related orders linked directly to the consultation
+    prescriptions = DrugOrderModel.objects.filter(consultation=consultation).select_related('drug')
+    lab_tests = LabTestOrderModel.objects.filter(consultation=consultation).select_related('template')
+    scans = ScanOrderModel.objects.filter(consultation=consultation).select_related('template')
+    external_prescriptions = ExternalPrescription.objects.filter(consultation=consultation)
+    external_lab_tests = consultation.external_lab_orders.all()
+    external_scans = consultation.external_scan_orders.all()
 
-    # MODIFIED: Filter directly by the consultation object
-    lab_tests = LabTestOrderModel.objects.filter(
+    # --- NEW: Fetch Service Transactions ---
+    service_transactions = PatientServiceTransaction.objects.filter(
         consultation=consultation
-    ).select_related('template')
+    ).select_related('service', 'service_item', 'result').order_by('-created_at') # Added result prefetch
 
-    # MODIFIED: Filter directly by the consultation object
-    scans = ScanOrderModel.objects.filter(
-        consultation=consultation
-    ).select_related('template')
+    # --- Fetch Categories for Modals ---
+    lab_categories = LabTestCategoryModel.objects.filter().order_by('name')
+    scan_categories = ScanCategoryModel.objects.filter().order_by('name')
+    # NEW: Filter ServiceCategories appropriately
+    service_categories = ServiceCategory.objects.filter(
+     category_type__in=['service', 'mixed']
+    ).order_by('name')
+    item_categories = ServiceCategory.objects.filter(category_type__in=['item', 'mixed']).order_by('name')
 
-    # Get patient's recent consultation history (last 6 months)
+    # Get patient's recent consultation history
     six_months_ago = consultation.created_at.date() - timedelta(days=180)
     recent_consultations = ConsultationSessionModel.objects.filter(
         queue_entry__patient=patient,
         created_at__date__gte=six_months_ago,
         status='completed'
     ).exclude(id=consultation_id).order_by('-created_at')[:5]
-
-    # Get categories for dropdowns
-    lab_categories = LabTestCategoryModel.objects.filter()
-    scan_categories = ScanCategoryModel.objects.filter()
-    external_prescriptions = ExternalPrescription.objects.filter(consultation=consultation)
-    external_lab_tests = consultation.external_lab_orders.all()
-    external_scans = consultation.external_scan_orders.all()
 
     context = {
         'consultant': consultant,
@@ -3161,6 +3173,11 @@ def consultation_page(request, consultation_id):
         'scan_categories': scan_categories,
         'external_lab_tests': external_lab_tests,
         'external_scans': external_scans,
+        # --- NEW CONTEXT VARIABLES ---
+        'service_transactions': service_transactions,
+        'service_categories': service_categories,
+        'item_categories': item_categories,
+        # --- END NEW ---
     }
 
     return render(request, 'consultation/doctor/consultation.html', context)
@@ -5024,6 +5041,194 @@ def delete_external_scan(request, order_id):
         return JsonResponse({'success': True, 'message': 'External scan deleted'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def ajax_search_services(request):
+    """
+    AJAX view to search for services from the Service model.
+    """
+    query = request.GET.get('q', '')
+    category_id = request.GET.get('category_id')
+
+    if len(query) < 2:
+        return JsonResponse({'templates': []})  # Use 'templates' key for consistency
+
+    queryset = Service.objects.filter(
+        Q(name__icontains=query) | Q(description__icontains=query),
+        is_active=True
+    ).select_related('category')
+
+    if category_id:
+        queryset = queryset.filter(category_id=category_id)
+
+    services = []
+    for service in queryset[:10]:
+        services.append({
+            'id': service.id,
+            'name': f"{service.name} ({service.category.name})",
+            'price': service.price,
+            'has_results': service.has_results,
+            'is_active': True  # Mimics lab/scan template
+        })
+
+    return JsonResponse({'templates': services})
+
+
+@login_required
+def ajax_search_service_items(request):
+    """
+    AJAX view to search for items from the ServiceItem model.
+    """
+    query = request.GET.get('q', '')
+    category_id = request.GET.get('category_id')
+
+    if len(query) < 2:
+        return JsonResponse({'templates': []})  # Use 'templates' key for consistency
+
+    queryset = ServiceItem.objects.filter(
+        Q(name__icontains=query) | Q(description__icontains=query),
+        is_active=True,
+        stock_quantity__gt=0
+    ).select_related('category')
+
+    if category_id:
+        queryset = queryset.filter(category_id=category_id)
+
+    items = []
+    for item in queryset[:10]:
+        items.append({
+            'id': item.id,
+            'name': f"{item.name} ({item.category.name}) - Stock: {item.stock_quantity}",
+            'price': item.price,
+            'is_active': True  # Mimics lab/scan template
+        })
+
+    return JsonResponse({'templates': items})
+
+
+@login_required
+@require_POST
+def order_multiple_services_or_items(request):
+    """
+    AJAX view to create multiple PatientServiceTransaction records.
+    Can handle both services and items based on the 'order_type' flag.
+    """
+    try:
+        data = json.loads(request.body)
+        patient_id = data.get('patient_id')
+        consultation_id = data.get('consultation_id')
+        orders = data.get('orders', [])
+        order_type = data.get('order_type', 'service')  # 'service' or 'item'
+
+        if not all([patient_id, consultation_id, orders]):
+            return JsonResponse({'error': 'Missing required data.'}, status=400)
+
+        patient = get_object_or_404(PatientModel, pk=patient_id)
+        consultation = get_object_or_404(ConsultationSessionModel, pk=consultation_id)
+
+        created_orders = []
+
+        with transaction.atomic():
+            for order in orders:
+                template_id = order.get('template_id')
+                notes = order.get('notes', '')
+                quantity = int(order.get('quantity', 1))
+
+                if quantity <= 0:
+                    quantity = 1
+
+                if order_type == 'service':
+                    service = get_object_or_404(Service, pk=template_id)
+                    tx = PatientServiceTransaction.objects.create(
+                        patient=patient,
+                        consultation=consultation,
+                        service=service,
+                        service_item=None,
+                        quantity=quantity,
+                        unit_price=service.price,
+                        performed_by=request.user,
+                        notes=notes,
+                        status='pending_payment'  # Default status
+                    )
+                    created_orders.append(tx)
+
+                elif order_type == 'item':
+                    item = get_object_or_404(ServiceItem, pk=template_id)
+                    if item.stock_quantity < quantity:
+                        return JsonResponse(
+                            {'error': f'Not enough stock for {item.name}. Available: {item.stock_quantity}'},
+                            status=400)
+
+                    tx = PatientServiceTransaction.objects.create(
+                        patient=patient,
+                        consultation=consultation,
+                        service=None,
+                        service_item=item,
+                        quantity=quantity,
+                        unit_price=item.price,
+                        performed_by=request.user,
+                        notes=notes,
+                        status='pending_payment'  # Default status
+                    )
+                    created_orders.append(tx)
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Successfully ordered {len(created_orders)} {order_type}(s).'
+        })
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def delete_service_order(request, order_id):
+    """
+    Deletes a PatientServiceTransaction (service or item order).
+    """
+    try:
+        order = get_object_or_404(PatientServiceTransaction, pk=order_id)
+
+        # Add permission check if needed, e.g., check if user is the doctor
+        # if order.consultation.doctor != request.user:
+        #     return JsonResponse({'error': 'You are not authorized to delete this order.'}, status=403)
+
+        if order.status != 'pending_payment':
+            return JsonResponse({'error': 'Cannot delete an order that has been paid or dispensed.'}, status=400)
+
+        order.delete()
+        return JsonResponse({'success': True})
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def view_service_result(request, result_id):
+    """
+    A view to display the service result.
+    You should create a template for this.
+    For now, it just returns a simple JSON response (or redirect).
+    """
+    result = get_object_or_404(ServiceResult, pk=result_id)
+
+    # This is a placeholder. You should create a proper result view page.
+    # For demonstration, we'll just return JSON.
+    # In a real app, you'd render a template.
+    # return render(request, 'consultation/service_result_detail.html', {'result': result})
+
+    return JsonResponse({
+        'success': True,
+        'message': 'This is where the service result detail page would be.',
+        'result_id': result.id,
+        'patient': result.transaction.patient.get_full_name(),
+        'service': result.transaction.service.name,
+        'is_verified': result.is_verified,
+        'interpretation': result.interpretation,
+        'result_data': result.result_data
+    })
 
 
 # --- End: New AJAX Views ---

@@ -1,8 +1,16 @@
 import logging
 import json
-from datetime import datetime, date
 from decimal import Decimal
-
+from datetime import date, datetime, timedelta
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from io import BytesIO
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -22,6 +30,7 @@ from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
 
+from admin_site.models import SiteInfoModel
 from insurance.models import InsuranceClaimModel
 from patient.models import PatientModel, PatientWalletModel
 from .models import *
@@ -1762,64 +1771,6 @@ def print_scan_result(request, pk):
 
 
 # -------------------------
-# Report Views
-# -------------------------
-class ScanReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    template_name = 'scan/reports/index.html'
-    permission_required = 'scan.view_scanordermodel'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        # Date range from request or default to this month
-        from_date = self.request.GET.get('from_date')
-        to_date = self.request.GET.get('to_date')
-
-        if not from_date:
-            from_date = date.today().replace(day=1)  # First day of current month
-        else:
-            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
-
-        if not to_date:
-            to_date = date.today()
-        else:
-            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
-
-        # Filter orders by date range
-        orders = ScanOrderModel.objects.filter(
-            ordered_at__date__range=[from_date, to_date]
-        )
-
-        # Statistics
-        context.update({
-            'from_date': from_date,
-            'to_date': to_date,
-            'total_orders': orders.count(),
-            'total_revenue': orders.aggregate(Sum('amount_charged'))['amount_charged__sum'] or 0,
-            'completed_scans': orders.filter(status='completed').count(),
-            'cancelled_scans': orders.filter(status='cancelled').count(),
-        })
-
-        # Scan type breakdown
-        context['scan_breakdown'] = orders.values(
-            'template__category__name', 'template__name'
-        ).annotate(
-            count=Count('id'),
-            revenue=Sum('amount_charged')
-        ).order_by('-count')
-
-        # Daily orders chart data
-        context['daily_orders'] = orders.extra(
-            select={'day': "date(ordered_at)"}
-        ).values('day').annotate(
-            count=Count('id'),
-            revenue=Sum('amount_charged')
-        ).order_by('day')
-
-        return context
-
-
-# -------------------------
 # Scan Equipment Views
 # -------------------------
 class ScanEquipmentCreateView(
@@ -2454,3 +2405,1020 @@ def complete_scan(request, pk):
         logger.exception("Error completing scan for order id=%s", pk)
         messages.error(request, "An error occurred while completing scan. Contact admin.")
     return redirect(reverse('scan_order_detail', kwargs={'pk': pk}))
+
+
+def _month_start_for_offset(today: date, months_ago: int) -> date:
+    """
+    Return the first day of the month that is `months_ago` before `today`'s month.
+    months_ago=0 => first day of current month
+    months_ago=1 => first day of previous month
+    """
+    # compute month index relative to 1..12
+    m = today.month - months_ago
+    y = today.year
+    while m <= 0:
+        m += 12
+        y -= 1
+    while m > 12:
+        m -= 12
+        y += 1
+    return date(y, m, 1)
+
+
+def get_scan_dashboard_context(request):
+    """Build and return context dict for scan dashboard (so we can reuse it for print)."""
+    today = timezone.now().date()
+    this_week_start = today - timedelta(days=today.weekday())
+    this_month_start = today.replace(day=1)
+    last_month_start = _month_start_for_offset(today, 1)
+    last_month_end = this_month_start - timedelta(days=1)
+
+    # Basic counts
+    total_orders = ScanOrderModel.objects.count()
+    # Templates & categories - if models exist; fallback to 0
+    try:
+        total_templates = ScanTemplateModel.objects.filter(is_active=True).count()
+    except Exception:
+        total_templates = 0
+    try:
+        total_categories = ScanCategoryModel.objects.count()
+    except Exception:
+        total_categories = 0
+
+    completed_scans = ScanOrderModel.objects.filter(status='completed').count()
+
+    # Today's stats
+    orders_today = ScanOrderModel.objects.filter(ordered_at__date=today).count()
+    completed_today = ScanOrderModel.objects.filter(status='completed', scan_completed_at__date=today).count()
+    # pending: orders created today with status in pending/paid/scheduled/in_progress
+    pending_today = ScanOrderModel.objects.filter(
+        ordered_at__date=today,
+        status__in=['pending', 'paid', 'scheduled', 'in_progress']
+    ).count()
+
+    # This week
+    orders_week = ScanOrderModel.objects.filter(ordered_at__date__gte=this_week_start).count()
+    completed_week = ScanOrderModel.objects.filter(status='completed', scan_completed_at__date__gte=this_week_start).count()
+
+    # This month
+    orders_month = ScanOrderModel.objects.filter(ordered_at__date__gte=this_month_start).count()
+    completed_month = ScanOrderModel.objects.filter(status='completed', scan_completed_at__date__gte=this_month_start).count()
+
+    # Last month (for growth)
+    orders_last_month = ScanOrderModel.objects.filter(
+        ordered_at__date__gte=last_month_start,
+        ordered_at__date__lte=last_month_end
+    ).count()
+    completed_last_month = ScanOrderModel.objects.filter(
+        status='completed',
+        scan_completed_at__date__gte=last_month_start,
+        scan_completed_at__date__lte=last_month_end
+    ).count()
+
+    orders_growth = 0
+    completed_growth = 0
+    if orders_last_month > 0:
+        orders_growth = round(((orders_month - orders_last_month) / orders_last_month) * 100, 1)
+    if completed_last_month > 0:
+        completed_growth = round(((completed_month - completed_last_month) / completed_last_month) * 100, 1)
+
+    # Status distribution for charts
+    status_distribution = ScanOrderModel.objects.values('status').annotate(count=Count('id')).order_by('status')
+    status_chart_data = [{'name': s['status'].replace('_', ' ').title(), 'value': s['count']} for s in status_distribution]
+
+    # Revenue stats (payment_status True)
+    total_revenue = ScanOrderModel.objects.filter(payment_status=True).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+    revenue_today = ScanOrderModel.objects.filter(payment_status=True, payment_date__date=today).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+    revenue_week = ScanOrderModel.objects.filter(payment_status=True, payment_date__date__gte=this_week_start).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+    revenue_month = ScanOrderModel.objects.filter(payment_status=True, payment_date__date__gte=this_month_start).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # Category wise statistics (if ScanCategoryModel/ScanTemplateModel exist)
+    category_chart_data = []
+    try:
+        category_stats = ScanCategoryModel.objects.annotate(
+            total_orders=Count('templates__orders'),
+            completed_orders=Count('templates__orders', filter=Q(templates__orders__status='completed')),
+            revenue=Sum('templates__orders__amount_charged', filter=Q(templates__orders__payment_status=True))
+        ).order_by('-total_orders')
+        category_chart_data = [
+            {'name': cat.name, 'value': cat.total_orders, 'revenue': float(cat.revenue or 0)}
+            for cat in category_stats[:10]
+        ]
+    except Exception:
+        category_chart_data = []
+
+    # Popular scans
+    popular_scans = []
+    try:
+        popular = ScanTemplateModel.objects.annotate(order_count=Count('orders')).filter(order_count__gt=0).order_by('-order_count')[:10]
+        popular_scans = [
+            {
+                'name': t.name,
+                'orders': t.order_count,
+                'revenue': float(ScanOrderModel.objects.filter(template=t, payment_status=True).aggregate(total=Sum('amount_charged'))['total'] or 0)
+            }
+            for t in popular
+        ]
+    except Exception:
+        popular_scans = []
+
+    # Daily trends - last 7 days
+    daily_trends = []
+    for i in range(7):
+        d = today - timedelta(days=6 - i)
+        orders_count = ScanOrderModel.objects.filter(ordered_at__date=d).count()
+        completed_count = ScanOrderModel.objects.filter(status='completed', scan_completed_at__date=d).count()
+        revenue = ScanOrderModel.objects.filter(payment_status=True, payment_date__date=d).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+        daily_trends.append({'date': d.strftime('%Y-%m-%d'), 'orders': orders_count, 'completed': completed_count, 'revenue': float(revenue)})
+
+    # Monthly trends - last 12 months
+    monthly_trends = []
+    for months_ago in reversed(range(12)):  # oldest first
+        month_start = _month_start_for_offset(today, months_ago)
+        # compute next month start
+        if month_start.month == 12:
+            next_month_start = date(month_start.year + 1, 1, 1)
+        else:
+            next_month_start = date(month_start.year, month_start.month + 1, 1)
+        month_end = next_month_start - timedelta(days=1)
+
+        orders_count = ScanOrderModel.objects.filter(ordered_at__date__gte=month_start, ordered_at__date__lte=month_end).count()
+        completed_count = ScanOrderModel.objects.filter(status='completed', scan_completed_at__date__gte=month_start, scan_completed_at__date__lte=month_end).count()
+        revenue = ScanOrderModel.objects.filter(payment_status=True, payment_date__date__gte=month_start, payment_date__date__lte=month_end).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+        monthly_trends.append({'month': month_start.strftime('%b %Y'), 'orders': orders_count, 'completed': completed_count, 'revenue': float(revenue)})
+
+    # Source distribution (if you have a source field)
+    try:
+        source_distribution = ScanOrderModel.objects.values('source').annotate(count=Count('id'))
+        source_chart_data = []
+        for s in source_distribution:
+            name = s.get('source', '')
+            if name == 'doctor':
+                label = 'Doctor Prescribed'
+            elif name == 'direct' or name == 'lab':
+                label = 'Direct'
+            else:
+                label = name.title() if name else 'Unknown'
+            source_chart_data.append({'name': label, 'value': s['count']})
+    except Exception:
+        source_chart_data = []
+
+    # Recent activity
+    recent_orders = ScanOrderModel.objects.select_related('patient', 'template', 'ordered_by').order_by('-ordered_at')[:10]
+
+    # Average processing time for completed scans (hours)
+    completed_orders_qs = ScanOrderModel.objects.filter(status='completed', scan_completed_at__isnull=False)
+    avg_processing_hours = 0
+    if completed_orders_qs.exists():
+        total_hours = sum([
+            (o.scan_completed_at - o.ordered_at).total_seconds() / 3600
+            for o in completed_orders_qs
+            if o.scan_completed_at and o.ordered_at
+        ])
+        avg_processing_hours = round(total_hours / completed_orders_qs.count(), 1)
+
+    # Pending tasks
+    pending_payment = ScanOrderModel.objects.filter(status='pending').count()
+    pending_scheduling = ScanOrderModel.objects.filter(status='paid').count()
+    pending_scheduled = ScanOrderModel.objects.filter(status='scheduled').count()
+
+    context = {
+        'total_orders': total_orders,
+        'total_templates': total_templates,
+        'total_categories': total_categories,
+        'completed_scans': completed_scans,
+
+        'orders_today': orders_today,
+        'completed_today': completed_today,
+        'pending_today': pending_today,
+
+        'orders_week': orders_week,
+        'completed_week': completed_week,
+
+        'orders_month': orders_month,
+        'completed_month': completed_month,
+        'orders_growth': orders_growth,
+        'completed_growth': completed_growth,
+
+        'total_revenue': total_revenue,
+        'revenue_today': revenue_today,
+        'revenue_week': revenue_week,
+        'revenue_month': revenue_month,
+
+        'status_distribution': status_chart_data,
+        'category_distribution': category_chart_data,
+        'popular_scans': popular_scans,
+        'daily_trends': daily_trends,
+        'monthly_trends': monthly_trends,
+        'source_distribution': source_chart_data,
+
+        'avg_processing_hours': avg_processing_hours,
+        'recent_orders': recent_orders,
+
+        'pending_payment': pending_payment,
+        'pending_scheduling': pending_scheduling,
+        'pending_scheduled': pending_scheduled,
+    }
+
+    return context
+
+
+
+@login_required
+@permission_required('scan.view_scanordermodel', raise_exception=True)
+def scan_dashboard(request):
+    """Main scan dashboard with comprehensive statistics"""
+
+    # Get current date and time ranges
+    today = timezone.now().date()
+    this_week_start = today - timedelta(days=today.weekday())
+    this_month_start = today.replace(day=1)
+    last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+    last_month_end = this_month_start - timedelta(days=1)
+
+    # === BASIC STATISTICS ===
+
+    # Total counts
+    total_orders = ScanOrderModel.objects.count()
+    total_templates = ScanTemplateModel.objects.filter(is_active=True).count()
+    total_categories = ScanCategoryModel.objects.count()
+    completed_tests = ScanOrderModel.objects.filter(status='completed').count()
+
+    # Today's statistics
+    orders_today = ScanOrderModel.objects.filter(ordered_at__date=today).count()
+    completed_today = ScanOrderModel.objects.filter(
+        status='completed',
+        processed_at__date=today
+    ).count()
+    pending_today = ScanOrderModel.objects.filter(
+        ordered_at__date=today,
+        status__in=['pending', 'paid', 'collected', 'processing']
+    ).count()
+
+    # This week's statistics
+    orders_week = ScanOrderModel.objects.filter(ordered_at__date__gte=this_week_start).count()
+    completed_week = ScanOrderModel.objects.filter(
+        status='completed',
+        processed_at__date__gte=this_week_start
+    ).count()
+
+    # This month's statistics
+    orders_month = ScanOrderModel.objects.filter(ordered_at__date__gte=this_month_start).count()
+    completed_month = ScanOrderModel.objects.filter(
+        status='completed',
+        processed_at__date__gte=this_month_start
+    ).count()
+
+    # Last month's statistics for growth calculation
+    orders_last_month = ScanOrderModel.objects.filter(
+        ordered_at__date__gte=last_month_start,
+        ordered_at__date__lte=last_month_end
+    ).count()
+    completed_last_month = ScanOrderModel.objects.filter(
+        status='completed',
+        processed_at__date__gte=last_month_start,
+        processed_at__date__lte=last_month_end
+    ).count()
+
+    # Calculate growth percentages
+    orders_growth = 0
+    completed_growth = 0
+    if orders_last_month > 0:
+        orders_growth = round(((orders_month - orders_last_month) / orders_last_month) * 100, 1)
+    if completed_last_month > 0:
+        completed_growth = round(((completed_month - completed_last_month) / completed_last_month) * 100, 1)
+
+    # === STATUS DISTRIBUTION ===
+    status_distribution = ScanOrderModel.objects.values('status').annotate(
+        count=Count('id')
+    ).order_by('status')
+
+    # Convert to format suitable for charts
+    status_chart_data = [
+        {'name': status['status'].title(), 'value': status['count']}
+        for status in status_distribution
+    ]
+
+    # === REVENUE STATISTICS ===
+
+    # Total revenue
+    total_revenue = ScanOrderModel.objects.filter(
+        payment_status=True
+    ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # Today's revenue
+    revenue_today = ScanOrderModel.objects.filter(
+        payment_status=True,
+        payment_date__date=today
+    ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # This week's revenue
+    revenue_week = ScanOrderModel.objects.filter(
+        payment_status=True,
+        payment_date__date__gte=this_week_start
+    ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # This month's revenue
+    revenue_month = ScanOrderModel.objects.filter(
+        payment_status=True,
+        payment_date__date__gte=this_month_start
+    ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+    # === CATEGORY WISE STATISTICS ===
+    category_stats = ScanCategoryModel.objects.annotate(
+        total_orders=Count('templates__orders'),
+        completed_orders=Count('templates__orders', filter=Q(templates__orders__status='completed')),
+        revenue=Sum('templates__orders__amount_charged', filter=Q(templates__orders__payment_status=True))
+    ).order_by('-total_orders')
+
+    # Format for chart
+    category_chart_data = [
+        {
+            'name': cat.name,
+            'value': cat.total_orders,
+            'revenue': float(cat.revenue or 0)
+        }
+        for cat in category_stats[:10]  # Top 10 categories
+    ]
+
+    # === POPULAR TESTS ===
+    popular_tests = ScanTemplateModel.objects.annotate(
+        order_count=Count('orders')
+    ).filter(order_count__gt=0).order_by('-order_count')[:10]
+
+    popular_tests_data = [
+        {
+            'name': test.name,
+            'orders': test.order_count,
+            'revenue': float(
+                ScanOrderModel.objects.filter(
+                    template=test,
+                    payment_status=True
+                ).aggregate(total=Sum('amount_charged'))['total'] or 0
+            )
+        }
+        for test in popular_tests
+    ]
+
+    # === DAILY TRENDS (LAST 7 DAYS) ===
+    daily_trends = []
+    for i in range(7):
+        date = today - timedelta(days=6 - i)
+        orders_count = ScanOrderModel.objects.filter(ordered_at__date=date).count()
+        completed_count = ScanOrderModel.objects.filter(
+            status='completed',
+            processed_at__date=date
+        ).count()
+        revenue = ScanOrderModel.objects.filter(
+            payment_status=True,
+            payment_date__date=date
+        ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+        daily_trends.append({
+            'date': date.strftime('%Y-%m-%d'),
+            'orders': orders_count,
+            'completed': completed_count,
+            'revenue': float(revenue)
+        })
+
+    # === MONTHLY TRENDS (LAST 12 MONTHS) ===
+    monthly_trends = []
+    for i in range(12):
+        month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+        for _ in range(i):
+            month_start = (month_start - timedelta(days=1)).replace(day=1)
+
+        month_end = (month_start.replace(month=month_start.month + 1)
+                     if month_start.month < 12
+                     else month_start.replace(year=month_start.year + 1, month=1)) - timedelta(days=1)
+
+        orders_count = ScanOrderModel.objects.filter(
+            ordered_at__date__gte=month_start,
+            ordered_at__date__lte=month_end
+        ).count()
+
+        completed_count = ScanOrderModel.objects.filter(
+            status='completed',
+            processed_at__date__gte=month_start,
+            processed_at__date__lte=month_end
+        ).count()
+
+        revenue = ScanOrderModel.objects.filter(
+            payment_status=True,
+            payment_date__date__gte=month_start,
+            payment_date__date__lte=month_end
+        ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+        monthly_trends.insert(0, {
+            'month': month_start.strftime('%b %Y'),
+            'orders': orders_count,
+            'completed': completed_count,
+            'revenue': float(revenue)
+        })
+
+    # === SOURCE DISTRIBUTION ===
+    source_distribution = ScanOrderModel.objects.values('source').annotate(
+        count=Count('id')
+    )
+
+    source_chart_data = [
+        {
+            'name': 'Doctor Prescribed' if source['source'] == 'doctor' else 'Scan Direct',
+            'value': source['count']
+        }
+        for source in source_distribution
+    ]
+
+    # === RECENT ACTIVITY ===
+    recent_orders = ScanOrderModel.objects.select_related(
+        'patient', 'template', 'ordered_by'
+    ).order_by('-ordered_at')[:10]
+
+    # === AVERAGE PROCESSING TIME ===
+    completed_orders = ScanOrderModel.objects.filter(
+        status='completed',
+        processed_at__isnull=False
+    )
+
+    avg_processing_hours = 0
+    if completed_orders.exists():
+        total_processing_time = sum([
+            (order.processed_at - order.ordered_at).total_seconds() / 3600
+            for order in completed_orders
+            if order.processed_at and order.ordered_at
+        ])
+        avg_processing_hours = round(total_processing_time / completed_orders.count(), 1)
+
+    # === PENDING TASKS ===
+    pending_collection = ScanOrderModel.objects.filter(status='paid').count()
+    pending_processing = ScanOrderModel.objects.filter(status='collected').count()
+    pending_verification = ScanResultModel.objects.filter(is_verified=False).count()
+
+    context = {
+        # Basic stats
+        'total_orders': total_orders,
+        'total_templates': total_templates,
+        'total_categories': total_categories,
+        'completed_tests': completed_tests,
+
+        # Daily stats
+        'orders_today': orders_today,
+        'completed_today': completed_today,
+        'pending_today': pending_today,
+
+        # Weekly stats
+        'orders_week': orders_week,
+        'completed_week': completed_week,
+
+        # Monthly stats
+        'orders_month': orders_month,
+        'completed_month': completed_month,
+        'orders_growth': orders_growth,
+        'completed_growth': completed_growth,
+
+        # Revenue
+        'total_revenue': total_revenue,
+        'revenue_today': revenue_today,
+        'revenue_week': revenue_week,
+        'revenue_month': revenue_month,
+
+        # Charts data
+        'status_distribution': json.dumps(status_chart_data),
+        'category_distribution': json.dumps(category_chart_data),
+        'popular_tests': popular_tests_data,
+        'daily_trends': json.dumps(daily_trends),
+        'monthly_trends': json.dumps(monthly_trends),
+        'source_distribution': json.dumps(source_chart_data),
+
+        # Other stats
+        'avg_processing_hours': avg_processing_hours,
+        'recent_orders': recent_orders,
+
+        # Pending tasks
+        'pending_collection': pending_collection,
+        'pending_processing': pending_processing,
+        'pending_verification': pending_verification,
+    }
+
+    return render(request, 'scan/dashboard.html', context)
+
+
+@login_required
+def scan_dashboard_print(request):
+    """Printable version of scan dashboard"""
+    # Get the same context as main dashboard but simplified for printing
+    context = scan_dashboard(request).context_data
+    return render(request, 'scan/dashboard_print.html', context)
+
+
+@login_required
+def scan_analytics_api(request):
+    """API endpoint for dynamic chart updates"""
+    chart_type = request.GET.get('type')
+
+    if chart_type == 'daily_revenue':
+        # Last 30 days revenue
+        data = []
+        today = timezone.now().date()
+        for i in range(30):
+            date = today - timedelta(days=29 - i)
+            revenue = ScanOrderModel.objects.filter(
+                payment_status=True,
+                payment_date__date=date
+            ).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+
+            data.append({
+                'date': date.strftime('%Y-%m-%d'),
+                'revenue': float(revenue)
+            })
+
+        return JsonResponse({'data': data})
+
+    elif chart_type == 'category_performance':
+        # Category wise performance this month
+        this_month_start = timezone.now().date().replace(day=1)
+
+        categories = ScanCategoryModel.objects.annotate(
+            orders_this_month=Count(
+                'templates__orders',
+                filter=Q(templates__orders__ordered_at__date__gte=this_month_start)
+            ),
+            revenue_this_month=Sum(
+                'templates__orders__amount_charged',
+                filter=Q(
+                    templates__orders__payment_status=True,
+                    templates__orders__payment_date__date__gte=this_month_start
+                )
+            )
+        ).order_by('-orders_this_month')[:10]
+
+        data = [
+            {
+                'name': cat.name,
+                'orders': cat.orders_this_month,
+                'revenue': float(cat.revenue_this_month or 0)
+            }
+            for cat in categories
+        ]
+
+        return JsonResponse({'data': data})
+
+    return JsonResponse({'error': 'Invalid chart type'}, status=400)
+
+
+class ScanReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    template_name = 'scan/reports/index.html'
+    permission_required = 'scan.view_scanordermodel'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Date range from request or default to this month
+        from_date = self.request.GET.get('from_date')
+        to_date = self.request.GET.get('to_date')
+
+        if not from_date:
+            from_date = date.today().replace(day=1)  # First day of current month
+        else:
+            from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            # Last day of current month
+            if date.today().month == 12:
+                to_date = date.today().replace(day=31)
+            else:
+                to_date = (date.today().replace(month=date.today().month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Default title
+        month_year = from_date.strftime('%B %Y')
+        default_title = f'Scan Test Report for the Month of {month_year}'
+        report_title = self.request.GET.get('title', default_title)
+
+        # Filter orders - exclude pending and cancelled from total
+        all_orders = ScanOrderModel.objects.filter(
+            ordered_at__date__range=[from_date, to_date]
+        )
+
+        # Total orders exclude pending and cancelled
+        orders = all_orders.exclude(status__in=['pending', 'cancelled'])
+
+        # Get order by parameter
+        order_by = self.request.GET.get('order_by', 'name')
+
+        # Test type breakdown
+        test_breakdown = orders.values(
+            'template__name', 'template__id'
+        ).annotate(
+            total_orders=Count('id'),
+            completed_orders=Count('id', filter=Q(status='completed'))
+        )
+
+        # Apply ordering
+        if order_by == 'total':
+            test_breakdown = test_breakdown.order_by('-total_orders', 'template__name')
+        elif order_by == 'completed':
+            test_breakdown = test_breakdown.order_by('-completed_orders', 'template__name')
+        else:  # default to name
+            test_breakdown = test_breakdown.order_by('template__name')
+
+        # Summary statistics
+        context.update({
+            'from_date': from_date,
+            'to_date': to_date,
+            'report_title': report_title,
+            'test_breakdown': test_breakdown,
+            'order_by': order_by,
+
+            # Summary stats
+            'total_tests': orders.count(),
+            'completed_tests': all_orders.filter(status='completed').count(),
+            'processing_tests': all_orders.filter(status='processing').count(),
+            'collected_tests': all_orders.filter(status='collected').count(),
+            'paid_tests': all_orders.filter(status='paid').count(),
+            'pending_tests': all_orders.filter(status='pending').count(),
+            'cancelled_tests': all_orders.filter(status='cancelled').count(),
+        })
+
+        return context
+
+
+class ScanReportExportExcelView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'scan.view_scanordermodel'
+
+    def get(self, request, *args, **kwargs):
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        report_title = request.GET.get('title', 'Scan Test Report')
+        show_total = request.GET.get('show_total', 'true') == 'true'
+        show_completed = request.GET.get('show_completed', 'true') == 'true'
+        order_by = request.GET.get('order_by', 'name')
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            if date.today().month == 12:
+                to_date = date.today().replace(day=31)
+            else:
+                to_date = (date.today().replace(month=date.today().month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Get scan and site info
+        scan_setting = ScanSettingModel.objects.first()
+        site_info = SiteInfoModel.objects.first()
+
+        # Query data
+        orders = ScanOrderModel.objects.filter(
+            ordered_at__date__range=[from_date, to_date]
+        ).exclude(status__in=['pending', 'cancelled'])
+
+        test_breakdown = orders.values(
+            'template__name', 'template__id'
+        ).annotate(
+            total_orders=Count('id'),
+            completed_orders=Count('id', filter=Q(status='completed'))
+        )
+
+        # Apply ordering
+        if order_by == 'total':
+            test_breakdown = test_breakdown.order_by('-total_orders', 'template__name')
+        elif order_by == 'completed':
+            test_breakdown = test_breakdown.order_by('-completed_orders', 'template__name')
+        else:
+            test_breakdown = test_breakdown.order_by('template__name')
+
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Scan Test Report"
+
+        # Styles
+        header_font = Font(bold=True, size=14)
+        title_font = Font(bold=True, size=12)
+        table_header_font = Font(bold=True, size=11, color="FFFFFF")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
+        row = 1
+
+        # Header section
+        if scan_setting and scan_setting.scan_name:
+            ws.merge_cells(f'A{row}:D{row}')
+            cell = ws[f'A{row}']
+            cell.value = scan_setting.scan_name
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center')
+            row += 1
+
+            if scan_setting.mobile or scan_setting.email:
+                ws.merge_cells(f'A{row}:D{row}')
+                cell = ws[f'A{row}']
+                contact = []
+                if scan_setting.mobile:
+                    contact.append(f"Tel: {scan_setting.mobile}")
+                if scan_setting.email:
+                    contact.append(f"Email: {scan_setting.email}")
+                cell.value = " | ".join(contact)
+                cell.alignment = Alignment(horizontal='center')
+                row += 1
+        elif site_info:
+            ws.merge_cells(f'A{row}:D{row}')
+            cell = ws[f'A{row}']
+            cell.value = site_info.name
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center')
+            row += 1
+
+            ws.merge_cells(f'A{row}:D{row}')
+            cell = ws[f'A{row}']
+            contact = []
+            if site_info.mobile_1:
+                contact.append(f"Tel: {site_info.mobile_1}")
+            if site_info.email:
+                contact.append(f"Email: {site_info.email}")
+            cell.value = " | ".join(contact)
+            cell.alignment = Alignment(horizontal='center')
+            row += 1
+
+        row += 1
+
+        # Report title
+        ws.merge_cells(f'A{row}:D{row}')
+        cell = ws[f'A{row}']
+        cell.value = report_title
+        cell.font = title_font
+        cell.alignment = Alignment(horizontal='center')
+        row += 1
+
+        # Date range
+        ws.merge_cells(f'A{row}:D{row}')
+        cell = ws[f'A{row}']
+        cell.value = f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}"
+        cell.alignment = Alignment(horizontal='center')
+        row += 2
+
+        # Table headers
+        col = 1
+        headers = ['S/N', 'Test']
+        if show_total:
+            headers.append('Total Orders')
+        if show_completed:
+            headers.append('Completed Orders')
+
+        for header in headers:
+            cell = ws.cell(row=row, column=col)
+            cell.value = header
+            cell.font = table_header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+            col += 1
+
+        row += 1
+
+        # Data rows
+        for idx, test in enumerate(test_breakdown, 1):
+            col = 1
+
+            # S/N
+            cell = ws.cell(row=row, column=col)
+            cell.value = idx
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center')
+            col += 1
+
+            # Test name
+            cell = ws.cell(row=row, column=col)
+            cell.value = test['template__name']
+            cell.border = border
+            col += 1
+
+            # Total orders
+            if show_total:
+                cell = ws.cell(row=row, column=col)
+                cell.value = test['total_orders']
+                cell.border = border
+                cell.alignment = Alignment(horizontal='center')
+                col += 1
+
+            # Completed orders
+            if show_completed:
+                cell = ws.cell(row=row, column=col)
+                cell.value = test['completed_orders']
+                cell.border = border
+                cell.alignment = Alignment(horizontal='center')
+                col += 1
+
+            row += 1
+
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 8
+        ws.column_dimensions['B'].width = 40
+        if show_total:
+            ws.column_dimensions['C'].width = 15
+        if show_completed:
+            ws.column_dimensions['D'].width = 18
+
+        # Prepare response
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"scan_test_report_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        wb.save(response)
+        return response
+
+
+class ScanReportExportPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'scan.view_scanordermodel'
+
+    def get(self, request, *args, **kwargs):
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        report_title = request.GET.get('title', 'Scan Test Report')
+        show_total = request.GET.get('show_total', 'true') == 'true'
+        show_completed = request.GET.get('show_completed', 'true') == 'true'
+        order_by = request.GET.get('order_by', 'name')
+        report_type = request.GET.get('type', 'breakdown')  # breakdown or summary
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            if date.today().month == 12:
+                to_date = date.today().replace(day=31)
+            else:
+                to_date = (date.today().replace(month=date.today().month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Get scan and site info
+        scan_setting = ScanSettingModel.objects.first()
+        site_info = SiteInfoModel.objects.first()
+
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+        elements = []
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            textColor=colors.HexColor('#1a1a1a'),
+            spaceAfter=12,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#333333'),
+            spaceAfter=6,
+            alignment=TA_CENTER
+        )
+
+        # Header
+        if scan_setting and scan_setting.scan_name:
+            elements.append(Paragraph(scan_setting.scan_name, title_style))
+            if scan_setting.mobile or scan_setting.email:
+                contact = []
+                if scan_setting.mobile:
+                    contact.append(f"Tel: {scan_setting.mobile}")
+                if scan_setting.email:
+                    contact.append(f"Email: {scan_setting.email}")
+                elements.append(Paragraph(" | ".join(contact), subtitle_style))
+        elif site_info:
+            elements.append(Paragraph(site_info.name, title_style))
+            contact = []
+            if site_info.mobile_1:
+                contact.append(f"Tel: {site_info.mobile_1}")
+            if site_info.email:
+                contact.append(f"Email: {site_info.email}")
+            elements.append(Paragraph(" | ".join(contact), subtitle_style))
+
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph(report_title, title_style))
+        elements.append(Paragraph(
+            f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}",
+            subtitle_style
+        ))
+        elements.append(Spacer(1, 0.4 * inch))
+
+        if report_type == 'summary':
+            # Summary report
+            all_orders = ScanOrderModel.objects.filter(
+                ordered_at__date__range=[from_date, to_date]
+            )
+            orders = all_orders.exclude(status__in=['pending', 'cancelled'])
+
+            summary_data = [
+                ['Metric', 'Count'],
+                ['Total Tests', str(orders.count())],
+                ['Completed Tests', str(all_orders.filter(status='completed').count())],
+                ['Processing Tests', str(all_orders.filter(status='processing').count())],
+                ['Sample Collected', str(all_orders.filter(status='collected').count())],
+                ['Paid (Awaiting Sample)', str(all_orders.filter(status='paid').count())],
+                ['Pending Payment', str(all_orders.filter(status='pending').count())],
+                ['Cancelled Tests', str(all_orders.filter(status='cancelled').count())],
+            ]
+
+            summary_table = Table(summary_data, colWidths=[4 * inch, 2 * inch])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')]),
+            ]))
+            elements.append(summary_table)
+        else:
+            # Breakdown report
+            orders = ScanOrderModel.objects.filter(
+                ordered_at__date__range=[from_date, to_date]
+            ).exclude(status__in=['pending', 'cancelled'])
+
+            test_breakdown = orders.values(
+                'template__name', 'template__id'
+            ).annotate(
+                total_orders=Count('id'),
+                completed_orders=Count('id', filter=Q(status='completed'))
+            )
+
+            # Apply ordering
+            if order_by == 'total':
+                test_breakdown = test_breakdown.order_by('-total_orders', 'template__name')
+            elif order_by == 'completed':
+                test_breakdown = test_breakdown.order_by('-completed_orders', 'template__name')
+            else:
+                test_breakdown = test_breakdown.order_by('template__name')
+
+            # Build table data
+            headers = ['S/N', 'Test']
+            col_widths = [0.5 * inch, 3 * inch]
+
+            if show_total:
+                headers.append('Total Orders')
+                col_widths.append(1 * inch)
+            if show_completed:
+                headers.append('Completed Orders')
+                col_widths.append(1.2 * inch)
+
+            table_data = [headers]
+
+            for idx, test in enumerate(test_breakdown, 1):
+                row = [str(idx), test['template__name']]
+                if show_total:
+                    row.append(str(test['total_orders']))
+                if show_completed:
+                    row.append(str(test['completed_orders']))
+                table_data.append(row)
+
+            table = Table(table_data, colWidths=col_widths)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')]),
+            ]))
+            elements.append(table)
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        filename = f"scan_test_report_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+

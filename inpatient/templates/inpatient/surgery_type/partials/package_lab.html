@@ -17,14 +17,13 @@
             </tr>
         </thead>
         <tbody id="labs-table-body">
-            {% for lab in surgery_labs %}
-            <tr id="lab-{{ lab.pk }}">
-                <td>{{ lab.lab.name }}</td>
-                <td>{{ lab.timing|default:"N/A" }}</td>
-                <td>{% if lab.is_optional %}Yes{% else %}No{% endif %}</td>
-                <td>
-                    <button class="btn btn-danger btn-sm remove-item-btn" data-type="lab" data-id="{{ lab.pk }}">Remove</button>
-                </td>
+            {% for item in surgery_labs %}
+            <tr id="lab-{{ item.id }}" data-price="{{ item.lab.price|floatformat:2 }}">
+                <td>{{ item.lab.name|default:"N/A" }}</td>
+                <td>₦{{ item.lab.price|floatformat:2|default:"0.00" }}</td>
+                <td>{{ item.timing|default:"N/A" }}</td>
+                <td>{% if item.is_optional %}Yes{% else %}No{% endif %}</td>
+                <td><button class="btn btn-danger btn-sm remove-item-btn" data-type="lab" data-id="{{ item.id }}"><i class="bi bi-trash"></i></button></td>
             </tr>
             {% endfor %}
             <tr id="no-labs-row" {% if surgery_labs %}style="display: none;"{% endif %}>

@@ -373,15 +373,57 @@ class SurgeryTypeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailV
         context = super().get_context_data(**kwargs)
         surgery_type = self.object
 
-        # Get associated drugs, labs, and scans
-        context['surgery_drugs'] = surgery_type.surgerydrug_set.all().select_related('drug')
-        context['surgery_labs'] = surgery_type.surgerylab_set.all().select_related('lab')
-        context['surgery_scans'] = surgery_type.surgeryscan_set.all().select_related('scan')
+        # Get associated items
+        # Ensure the 'drug' related name on SurgeryDrug points to your 'DrugModel'
+        surgery_drugs = surgery_type.surgerydrug_set.all().select_related('drug')
+        surgery_labs = surgery_type.surgerylab_set.all().select_related('lab')
+        surgery_scans = surgery_type.surgeryscan_set.all().select_related('scan')
+
+        # Calculate totals
+        drugs_with_totals = []
+        total_drugs_price = 0
+        for item in surgery_drugs:
+            try:
+                # --- FIX ---
+                # Changed item.drug.price to item.drug.selling_price
+                item.total_price = item.drug.selling_price * item.quantity
+                total_drugs_price += item.total_price
+                drugs_with_totals.append(item)
+            except (AttributeError, TypeError):
+                item.total_price = 0
+                drugs_with_totals.append(item)
+
+        try:
+            # Assuming lab/scan models use 'price'. Adjust if they also use 'selling_price'
+            total_labs_price = sum(item.lab.price for item in surgery_labs if item.lab and item.lab.price)
+        except (AttributeError, TypeError):
+            total_labs_price = 0
+
+        try:
+            total_scans_price = sum(item.scan.price for item in surgery_scans if item.scan and item.scan.price)
+        except (AttributeError, TypeError):
+            total_scans_price = 0
+
+        total_package_items_price = total_drugs_price + total_labs_price + total_scans_price
+
+        base_fee = surgery_type.total_base_fee or 0
+        grand_total = base_fee + total_package_items_price
 
         # Forms for adding items
         context['drug_form'] = SurgeryDrugForm()
         context['lab_form'] = SurgeryLabForm()
         context['scan_form'] = SurgeryScanForm()
+
+        # Add items and totals to context
+        context['surgery_drugs'] = drugs_with_totals  # Use the list with 'total_price'
+        context['surgery_labs'] = surgery_labs
+        context['surgery_scans'] = surgery_scans
+
+        context['total_drugs_price'] = total_drugs_price
+        context['total_labs_price'] = total_labs_price
+        context['total_scans_price'] = total_scans_price
+        context['total_package_items_price'] = total_package_items_price
+        context['grand_total'] = grand_total
 
         return context
 
@@ -898,6 +940,7 @@ def add_scan_to_surgery(request, pk):
     if not scan_id:
         return JsonResponse({'error': 'Scan ID is required'}, status=400)
 
+
     try:
         from scan.models import ScanTemplateModel
         scan = get_object_or_404(ScanTemplateModel, pk=scan_id)
@@ -929,6 +972,7 @@ def add_scan_to_surgery(request, pk):
         })
     except Exception as e:
         logger.exception("Error adding scan to surgery package")
+        print(e)
         return JsonResponse({'error': 'Failed to add scan'}, status=500)
 
 
@@ -1158,7 +1202,7 @@ def search_scans_for_surgery(request):
         from scan.models import ScanTemplateModel
         scans = ScanTemplateModel.objects.filter(
             name__icontains=query
-        ).values('id', 'name', 'description')[:20]
+        ).values('id', 'name')[:20]
         return JsonResponse({'results': list(scans)})
     except Exception:
         logger.exception("Error searching scans")

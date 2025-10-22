@@ -98,6 +98,9 @@
 <div class="row">
     <!-- Left Sidebar: Patient Info & Quick Actions -->
     <div class="col-lg-3">
+        <!-- Patient Information -->
+
+
         <!-- Vitals -->
         {% if consultation.queue_entry.vitals %}
         <div class="card mb-3">
@@ -154,17 +157,12 @@
                     <button class="btn btn-sm btn-warning" onclick="orderScan()">
                         <i class="bi bi-camera"></i> order Image
                     </button>
-                    <!-- NEW: Service/Item Quick Actions -->
-                    <button class="btn btn-sm btn-success" onclick="orderService()">
-                        <i class="bi bi-journal-check"></i> Order Service
-                    </button>
-                    <button class="btn btn-sm btn-dark" onclick="orderItem()">
-                        <i class="bi bi-box-seam"></i> Order Item
-                    </button>
-                    <!-- End New -->
                     <a href="{% url 'patient_history_view' patient_id=consultation.queue_entry.patient.id %}" class="btn btn-sm btn-outline-secondary">
                         <i class="bi bi-clock-history"></i> View Patient History
                     </a>
+<!--                    <button class="btn btn-sm btn-success" onclick="viewPatientHistory()">-->
+<!--                        <i class="bi bi-clock-history"></i> Patient History-->
+<!--                    </button>-->
                 </div>
             </div>
         </div>
@@ -244,12 +242,6 @@
                             <i class="bi bi-clipboard2-pulse"></i> Tests & Scans
                         </button>
                     </li>
-                    <!-- NEW: Services & Items Tab -->
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#services-pane" type="button" role="tab">
-                            <i class="bi bi-journal-check"></i> Services & Items
-                        </button>
-                    </li>
                 </ul>
             </div>
             <div class="card-body">
@@ -319,7 +311,7 @@
                                         <th>Dosage</th>
                                         <th>Duration</th>
                                         <th>Status</th>
-                                        <th>Actions</th>
+<!--                                        <th>Actions</th>-->
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -401,7 +393,8 @@
                                 </div>
 
                                 <!-- INTERNAL LAB TESTS -->
-                                <div class="list-group" id="internal-lab-test-list">
+                                <!-- INTERNAL LAB TESTS -->
+                                <div class="list-group">
                                     {% for test in lab_tests %}
                                     <div class="list-group-item" data-lab-id="{{ test.id }}" data-type="internal">
                                         <div class="d-flex justify-content-between align-items-center">
@@ -435,7 +428,7 @@
                                         </div>
                                     </div>
                                     {% empty %}
-                                    <div class="list-group-item text-center text-muted" id="no-internal-lab-tests">
+                                    <div class="list-group-item text-center text-muted">
                                         No internal lab tests ordered
                                     </div>
                                     {% endfor %}
@@ -444,7 +437,7 @@
                                 <!-- EXTERNAL LAB TESTS SECTION -->
                                 {% if external_lab_tests %}
                                 <h6 class="mt-4 mb-3">External Lab Tests</h6>
-                                <div class="list-group" id="external-lab-test-list">
+                                <div class="list-group">
                                     {% for test in external_lab_tests %}
                                     <div class="list-group-item" data-external-lab-id="{{ test.id }}">
                                         <div class="d-flex justify-content-between align-items-center">
@@ -486,7 +479,7 @@
                                 </div>
 
                                 <!-- INTERNAL SCANS -->
-                                <div class="list-group" id="internal-scan-list">
+                                <div class="list-group">
                                     {% for scan in scans %}
                                     <div class="list-group-item" data-scan-id="{{ scan.id }}" data-type="internal">
                                         <div class="d-flex justify-content-between align-items-center">
@@ -516,7 +509,7 @@
                                         </div>
                                     </div>
                                     {% empty %}
-                                    <div class="list-group-item text-center text-muted" id="no-internal-scans">
+                                    <div class="list-group-item text-center text-muted">
                                         No internal scans ordered
                                     </div>
                                     {% endfor %}
@@ -525,7 +518,7 @@
                                 <!-- EXTERNAL SCANS SECTION -->
                                 {% if external_scans %}
                                 <h6 class="mt-4 mb-3">External Scans</h6>
-                                <div class="list-group" id="external-scan-list">
+                                <div class="list-group">
                                     {% for scan in external_scans %}
                                     <div class="list-group-item" data-external-scan-id="{{ scan.id }}">
                                         <div class="d-flex justify-content-between align-items-center">
@@ -554,101 +547,10 @@
                                     {% endfor %}
                                 </div>
                                 {% endif %}
+
                             </div>
                         </div>
                     </div>
-
-                    <!-- NEW: Services & Items Tab Pane -->
-                    <div class="tab-pane fade" id="services-pane" role="tabpanel">
-                        <div class="row">
-                            <!-- Services Column -->
-                            <div class="col-md-6">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h6>Services Ordered</h6>
-                                    <button class="btn btn-sm btn-success" id="order-service-in-tab-btn">
-                                        <i class="bi bi-plus"></i> Order Service
-                                    </button>
-                                </div>
-                                <div class="list-group" id="service-order-list">
-                                    {% for tx in service_transactions|dictsortreversed:"created_at" %}
-                                    {% if tx.service %}
-                                    <div class="list-group-item" data-service-order-id="{{ tx.id }}">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <strong>{{ tx.service.name }}</strong> (x{{ tx.quantity }})
-                                                <small class="text-muted d-block">{{ tx.get_status_display }}</small>
-                                            </div>
-                                            <div class="btn-group">
-                                                <!-- Add Edit button if needed -->
-                                                <button class="btn btn-xs btn-outline-danger" onclick="deleteServiceOrder({{ tx.id }})" title="Delete">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        {% if tx.service.has_results %}
-                                        <div class="mt-2 d-flex justify-content-between align-items-center">
-                                            {% if tx.result and tx.result.is_verified %}
-                                                <span class="badge bg-success">Result Available</span>
-                                                <button class="btn btn-xs btn-outline-primary" onclick="viewServiceResult({{ tx.result.id }})">
-                                                    View Result
-                                                </button>
-                                            {% elif tx.result %}
-                                                <span class="badge bg-warning">Awaiting Verification</span>
-                                            {% else %}
-                                                <span class="badge bg-light text-dark">Result Not Available</span>
-                                            {% endif %}
-                                        </div>
-                                        {% endif %}
-                                    </div>
-                                    {% endif %}
-                                    {% endfor %}
-
-                                    {% if not service_transactions %}
-                                    <div class="list-group-item text-center text-muted" id="no-service-orders">
-                                        No services ordered yet
-                                    </div>
-                                    {% endif %}
-                                </div>
-                            </div>
-
-                            <!-- Items Column -->
-                            <div class="col-md-6">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h6>Items Ordered</h6>
-                                    <button class="btn btn-sm btn-dark" id="order-item-in-tab-btn">
-                                        <i class="bi bi-plus"></i> Order Item
-                                    </button>
-                                </div>
-                                <div class="list-group" id="item-order-list">
-                                    {% for tx in service_transactions|dictsortreversed:"created_at" %}
-                                    {% if tx.service_item %}
-                                    <div class="list-group-item" data-item-order-id="{{ tx.id }}">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <strong>{{ tx.service_item.name }}</strong> (x{{ tx.quantity }})
-                                                <small class="text-muted d-block">{{ tx.get_status_display }}</small>
-                                            </div>
-                                            <div class="btn-group">
-                                                <!-- Add Edit button if needed -->
-                                                <button class="btn btn-xs btn-outline-danger" onclick="deleteServiceOrder({{ tx.id }})" title="Delete">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endif %}
-                                    {% endfor %}
-
-                                    {% if not service_transactions %}
-                                    <div class="list-group-item text-center text-muted" id="no-item-orders">
-                                        No items ordered yet
-                                    </div>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- END: Services & Items Tab Pane -->
 
                 </div>
             </div>
@@ -709,7 +611,7 @@
             <div class="row g-2">
                 <div class="col-md-5">
                     <label class="form-label">Dosage Instructions</label>
-                    <input type="text" class="form-control dosage-input" name="dosage" placeholder="e.g., 2 tablets twice daily, 1 tab b.d, ii tabs tds" required>
+                    <input type="text" class="form-control dosage-input" name="dosage" placeholder="e.g., 2 tablets twice daily" required>
                 </div>
                  <div class="col-md-4">
                     <label class="form-label">Duration</label>
@@ -746,7 +648,7 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Dosage Instructions</label>
-                    <input type="text" class="form-control dosage-input" name="dosage" placeholder="e.g., 1 tablet once daily" required>
+                    <input type="text" class="form-control dosage-input" name="dosage" placeholder="e.g., 1 tablet once daily">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Duration</label>
@@ -800,7 +702,6 @@
     </div>
 </div>
 
-<!-- Scan Modal -->
 <div class="modal fade" id="scanModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -833,76 +734,6 @@
     </div>
 </div>
 
-<!-- NEW: Service Order Modal -->
-<div class="modal fade" id="serviceOrderModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Order Service</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Filter by Category (Optional)</label>
-                    <select class="form-select" id="serviceCategoryFilter">
-                        <option value="">Search all categories...</option>
-                        {% for category in service_categories %}
-                        <option value="{{ category.id }}">{{ category.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <hr>
-                <div id="service-order-form-list">
-                    <!-- Service rows will be injected here -->
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-success mt-2" id="add-service-btn">
-                    <i class="bi bi-plus-circle"></i> Add Another Service
-                </button>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success" id="submit-service-orders-btn">Order Services</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- NEW: Item Order Modal -->
-<div class="modal fade" id="itemOrderModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Order Item</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Filter by Category (Optional)</label>
-                    <select class="form-select" id="itemCategoryFilter">
-                        <option value="">Search all categories...</option>
-                        {% for category in item_categories %}
-                        <option value="{{ category.id }}">{{ category.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <hr>
-                <div id="item-order-form-list">
-                    <!-- Item rows will be injected here -->
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-dark mt-2" id="add-item-btn">
-                    <i class="bi bi-plus-circle"></i> Add Another Item
-                </button>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-dark" id="submit-item-orders-btn">Order Items</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-<!-- TEMPLATES -->
 <template id="lab-test-row-template">
     <div class="row g-2 align-items-center mb-3 order-row">
         <div class="col-md-6 position-relative">
@@ -939,134 +770,58 @@
     </div>
 </template>
 
-<!-- NEW: Service Row Template -->
-<template id="service-row-template">
-    <div class="row g-2 align-items-center mb-3 order-row">
-        <div class="col-md-5 position-relative">
-            <input type="text" class="form-control search-input" placeholder="Search for a service...">
-            <input type="hidden" class="template-id-input" name="template_id">
-            <div class="search-results list-group position-absolute w-100" style="z-index: 1060;"></div>
-        </div>
-        <div class="col-md-2">
-            <input type="number" class="form-control quantity-input" name="quantity" value="1" min="1">
-        </div>
-        <div class="col-md-4">
-            <input type="text" class="form-control notes-input" name="notes" placeholder="Notes (optional)">
-        </div>
-        <div class="col-md-1">
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()">
-                <i class="bi bi-trash"></i>
-            </button>
-        </div>
-    </div>
-</template>
-
-<!-- NEW: Item Row Template -->
-<template id="item-row-template">
-    <div class="row g-2 align-items-center mb-3 order-row">
-        <div class="col-md-5 position-relative">
-            <input type="text" class="form-control search-input" placeholder="Search for an item...">
-            <input type="hidden" class="template-id-input" name="template_id">
-            <div class="search-results list-group position-absolute w-100" style="z-index: 1060;"></div>
-        </div>
-        <div class="col-md-2">
-            <input type="number" class="form-control quantity-input" name="quantity" value="1" min="1">
-        </div>
-        <div class="col-md-4">
-            <input type="text" class="form-control notes-input" name="notes" placeholder="Notes (optional)">
-        </div>
-        <div class="col-md-1">
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()">
-                <i class="bi bi-trash"></i>
-            </button>
-        </div>
-    </div>
-</template>
-
-
-<!-- SCRIPT -->
 <script>
 const consultationId = {{ consultation.id }};
-const patientId = {{ consultation.queue_entry.patient.id }};
 let autoSaveTimer;
 
-// Modal variables
-let confirmationModal, messageModal, dosageWarningModal, duplicateModal;
-let labTestModal, scanModal, serviceOrderModal, itemOrderModal, drugPrescriptionModal;
-let allergyModal;
-
+// NEW: Variables for modal control
+let confirmationModal, messageModal;
 let confirmCallback = () => {};
-let pendingPrescriptionData = null; // Store data for force save
 
-// Central function to show confirmation modal (BUG FIX #3)
+// NEW: Function to show the confirmation modal
 function showConfirmationModal(message, callback) {
     document.getElementById('confirmationModalBody').textContent = message;
-    const confirmBtn = document.getElementById('confirmButton');
-
-    // Replace the button to remove old listeners
-    const newConfirmBtn = confirmBtn.cloneNode(true);
-    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-
-    newConfirmBtn.disabled = false;
-    newConfirmBtn.innerHTML = 'Confirm';
-    document.getElementById('confirmationModalLabel').textContent = "Confirm Action";
-
-    newConfirmBtn.addEventListener('click', function() {
-        // Disable button on click
-        newConfirmBtn.disabled = true;
-        newConfirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-        document.getElementById('confirmationModalLabel').textContent = "Processing...";
-
-        if (typeof callback === 'function') {
-            callback();
-        }
-    });
+    confirmCallback = callback;
     confirmationModal.show();
 }
 
-// Function to reset the confirmation modal button (called on modal hide or error)
-function resetConfirmModal() {
-    const confirmBtn = document.getElementById('confirmButton');
-    confirmBtn.disabled = false;
-    confirmBtn.innerHTML = 'Confirm';
-    document.getElementById('confirmationModalLabel').textContent = "Confirm Action";
-}
-
+let allergyModal;
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize TinyMCE
+    // Initialize TinyMCE for text areas if available
     if (typeof tinymce !== 'undefined') {
         tinymce.init({
             selector: 'textarea[name="assessment"], textarea[name="treatment_plan"]',
             height: 250,
-             plugins: ['lists', 'table', 'link', 'image'],
+             plugins: [
+            'lists',    // Keep existing list plugin
+            'table',    // Adds table creation features
+            'link',     // Adds ability to insert links
+            'image'     // Adds image upload/insert features
+        ],
             toolbar: 'undo redo | styles | bold italic underline | bullist numlist | link | table',
-            menubar: false
+        menubar: false
+
         });
     }
 
-    // Initialize all modals
-    confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
-    messageModal = new bootstrap.Modal(document.getElementById('messageModal'));
-    dosageWarningModal = new bootstrap.Modal(document.getElementById('dosageWarningModal'));
-    duplicateModal = new bootstrap.Modal(document.getElementById('duplicateConfirmModal'));
-    allergyModal = new bootstrap.Modal(document.getElementById('allergyModal'));
-    labTestModal = new bootstrap.Modal(document.getElementById('labTestModal'));
-    scanModal = new bootstrap.Modal(document.getElementById('scanModal'));
-    drugPrescriptionModal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
-
-    // NEW Modals
-    serviceOrderModal = new bootstrap.Modal(document.getElementById('serviceOrderModal'));
-    itemOrderModal = new bootstrap.Modal(document.getElementById('itemOrderModal'));
-
-    // Initialize modal workflows
-    initializePrescriptionModal();
+    initializePrescriptionModal()
     initializeOrderModals();
-    initializeServiceItemOrderModals(); // NEW
 
-    // Format allergy text
+   allergyModal = new bootstrap.Modal(document.getElementById('allergyModal')); // This was the missing line
+
+    // Setup for confirmation modal button
+    document.getElementById('confirmButton').addEventListener('click', function() {
+        if (typeof confirmCallback === 'function') {
+            confirmCallback();
+        }
+        confirmationModal.hide();
+    });
+
+    // Format the initial allergy text on page load
     const allergyTextElem = document.getElementById('allergy-text');
     const rawDetails = allergyTextElem.getAttribute('data-raw-details');
+
     if (rawDetails && rawDetails.trim() !== '') {
         const formattedDetails = rawDetails.trim().replace(/(\r\n|\n|\r)+/g, ', ');
         allergyTextElem.innerHTML = `<strong>Allergies:</strong> ${formattedDetails}`;
@@ -1074,31 +829,25 @@ document.addEventListener('DOMContentLoaded', function() {
         allergyTextElem.textContent = 'No allergies set for this patient.';
     }
 
-    // Auto-save
+    // Auto-save every 30 seconds
     autoSaveTimer = setInterval(saveDraft, 30000);
 
-    // Modal Listeners
-    document.getElementById('confirmationModal').addEventListener('hidden.bs.modal', resetConfirmModal);
+    // MODIFIED: Added modal initialization
+    confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+    messageModal = new bootstrap.Modal(document.getElementById('messageModal'));
 
-    // BUG FIX #4: Fix "Add Anyway" buttons
-    document.getElementById('confirmDosageBtn').addEventListener('click', function() {
-        dosageWarningModal.hide();
-        if (pendingPrescriptionData) {
-            submitPrescriptions(true); // Call with forceSave = true
+    document.getElementById('confirmButton').addEventListener('click', function() {
+        if (typeof confirmCallback === 'function') {
+            confirmCallback();
         }
-    });
-    document.getElementById('forceSaveBtn').addEventListener('click', function() {
-        duplicateModal.hide();
-        if (pendingPrescriptionData) {
-            submitPrescriptions(true); // Call with forceSave = true
-        }
+        confirmationModal.hide();
     });
 
     // Reset modal submit buttons when modals are hidden
     document.getElementById('drugPrescriptionModal').addEventListener('hidden.bs.modal', function() {
         const submitBtn = document.getElementById('submit-prescriptions-btn');
         submitBtn.textContent = 'Save Prescriptions';
-        submitBtn.onclick = () => submitPrescriptions(false);
+        submitBtn.onclick = () => submitPrescriptions();
     });
 
     document.getElementById('labTestModal').addEventListener('hidden.bs.modal', function() {
@@ -1113,24 +862,7 @@ document.addEventListener('DOMContentLoaded', function() {
         submitBtn.onclick = () => submitOrders('imaging');
     });
 
-    // NEW: Reset Service/Item Modals
-    document.getElementById('serviceOrderModal').addEventListener('hidden.bs.modal', function() {
-        const submitBtn = document.getElementById('submit-service-orders-btn');
-        submitBtn.textContent = 'Order Services';
-        submitBtn.onclick = () => submitServiceItemOrders('service');
-    });
-    document.getElementById('itemOrderModal').addEventListener('hidden.bs.modal', function() {
-        const submitBtn = document.getElementById('submit-item-orders-btn');
-        submitBtn.textContent = 'Order Items';
-        submitBtn.onclick = () => submitServiceItemOrders('item');
-    });
 
-    // BUG FIX #7: Switch to tab on reload
-    const tabToShow = sessionStorage.getItem('showTab');
-    if (tabToShow) {
-        switchToTab(tabToShow);
-        sessionStorage.removeItem('showTab');
-    }
 });
 
 // Consultation form submission
@@ -1166,21 +898,29 @@ document.getElementById('consultationForm').addEventListener('submit', function(
 });
 
 function openAllergyModal() {
+    // Get the RAW, unformatted allergy details from the data attribute
     const rawDetails = document.getElementById('allergy-text').getAttribute('data-raw-details');
-    document.getElementById('allergyDetailsText').value = rawDetails;
+    const allergyTextarea = document.getElementById('allergyDetailsText');
+
+    // Populate the textarea with the raw details for editing
+    allergyTextarea.value = rawDetails;
+
     allergyModal.show();
 }
 
 function saveAllergy() {
+    const patientId = {{ consultation.queue_entry.patient.id }};
     const allergyDetails = document.getElementById('allergyDetailsText').value;
-    const csrfToken = getCookie('csrftoken');
+    const csrfToken = getCookie('csrftoken'); // Assumes you have this function
 
     const formData = new FormData();
     formData.append('details', allergyDetails);
 
     fetch(`/portal/consultation/ajax/update-allergy/${patientId}/`, {
         method: 'POST',
-        headers: { 'X-CSRFToken': csrfToken },
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
         body: formData
     })
     .then(response => response.json())
@@ -1189,18 +929,20 @@ function saveAllergy() {
             allergyModal.hide();
             showAlert('Allergies updated successfully!', 'success');
 
+            // Update the display on the page dynamically
             const allergyTextElem = document.getElementById('allergy-text');
             const allergyContainer = document.getElementById('allergy-display-container');
             const allergyBtn = document.getElementById('allergy-action-btn');
 
+            // --- START: MODIFIED LOGIC ---
             if (data.details && data.details.trim() !== '') {
+                // Replace newlines with a comma and space for a single-line display
                 const formattedDetails = data.details.trim().replace(/(\r\n|\n|\r)+/g, ', ');
                 allergyTextElem.innerHTML = `<strong>Allergies:</strong> ${formattedDetails}`;
-                allergyTextElem.setAttribute('data-raw-details', data.details);
             } else {
                 allergyTextElem.textContent = 'No allergies set for this patient.';
-                allergyTextElem.setAttribute('data-raw-details', '');
             }
+            // --- END: MODIFIED LOGIC ---
 
             const newTitle = `Last updated by ${data.updated_by} at ${data.updated_at}`;
             allergyContainer.setAttribute('title', newTitle);
@@ -1212,10 +954,11 @@ function saveAllergy() {
     })
     .catch(error => {
         showAlert('An unexpected network error occurred.', 'danger');
+        console.error('Allergy save error:', error);
     });
 }
 
-// Silent auto-save
+// MODIFIED: Save draft function is now silent
 function saveDraft() {
     if (typeof tinymce !== 'undefined') tinymce.triggerSave();
     const form = document.getElementById('consultationForm');
@@ -1228,553 +971,266 @@ function saveDraft() {
     })
     .then(response => response.json())
     .then(data => {
-        if (!data.success) console.error('Auto-save failed:', data.error);
+        if (!data.success) {
+            console.error('Auto-save failed:', data.error);
+        }
+        // Success alert removed as requested
     })
-    .catch(error => console.error('Auto-save failed:', error));
+    .catch(error => {
+        console.error('Auto-save failed:', error);
+    });
 }
 
-// MODIFIED: Pause consultation (BUG FIX #3)
+// MODIFIED: Pause consultation now uses a modal
 function pauseConsultation() {
     const message = 'Are you sure you want to pause this consultation?';
     showConfirmationModal(message, () => {
-        const pauseBtn = document.getElementById('pauseBtn');
-        pauseBtn.disabled = true; // Disable original button too
-
         fetch(`/portal/consultation/ajax/pause-consultation/${consultationId}/`, {
             method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken'), 'Content-Type': 'application/json' }
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                confirmationModal.hide();
                 showAlert('Consultation paused. Redirecting...', 'info');
                 setTimeout(() => {
                     window.location.href = '{% url "doctor_dashboard" %}';
                 }, 1500);
             } else {
-                confirmationModal.hide();
                 showAlert(data.error || 'Failed to pause', 'danger');
             }
         })
-        .catch(error => {
-            confirmationModal.hide();
-            showAlert('An unexpected error occurred.', 'danger');
-        })
-        .finally(() => {
-            pauseBtn.disabled = false; // Re-enable original button
-            resetConfirmModal(); // Reset modal button
-        });
+        .catch(error => showAlert('An unexpected error occurred.', 'danger'));
     });
 }
 
-// MODIFIED: Complete consultation (BUG FIX #3)
+// MODIFIED: Complete consultation now uses a modal
 function completeConsultation() {
     const message = 'Are you sure you want to complete this consultation?';
     showConfirmationModal(message, () => {
-        const completeBtn = document.getElementById('completeBtn');
-        completeBtn.disabled = true;
-
+        // First save current form data
         saveDraft();
 
         setTimeout(() => {
             fetch(`/portal/consultation/ajax/complete-consultation/${consultationId}/`, {
                 method: 'POST',
-                headers: { 'X-CSRFToken': getCookie('csrftoken'), 'Content-Type': 'application/json' }
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json'
+                }
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    confirmationModal.hide();
                     showAlert('Consultation completed successfully', 'success');
-                    clearInterval(autoSaveTimer);
+                    clearInterval(autoSaveTimer); // Stop auto-saving
                     setTimeout(() => {
                         window.location.href = '{% url "doctor_dashboard" %}';
                     }, 1500);
                 } else {
-                    confirmationModal.hide();
                     showAlert(data.error || 'Failed to complete', 'danger');
                 }
             })
-            .catch(error => {
-                confirmationModal.hide();
-                showAlert('An unexpected error occurred.', 'danger');
-            })
-            .finally(() => {
-                completeBtn.disabled = false;
-                resetConfirmModal();
-            });
+            .catch(error => showAlert('An unexpected error occurred.', 'danger'));
         }, 500);
     });
 }
 
-
-// --- Prescription Functions ---
-
-function initializePrescriptionModal() {
-    const openModalAction = (e) => {
-        e.preventDefault();
-        document.getElementById('prescription-list').innerHTML = '';
-        addDrugForm();
-        drugPrescriptionModal.show();
-    };
-
-    document.querySelector('button[onclick="prescribeDrug()"]').addEventListener('click', openModalAction);
-    document.getElementById('add-drug-in-tab-btn').addEventListener('click', openModalAction);
-
-    document.getElementById('add-drug-btn').addEventListener('click', addDrugForm);
-    document.getElementById('add-external-drug-btn').addEventListener('click', addExternalDrugForm);
-    document.getElementById('submit-prescriptions-btn').addEventListener('click', () => submitPrescriptions(false));
+// Drug prescription functions
+function prescribeDrug() {
+    const modal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+    document.getElementById('drugPrescriptionForm').reset();
+    modal.show();
 }
 
-function addDrugForm() {
-    const template = document.getElementById('available-drug-template');
-    const clone = template.content.cloneNode(true);
-    const formRow = clone.querySelector('.prescription-row');
-    document.getElementById('prescription-list').appendChild(clone);
-
-    const searchInput = formRow.querySelector('.drug-search-input');
-    const dosageInput = formRow.querySelector('.dosage-input');
-    const durationInput = formRow.querySelector('.duration-input');
-    const quantityInput = formRow.querySelector('.quantity-input');
-
-    searchInput.addEventListener('input', () => handleDrugSearch(searchInput));
-    dosageInput.addEventListener('input', () => calculateQuantity(formRow));
-    durationInput.addEventListener('input', () => calculateQuantity(formRow));
-    quantityInput.addEventListener('input', () => {
-        const packSize = parseInt(formRow.querySelector('.drug-pack-size-input')?.value || '1') || 1;
-        const unitType = formRow.querySelector('.drug-unit-input')?.value || 'tablet';
-        const quantityDisplay = formRow.querySelector('.quantity-display');
-        const totalUnits = parseInt(quantityInput.value) || 0;
-        updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
-    });
-}
-
-function addExternalDrugForm() {
-    const template = document.getElementById('external-drug-template');
-    const clone = template.content.cloneNode(true);
-    document.getElementById('prescription-list').appendChild(clone);
-}
-
-function removeDrugForm(buttonEl) {
-    buttonEl.closest('.prescription-row').remove();
-}
-
-function handleDrugSearch(inputEl) {
-    const query = inputEl.value;
-    const resultsContainer = inputEl.parentElement.querySelector('.search-results');
-    const formRow = inputEl.closest('.prescription-row');
-
-    formRow.querySelector('.drug-id-input').value = '';
-    formRow.querySelector('.drug-pack-size-input').value = '';
-    formRow.querySelector('.drug-unit-input').value = '';
-
-    if (query.length < 2) {
-        resultsContainer.innerHTML = '';
-        return;
-    }
-
-    fetch(`/portal/consultation/ajax/search-drugs/?q=${encodeURIComponent(query)}`)
+document.getElementById('drugSearch').addEventListener('input', function() {
+    const query = this.value;
+    if (query.length >= 2) {
+        fetch(`/portal/consultation/ajax/search-drugs/?q=${encodeURIComponent(query)}`)
         .then(response => response.json())
         .then(data => {
-            resultsContainer.innerHTML = '';
-            if (data.drugs.length > 0) {
-                data.drugs.forEach(drug => {
-                    const item = document.createElement('a');
-                    item.href = '#';
-                    item.className = 'list-group-item list-group-item-action';
-                    item.textContent = `${drug.brand_name || drug.generic_name} (${drug.formulation}) - Stock: ${drug.pharmacy_quantity}`;
-
-                    item.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        formRow.querySelector('.drug-search-input').value = item.textContent;
-                        formRow.querySelector('.drug-id-input').value = drug.id;
-                        formRow.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
-                        formRow.querySelector('.drug-unit-input').value = drug.unit || 'tablet';
-                        resultsContainer.innerHTML = '';
-                        calculateQuantity(formRow);
-                    });
-                    resultsContainer.appendChild(item);
-                });
-            } else {
-                resultsContainer.innerHTML = '<span class="list-group-item">No drugs found</span>';
-            }
+            const select = document.getElementById('drugSelect');
+            select.innerHTML = '<option value="">Select a drug...</option>';
+            data.drugs.forEach(drug => {
+                const option = document.createElement('option');
+                option.value = drug.id;
+                option.textContent = `${drug.brand_name || drug.generic_name} - ${drug.formulation}`;
+                select.appendChild(option);
+            });
         });
-}
-
-// MODIFIED: calculateQuantity (BUG FIX #6 - Roman Numerals)
-function calculateQuantity(formRowEl) {
-    const dosageText = formRowEl.querySelector('.dosage-input').value;
-    const cleanedDosage = dosageText.replace(/\./g, '').toLowerCase();
-    const durationText = formRowEl.querySelector('.duration-input').value.toLowerCase();
-    const packSize = parseInt(formRowEl.querySelector('.drug-pack-size-input')?.value || '1') || 1;
-    let unitType = (formRowEl.querySelector('.drug-unit-input')?.value || 'tablet').toLowerCase();
-    const quantityInput = formRowEl.querySelector('.quantity-input');
-    const quantityDisplay = formRowEl.querySelector('.quantity-display');
-
-    if (!quantityInput) return;
-
-    const nonCalculableTypes = ['cream', 'drop', 'ointment', 'syrup'];
-    if (nonCalculableTypes.includes(unitType)) {
-        quantityInput.value = 1;
-        updateQuantityDisplay(1, packSize, unitType, quantityDisplay);
-        return;
     }
+});
 
-    let durationDays = 0;
-    const durationMatch = durationText.match(/^(\d+)/);
-    if (durationMatch) {
-        const num = parseInt(durationMatch[1]);
-        if (durationText.includes('week') || durationText.includes('w')) durationDays = num * 7;
-        else if (durationText.includes('month') || durationText.includes('m')) durationDays = num * 30;
-        else durationDays = num;
-    }
+document.getElementById('drugPrescriptionForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
+    formData.append('consultation_id', consultationId);
 
-    if (unitType === 'injection' || unitType === 'drip') {
-        if (durationDays > 0) {
-            const totalUnits = 1 * durationDays;
-            quantityInput.value = totalUnits;
-            updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
-        } else {
-            quantityInput.value = '';
-            updateQuantityDisplay(0, packSize, unitType, quantityDisplay);
-        }
-        return;
-    }
-
-    let dailyDose = 0;
-    let dose = 0;
-    const doseMatch = cleanedDosage.match(/^(\d+(\.\d+)?)/);
-
-    if (doseMatch) {
-        dose = parseFloat(doseMatch[1]);
-    } else {
-        // BUG FIX #6: Check for roman numerals
-        if (cleanedDosage.startsWith('iii')) dose = 3;
-        else if (cleanedDosage.startsWith('ii')) dose = 2;
-        else if (cleanedDosage.startsWith('iv')) dose = 4;
-        else if (cleanedDosage.startsWith('v')) dose = 5;
-        else if (cleanedDosage.startsWith('i')) dose = 1;
-    }
-
-    if (dose > 0) {
-        let frequency = 1;
-        if (/\b(bd|bid|twice|q12h)\b/.test(cleanedDosage)) frequency = 2;
-        else if (/\b(tds|tid|thrice|q8h)\b/.test(cleanedDosage)) frequency = 3;
-        else if (/\b(qds|qid|four times|q6h)\b/.test(cleanedDosage)) frequency = 4;
-        else if (/\b(q4h)\b/.test(cleanedDosage)) frequency = 6;
-        else if (/\b(od|daily|once)\b/.test(cleanedDosage)) frequency = 1;
-
-        const timesMatch = cleanedDosage.match(/(\d+)\s*time/);
-        if (timesMatch) frequency = parseInt(timesMatch[1]);
-
-        const slashMatch = dosageText.match(/\//g);
-        if (slashMatch) frequency = slashMatch.length + 1;
-
-        dailyDose = dose * frequency;
-    }
-
-    if (dailyDose > 0 && durationDays > 0) {
-        const totalUnits = Math.ceil(dailyDose * durationDays);
-        quantityInput.value = totalUnits;
-        updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
-    } else {
-        quantityInput.value = '';
-        updateQuantityDisplay(0, packSize, unitType, quantityDisplay);
-    }
-}
-
-function getPackageTerminology(unitType) {
-    const terminology = {
-        'tablet': ['card', 'cards'],
-        'capsule': ['card', 'cards'],
-        'injection': ['pack', 'packs'],
-        'syrup': ['bottle', 'bottles'],
-        'cream': ['tube', 'tubes'],
-        'ointment': ['tube', 'tubes'],
-        'drop': ['bottle', 'bottles'],
-        'drops': ['bottle', 'bottles']
-    };
-    return terminology[unitType] || ['pack', 'packs'];
-}
-
-function updateQuantityDisplay(totalUnits, packSize, unitType, displayElement) {
-    if (!displayElement) return;
-
-    if (!totalUnits || totalUnits === 0) {
-        displayElement.value = '';
-        return;
-    }
-
-    if (packSize === 1 || totalUnits < packSize) {
-        displayElement.value = `${totalUnits} ${totalUnits === 1 ? unitType : unitType + 's'}`;
-        return;
-    }
-
-    const fullPacks = Math.floor(totalUnits / packSize);
-    const remainingUnits = totalUnits % packSize;
-    const [singularTerm, pluralTerm] = getPackageTerminology(unitType);
-    const packTerm = fullPacks === 1 ? singularTerm : pluralTerm;
-
-    if (remainingUnits === 0) {
-        displayElement.value = `${fullPacks} ${packTerm}`;
-    } else {
-        displayElement.value = `${fullPacks} ${packTerm} ${remainingUnits} ${remainingUnits === 1 ? unitType : unitType + 's'}`;
-    }
-}
-
-// MODIFIED: submitPrescriptions (BUG FIX #4, #5)
-function submitPrescriptions(forceSave = false) {
-    const submitBtn = document.getElementById('submit-prescriptions-btn');
-    const spinner = submitBtn.querySelector('.spinner-border');
-
-    let payload;
-
-    if (forceSave && pendingPrescriptionData) {
-        // This is a force-save call, use the stored payload
-        payload = pendingPrescriptionData;
-        payload.force_save = true;
-        pendingPrescriptionData = null; // Clear it after use
-    } else {
-        // This is a new submission, build the payload
-        pendingPrescriptionData = null; // Clear any old data
-        payload = {
-            patient_id: patientId,
-            consultation_id: consultationId,
-            available_drugs: [],
-            external_drugs: [],
-            force_save: false
-        };
-
-        const forms = document.querySelectorAll('.prescription-row');
-        let isValid = true;
-        let seenDrugs = {};
-        let duplicateError = null;
-        let highDosageWarning = false;
-        let highDosageDrugs = [];
-        const nonWarningTypes = ['cream', 'ointment', 'drop', 'syrup', 'injection', 'drip'];
-
-        forms.forEach(form => {
-            form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
-
-            const type = form.dataset.type;
-            const dosage = form.querySelector('.dosage-input').value;
-            const cleanedDosage = dosage.trim().toLowerCase();
-            const quantity = form.querySelector('.quantity-input').value; // BUG FIX #5
-
-            // BUG FIX #5: Check for quantity
-            if (!quantity) {
-                isValid = false;
-                form.querySelector('.quantity-input').classList.add('is-invalid');
-            }
-             // BUG FIX #5: Check for dosage
-            if (!dosage) {
-                isValid = false;
-                form.querySelector('.dosage-input').classList.add('is-invalid');
-            }
-
-
-            if (type === 'available') {
-                const drugId = form.querySelector('.drug-id-input').value;
-                const unitType = (form.querySelector('.drug-unit-input')?.value || 'tablet').toLowerCase();
-
-                if (!drugId) {
-                    isValid = false;
-                    form.querySelector('.drug-search-input').classList.add('is-invalid');
-                }
-
-                const key = `${drugId}-${cleanedDosage}`;
-                if (seenDrugs[key]) {
-                    isValid = false;
-                    form.querySelector('.drug-search-input').classList.add('is-invalid');
-                    form.querySelector('.dosage-input').classList.add('is-invalid');
-                    duplicateError = 'You have added the same drug with the exact same dosage multiple times. Please remove the duplicate entry.';
-                } else {
-                    seenDrugs[key] = true;
-                }
-
-                const doseMatch = cleanedDosage.match(/^(iii|ii|iv|v|i|\d+(\.\d+)?)/); // Check roman first
-                if (doseMatch) {
-                    let dose = 0;
-                    if (doseMatch[1] === 'iii') dose = 3;
-                    else if (doseMatch[1] === 'ii') dose = 2;
-                    else if (doseMatch[1] === 'iv') dose = 4;
-                    else if (doseMatch[1] === 'v') dose = 5;
-                    else if (doseMatch[1] === 'i') dose = 1;
-                    else dose = parseFloat(doseMatch[1]);
-
-                    if (dose > 12 && !nonWarningTypes.includes(unitType)) {
-                        highDosageWarning = true;
-                        highDosageDrugs.push(form.querySelector('.drug-search-input').value.split(' (')[0] || 'Unknown Drug');
-                    }
-                }
-
-                payload.available_drugs.push({
-                    drug_id: drugId,
-                    dosage: dosage,
-                    duration: form.querySelector('.duration-input').value,
-                    quantity: quantity,
-                    notes: form.querySelector('.notes-input').value
-                });
-
-            } else if (type === 'external') {
-                const drugName = form.querySelector('.drug-name-input').value;
-                if (!drugName) {
-                    isValid = false;
-                    form.querySelector('.drug-name-input').classList.add('is-invalid');
-                }
-
-                // BUG FIX #5: Check quantity for external drugs
-                const externalQuantity = form.querySelector('.quantity-input').value;
-                if (!externalQuantity) {
-                    isValid = false;
-                    form.querySelector('.quantity-input').classList.add('is-invalid');
-                }
-
-                const key = `${drugName.trim().toLowerCase()}-${cleanedDosage}`;
-                 if (seenDrugs[key]) {
-                    isValid = false;
-                    form.querySelector('.drug-name-input').classList.add('is-invalid');
-                    form.querySelector('.dosage-input').classList.add('is-invalid');
-                    duplicateError = 'You have added the same drug with the exact same dosage multiple times. Please remove the duplicate entry.';
-                } else {
-                    seenDrugs[key] = true;
-                }
-
-                const doseMatch = cleanedDosage.match(/^(iii|ii|iv|v|i|\d+(\.\d+)?)/);
-                if (doseMatch) {
-                    let dose = 0;
-                    if (doseMatch[1] === 'iii') dose = 3;
-                    else if (doseMatch[1] === 'ii') dose = 2;
-                    else if (doseMatch[1] === 'iv') dose = 4;
-                    else if (doseMatch[1] === 'v') dose = 5;
-                    else if (doseMatch[1] === 'i') dose = 1;
-                    else dose = parseFloat(doseMatch[1]);
-
-                    if (dose > 12) {
-                        highDosageWarning = true;
-                        highDosageDrugs.push(drugName || 'Unknown External Drug');
-                    }
-                }
-
-                payload.external_drugs.push({
-                    drug_name: drugName,
-                    dosage: dosage,
-                    duration: form.querySelector('.duration-input').value,
-                    quantity: externalQuantity,
-                    notes: form.querySelector('.notes-input').value
-                });
-            }
-        });
-
-        if (duplicateError) {
-            showAlert(duplicateError, 'danger');
-            return;
-        }
-
-        if (!isValid) {
-            showAlert('Please complete all required fields (Drug, Dosage, Quantity, etc.).', 'warning');
-            return;
-        }
-        if (payload.available_drugs.length === 0 && payload.external_drugs.length === 0) {
-            showAlert('Please add at least one medication.', 'info');
-            return;
-        }
-
-        if (highDosageWarning && !forceSave) {
-            pendingPrescriptionData = payload; // Store data
-            const modalBody = document.getElementById('dosageWarningModalBody');
-            modalBody.innerHTML = `
-                <p>The following drugs have a dosage value higher than 12:</p>
-                <ul>
-                    ${[...new Set(highDosageDrugs)].map(drug => `<li><strong>${drug}</strong></li>`).join('')}
-                </ul>
-                <p>Are you sure this is correct?</p>
-            `;
-            dosageWarningModal.show();
-            return; // Stop submission
-        }
-    }
-
-    // --- Start of AJAX call (common to both paths) ---
-    submitBtn.disabled = true;
-    spinner.classList.remove('d-none');
-
-    fetch("{% url 'prescribe_multiple' %}", {
+    fetch('/portal/consultation/ajax/prescribe-drug/', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify(payload)
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            drugPrescriptionModal.hide();
-            showAlert(data.message, 'success');
-            setTimeout(() => {
-                sessionStorage.setItem('showTab', 'prescriptions-pane');
-                window.location.reload();
-            }, 1500);
-        } else if (data.duplicate) {
-            pendingPrescriptionData = payload; // Store payload for re-submission
-            const modalBody = document.getElementById('duplicateModalBody');
-            modalBody.innerHTML = `
-                <p>${data.message}:</p>
-                <ul>
-                    ${data.drugs.map(drug => `<li><strong>${drug}</strong></li>`).join('')}
-                </ul>
-                <p>Do you want to prescribe anyway?</p>
-            `;
-            duplicateModal.show();
+            bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+            showAlert('Drug prescribed successfully', 'success');
+            setTimeout(() => location.reload(), 1000);
         } else {
-            showAlert(data.error || 'An error occurred.', 'danger');
+            showAlert(data.error || 'Failed to prescribe', 'danger');
         }
     })
-    .catch(error => showAlert('A network error occurred.', 'danger'))
-    .finally(() => {
-        submitBtn.disabled = false;
-        spinner.classList.add('d-none');
-    });
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
+});
+
+// Lab test functions
+
+
+
+document.getElementById('labTestForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
+    formData.append('consultation_id', consultationId);
+
+    fetch('/portal/consultation/ajax/order-lab-test/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('labTestModal')).hide();
+            showAlert('Lab test ordered successfully', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(data.error || 'Failed to order test', 'danger');
+        }
+    })
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
+});
+
+
+
+document.getElementById('scanForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    formData.append('patient_id', {{ consultation.queue_entry.patient.id }});
+    formData.append('consultation_id', consultationId);
+
+    fetch('/portal/consultation/ajax/order-scan/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
+            showAlert('Scan ordered successfully', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert(data.error || 'Failed to order Image', 'danger');
+        }
+    })
+    .catch(error => showAlert('An unexpected error occurred.', 'danger'));
+});
+
+// View functions
+function viewPatientHistory() {
+    window.open(`/portal/consultation/patient/${{ consultation.queue_entry.patient.id }}/history/`, '_blank');
 }
 
+function viewTestResult(testId) {
+    window.open(`/portal/consultation/lab-test/${testId}/result/`, '_blank');
+}
 
-// --- Lab/Scan Order Functions ---
+function viewScanResult(scanId) {
+    window.open(`/portal/consultation/scan/${scanId}/result/`, '_blank');
+}
+
+// Utility functions
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// --- NEW COMPREHENSIVE SCRIPT FOR LAB & IMAGING ORDERS ---
 
 function initializeOrderModals() {
-    // Lab Test
+    // --- Lab Test Modal Setup ---
+    const labModalEl = document.getElementById('labTestModal');
+    const labQuickActionButton = document.querySelector('button[onclick="orderLabTest()"]');
+    const labTabButton = document.getElementById('order-test-in-tab-btn');
+
     const openLabModalAction = (e) => {
         e.preventDefault();
-        document.getElementById('lab-test-list').innerHTML = '';
+        document.getElementById('lab-test-list').innerHTML = ''; // Clear previous
         addOrderForm('lab');
-        labTestModal.show();
+        new bootstrap.Modal(labModalEl).show();
     };
-    document.querySelector('button[onclick="orderLabTest()"]').addEventListener('click', openLabModalAction);
-    document.getElementById('order-test-in-tab-btn').addEventListener('click', openLabModalAction);
+
+    if (labQuickActionButton) labQuickActionButton.addEventListener('click', openLabModalAction);
+    if (labTabButton) labTabButton.addEventListener('click', openLabModalAction);
+
     document.getElementById('add-lab-test-btn').addEventListener('click', () => addOrderForm('lab'));
     document.getElementById('submit-lab-orders-btn').addEventListener('click', () => submitOrders('lab'));
+    document.getElementById('testCategoryFilter').addEventListener('change', () => {
+        labModalEl.querySelectorAll('.search-input').forEach(input => {
+            if(input.value) input.dispatchEvent(new Event('input'));
+        });
+    });
 
-    // Scan
+    // --- Imaging Modal Setup ---
+    const scanModalEl = document.getElementById('scanModal');
+    const scanQuickActionButton = document.querySelector('button[onclick="orderScan()"]');
+    const scanTabButton = document.getElementById('order-scan-in-tab-btn');
+
     const openScanModalAction = (e) => {
         e.preventDefault();
-        document.getElementById('imaging-list').innerHTML = '';
+        document.getElementById('imaging-list').innerHTML = ''; // Clear previous
         addOrderForm('imaging');
-        scanModal.show();
+        new bootstrap.Modal(scanModalEl).show();
     };
-    document.querySelector('button[onclick="orderScan()"]').addEventListener('click', openScanModalAction);
-    document.getElementById('order-scan-in-tab-btn').addEventListener('click', openScanModalAction);
+
+    if (scanQuickActionButton) scanQuickActionButton.addEventListener('click', openScanModalAction);
+    if (scanTabButton) scanTabButton.addEventListener('click', openScanModalAction);
+
     document.getElementById('add-imaging-btn').addEventListener('click', () => addOrderForm('imaging'));
     document.getElementById('submit-imaging-orders-btn').addEventListener('click', () => submitOrders('imaging'));
+    document.getElementById('imagingCategoryFilter').addEventListener('change', () => {
+        scanModalEl.querySelectorAll('.search-input').forEach(input => {
+            if(input.value) input.dispatchEvent(new Event('input'));
+        });
+    });
 }
 
 function addOrderForm(type) {
     const isLab = type === 'lab';
     const templateId = isLab ? 'lab-test-row-template' : 'imaging-row-template';
     const listId = isLab ? 'lab-test-list' : 'imaging-list';
-    const clone = document.getElementById(templateId).content.cloneNode(true);
+
+    const template = document.getElementById(templateId);
+    const clone = template.content.cloneNode(true);
     const formRow = clone.querySelector('.order-row');
     document.getElementById(listId).appendChild(clone);
+
     const searchInput = formRow.querySelector('.search-input');
     searchInput.addEventListener('input', () => handleOrderSearch(searchInput, type));
 }
@@ -1800,11 +1256,14 @@ function handleOrderSearch(inputEl, type) {
                     const item = document.createElement('a');
                     item.href = '#';
                     item.className = 'list-group-item list-group-item-action';
+
+                    // UPDATED: Show price only for internal, badge for external
                     if (template.is_active) {
                         item.innerHTML = `${template.name} - ₦${template.price}`;
                     } else {
                         item.innerHTML = `${template.name} <span class="badge bg-warning text-dark ms-2">External</span>`;
                     }
+
                     item.addEventListener('click', e => {
                         e.preventDefault();
                         const formRow = inputEl.closest('.order-row');
@@ -1822,26 +1281,25 @@ function handleOrderSearch(inputEl, type) {
 
 function submitOrders(type) {
     const isLab = type === 'lab';
-    const modal = isLab ? labTestModal : scanModal;
+    const modalId = isLab ? 'labTestModal' : 'scanModal';
     const listId = isLab ? 'lab-test-list' : 'imaging-list';
     const submitUrl = isLab ? "{% url 'order_multiple_lab_tests' %}" : "{% url 'order_multiple_imaging' %}";
-    const submitBtn = document.getElementById(isLab ? 'submit-lab-orders-btn' : 'submit-imaging-orders-btn');
 
     const payload = {
-        patient_id: patientId,
-        consultation_id: consultationId,
+        patient_id: {{ consultation.queue_entry.patient.id }},
+        consultation_id: {{ consultation.id }},
         orders: []
     };
 
     let isValid = true;
     document.getElementById(listId).querySelectorAll('.order-row').forEach(row => {
-        row.querySelector('.search-input').classList.remove('is-invalid');
         const templateId = row.querySelector('.template-id-input').value;
         if (!templateId) {
             isValid = false;
             row.querySelector('.search-input').classList.add('is-invalid');
             return;
         }
+
         const orderData = { template_id: templateId };
         if (isLab) {
             orderData.instructions = row.querySelector('.instructions-input').value;
@@ -1860,714 +1318,371 @@ function submitOrders(type) {
         return;
     }
 
-    submitBtn.disabled = true;
-
     fetch(submitUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
         body: JSON.stringify(payload)
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            modal.hide();
+            bootstrap.Modal.getInstance(document.getElementById(modalId)).hide();
             showAlert(data.message, 'success');
+            // NEW: Switch to tests-pane tab after success
             setTimeout(() => {
-                sessionStorage.setItem('showTab', 'tests-pane');
+                switchToTab('tests-pane');
                 location.reload();
             }, 1500);
         } else {
             showAlert(data.error || 'An unknown error occurred.', 'danger');
         }
     })
-    .catch(error => showAlert('A network error occurred. Please try again.', 'danger'))
-    .finally(() => {
-        submitBtn.disabled = false;
+    .catch(error => showAlert('A network error occurred. Please try again.', 'danger'));
+}
+
+
+// --- NEW COMPREHENSIVE PRESCRIPTION SCRIPT ---
+
+// Call this function from your main DOMContentLoaded listener
+function initializePrescriptionModal() {
+    // Find both "Add Drug" buttons (from Quick Actions and the Prescriptions Tab)
+    const quickActionButton = document.querySelector('button[onclick="prescribeDrug()"]');
+    const tabButton = document.getElementById('add-drug-in-tab-btn');
+
+    const openModalAction = (e) => {
+        e.preventDefault();
+        const modal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+
+        // Clear any previous forms
+        document.getElementById('prescription-list').innerHTML = '';
+        addDrugForm(); // Add one empty form to start
+
+        modal.show();
+    };
+
+    // Attach the event listener to both buttons if they exist
+    if (quickActionButton) {
+        quickActionButton.addEventListener('click', openModalAction);
+    }
+    if (tabButton) {
+        tabButton.addEventListener('click', openModalAction);
+    }
+
+    // Button listeners within the modal
+    document.getElementById('add-drug-btn').addEventListener('click', addDrugForm);
+    document.getElementById('add-external-drug-btn').addEventListener('click', addExternalDrugForm);
+    document.getElementById('submit-prescriptions-btn').addEventListener('click', submitPrescriptions);
+
+    document.getElementById('drugPrescriptionModal').addEventListener('hidden.bs.modal', function() {
+        const submitBtn = document.getElementById('submit-prescriptions-btn');
+        submitBtn.textContent = 'Save Prescriptions';
+        submitBtn.onclick = () => submitPrescriptions();
     });
 }
 
-// --- NEW: Service/Item Order Functions ---
+function addDrugForm() {
+    const template = document.getElementById('available-drug-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.prescription-row');
+    document.getElementById('prescription-list').appendChild(clone);
 
-function initializeServiceItemOrderModals() {
-    // Service
-    const openServiceModalAction = (e) => {
-        e.preventDefault();
-        document.getElementById('service-order-form-list').innerHTML = '';
-        addServiceItemOrderForm('service');
-        serviceOrderModal.show();
-    };
-    document.querySelector('button[onclick="orderService()"]').addEventListener('click', openServiceModalAction);
-    document.getElementById('order-service-in-tab-btn').addEventListener('click', openServiceModalAction);
-    document.getElementById('add-service-btn').addEventListener('click', () => addServiceItemOrderForm('service'));
-    document.getElementById('submit-service-orders-btn').addEventListener('click', () => submitServiceItemOrders('service'));
+    // Attach event listeners to the new row
+    const searchInput = formRow.querySelector('.drug-search-input');
+    const dosageInput = formRow.querySelector('.dosage-input');
+    const durationInput = formRow.querySelector('.duration-input');
 
-    // Item
-    const openItemModalAction = (e) => {
-        e.preventDefault();
-        document.getElementById('item-order-form-list').innerHTML = '';
-        addServiceItemOrderForm('item');
-        itemOrderModal.show();
-    };
-    document.querySelector('button[onclick="orderItem()"]').addEventListener('click', openItemModalAction);
-    document.getElementById('order-item-in-tab-btn').addEventListener('click', openItemModalAction);
-    document.getElementById('add-item-btn').addEventListener('click', () => addServiceItemOrderForm('item'));
-    document.getElementById('submit-item-orders-btn').addEventListener('click', () => submitServiceItemOrders('item'));
+    searchInput.addEventListener('input', () => handleDrugSearch(searchInput));
+    dosageInput.addEventListener('input', () => calculateQuantity(formRow));
+    durationInput.addEventListener('input', () => calculateQuantity(formRow));
+    const quantityInput = formRow.querySelector('.quantity-input');
+    quantityInput.addEventListener('input', () => {
+    const packSize = parseInt(formRow.querySelector('.drug-pack-size-input')?.value || '1') || 1;
+    const unitType = formRow.querySelector('.drug-unit-input')?.value || 'tablet';
+    const quantityDisplay = formRow.querySelector('.quantity-display');
+    const totalUnits = parseInt(quantityInput.value) || 0;
+    updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
+});
 }
 
-function addServiceItemOrderForm(type) {
-    const isService = type === 'service';
-    const templateId = isService ? 'service-row-template' : 'item-row-template';
-    const listId = isService ? 'service-order-form-list' : 'item-order-form-list';
-    const clone = document.getElementById(templateId).content.cloneNode(true);
-    const formRow = clone.querySelector('.order-row');
-    document.getElementById(listId).appendChild(clone);
-    const searchInput = formRow.querySelector('.search-input');
-    searchInput.addEventListener('input', () => handleServiceItemSearch(searchInput, type));
+function addExternalDrugForm() {
+    const template = document.getElementById('external-drug-template');
+    const clone = template.content.cloneNode(true);
+    document.getElementById('prescription-list').appendChild(clone);
 }
 
-function handleServiceItemSearch(inputEl, type) {
-    const isService = type === 'service';
+function removeDrugForm(buttonEl) {
+    buttonEl.closest('.prescription-row').remove();
+}
+
+function handleDrugSearch(inputEl) {
     const query = inputEl.value;
-    const categoryId = document.getElementById(isService ? 'serviceCategoryFilter' : 'itemCategoryFilter').value;
     const resultsContainer = inputEl.parentElement.querySelector('.search-results');
-    const searchUrl = isService ? "{% url 'ajax_search_services' %}" : "{% url 'ajax_search_service_items' %}";
 
     if (query.length < 2) {
         resultsContainer.innerHTML = '';
         return;
     }
 
-    fetch(`${searchUrl}?q=${encodeURIComponent(query)}&category_id=${categoryId}`)
+    fetch(`/portal/consultation/ajax/search-drugs/?q=${encodeURIComponent(query)}`)
         .then(response => response.json())
         .then(data => {
             resultsContainer.innerHTML = '';
-            if (data.templates.length > 0) { // Changed from data.services/data.items
-                data.templates.forEach(template => {
+            if (data.drugs.length > 0) {
+                data.drugs.forEach(drug => {
                     const item = document.createElement('a');
                     item.href = '#';
                     item.className = 'list-group-item list-group-item-action';
-                    item.innerHTML = `${template.name} - ₦${template.price}`; // Name now contains stock/etc
+                    item.textContent = `${drug.brand_name || drug.generic_name} (${drug.formulation}) - Stock: ${drug.pharmacy_quantity}`;
 
-                    item.addEventListener('click', e => {
+                    item.addEventListener('click', (e) => {
                         e.preventDefault();
-                        const formRow = inputEl.closest('.order-row');
-                        formRow.querySelector('.search-input').value = template.name;
-                        formRow.querySelector('.template-id-input').value = template.id;
+                        const formRow = inputEl.closest('.prescription-row');
+                        formRow.querySelector('.drug-search-input').value = item.textContent;
+                        formRow.querySelector('.drug-id-input').value = drug.id;
+                        formRow.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
+                        formRow.querySelector('.drug-unit-input').value = drug.unit || 'tablet';
                         resultsContainer.innerHTML = '';
+                        calculateQuantity(formRow); // Recalculate if needed
                     });
                     resultsContainer.appendChild(item);
                 });
             } else {
-                resultsContainer.innerHTML = '<span class="list-group-item">No results found</span>';
+                resultsContainer.innerHTML = '<span class="list-group-item">No drugs found</span>';
             }
         });
 }
 
-function submitServiceItemOrders(type) {
-    const isService = type === 'service';
-    const modal = isService ? serviceOrderModal : itemOrderModal;
-    const listId = isService ? 'service-order-form-list' : 'item-order-form-list';
-    const submitUrl = "{% url 'order_multiple_services_or_items' %}";
-    const submitBtn = document.getElementById(isService ? 'submit-service-orders-btn' : 'submit-item-orders-btn');
+function calculateQuantity(formRowEl) {
+    const dosageText = formRowEl.querySelector('.dosage-input').value.toLowerCase();
+    const durationText = formRowEl.querySelector('.duration-input').value.toLowerCase();
+    const packSize = parseInt(formRowEl.querySelector('.drug-pack-size-input')?.value || '1') || 1;
+    const unitType = formRowEl.querySelector('.drug-unit-input')?.value || 'tablet';
+    const quantityInput = formRowEl.querySelector('.quantity-input');
+    const quantityDisplay = formRowEl.querySelector('.quantity-display');
+
+    if (!quantityInput) return;
+
+    // NEW: For syrup, drops, drip, cream - default to 1
+    const nonCalculableTypes = ['syrup', 'drops', 'drip', 'cream'];
+    if (nonCalculableTypes.includes(unitType.toLowerCase())) {
+        quantityInput.value = 1;
+        updateQuantityDisplay(1, packSize, unitType, quantityDisplay);
+        return;
+    }
+
+    let dailyDose = 0;
+    let durationDays = 0;
+
+    // Parse Dosage
+    const doseMatch = dosageText.match(/^(\d+(\.\d+)?)/);
+    if (doseMatch) {
+        const dose = parseFloat(doseMatch[1]);
+        let frequency = 1;
+        if (dosageText.includes('twice') || dosageText.includes('bd')) frequency = 2;
+        else if (dosageText.includes('thrice') || dosageText.includes('tds')) frequency = 3;
+        else if (dosageText.includes('four times')) frequency = 4;
+
+        const timesMatch = dosageText.match(/(\d+)\s*time/);
+        if (timesMatch) frequency = parseInt(timesMatch[1]);
+
+        const slashMatch = dosageText.match(/\//g);
+        if (slashMatch) frequency = slashMatch.length + 1;
+
+        dailyDose = dose * frequency;
+    }
+
+    // Parse Duration
+    const durationMatch = durationText.match(/^(\d+)/);
+    if (durationMatch) {
+        const num = parseInt(durationMatch[1]);
+        if (durationText.includes('week') || durationText.includes('w')) {
+            durationDays = num * 7;
+        } else if (durationText.includes('month') || durationText.includes('m')) {
+            durationDays = num * 30;
+        } else {
+            durationDays = num;
+        }
+    }
+
+    if (dailyDose > 0 && durationDays > 0) {
+        const totalUnits = dailyDose * durationDays;
+        quantityInput.value = totalUnits;
+        updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
+    }
+}
+
+function getPackageTerminology(unitType) {
+    // Returns [singular, plural] forms
+    const terminology = {
+        'tablet': ['card', 'cards'],
+        'capsule': ['card', 'cards'],
+        'injection': ['pack', 'packs'],
+        'syrup': ['bottle', 'bottles'],
+        'cream': ['tube', 'tubes'],
+        'drops': ['bottle', 'bottles']
+    };
+    return terminology[unitType] || ['pack', 'packs'];
+}
+
+function updateQuantityDisplay(totalUnits, packSize, unitType, displayElement) {
+    if (!displayElement || !totalUnits) {
+        if (displayElement) displayElement.value = '';
+        return;
+    }
+
+    // If pack size is 1 or total is less than pack size, show units only
+    if (packSize === 1 || totalUnits < packSize) {
+        displayElement.value = `${totalUnits} units`;
+        return;
+    }
+
+    // Calculate packs and remaining units
+    const fullPacks = Math.floor(totalUnits / packSize);
+    const remainingUnits = totalUnits % packSize;
+
+    // Get appropriate terminology
+    const [singularTerm, pluralTerm] = getPackageTerminology(unitType);
+    const packTerm = fullPacks === 1 ? singularTerm : pluralTerm;
+
+    // Build display string
+    if (remainingUnits === 0) {
+        displayElement.value = `${fullPacks} ${packTerm}`;
+    } else {
+        displayElement.value = `${fullPacks} ${packTerm} ${remainingUnits} units`;
+    }
+}
+
+let pendingPrescriptionData = null; // Store data for force save
+
+function submitPrescriptions(forceSave = false) {
+    const submitBtn = document.getElementById('submit-prescriptions-btn');
+    const spinner = submitBtn.querySelector('.spinner-border');
 
     const payload = {
-        patient_id: patientId,
-        consultation_id: consultationId,
-        orders: [],
-        order_type: type // 'service' or 'item'
+        patient_id: {{ consultation.queue_entry.patient.id }},
+        consultation_id: {{ consultation.id }},
+        available_drugs: [],
+        external_drugs: [],
+        force_save: forceSave // NEW: Add force save flag
     };
 
+    const forms = document.querySelectorAll('.prescription-row');
     let isValid = true;
-    document.getElementById(listId).querySelectorAll('.order-row').forEach(row => {
-        row.querySelector('.search-input').classList.remove('is-invalid');
-        const templateId = row.querySelector('.template-id-input').value;
-        if (!templateId) {
-            isValid = false;
-            row.querySelector('.search-input').classList.add('is-invalid');
-            return;
+
+    forms.forEach(form => {
+        const type = form.dataset.type;
+        if (type === 'available') {
+            const drugId = form.querySelector('.drug-id-input').value;
+            if (!drugId) {
+                isValid = false;
+                form.querySelector('.drug-search-input').classList.add('is-invalid');
+                return;
+            }
+            payload.available_drugs.push({
+                drug_id: drugId,
+                dosage: form.querySelector('.dosage-input').value,
+                duration: form.querySelector('.duration-input').value,
+                quantity: form.querySelector('.quantity-input').value,
+                notes: form.querySelector('.notes-input').value
+            });
+        } else if (type === 'external') {
+            const drugName = form.querySelector('.drug-name-input').value;
+            if (!drugName) {
+                isValid = false;
+                form.querySelector('.drug-name-input').classList.add('is-invalid');
+                return;
+            }
+            payload.external_drugs.push({
+                drug_name: drugName,
+                dosage: form.querySelector('.dosage-input').value,
+                duration: form.querySelector('.duration-input').value,
+                quantity: form.querySelector('.quantity-input').value,
+                notes: form.querySelector('.notes-input').value
+            });
         }
-        payload.orders.push({
-            template_id: templateId,
-            quantity: row.querySelector('.quantity-input').value,
-            notes: row.querySelector('.notes-input').value
-        });
     });
 
     if (!isValid) {
-        showAlert(`Please select a valid ${type} for all rows.`, 'warning');
+        showAlert('Please complete all required fields.', 'warning');
         return;
     }
-    if (payload.orders.length === 0) {
-        showAlert(`Please add at least one ${type}.`, 'info');
+    if (payload.available_drugs.length === 0 && payload.external_drugs.length === 0) {
+        showAlert('Please add at least one medication.', 'info');
         return;
     }
 
     submitBtn.disabled = true;
+    spinner.classList.remove('d-none');
 
-    fetch(submitUrl, {
+    fetch("{% url 'prescribe_multiple' %}", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
         body: JSON.stringify(payload)
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            modal.hide();
+            bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
             showAlert(data.message, 'success');
             setTimeout(() => {
-                sessionStorage.setItem('showTab', 'services-pane'); // Show new tab
-                location.reload();
+                window.location.reload();
             }, 1500);
+        } else if (data.duplicate) {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+                showAlert(data.message, 'success');
+                setTimeout(() => {
+                    // NEW: Switch to prescriptions-pane tab
+                    switchToTab('prescriptions-pane');
+                    location.reload();
+                }, 1500);
+            }
+
+            // NEW: Show duplicate confirmation
+            pendingPrescriptionData = payload;
+            const modalBody = document.getElementById('duplicateModalBody');
+            modalBody.innerHTML = `
+                <p>${data.message}:</p>
+                <ul>
+                    ${data.drugs.map(drug => `<li><strong>${drug}</strong></li>`).join('')}
+                </ul>
+                <p>Do you want to prescribe anyway?</p>
+            `;
+            const duplicateModal = new bootstrap.Modal(document.getElementById('duplicateConfirmModal'));
+            duplicateModal.show();
         } else {
-            showAlert(data.error || 'An unknown error occurred.', 'danger');
+            showAlert(data.error || 'An error occurred.', 'danger');
         }
     })
-    .catch(error => showAlert('A network error occurred. Please try again.', 'danger'))
+    .catch(error => showAlert('A network error occurred.', 'danger'))
     .finally(() => {
         submitBtn.disabled = false;
+        spinner.classList.add('d-none');
     });
 }
 
-
-// --- Edit/Delete Functions ---
-
-// MODIFIED: deleteLabTest (BUG FIX #2, #3, #7)
-function deleteLabTest(orderId) {
-    showConfirmationModal('Delete this lab test order?', () => {
-        fetch(`/portal/consultation/ajax/delete-lab-test/${orderId}/`, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                showMiniToast('Lab test deleted', 'success');
-                document.querySelector(`div[data-lab-id="${orderId}"]`).remove();
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to delete', 'danger');
-            }
-        })
-        .catch(() => {
-            confirmationModal.hide();
-            showAlert('Network error', 'danger');
-        })
-        .finally(() => resetConfirmModal());
-    });
-}
-
-// MODIFIED: deleteScan (BUG FIX #2, #3, #7)
-function deleteScan(orderId) {
-    showConfirmationModal('Delete this scan order?', () => {
-        fetch(`/portal/consultation/ajax/delete-scan/${orderId}/`, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                showMiniToast('Scan deleted', 'success');
-                document.querySelector(`div[data-scan-id="${orderId}"]`).remove();
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to delete', 'danger');
-            }
-        })
-        .catch(() => {
-            confirmationModal.hide();
-            showAlert('Network error', 'danger');
-        })
-        .finally(() => resetConfirmModal());
-    });
-}
-
-// MODIFIED: deleteDrugPrescription (BUG FIX #2, #3, #7)
-function deleteDrugPrescription(prescriptionId) {
-    showConfirmationModal('Delete this prescription?', () => {
-        fetch(`/portal/consultation/ajax/delete-drug/${prescriptionId}/`, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                showMiniToast('Prescription deleted', 'success');
-                document.querySelector(`tr[data-prescription-id="${prescriptionId}"]`).remove();
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to delete', 'danger');
-            }
-        })
-        .catch(() => {
-            confirmationModal.hide();
-            showAlert('Network error', 'danger');
-        })
-        .finally(() => resetConfirmModal());
-    });
-}
-
-// MODIFIED: deleteExternalPrescription (BUG FIX #2, #3, #7)
-function deleteExternalPrescription(prescriptionId) {
-    showConfirmationModal('Delete this external prescription?', () => {
-        fetch(`/portal/consultation/ajax/delete-external-drug/${prescriptionId}/`, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                showMiniToast('External prescription deleted', 'success');
-                document.querySelector(`div[data-external-id="${prescriptionId}"]`).remove();
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to delete', 'danger');
-            }
-        })
-        .catch(() => {
-            confirmationModal.hide();
-            showAlert('Network error', 'danger');
-        })
-        .finally(() => resetConfirmModal());
-    });
-}
-
-// MODIFIED: deleteExternalLabTest (BUG FIX #2, #3, #7)
-function deleteExternalLabTest(orderId) {
-    showConfirmationModal('Delete this external lab test?', () => {
-        fetch(`/portal/consultation/ajax/delete-external-lab/${orderId}/`, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                showMiniToast('External lab test deleted', 'success');
-                document.querySelector(`div[data-external-lab-id="${orderId}"]`).remove();
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to delete', 'danger');
-            }
-        })
-        .catch(() => {
-            confirmationModal.hide();
-            showAlert('Network error', 'danger');
-        })
-        .finally(() => resetConfirmModal());
-    });
-}
-
-// MODIFIED: deleteExternalScan (BUG FIX #2, #3, #7)
-function deleteExternalScan(orderId) {
-    showConfirmationModal('Delete this external scan?', () => {
-        fetch(`/portal/consultation/ajax/delete-external-scan/${orderId}/`, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                showMiniToast('External scan deleted', 'success');
-                document.querySelector(`div[data-external-scan-id="${orderId}"]`).remove();
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to delete', 'danger');
-            }
-        })
-        .catch(() => {
-            confirmationModal.hide();
-            showAlert('Network error', 'danger');
-        })
-        .finally(() => resetConfirmModal());
-    });
-}
-
-// NEW: deleteServiceOrder (BUG FIX #2, #3, #7)
-function deleteServiceOrder(orderId) {
-    showConfirmationModal('Delete this order? It can only be deleted if not yet paid.', () => {
-        fetch(`/portal/consultation/ajax/delete-service-order/${orderId}/`, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                showMiniToast('Order deleted', 'success');
-                const serviceEl = document.querySelector(`div[data-service-order-id="${orderId}"]`);
-                if (serviceEl) serviceEl.remove();
-                const itemEl = document.querySelector(`div[data-item-order-id="${orderId}"]`);
-                if (itemEl) itemEl.remove();
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to delete', 'danger');
-            }
-        })
-        .catch(() => {
-            confirmationModal.hide();
-            showAlert('Network error', 'danger');
-        })
-        .finally(() => resetConfirmModal());
-    });
-}
-
-
-// --- Edit Functions (Modified for BUG FIX #2) ---
-
-function editLabTest(orderId, templateId, templateName, instructions) {
-    document.getElementById('lab-test-list').innerHTML = '';
-    const clone = document.getElementById('lab-test-row-template').content.cloneNode(true);
-    const formRow = clone.querySelector('.order-row');
-    formRow.dataset.editId = orderId;
-    document.getElementById('lab-test-list').appendChild(clone);
-
-    formRow.querySelector('.search-input').value = templateName;
-    formRow.querySelector('.template-id-input').value = templateId;
-    formRow.querySelector('.instructions-input').value = instructions;
-    const searchInput = formRow.querySelector('.search-input'); // Define searchInput
-    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'lab')); // Use it
-
-    const submitBtn = document.getElementById('submit-lab-orders-btn');
-    submitBtn.textContent = 'Update Test';
-    submitBtn.onclick = () => saveEditedLabTest(orderId);
-    labTestModal.show();
-}
-
-
-function saveEditedLabTest(orderId) {
-    const formRow = document.querySelector('#lab-test-list .order-row[data-edit-id]');
-    const payload = {
-        template_id: formRow.querySelector('.template-id-input').value,
-        instructions: formRow.querySelector('.instructions-input').value
-    };
-    fetch(`/portal/consultation/ajax/edit-lab-test/${orderId}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            labTestModal.hide();
-            showMiniToast('Lab test updated successfully', 'success'); // Only mini-toast
-            setTimeout(() => {
-                sessionStorage.setItem('showTab', 'tests-pane');
-                location.reload();
-            }, 1500);
-        } else {
-            showAlert(data.error || 'Failed to update', 'danger'); // Show big modal on error
-        }
-    })
-    .catch(() => showAlert('Network error', 'danger'));
-}
-
-function editScan(orderId, templateId, templateName, indication) {
-    document.getElementById('imaging-list').innerHTML = '';
-    const clone = document.getElementById('imaging-row-template').content.cloneNode(true);
-    const formRow = clone.querySelector('.order-row');
-    formRow.dataset.editId = orderId;
-    document.getElementById('imaging-list').appendChild(clone);
-
-    formRow.querySelector('.search-input').value = templateName;
-    formRow.querySelector('.template-id-input').value = templateId;
-    formRow.querySelector('.indication-input').value = indication;
-    const searchInput = formRow.querySelector('.search-input'); // Define searchInput
-    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'imaging')); // Use it
-
-    const submitBtn = document.getElementById('submit-imaging-orders-btn');
-    submitBtn.textContent = 'Update Scan';
-    submitBtn.onclick = () => saveEditedScan(orderId);
-    scanModal.show();
-}
-
-function saveEditedScan(orderId) {
-    const formRow = document.querySelector('#imaging-list .order-row[data-edit-id]');
-    const payload = {
-        template_id: formRow.querySelector('.template-id-input').value,
-        indication: formRow.querySelector('.indication-input').value
-    };
-    fetch(`/portal/consultation/ajax/edit-scan/${orderId}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            scanModal.hide();
-            showMiniToast('Scan updated successfully', 'success');
-            setTimeout(() => {
-                sessionStorage.setItem('showTab', 'tests-pane');
-                location.reload();
-            }, 1500);
-        } else {
-            showAlert(data.error || 'Failed to update', 'danger');
-        }
-    })
-    .catch(() => showAlert('Network error', 'danger'));
-}
-
-function editDrugPrescription(prescriptionId, drugId, dosage, duration, quantity, notes) {
-    document.getElementById('prescription-list').innerHTML = '';
-    const clone = document.getElementById('available-drug-template').content.cloneNode(true);
-    const formRow = clone.querySelector('.prescription-row');
-    formRow.dataset.editId = prescriptionId;
-    document.getElementById('prescription-list').appendChild(clone);
-
-    fetch(`/portal/consultation/ajax/search-drugs-consult/?id=${drugId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.drug) {
-                const drug = data.drug;
-                formRow.querySelector('.drug-search-input').value = `${drug.brand_name || drug.generic_name} (${drug.formulation})`;
-                formRow.querySelector('.drug-id-input').value = drug.id;
-                formRow.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
-                formRow.querySelector('.drug-unit-input').value = drug.unit || 'tablet';
-                updateQuantityDisplay(quantity, drug.pack_size || 1, drug.unit || 'tablet', formRow.querySelector('.quantity-display'));
-            }
-        });
-
-    formRow.querySelector('.dosage-input').value = dosage;
-    formRow.querySelector('.duration-input').value = duration;
-    formRow.querySelector('.quantity-input').value = quantity;
-    formRow.querySelector('.notes-input').value = notes;
-
-    const searchInput = formRow.querySelector('.drug-search-input');
-    const dosageInput = formRow.querySelector('.dosage-input');
-    const durationInput = formRow.querySelector('.duration-input');
-    searchInput.addEventListener('input', () => handleDrugSearch(searchInput));
-    dosageInput.addEventListener('input', () => calculateQuantity(formRow));
-    durationInput.addEventListener('input', () => calculateQuantity(formRow));
-
-    const submitBtn = document.getElementById('submit-prescriptions-btn');
-    submitBtn.textContent = 'Update Prescription';
-    submitBtn.onclick = () => saveEditedDrugPrescription(prescriptionId);
-    drugPrescriptionModal.show();
-}
-
-function saveEditedDrugPrescription(prescriptionId) {
-    const formRow = document.querySelector('.prescription-row[data-edit-id]');
-    const payload = {
-        drug_id: formRow.querySelector('.drug-id-input').value,
-        dosage: formRow.querySelector('.dosage-input').value,
-        duration: formRow.querySelector('.duration-input').value,
-        quantity: formRow.querySelector('.quantity-input').value,
-        notes: formRow.querySelector('.notes-input').value
-    };
-
-    fetch(`/portal/consultation/ajax/edit-drug/${prescriptionId}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            drugPrescriptionModal.hide();
-            showMiniToast('Prescription updated successfully', 'success');
-            setTimeout(() => {
-                sessionStorage.setItem('showTab', 'prescriptions-pane');
-                location.reload();
-            }, 1500);
-        } else {
-            showAlert(data.error || 'Failed to update', 'danger');
-        }
-    })
-    .catch(() => showAlert('Network error occurred', 'danger'));
-}
-
-function editExternalPrescription(prescriptionId, drugName, dosage, duration, quantity, notes) {
-    document.getElementById('prescription-list').innerHTML = '';
-    const clone = document.getElementById('external-drug-template').content.cloneNode(true);
-    const formRow = clone.querySelector('.prescription-row');
-    formRow.dataset.editId = prescriptionId;
-    document.getElementById('prescription-list').appendChild(clone);
-
-    formRow.querySelector('.drug-name-input').value = drugName;
-    formRow.querySelector('.dosage-input').value = dosage;
-    formRow.querySelector('.duration-input').value = duration;
-    formRow.querySelector('.quantity-input').value = quantity;
-    formRow.querySelector('.notes-input').value = notes;
-
-    const submitBtn = document.getElementById('submit-prescriptions-btn');
-    submitBtn.textContent = 'Update Prescription';
-    submitBtn.onclick = () => saveEditedExternalPrescription(prescriptionId);
-    drugPrescriptionModal.show();
-}
-
-function saveEditedExternalPrescription(prescriptionId) {
-    const formRow = document.querySelector('.prescription-row[data-edit-id]');
-    const payload = {
-        drug_name: formRow.querySelector('.drug-name-input').value,
-        dosage: formRow.querySelector('.dosage-input').value,
-        duration: formRow.querySelector('.duration-input').value,
-        quantity: formRow.querySelector('.quantity-input').value,
-        notes: formRow.querySelector('.notes-input').value
-    };
-
-    fetch(`/portal/consultation/ajax/edit-external-drug/${prescriptionId}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            drugPrescriptionModal.hide();
-            showMiniToast('External prescription updated', 'success');
-            setTimeout(() => {
-                sessionStorage.setItem('showTab', 'prescriptions-pane');
-                location.reload();
-            }, 1500);
-        } else {
-            showAlert(data.error || 'Failed to update', 'danger');
-        }
-    })
-    .catch(() => showAlert('Network error', 'danger'));
-}
-
-function editExternalLabTest(orderId, testName, instructions) {
-    document.getElementById('lab-test-list').innerHTML = '';
-    const clone = document.getElementById('lab-test-row-template').content.cloneNode(true);
-    const formRow = clone.querySelector('.order-row');
-    formRow.dataset.editId = orderId;
-    formRow.dataset.isExternal = 'true';
-    document.getElementById('lab-test-list').appendChild(clone);
-
-    formRow.querySelector('.search-input').value = testName;
-    formRow.querySelector('.instructions-input').value = instructions;
-    const searchInput = formRow.querySelector('.search-input');
-    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'lab'));
-
-    const submitBtn = document.getElementById('submit-lab-orders-btn');
-    submitBtn.textContent = 'Update External Test';
-    submitBtn.onclick = () => saveEditedExternalLabTest(orderId);
-    labTestModal.show();
-}
-
-function saveEditedExternalLabTest(orderId) {
-    const formRow = document.querySelector('#lab-test-list .order-row[data-edit-id]');
-    const payload = {
-        template_id: formRow.querySelector('.template-id-input').value, // May be empty if they didn't change it
-        test_name: formRow.querySelector('.search-input').value, // Send the name
-        instructions: formRow.querySelector('.instructions-input').value
-    };
-    fetch(`/portal/consultation/ajax/edit-external-lab/${orderId}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            labTestModal.hide();
-            showMiniToast('External lab test updated', 'success');
-            setTimeout(() => {
-                sessionStorage.setItem('showTab', 'tests-pane');
-                location.reload();
-            }, 1500);
-        } else {
-            showAlert(data.error || 'Failed to update', 'danger');
-        }
-    })
-    .catch(() => showAlert('Network error', 'danger'));
-}
-
-function editExternalScan(orderId, scanName, indication) {
-    document.getElementById('imaging-list').innerHTML = '';
-    const clone = document.getElementById('imaging-row-template').content.cloneNode(true);
-    const formRow = clone.querySelector('.order-row');
-    formRow.dataset.editId = orderId;
-    formRow.dataset.isExternal = 'true';
-    document.getElementById('imaging-list').appendChild(clone);
-
-    formRow.querySelector('.search-input').value = scanName;
-    formRow.querySelector('.indication-input').value = indication;
-    const searchInput = formRow.querySelector('.search-input');
-    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'imaging'));
-
-    const submitBtn = document.getElementById('submit-imaging-orders-btn');
-    submitBtn.textContent = 'Update External Scan';
-    submitBtn.onclick = () => saveEditedExternalScan(orderId);
-    scanModal.show();
-}
-
-function saveEditedExternalScan(orderId) {
-    const formRow = document.querySelector('#imaging-list .order-row[data-edit-id]');
-    const payload = {
-        template_id: formRow.querySelector('.template-id-input').value, // May be empty
-        scan_name: formRow.querySelector('.search-input').value, // Send the name
-        indication: formRow.querySelector('.indication-input').value
-    };
-    fetch(`/portal/consultation/ajax/edit-external-scan/${orderId}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            scanModal.hide();
-            showMiniToast('External scan updated', 'success');
-            setTimeout(() => {
-                sessionStorage.setItem('showTab', 'tests-pane');
-                location.reload();
-            }, 1500);
-        } else {
-            showAlert(data.error || 'Failed to update', 'danger');
-        }
-    })
-    .catch(() => showAlert('Network error', 'danger'));
-}
-
-
-// --- Utility Functions ---
-
-function viewPatientHistory() {
-    window.open(`/portal/consultation/patient/${patientId}/history/`, '_blank');
-}
-
-function viewTestResult(testId) {
-    window.open(`/portal/consultation/lab-test/${testId}/result/`, '_blank');
-}
-
-function viewScanResult(scanId) {
-    window.open(`/portal/consultation/scan/${scanId}/result/`, '_blank');
-}
-
-// NEW: View Service Result
-function viewServiceResult(resultId) {
-    // This URL must exist in your urls.py
-    window.open(`/portal/consultation/service-result/${resultId}/view/`, '_blank');
-}
-
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
+// NEW: Handle force save
+document.getElementById('forceSaveBtn').addEventListener('click', function() {
+    bootstrap.Modal.getInstance(document.getElementById('duplicateConfirmModal')).hide();
+    if (pendingPrescriptionData) {
+        submitPrescriptions(true);
     }
-    return cookieValue;
-}
+});
 
-// MODIFIED: showAlert now uses the central modal
+// REPLACED: showAlert now uses the central modal
 function showAlert(message, type) {
     const modalHeader = document.getElementById('messageModalHeader');
     const modalTitle = document.getElementById('messageModalLabel');
     document.getElementById('messageModalBody').textContent = message;
 
     modalHeader.className = 'modal-header text-white'; // Reset class
+
     switch (type) {
         case 'success':
             modalTitle.textContent = 'Success';
@@ -2589,20 +1704,503 @@ function showAlert(message, type) {
     messageModal.show();
 }
 
+// Edit internal drug prescription
+function editDrugPrescription(prescriptionId, drugId, dosage, duration, quantity, notes) {
+    const modal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+    document.getElementById('prescription-list').innerHTML = '';
+
+    // Add one form with pre-filled data
+    const template = document.getElementById('available-drug-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.prescription-row');
+    formRow.dataset.editId = prescriptionId; // Mark as edit mode
+
+    document.getElementById('prescription-list').appendChild(clone);
+
+    // Pre-fill data (we'll need to fetch drug details)
+    fetch(`/portal/consultation/ajax/search-drugs-consult/?id=${drugId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.drug) {
+                const drug = data.drug;
+                formRow.querySelector('.drug-search-input').value = `${drug.brand_name || drug.generic_name} (${drug.formulation})`;
+                formRow.querySelector('.drug-id-input').value = drug.id;
+                formRow.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
+                formRow.querySelector('.drug-unit-input').value = drug.unit || 'tablet';
+            }
+        });
+
+    formRow.querySelector('.dosage-input').value = dosage;
+    formRow.querySelector('.duration-input').value = duration;
+    formRow.querySelector('.quantity-input').value = quantity;
+    formRow.querySelector('.notes-input').value = notes;
+
+    // Attach listeners
+    const searchInput = formRow.querySelector('.drug-search-input');
+    const dosageInput = formRow.querySelector('.dosage-input');
+    const durationInput = formRow.querySelector('.duration-input');
+    searchInput.addEventListener('input', () => handleDrugSearch(searchInput));
+    dosageInput.addEventListener('input', () => calculateQuantity(formRow));
+    durationInput.addEventListener('input', () => calculateQuantity(formRow));
+
+    // Change submit button behavior
+    const submitBtn = document.getElementById('submit-prescriptions-btn');
+    submitBtn.textContent = 'Update Prescription';
+    submitBtn.onclick = () => saveEditedDrugPrescription(prescriptionId);
+
+    modal.show();
+}
+
+// ============= LAB TEST EDIT/DELETE FUNCTIONS =============
+
+function editLabTest(orderId, templateId, templateName, instructions) {
+    const modal = new bootstrap.Modal(document.getElementById('labTestModal'));
+    document.getElementById('lab-test-list').innerHTML = '';
+
+    // Add one pre-filled row
+    const template = document.getElementById('lab-test-row-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    formRow.dataset.editId = orderId;
+
+    document.getElementById('lab-test-list').appendChild(clone);
+
+    formRow.querySelector('.search-input').value = templateName;
+    formRow.querySelector('.template-id-input').value = templateId;
+    formRow.querySelector('.instructions-input').value = instructions;
+
+    // Attach search listener
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'lab'));
+
+    // Change submit button
+    const submitBtn = document.getElementById('submit-lab-orders-btn');
+    submitBtn.textContent = 'Update Test';
+    submitBtn.onclick = () => saveEditedLabTest(orderId);
+
+    modal.show();
+}
+
+function saveEditedLabTest(orderId) {
+    const formRow = document.querySelector('.order-row[data-edit-id]');
+    const payload = {
+        template_id: formRow.querySelector('.template-id-input').value,
+        instructions: formRow.querySelector('.instructions-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-lab-test/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('labTestModal')).hide();
+            showMiniToast('Lab test updated successfully', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteLabTest(orderId) {
+    if (!confirm('Delete this lab test order?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-lab-test/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('Lab test deleted', 'success');
+            document.querySelector(`div[data-lab-id="${orderId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function editExternalLabTest(orderId, testName, instructions) {
+    const modal = new bootstrap.Modal(document.getElementById('labTestModal'));
+    document.getElementById('lab-test-list').innerHTML = '';
+
+    const template = document.getElementById('lab-test-row-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    formRow.dataset.editId = orderId;
+    formRow.dataset.isExternal = 'true';
+
+    document.getElementById('lab-test-list').appendChild(clone);
+
+    formRow.querySelector('.search-input').value = testName;
+    formRow.querySelector('.instructions-input').value = instructions;
+
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'lab'));
+
+    const submitBtn = document.getElementById('submit-lab-orders-btn');
+    submitBtn.textContent = 'Update External Test';
+    submitBtn.onclick = () => saveEditedExternalLabTest(orderId);
+
+    modal.show();
+}
+
+function saveEditedExternalLabTest(orderId) {
+    const formRow = document.querySelector('.order-row[data-edit-id]');
+    const payload = {
+        template_id: formRow.querySelector('.template-id-input').value,
+        instructions: formRow.querySelector('.instructions-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-external-lab/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('labTestModal')).hide();
+            showMiniToast('External lab test updated', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteExternalLabTest(orderId) {
+    if (!confirm('Delete this external lab test?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-external-lab/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('External lab test deleted', 'success');
+            document.querySelector(`div[data-external-lab-id="${orderId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+// ============= SCAN EDIT/DELETE FUNCTIONS =============
+
+function editScan(orderId, templateId, templateName, indication) {
+    const modal = new bootstrap.Modal(document.getElementById('scanModal'));
+    document.getElementById('imaging-list').innerHTML = '';
+
+    const template = document.getElementById('imaging-row-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    formRow.dataset.editId = orderId;
+
+    document.getElementById('imaging-list').appendChild(clone);
+
+    formRow.querySelector('.search-input').value = templateName;
+    formRow.querySelector('.template-id-input').value = templateId;
+    formRow.querySelector('.indication-input').value = indication;
+
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'imaging'));
+
+    const submitBtn = document.getElementById('submit-imaging-orders-btn');
+    submitBtn.textContent = 'Update Scan';
+    submitBtn.onclick = () => saveEditedScan(orderId);
+
+    modal.show();
+}
+
+function saveEditedScan(orderId) {
+    const formRow = document.querySelector('.order-row[data-edit-id]');
+    const payload = {
+        template_id: formRow.querySelector('.template-id-input').value,
+        indication: formRow.querySelector('.indication-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-scan/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
+            showMiniToast('Scan updated successfully', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteScan(orderId) {
+    if (!confirm('Delete this scan order?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-scan/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('Scan deleted', 'success');
+            document.querySelector(`div[data-scan-id="${orderId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function editExternalScan(orderId, scanName, indication) {
+    const modal = new bootstrap.Modal(document.getElementById('scanModal'));
+    document.getElementById('imaging-list').innerHTML = '';
+
+    const template = document.getElementById('imaging-row-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.order-row');
+    formRow.dataset.editId = orderId;
+    formRow.dataset.isExternal = 'true';
+
+    document.getElementById('imaging-list').appendChild(clone);
+
+    formRow.querySelector('.search-input').value = scanName;
+    formRow.querySelector('.indication-input').value = indication;
+
+    const searchInput = formRow.querySelector('.search-input');
+    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, 'imaging'));
+
+    const submitBtn = document.getElementById('submit-imaging-orders-btn');
+    submitBtn.textContent = 'Update External Scan';
+    submitBtn.onclick = () => saveEditedExternalScan(orderId);
+
+    modal.show();
+}
+
+function saveEditedExternalScan(orderId) {
+    const formRow = document.querySelector('.order-row[data-edit-id]');
+    const payload = {
+        template_id: formRow.querySelector('.template-id-input').value,
+        indication: formRow.querySelector('.indication-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-external-scan/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('scanModal')).hide();
+            showMiniToast('External scan updated', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteExternalScan(orderId) {
+    if (!confirm('Delete this external scan?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-external-scan/${orderId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('External scan deleted', 'success');
+            document.querySelector(`div[data-external-scan-id="${orderId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function saveEditedDrugPrescription(prescriptionId) {
+    const formRow = document.querySelector('.prescription-row[data-edit-id]');
+    const payload = {
+        drug_id: formRow.querySelector('.drug-id-input').value,
+        dosage: formRow.querySelector('.dosage-input').value,
+        duration: formRow.querySelector('.duration-input').value,
+        quantity: formRow.querySelector('.quantity-input').value,
+        notes: formRow.querySelector('.notes-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-drug/${prescriptionId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+            showMiniToast('Prescription updated successfully', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error occurred', 'error'));
+}
+
+function deleteDrugPrescription(prescriptionId) {
+    if (!confirm('Delete this prescription?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-drug/${prescriptionId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('Prescription deleted', 'success');
+            document.querySelector(`tr[data-prescription-id="${prescriptionId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+// Edit external prescription
+function editExternalPrescription(prescriptionId, drugName, dosage, duration, quantity, notes) {
+    const modal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+    document.getElementById('prescription-list').innerHTML = '';
+
+    const template = document.getElementById('external-drug-template');
+    const clone = template.content.cloneNode(true);
+    const formRow = clone.querySelector('.prescription-row');
+    formRow.dataset.editId = prescriptionId;
+
+    document.getElementById('prescription-list').appendChild(clone);
+
+    formRow.querySelector('.drug-name-input').value = drugName;
+    formRow.querySelector('.dosage-input').value = dosage;
+    formRow.querySelector('.duration-input').value = duration;
+    formRow.querySelector('.quantity-input').value = quantity;
+    formRow.querySelector('.notes-input').value = notes;
+
+    const submitBtn = document.getElementById('submit-prescriptions-btn');
+    submitBtn.textContent = 'Update Prescription';
+    submitBtn.onclick = () => saveEditedExternalPrescription(prescriptionId);
+
+    modal.show();
+}
+
+function saveEditedExternalPrescription(prescriptionId) {
+    const formRow = document.querySelector('.prescription-row[data-edit-id]');
+    const payload = {
+        drug_name: formRow.querySelector('.drug-name-input').value,
+        dosage: formRow.querySelector('.dosage-input').value,
+        duration: formRow.querySelector('.duration-input').value,
+        quantity: formRow.querySelector('.quantity-input').value,
+        notes: formRow.querySelector('.notes-input').value
+    };
+
+    fetch(`/portal/consultation/ajax/edit-external-drug/${prescriptionId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('drugPrescriptionModal')).hide();
+            showMiniToast('External prescription updated', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showMiniToast(data.error || 'Failed to update', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
+function deleteExternalPrescription(prescriptionId) {
+    if (!confirm('Delete this external prescription?')) return;
+
+    fetch(`/portal/consultation/ajax/delete-external-drug/${prescriptionId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('External prescription deleted', 'success');
+            document.querySelector(`div[data-external-id="${prescriptionId}"]`).remove();
+        } else {
+            showMiniToast('Failed to delete', 'error');
+        }
+    })
+    .catch(() => showMiniToast('Network error', 'error'));
+}
+
 // Toast notification system
 function showMiniToast(message, type = 'success') {
     const toastContainer = document.querySelector('.toast-container');
-    if (!toastContainer) return;
     const toastId = 'toast-' + Date.now();
+
     const bgColor = type === 'success' ? 'bg-success' : 'bg-danger';
     const icon = type === 'success' ? 'bi-check-circle' : 'bi-x-circle';
+
     const toastHTML = `
         <div class="alert alert-dismissible fade show mini-toast ${bgColor} text-white" role="alert" id="${toastId}">
             <i class="bi ${icon} me-2"></i>${message}
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
         </div>
     `;
+
     toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+
+    // Auto-remove after 3 seconds
     setTimeout(() => {
         const toast = document.getElementById(toastId);
         if (toast) {
@@ -2623,12 +2221,11 @@ function switchToTab(tabId) {
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', function() {
-    if (autoSaveTimer) clearInterval(autoSaveTimer);
+    if (autoSaveTimer) {
+        clearInterval(autoSaveTimer);
+    }
 });
 </script>
-
-
-<!-- MODALS (Confirmation, Message, Allergy) -->
 <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -2707,26 +2304,4 @@ window.addEventListener('beforeunload', function() {
         </div>
     </div>
 </div>
-
-<!-- Dosage Warning Modal -->
-<div class="modal fade" id="dosageWarningModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title">
-                    <i class="bi bi-exclamation-triangle"></i> High Dosage Warning
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="dosageWarningModalBody">
-                <!-- Dynamic content -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" id="confirmDosageBtn">Prescribe Anyway</button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
-
