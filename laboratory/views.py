@@ -1243,7 +1243,7 @@ class LabReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
         if not from_date:
             from_date = date.today().replace(day=1)  # First day of current month
         else:
-            from_date = datetime.datstrptime(from_date, '%Y-%m-%d').date()
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
 
         if not to_date:
             # Last day of current month

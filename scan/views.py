@@ -2624,6 +2624,56 @@ def get_scan_dashboard_context(request):
     return context
 
 
+@login_required
+@permission_required('scan.view_scanordermodel', raise_exception=True)
+def scan_dashboard(request):
+    """Main scan dashboard view"""
+    ctx = get_scan_dashboard_context(request)
+    # For JS charts we JSON-encode some items in the template (like your lab templates do)
+    import json
+    ctx['status_distribution'] = json.dumps(ctx['status_distribution'])
+    ctx['category_distribution'] = json.dumps(ctx['category_distribution'])
+    ctx['daily_trends'] = json.dumps(ctx['daily_trends'])
+    ctx['monthly_trends'] = json.dumps(ctx['monthly_trends'])
+    ctx['source_distribution'] = json.dumps(ctx['source_distribution'])
+    return render(request, 'scan/dashboard.html', ctx)
+
+
+@login_required
+def scan_dashboard_print(request):
+    """Printable version of scan dashboard (reuses same context builder)"""
+    ctx = get_scan_dashboard_context(request)
+    return render(request, 'scan/dashboard_print.html', ctx)
+
+
+@login_required
+def scan_analytics_api(request):
+    """AJAX API for charts (supports daily_revenue and category_performance)"""
+    chart_type = request.GET.get('type')
+    if chart_type == 'daily_revenue':
+        data = []
+        today = timezone.now().date()
+        for i in range(30):
+            d = today - timedelta(days=29 - i)
+            revenue = ScanOrderModel.objects.filter(payment_status=True, payment_date__date=d).aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+            data.append({'date': d.strftime('%Y-%m-%d'), 'revenue': float(revenue)})
+        return JsonResponse({'data': data})
+
+    elif chart_type == 'category_performance':
+        this_month_start = timezone.now().date().replace(day=1)
+        try:
+            categories = ScanCategoryModel.objects.annotate(
+                orders_this_month=Count('templates__orders', filter=Q(templates__orders__ordered_at__date__gte=this_month_start)),
+                revenue_this_month=Sum('templates__orders__amount_charged', filter=Q(templates__orders__payment_status=True, templates__orders__payment_date__date__gte=this_month_start))
+            ).order_by('-orders_this_month')[:10]
+
+            data = [{'name': c.name, 'orders': c.orders_this_month, 'revenue': float(c.revenue_this_month or 0)} for c in categories]
+        except Exception:
+            data = []
+        return JsonResponse({'data': data})
+
+    return JsonResponse({'error': 'Invalid chart type'}, status=400)
+
 
 @login_required
 @permission_required('scan.view_scanordermodel', raise_exception=True)
@@ -2902,6 +2952,7 @@ def scan_dashboard(request):
     }
 
     return render(request, 'scan/dashboard.html', context)
+
 
 
 @login_required

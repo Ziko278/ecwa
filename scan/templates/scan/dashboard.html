@@ -1,140 +1,649 @@
 {% extends 'admin_site/layout.html' %}
+{% block 'main' %}
 {% load static %}
 
-{% block main %}
-<div class="report-container">
-    <div class="report-header">
-        <h2>Scan / Imaging Reports</h2>
-        <p class="text-muted">Generate and export scan reports</p>
-    </div>
+<div class="pagetitle">
+    <h1>Scan Dashboard</h1>
+</div>
 
-    <div class="filters-section">
-        <form method="get" id="reportForm">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px;">
-                <div class="form-group">
-                    <label for="from_date">From Date</label>
-                    <input type="date" name="from_date" id="from_date" class="form-control" value="{{ from_date|date:'Y-m-d' }}">
-                </div>
+<section class="section dashboard">
+    <div class="row">
 
-                <div class="form-group">
-                    <label for="to_date">To Date</label>
-                    <input type="date" name="to_date" id="to_date" class="form-control" value="{{ to_date|date:'Y-m-d' }}">
-                </div>
 
-                <div class="form-group">
-                    <label for="title">Report Title</label>
-                    <input type="text" name="title" id="title" class="form-control" value="{{ report_title }}">
-                </div>
-
-                <div class="form-group">
-                    <label for="order_by">Order By</label>
-                    <select id="order_by" name="order_by" class="form-control">
-                        <option value="name" {% if order_by=='name' %}selected{% endif %}>Name</option>
-                        <option value="total" {% if order_by=='total' %}selected{% endif %}>Total Orders</option>
-                        <option value="completed" {% if order_by=='completed' %}selected{% endif %}>Completed</option>
-                    </select>
-                </div>
-
-                <div style="display:flex; align-items:flex-end; gap:8px;">
-                    <button type="submit" class="btn btn-primary">Generate Report</button>
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-success" onclick="exportToExcel()">
-                            <i class="fas fa-file-excel"></i> Excel
-                        </button>
-                        <button type="button" class="btn btn-info" onclick="exportToPDF('breakdown')">
-                            <i class="fas fa-file-pdf"></i> PDF
-                        </button>
+        <!-- Summary Cards Row 1 - Main Statistics -->
+        <div class="col-md-4">
+            <div class="card info-card sales-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Orders</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-clipboard-data"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ total_orders }}</h6>
+                            <span class="text-muted small">All time</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </form>
-    </div>
+        </div>
 
-    <div class="tabs mt-3">
-        <button class="tab active" onclick="switchTab('breakdown')">Breakdown</button>
-        <button class="tab" onclick="switchTab('summary')">Summary</button>
-    </div>
-
-    <div id="breakdown-tab" class="tab-content active mt-3">
-        <div class="controls-bar d-flex justify-content-between mb-2">
-            <div>
-                <label><input id="showTotal" type="checkbox" checked> Show Total Orders</label>
-                <label class="ms-3"><input id="showCompleted" type="checkbox" checked> Show Completed</label>
+        <div class="col-md-4">
+            <div class="card info-card revenue-card">
+                <div class="card-body">
+                    <h5 class="card-title">Completed Tests</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-check-circle"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ completed_tests }}</h6>
+                            <span class="text-success small">{% if total_orders > 0 %}{{ completed_tests|floatformat:0 }}%{% endif %} completion rate</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="table-responsive">
-            <table class="data-table table table-bordered">
-                <thead>
-                    <tr>
-                        <th>S/N</th>
-                        <th>Scan/Test</th>
-                        <th class="total-column">Total Orders</th>
-                        <th class="completed-column">Completed Orders</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for test in test_breakdown %}
-                    <tr>
-                        <td>{{ forloop.counter }}</td>
-                        <td>{{ test.template__name|title }}</td>
-                        <td class="total-column">{{ test.total_orders }}</td>
-                        <td class="completed-column">{{ test.completed_orders }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="4" class="text-center text-muted">No data for selected period</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="col-md-4">
+            <div class="card info-card customers-card">
+                <div class="card-body">
+                    <h5 class="card-title">Active Templates</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-file-earmark-medical"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ total_templates }}</h6>
+                            <span class="text-muted small">{{ total_categories }} categories</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- Today's Statistics -->
+    <div class="row">
+        <div class="col-lg-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Today's Orders</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-calendar-day text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ orders_today }}</h6>
+                            <span class="text-muted small">{{ completed_today }} completed</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Today</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-hourglass-split text-warning"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>{{ pending_today }}</h6>
+                            {% if pending_today > 0 %}
+                                <span class="text-warning small">Needs attention</span>
+                            {% else %}
+                                <span class="text-success small">All caught up!</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- Period Statistics -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">This Week Statistics</h5>
+                    
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-primary">{{ orders_week }}</h6>
+                                    <span class="text-muted small">Orders</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ completed_week }}</h6>
+                                    <span class="text-muted small">Completed</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-3">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-success">₦{{ revenue_week|floatformat:2 }}</h6>
+                                    <span class="text-muted small">Revenue</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">This Month Statistics</h5>
+                    
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-primary">{{ orders_month }}</h6>
+                                    <span class="text-muted small">Orders</span>
+                                    {% if orders_growth > 0 %}
+                                        <br><span class="text-success small fw-bold">+{{ orders_growth }}%</span>
+                                    {% elif orders_growth < 0 %}
+                                        <br><span class="text-danger small fw-bold">{{ orders_growth }}%</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6>{{ completed_month }}</h6>
+                                    <span class="text-muted small">Completed</span>
+                                    {% if completed_growth > 0 %}
+                                        <br><span class="text-success small fw-bold">+{{ completed_growth }}%</span>
+                                    {% elif completed_growth < 0 %}
+                                        <br><span class="text-danger small fw-bold">{{ completed_growth }}%</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-3">
+                            <div class="d-flex align-items-center">
+                                <div class="ps-3">
+                                    <h6 class="text-success">₦{{ revenue_month|floatformat:2 }}</h6>
+                                    <span class="text-muted small">Revenue</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div id="summary-tab" class="tab-content mt-3">
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h3>Total</h3>
-                <p class="value">{{ total_tests }}</p>
-            </div>
-            <div class="summary-card">
-                <h3>Completed</h3>
-                <p class="value">{{ completed_tests }}</p>
-            </div>
-            <div class="summary-card">
-                <h3>Pending</h3>
-                <p class="value">{{ pending_tests }}</p>
-            </div>
-            <div class="summary-card">
-                <h3>Cancelled</h3>
-                <p class="value">{{ cancelled_tests }}</p>
+    <!-- Pending Tasks Alert -->
+    {% if pending_collection or pending_processing or pending_verification %}
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-warning d-flex align-items-center" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <div>
+                    <strong>Pending Tasks:</strong>
+                    {% if pending_collection %}{{ pending_collection }} awaiting sample collection{% endif %}
+                    {% if pending_processing %}{% if pending_collection %}, {% endif %}{{ pending_processing }} ready for processing{% endif %}
+                    {% if pending_verification %}{% if pending_collection or pending_processing %}, {% endif %}{{ pending_verification }} results need verification{% endif %}
+                </div>
             </div>
         </div>
     </div>
-</div>
+    {% endif %}
 
+    <!-- Charts Row 1 -->
+    <div class="row">
+        <!-- Daily Trends Chart -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Scan Activity Trends <span>/Last 7 Days</span></h5>
+                    <div id="dailyTrendsChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Distribution -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Order Status Distribution</h5>
+                    <div id="statusChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- Monthly Trends and Popular Tests -->
+    <div class="row">
+        <!-- Monthly Trends -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Trends <span>/Last 12 Months</span></h5>
+                    <div id="monthlyTrendsChart"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Popular Tests -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Popular Tests</h5>
+                    <div class="activity">
+                        {% for test in popular_tests %}
+                        <div class="activity-item d-flex">
+                            <div class="activite-label">{{ test.orders }}</div>
+                            <i class="bi bi-circle-fill activity-badge text-primary align-self-start"></i>
+                            <div class="activity-content">
+                                <strong>{{ test.name }}</strong><br>
+                                <small class="text-muted">₦{{ test.revenue|floatformat:2 }} revenue</small>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-muted">No test data available</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Recent Test Orders</h5>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Order #</th>
+                                    <th>Patient</th>
+                                    <th>Test</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in recent_orders %}
+                                <tr>
+                                    <td><span class="badge bg-primary">{{ order.order_number }}</span></td>
+                                    <td>{{ order.patient|title }}</td>
+                                    <td>{{ order.template.name }}</td>
+                                    <td>
+                                        <span class="badge 
+                                            {% if order.status == 'completed' %}bg-success
+                                            {% elif order.status == 'processing' %}bg-info
+                                            {% elif order.status == 'pending' %}bg-warning
+                                            {% elif order.status == 'cancelled' %}bg-danger
+                                            {% else %}bg-secondary{% endif %}">
+                                            {{ order.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ order.ordered_at|date:"M d, Y H:i" }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">No recent orders found</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Revenue Summary -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-currency-dollar text-success"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ total_revenue|floatformat:2 }}</h6>
+                            <span class="text-muted small">All time</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Today's Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-cash text-primary"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ revenue_today|floatformat:2 }}</h6>
+                            <span class="text-muted small">Today</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Weekly Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-graph-up text-info"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ revenue_week|floatformat:2 }}</h6>
+                            <span class="text-muted small">This week</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card info-card">
+                <div class="card-body">
+                    <h5 class="card-title">Monthly Revenue</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                            <i class="bi bi-graph-up-arrow text-warning"></i>
+                        </div>
+                        <div class="ps-3">
+                            <h6>₦{{ revenue_month|floatformat:2 }}</h6>
+                            <span class="text-muted small">This month</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<!-- Chart Scripts -->
 <script>
-function switchTab(tabName) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    event.target.classList.add('active');
-    document.getElementById(tabName + '-tab').classList.add('active');
-}
+document.addEventListener("DOMContentLoaded", () => {
+    
+    // Daily Trends Chart (Last 7 days)
+    const dailyTrendsData = {{ daily_trends|safe }};
+    
+    new ApexCharts(document.querySelector("#dailyTrendsChart"), {
+        series: [
+            {
+                name: 'Orders',
+                data: dailyTrendsData.map(d => d.orders)
+            },
+            {
+                name: 'Completed', 
+                data: dailyTrendsData.map(d => d.completed)
+            },
+            {
+                name: 'Revenue (₦)',
+                data: dailyTrendsData.map(d => d.revenue),
+                yAxisIndex: 1
+            }
+        ],
+        chart: {
+            height: 350,
+            type: 'line',
+            toolbar: { show: false }
+        },
+        markers: { size: 4 },
+        colors: ['#4154f1', '#2eca6a', '#ff771d'],
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            categories: dailyTrendsData.map(d => d.date),
+            type: 'datetime'
+        },
+        yaxis: [
+            {
+                title: { text: 'Number of Tests' }
+            },
+            {
+                opposite: true,
+                title: { text: 'Revenue (₦)' }
+            }
+        ],
+        tooltip: {
+            x: { format: 'dd/MM/yyyy' },
+            shared: true,
+            intersect: false
+        }
+    }).render();
 
-document.getElementById('showTotal').addEventListener('change', function() {
-    document.querySelectorAll('.total-column').forEach(c => c.style.display = this.checked ? '' : 'none');
+    // Status Distribution Pie Chart
+    const statusData = {{ status_distribution|safe }};
+    
+    echarts.init(document.querySelector("#statusChart")).setOption({
+        tooltip: { 
+            trigger: 'item',
+            formatter: '{a} <br/>{b}: {c} ({d}%)'
+        },
+        legend: {
+            top: '5%',
+            left: 'center'
+        },
+        series: [{
+            name: 'Status',
+            type: 'pie',
+            radius: ['40%', '70%'],
+            avoidLabelOverlap: false,
+            itemStyle: {
+                borderRadius: 10,
+                borderColor: '#fff',
+                borderWidth: 2
+            },
+            label: {
+                show: false,
+                position: 'center'
+            },
+            emphasis: {
+                label: {
+                    show: true,
+                    fontSize: '18',
+                    fontWeight: 'bold'
+                }
+            },
+            labelLine: { show: false },
+            data: statusData
+        }]
+    });
+
+    // Category Distribution Chart
+    const categoryData = {{ category_distribution|safe }};
+    
+    echarts.init(document.querySelector("#categoryChart")).setOption({
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+                let result = params[0].name + '<br/>';
+                params.forEach(param => {
+                    if (param.seriesName === 'Orders') {
+                        result += param.marker + ' Orders: ' + param.value + '<br/>';
+                    } else if (param.seriesName === 'Revenue') {
+                        result += param.marker + ' Revenue: ₦' + param.value.toFixed(2);
+                    }
+                });
+                return result;
+            }
+        },
+        legend: {
+            data: ['Orders', 'Revenue']
+        },
+        grid: {
+            left: '3%',
+            right: '4%',
+            bottom: '3%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            data: categoryData.map(d => d.name),
+            axisLabel: {
+                rotate: 45,
+                interval: 0
+            }
+        },
+        yaxis: [
+            {
+                type: 'value',
+                name: 'Orders',
+                position: 'left'
+            },
+            {
+                type: 'value',
+                name: 'Revenue (₦)',
+                position: 'right'
+            }
+        ],
+        series: [
+            {
+                name: 'Orders',
+                type: 'bar',
+                data: categoryData.map(d => d.value),
+                itemStyle: { color: '#4154f1' }
+            },
+            {
+                name: 'Revenue',
+                type: 'line',
+                yAxisIndex: 1,
+                data: categoryData.map(d => d.revenue),
+                itemStyle: { color: '#ff771d' },
+                smooth: true
+            }
+        ]
+    });
+
+    // Source Distribution Pie Chart
+    const sourceData = {{ source_distribution|safe }};
+    
+    echarts.init(document.querySelector("#sourceChart")).setOption({
+        tooltip: { 
+            trigger: 'item',
+            formatter: '{a} <br/>{b}: {c} ({d}%)'
+        },
+        legend: {
+            top: '5%',
+            left: 'center'
+        },
+        series: [{
+            name: 'Source',
+            type: 'pie',
+            radius: '60%',
+            center: ['50%', '60%'],
+            data: sourceData,
+            itemStyle: {
+                emphasis: {
+                    shadowBlur: 10,
+                    shadowOffsetX: 0,
+                    shadowColor: 'rgba(0, 0, 0, 0.5)'
+                }
+            }
+        }]
+    });
+
+    // Monthly Trends Chart
+    const monthlyData = {{ monthly_trends|safe }};
+    
+    new ApexCharts(document.querySelector("#monthlyTrendsChart"), {
+        series: [
+            {
+                name: 'Orders',
+                data: monthlyData.map(d => d.orders)
+            },
+            {
+                name: 'Completed',
+                data: monthlyData.map(d => d.completed)
+            },
+            {
+                name: 'Revenue (₦)',
+                data: monthlyData.map(d => d.revenue),
+                yAxisIndex: 1
+            }
+        ],
+        chart: {
+            height: 350,
+            type: 'area',
+            toolbar: { show: false }
+        },
+        colors: ['#4154f1', '#2eca6a', '#ff771d'],
+        fill: {
+            type: "gradient",
+            gradient: {
+                shadeIntensity: 1,
+                opacityFrom: 0.3,
+                opacityTo: 0.4,
+                stops: [0, 90, 100]
+            }
+        },
+        dataLabels: { enabled: false },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            categories: monthlyData.map(d => d.month)
+        },
+        yaxis: [
+            {
+                title: { text: 'Number of Tests' }
+            },
+            {
+                opposite: true,
+                title: { text: 'Revenue (₦)' }
+            }
+        ],
+        tooltip: {
+            shared: true,
+            intersect: false
+        }
+    }).render();
+
 });
-document.getElementById('showCompleted').addEventListener('change', function() {
-    document.querySelectorAll('.completed-column').forEach(c => c.style.display = this.checked ? '' : 'none');
-});
 
-function exportToExcel() {
-    const params = new URLSearchParams(new FormData(document.getElementById('reportForm')));
-    window.location.href = "{% url 'scan:scan_report_export_excel' %}?" + params.toString();
+function printDashboard() {
+    window.open('{% url "scan_dashboard_print" %}', '_blank');
 }
 
-function exportToPDF(type) {
-    const params = new URLSearchParams(new FormData(document.getElementById('reportForm')));
-    params.append('type', type);
-    window.location.href = "{% url 'scan:scan_report_export_pdf' %}?" + params.toString();
-}
+// Auto-refresh every 5 minutes
+setInterval(function() {
+    location.reload();
+}, 300000);
+
 </script>
+
 {% endblock %}
