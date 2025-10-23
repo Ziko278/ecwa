@@ -3323,7 +3323,7 @@ def patient_history_view(request, patient_id):
     # Get all completed consultations for the patient, ordered by most recent
     all_consultations = ConsultationSessionModel.objects.filter(
         queue_entry__patient=patient,
-        status='completed'
+        #status='completed'
     ).order_by('-created_at').prefetch_related(
         'drug_consultation_order',  # Renamed from drug_orders in DrugOrderModel
         'external_prescriptions',
