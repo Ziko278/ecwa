@@ -4398,7 +4398,7 @@ def view_consultation_detail(request, consultation_id):
         consultation = get_object_or_404(
             ConsultationSessionModel,
             id=consultation_id,
-            queue_entry__consultant=consultant
+            #queue_entry__consultant=consultant
         )
 
         # Get related data
