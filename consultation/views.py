@@ -3158,7 +3158,7 @@ def consultation_page(request, consultation_id):
     recent_consultations = ConsultationSessionModel.objects.filter(
         queue_entry__patient=patient,
         created_at__date__gte=six_months_ago,
-        status='completed'
+        #status='completed'
     ).exclude(id=consultation_id).order_by('-created_at')[:5]
 
     context = {
