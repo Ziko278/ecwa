@@ -1,7 +1,8 @@
+<!DOCTYPE html>
 {% load humanize %}
 {% load transaction_filters %}
 
-<!DOCTYPE html>
+
 <html>
 <head>
     <meta charset="UTF-8">
@@ -161,6 +162,16 @@
     </style>
 </head>
 <body>
+    <!-- Print Button (hidden on print) -->
+    <div class="no-print" style="text-align: center; margin-top: 20px;">
+        <button onclick="window.print()" style="padding: 10px 30px; font-size: 14px; cursor: pointer;">
+            Print Receipt
+        </button>
+        <button onclick="window.close()" style="padding: 10px 30px; font-size: 14px; cursor: pointer; margin-left: 10px;">
+            Close
+        </button>
+        <br><br>
+    </div>
     <div class="receipt">
         <!-- Header -->
         <div class="header">
@@ -172,67 +183,54 @@
 
         <!-- Transaction Info -->
         <div class="section">
-            <div class="section-title">Transaction Details</div>
             <div class="info-row">
                 <span class="info-label">Receipt No:</span>
-                <span>{{ transaction.transaction_id }}</span>
+                <span>{{ transaction.transaction_id|upper }}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Date:</span>
-                <span>{{ transaction.date|date:"F d, Y" }}</span>
+                <span>{{ transaction.date|date:"F d, Y" }} {{ transaction.created_at|date:"h:i A" }}</span>
             </div>
-            <div class="info-row">
-                <span class="info-label">Time:</span>
-                <span>{{ transaction.created_at|date:"h:i A" }}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Received By:</span>
-                <span>{{ transaction.received_by.user_staff_profile.staff|default:"SYSTEM"|upper }}</span>
-            </div>
+
         </div>
 
         <!-- Patient Info -->
         {% if transaction.patient %}
         <div class="section">
-            <div class="section-title">Patient Information</div>
             <div class="info-row">
-                <span class="info-label">Name:</span>
+                <span class="info-label">Patient Name:</span>
                 <span>{{ transaction.patient|upper }}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Card Number:</span>
                 <span>{{ transaction.patient.card_number }}</span>
             </div>
-            <div class="info-row">
-                <span class="info-label">Phone:</span>
-                <span>{{ transaction.patient.phone_number|default:"N/A" }}</span>
-            </div>
-        </div>
-        {% endif %}
 
-        <!-- Payment Breakdown -->
-        {% if transaction.wallet_amount_used > 0 or transaction.direct_payment_amount > 0 %}
-        <div class="section">
-            <div class="section-title">Payment Method</div>
-            {% if transaction.wallet_amount_used > 0 %}
-            <div class="info-row">
-                <span class="info-label">From Wallet:</span>
-                <span>₦{{ transaction.wallet_amount_used|floatformat:2|intcomma }}</span>
-            </div>
-            {% endif %}
-            {% if transaction.direct_payment_amount > 0 %}
-            <div class="info-row">
-                <span class="info-label">{{ transaction.payment_method|upper }}:</span>
-                <span>₦{{ transaction.direct_payment_amount|floatformat:2|intcomma }}</span>
-            </div>
-            {% endif %}
         </div>
         {% endif %}
+        <div class="section-title"></div>
+        <!-- Payment Breakdown -->
+<!--        {% if transaction.wallet_amount_used > 0 or transaction.direct_payment_amount > 0 %}-->
+<!--        <div class="section">-->
+<!--            <div class="section-title"></div>-->
+<!--            {% if transaction.wallet_amount_used > 0 %}-->
+<!--            <div class="info-row">-->
+<!--                <span class="info-label">From Wallet:</span>-->
+<!--                <span>₦{{ transaction.wallet_amount_used|floatformat:2|intcomma }}</span>-->
+<!--            </div>-->
+<!--            {% endif %}-->
+<!--            {% if transaction.direct_payment_amount > 0 %}-->
+<!--            <div class="info-row">-->
+<!--                <span class="info-label">Amount ({{ transaction.payment_method|upper }}):</span>-->
+<!--                <span>₦{{ transaction.direct_payment_amount|floatformat:2|intcomma }}</span>-->
+<!--            </div>-->
+<!--            {% endif %}-->
+<!--        </div>-->
+<!--        {% endif %}-->
 
         <!-- Items Paid (for parent transactions) -->
         {% if is_parent %}
         <div class="section">
-            <div class="section-title">Items Paid</div>
 
             {% with drugs=transaction.child_transactions.all|filter_by_type:'drug_payment' %}
             {% if drugs %}
@@ -241,10 +239,9 @@
                 <thead>
                     <tr>
                         <th width="5%">#</th>
-                        <th width="50%">Drug Name</th>
-                        <th width="15%">Order No.</th>
+                        <th width="60%">Drug Name</th>
                         <th width="10%">Qty</th>
-                        <th width="20%">Amount</th>
+                        <th width="25%">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -252,13 +249,12 @@
                     <tr>
                         <td>{{ forloop.counter }}</td>
                         <td>{{ drug_trans.drug_order.drug }}</td>
-                        <td>{{ drug_trans.drug_order.order_number }}</td>
                         <td>{{ drug_trans.drug_order.quantity_ordered|floatformat:0 }}</td>
                         <td>₦{{ drug_trans.amount|floatformat:2|intcomma }}</td>
                     </tr>
                     {% endfor %}
                     <tr class="subtotal-row">
-                        <td colspan="4" style="text-align: right;">Subtotal:</td>
+                        <td colspan="3" style="text-align: right;">Subtotal:</td>
                         <td>₦{{ drugs|sum_amount|floatformat:2|intcomma }}</td>
                     </tr>
                 </tbody>
@@ -273,9 +269,8 @@
                 <thead>
                     <tr>
                         <th width="5%">#</th>
-                        <th width="60%">Test Name</th>
-                        <th width="15%">Order No.</th>
-                        <th width="20%">Amount</th>
+                        <th width="70%">Test Name</th>
+                        <th width="25%">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -283,12 +278,11 @@
                     <tr>
                         <td>{{ forloop.counter }}</td>
                         <td>{{ lab_trans.lab_structure.template.name }}</td>
-                        <td>{{ lab_trans.lab_structure.order_number }}</td>
                         <td>₦{{ lab_trans.amount|floatformat:2|intcomma }}</td>
                     </tr>
                     {% endfor %}
                     <tr class="subtotal-row">
-                        <td colspan="3" style="text-align: right;">Subtotal:</td>
+                        <td colspan="2" style="text-align: right;">Subtotal:</td>
                         <td>₦{{ labs|sum_amount|floatformat:2|intcomma }}</td>
                     </tr>
                 </tbody>
@@ -303,9 +297,8 @@
                 <thead>
                     <tr>
                         <th width="5%">#</th>
-                        <th width="60%">Scan Name</th>
-                        <th width="15%">Order No.</th>
-                        <th width="20%">Amount</th>
+                        <th width="70%">Scan Name</th>
+                        <th width="25%">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -313,12 +306,11 @@
                     <tr>
                         <td>{{ forloop.counter }}</td>
                         <td>{{ scan_trans.scan_order.template.name }}</td>
-                        <td>{{ scan_trans.scan_order.order_number }}</td>
                         <td>₦{{ scan_trans.amount|floatformat:2|intcomma }}</td>
                     </tr>
                     {% endfor %}
                     <tr class="subtotal-row">
-                        <td colspan="3" style="text-align: right;">Subtotal:</td>
+                        <td colspan="2" style="text-align: right;">Subtotal:</td>
                         <td>₦{{ scans|sum_amount|floatformat:2|intcomma }}</td>
                     </tr>
                 </tbody>
@@ -333,10 +325,9 @@
                 <thead>
                     <tr>
                         <th width="5%">#</th>
-                        <th width="50%">Service Name</th>
-                        <th width="15%">Ref No.</th>
+                        <th width="60%">Service Name</th>
                         <th width="10%">Qty</th>
-                        <th width="20%">Amount</th>
+                        <th width="25%">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -352,13 +343,12 @@
                                 Service
                             {% endif %}
                         </td>
-                        <td>{{ svc_trans.service.id }}</td>
                         <td>{{ svc_trans.service.quantity|floatformat:0 }}</td>
                         <td>₦{{ svc_trans.amount|floatformat:2|intcomma }}</td>
                     </tr>
                     {% endfor %}
                     <tr class="subtotal-row">
-                        <td colspan="4" style="text-align: right;">Subtotal:</td>
+                        <td colspan="3" style="text-align: right;">Subtotal:</td>
                         <td>₦{{ services|sum_amount|floatformat:2|intcomma }}</td>
                     </tr>
                 </tbody>
@@ -382,51 +372,36 @@
         {% endif %}
 
         <!-- Total Section -->
-        <div class="total-section">
-            <div class="total-row grand-total">
+        <div class="total-sectio">
+            <div class="total-row ">
                 <span>TOTAL AMOUNT PAID:</span>
                 <span>₦{{ transaction.amount|floatformat:2|intcomma }}</span>
             </div>
 
-            {% if transaction.patient %}
-            <div class="info-row" style="margin-top: 10px;">
-                <span class="info-label">Wallet Balance After Payment:</span>
-                <span>₦{{ transaction.new_balance|floatformat:2|intcomma }}</span>
-            </div>
-            {% endif %}
         </div>
 
         <!-- Signature Section -->
-        <div class="signature-section">
-            <div class="signature-box">
-                <div class="signature-line">
-                    Patient/Representative Signature
-                </div>
-            </div>
-            <div class="signature-box">
-                <div class="signature-line">
-                    Cashier Signature
-                </div>
-            </div>
-        </div>
+<!--        <div class="signature-section">-->
+<!--            <div class="signature-box">-->
+<!--                <div class="signature-line">-->
+<!--                    Patient/Representative Signature-->
+<!--                </div>-->
+<!--            </div>-->
+<!--            <div class="signature-box">-->
+<!--                <div class="signature-line">-->
+<!--                    Cashier Signature-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
 
         <!-- Footer -->
         <div class="footer">
             <p><strong>Thank you for choosing {{ hospital_info.name }}!</strong></p>
             <p>This is a computer-generated receipt and requires no signature.</p>
-            <p>For inquiries, please contact: {{ hospital_info.phone }}</p>
         </div>
     </div>
 
-    <!-- Print Button (hidden on print) -->
-    <div class="no-print" style="text-align: center; margin-top: 20px;">
-        <button onclick="window.print()" style="padding: 10px 30px; font-size: 14px; cursor: pointer;">
-            Print Receipt
-        </button>
-        <button onclick="window.close()" style="padding: 10px 30px; font-size: 14px; cursor: pointer; margin-left: 10px;">
-            Close
-        </button>
-    </div>
+
 
     <script>
         // Auto-print on load (optional)
