@@ -3332,7 +3332,7 @@ def patient_history_view(request, patient_id):
     )
 
     # Paginate the results, 3 per page
-    paginator = Paginator(all_consultations, 5)
+    paginator = Paginator(all_consultations, 6)
     page_obj = paginator.get_page(1)  # Get the first page
 
     context = {
