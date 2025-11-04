@@ -1,0 +1,187 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="col-12">
+    <div class="card recent-sales overflow-auto">
+        <div class="filter px-2">
+            <a title="Add Diagnosis" class="icon" href="#" data-bs-toggle="dropdown"><i class="bi bi-three-dots"></i></a>
+            <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#diagnosisHelperModal"><b>Helper</b></button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                <li class="dropdown-header text-start">
+                    <h6>Action</h6>
+                </li>
+                <li><a class="dropdown-item" href="#">
+                    <button title="Add Diagnosis" type="button" style="width:100%" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#verticalycentered">Add Diagnosis</button>
+                </a></li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <h5 class="card-title">List of Diagnosis Options</h5>
+            {% include 'admin_site/partials/error.html' %}
+            <table class="table table-borderless datatable">
+                <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Diagnosis Name</th>
+                    <th scope="col">ICD-10 Code</th>
+                    <th scope="col">Specializations</th>
+                    <th scope="col">Active</th>
+                    <th scope="col" class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for diagnosis in diagnosis_list %}
+                <tr>
+                    <th scope="row"><a href="#">{{ forloop.counter }}</a></th>
+                    <td title="created at {{ diagnosis.created_at|date }}">{{ diagnosis.name|title }}</td>
+                    <td>{{ diagnosis.icd_code|default:"N/A" }}</td>
+                    <td>
+                        {% for spec in diagnosis.specializations.all %}
+                            <span class="badge bg-secondary">{{ spec.name|title }}</span>
+                        {% empty %}
+                            <span class="text-muted">None</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% if diagnosis.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <a title="Diagnosis Detail" href="{% url 'diagnosis_detail' diagnosis.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a>
+                        <button title="Edit Diagnosis" type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#edit{{ forloop.counter }}"><i class="bi bi-pencil-square"></i></button>
+                        <a title="Delete Diagnosis" href="{% url 'diagnosis_delete' diagnosis.id %}" class="btn btn-danger"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% if not diagnosis_list %}
+                 <h3 class="text-center">No Diagnosis Options Added Yet</h3>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="diagnosisHelperModal" tabindex="-1" style="font-family: sans-serif">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><b>Diagnosis Helper</b></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="card-description">
+                    <strong>Diagnosis Options</strong> are the list of possible diagnoses a doctor can assign (e.g., Malaria, Typhoid Fever, Hypertension).
+                </p>
+                <p class="card-description">
+                    The <strong>ICD-10 Code</strong> is the international standard code for the diagnosis.
+                </p>
+                <p class="card-description">
+                    Linking <strong>Specializations</strong> helps filter this list. For example, a "Cardiologist" might only see diagnoses linked to "Cardiology".
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="POST" action="{% url 'diagnosis_create' %}">
+    {% csrf_token %}
+    <div class="modal fade" id="verticalycentered" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Add Diagnosis Option</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating">
+                        {{ form.name }}
+                        <label for="floatingName">Diagnosis Name<span style="color:red"><b>*</b></span></label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        {{ form.icd_code }}
+                        <label for="floatingCode">ICD-10 Code</label>
+                    </div><br />
+
+                    <div class="mb-3">
+                        <label for="{{ form.specializations.id_for_label }}" class="form-label">Link to Specializations</label>
+                        {{ form.specializations }}
+                        <div class="form-text">{{ form.specializations.help_text }}</div>
+                    </div><br />
+
+                    <div class="form-check">
+                        {{ form.is_active }}
+                        <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                            Is Active
+                        </label>
+                    </div><br />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% for diagnosis in diagnosis_list %}
+<form method="POST" action="{% url 'diagnosis_edit' diagnosis.id %}">
+    {% csrf_token %}
+    <div class="modal fade" id="edit{{ forloop.counter }}" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit Diagnosis Option</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating">
+                        <input type="text" name="name" value="{{ diagnosis.name }}" autocomplete="off" required class="form-control" id="id_name_{{ forloop.counter }}">
+                        <label for="id_name_{{ forloop.counter }}">Diagnosis Name<span style="color:red"><b>*</b></span></label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        <input type="text" name="icd_code" value="{{ diagnosis.icd_code|default_if_none:'' }}" autocomplete="off" class="form-control" id="id_icd_code_{{ forloop.counter }}">
+                        <label for="id_icd_code_{{ forloop.counter }}">ICD-10 Code</label>
+                    </div><br />
+
+                    <div class="mb-3">
+                        <label for="id_specializations_{{ forloop.counter }}" class="form-label">Link to Specializations</label>
+                        <select name="specializations" class="form-control select2" multiple id="id_specializations_{{ forloop.counter }}">
+                            {% for spec in all_specializations %}
+                                <option value="{{ spec.id }}" 
+                                    {% if spec in diagnosis.specializations.all %}selected{% endif %}>
+                                    {{ spec.name|title }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div><br />
+
+                    <div class="form-check">
+                        <input type="checkbox" name="is_active" class="form-check-input" id="id_is_active_{{ forloop.counter }}" {% if diagnosis.is_active %}checked{% endif %}>
+                        <label class="form-check-label" for="id_is_active_{{ forloop.counter }}">
+                            Is Active
+                        </label>
+                    </div><br />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endfor %}
+
+{% endblock %}

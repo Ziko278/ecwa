@@ -135,6 +135,77 @@ class SpecializationForm(ModelForm):
         return name
 
 
+class DiagnosisOptionForm(forms.ModelForm):
+    """Form for Diagnosis Options."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Set a common class and autocomplete for most fields
+        for field_name, field in self.fields.items():
+            if field_name not in ['is_active', 'specializations']:
+                field.widget.attrs.update({
+                    'class': 'form-control',
+                    'autocomplete': 'off'
+                })
+
+        # Customize the specializations field for select2
+        self.fields['specializations'].widget.attrs.update({
+            'class': 'form-control select2',
+            'data-placeholder': 'Select one or more specializations'
+        })
+        self.fields['specializations'].help_text = "Specializations that commonly handle this diagnosis."
+
+        # Style the checkbox
+        self.fields['is_active'].widget.attrs.update({
+            'class': 'form-check-input'
+        })
+
+    class Meta:
+        model = DiagnosisOption
+        fields = '__all__'
+        widgets = {
+            'name': forms.TextInput(attrs={
+                'placeholder': 'e.g., Malaria, Hypertension'
+            }),
+            'icd_code': forms.TextInput(attrs={
+                'placeholder': 'e.g., B54, I10',
+                'maxlength': '20'
+            }),
+            'specializations': forms.SelectMultiple(),
+        }
+
+    def clean_name(self):
+        name = self.cleaned_data.get('name')
+        if not name:
+            raise ValidationError("Diagnosis name is required.")
+
+        # Remove extra spaces
+        name = ' '.join(name.strip().split())
+        if len(name) < 3:
+            raise ValidationError("Diagnosis name must be at least 3 characters long.")
+
+        # Check for special characters (allowing letters, numbers, spaces, hyphens, slashes, parentheses)
+        if not re.match(r'^[a-zA-Z0-9\s\-&/()]+$', name):
+            raise ValidationError("Diagnosis name contains invalid characters.")
+
+        # Check uniqueness (case-insensitive)
+        existing = DiagnosisOption.objects.filter(name__iexact=name)
+        if self.instance.pk:
+            existing = existing.exclude(pk=self.instance.pk)
+
+        if existing.exists():
+            raise ValidationError(f"Diagnosis '{name}' already exists.")
+
+        return name
+
+    def clean_icd_code(self):
+        # Automatically uppercase the ICD code if provided
+        code = self.cleaned_data.get('icd_code')
+        if code:
+            return code.strip().upper()
+        return code
+
 class SpecializationGroupForm(ModelForm):
     """Form for medical specialization groups."""
 

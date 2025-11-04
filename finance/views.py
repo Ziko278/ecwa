@@ -2,6 +2,7 @@
 import calendar
 from datetime import timedelta, date, datetime
 from decimal import Decimal, ROUND_HALF_UP
+from io import BytesIO
 
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.models import User
@@ -15,6 +16,7 @@ from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.timezone import now
+from django.views import View
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, ListView, DetailView, UpdateView, DeleteView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -23,7 +25,15 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
 from django.template.loader import render_to_string
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill, Side, Border
+from openpyxl.workbook import Workbook
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import letter, landscape, A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+
 from admin_site.models import SiteInfoModel
 from consultation.models import ConsultationFeeModel, SpecializationModel, PatientQueueModel
 from finance.forms import FinanceSettingForm, ExpenseCategoryForm, \
@@ -47,7 +57,7 @@ import uuid
 
 from pharmacy.models import DrugOrderModel
 from scan.models import ScanOrderModel
-from service.models import PatientServiceTransaction
+from service.models import PatientServiceTransaction, ServiceCategory
 
 
 class RegistrationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
@@ -4900,3 +4910,1739 @@ def ajax_reuse_consultation_payment(request):
     except Exception as e:
         logger.error(f"Error reusing consultation payment: {str(e)}")
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+"""
+Finance App Views - Complete Implementation
+============================================
+Personal Staff Collection Report
+All Staff Collections Report
+Staff Transaction History
+All Excel & PDF Exports
+"""
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def get_staff_collection_data(staff, from_date, to_date):
+    """
+    Calculate all financial data for a single staff member.
+    Returns dictionary with all calculated values.
+    """
+    data = {}
+
+    # 1. CARD (Registration) - ALL records
+    data['card_total'] = RegistrationPaymentModel.objects.filter(
+        created_by=staff,
+        date__range=[from_date, to_date]
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    # 2. CONS (Consultation)
+    data['cons_total'] = PatientTransactionModel.objects.filter(
+        received_by=staff,
+        date__range=[from_date, to_date],
+        transaction_type='consultation_payment',
+        status='completed'
+    ).aggregate(total=Sum('direct_payment_amount'))['total'] or Decimal('0.00')
+
+    # 3. LAB
+    data['lab_total'] = PatientTransactionModel.objects.filter(
+        received_by=staff,
+        date__range=[from_date, to_date],
+        transaction_type='lab_payment',
+        status='completed'
+    ).aggregate(total=Sum('direct_payment_amount'))['total'] or Decimal('0.00')
+
+    # 4. DRUGS
+    data['drugs_total'] = PatientTransactionModel.objects.filter(
+        received_by=staff,
+        date__range=[from_date, to_date],
+        transaction_type='drug_payment',
+        status='completed'
+    ).aggregate(total=Sum('direct_payment_amount'))['total'] or Decimal('0.00')
+
+    # 5. SCAN
+    data['scan_total'] = PatientTransactionModel.objects.filter(
+        received_by=staff,
+        date__range=[from_date, to_date],
+        transaction_type='scan_payment',
+        status='completed'
+    ).aggregate(total=Sum('direct_payment_amount'))['total'] or Decimal('0.00')
+
+    # 6. Service Categories (Dynamic)
+    service_categories = ServiceCategory.objects.filter(
+        show_as_record_column=True,
+        is_active=True
+    ).order_by('name')
+
+    service_breakdown = []
+    services_total = Decimal('0.00')
+
+    for category in service_categories:
+        category_total = PatientTransactionModel.objects.filter(
+            received_by=staff,
+            date__range=[from_date, to_date],
+            transaction_type__in=['service', 'item'],
+            status='completed'
+        ).filter(
+            Q(service__service__category=category) |
+            Q(service__service_item__category=category)
+        ).aggregate(total=Sum('direct_payment_amount'))['total'] or Decimal('0.00')
+
+        if category_total > 0:  # Only include if there are transactions
+            service_breakdown.append({
+                'name': category.name,
+                'amount': category_total
+            })
+            services_total += category_total
+
+    data['service_breakdown'] = service_breakdown
+    data['services_total'] = services_total
+
+    # 7. SURGERY
+    data['surgery_total'] = PatientTransactionModel.objects.filter(
+        received_by=staff,
+        date__range=[from_date, to_date],
+        transaction_type='surgery_payment',
+        status='completed'
+    ).aggregate(total=Sum('direct_payment_amount'))['total'] or Decimal('0.00')
+
+    # 8. Other Payments (Dynamic by service name)
+    other_payments = PatientTransactionModel.objects.filter(
+        received_by=staff,
+        date__range=[from_date, to_date],
+        transaction_type='other_payment',
+        status='completed'
+    ).values('other_service__name').annotate(
+        total=Sum('direct_payment_amount')
+    ).order_by('other_service__name')
+
+    other_breakdown = []
+    other_total = Decimal('0.00')
+
+    for item in other_payments:
+        if item['total']:
+            other_breakdown.append({
+                'name': item['other_service__name'] or 'Other Payment',
+                'amount': item['total']
+            })
+            other_total += item['total']
+
+    data['other_breakdown'] = other_breakdown
+    data['other_total'] = other_total
+
+    # 9. Calculate Total Collections
+    data['total_collections'] = (
+            data['card_total'] +
+            data['cons_total'] +
+            data['lab_total'] +
+            data['drugs_total'] +
+            data['scan_total'] +
+            services_total +
+            data['surgery_total'] +
+            other_total
+    )
+
+    # 10. Cash Expenses (only cash paid expenses)
+    data['cash_expenses'] = Expense.objects.filter(
+        paid_by=staff,
+        date__range=[from_date, to_date],
+        payment_method='cash'
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    # 11. Wallet Withdrawals (Refunds)
+    data['wallet_withdrawals'] = WalletWithdrawalRecord.objects.filter(
+        withdrawn_by=staff,
+        withdrawal_date__date__range=[from_date, to_date]
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    # 12. Total Cash Out
+    data['total_cash_out'] = data['cash_expenses'] + data['wallet_withdrawals']
+
+    # 13. Calculate Cash vs Transfer breakdown
+    # Get all transactions with payment methods
+    all_transactions = PatientTransactionModel.objects.filter(
+        received_by=staff,
+        date__range=[from_date, to_date],
+        status='completed',
+        transaction_type__in=[
+            'consultation_payment', 'drug_payment', 'lab_payment',
+            'scan_payment', 'surgery_payment', 'service', 'item', 'other_payment'
+        ]
+    )
+
+    cash_collections = Decimal('0.00')
+    transfer_collections = Decimal('0.00')
+
+    for trans in all_transactions:
+        if trans.payment_method and 'transfer' in trans.payment_method.lower():
+            transfer_collections += trans.direct_payment_amount
+        else:
+            cash_collections += trans.direct_payment_amount
+
+    # Add registration payments (check payment_method)
+    reg_payments = RegistrationPaymentModel.objects.filter(
+        created_by=staff,
+        date__range=[from_date, to_date]
+    )
+
+    for reg in reg_payments:
+        if reg.payment_method and 'transfer' in reg.payment_method.lower():
+            transfer_collections += reg.amount
+        else:
+            cash_collections += reg.amount
+
+    data['cash_collections'] = cash_collections
+    data['transfer_collections'] = transfer_collections
+
+    # 14. Previous Cash Remitted (from MoneyRemittance)
+    previous_remittances = MoneyRemittance.objects.filter(
+        remitted_by=staff,
+        created_at__date__range=[from_date, to_date],
+        status='APPROVED'
+    )
+
+    data['previous_cash_remitted'] = previous_remittances.aggregate(
+        total=Sum('amount_remitted_cash')
+    )['total'] or Decimal('0.00')
+
+    # 15. Net Cash to Remit
+    data['net_cash_to_remit'] = (
+            cash_collections -
+            data['cash_expenses'] -
+            data['wallet_withdrawals'] -
+            data['previous_cash_remitted']
+    )
+
+    # Note: Transfer collections don't need remittance (already in bank)
+    data['net_transfer'] = transfer_collections
+
+    return data
+
+
+# ============================================================================
+# MAIN VIEWS
+# ============================================================================
+
+class PersonalStaffCollectionView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    template_name = 'finance/personal_collection_report.html'
+    permission_required = 'finance.view_staff_collections'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Date range
+        from_date = self.request.GET.get('from_date')
+        to_date = self.request.GET.get('to_date')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Staff (default to logged-in user or allow selection)
+        staff_id = self.request.GET.get('staff_id')
+        if staff_id:
+            staff = User.objects.get(id=staff_id)
+        else:
+            staff = self.request.user
+
+        # Get all data
+        data = get_staff_collection_data(staff, from_date, to_date)
+
+        # Add to context
+        context.update({
+            'from_date': from_date,
+            'to_date': to_date,
+            'staff': staff,
+            'all_staff': User.objects.filter(is_active=True).order_by('username'),
+            **data  # Unpack all calculated data
+        })
+
+        return context
+
+
+class AllStaffCollectionsView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    template_name = 'finance/all_staff_collections.html'
+    permission_required = 'finance.view_all_staff_collections'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Date range
+        from_date = self.request.GET.get('from_date')
+        to_date = self.request.GET.get('to_date')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Staff filter (optional)
+        staff_filter = self.request.GET.get('staff_filter')
+
+        # Get all staff who have transactions in the period
+        staff_with_transactions = set()
+
+        # From registrations
+        staff_with_transactions.update(
+            RegistrationPaymentModel.objects.filter(
+                date__range=[from_date, to_date]
+            ).values_list('created_by_id', flat=True)
+        )
+
+        # From patient transactions
+        staff_with_transactions.update(
+            PatientTransactionModel.objects.filter(
+                date__range=[from_date, to_date],
+                status='completed'
+            ).values_list('received_by_id', flat=True)
+        )
+
+        # From expenses
+        staff_with_transactions.update(
+            Expense.objects.filter(
+                date__range=[from_date, to_date],
+                payment_method='cash'
+            ).values_list('paid_by_id', flat=True)
+        )
+
+        # From withdrawals
+        staff_with_transactions.update(
+            WalletWithdrawalRecord.objects.filter(
+                withdrawal_date__date__range=[from_date, to_date]
+            ).values_list('withdrawn_by_id', flat=True)
+        )
+
+        # Remove None values
+        staff_with_transactions.discard(None)
+
+        # Filter staff if requested
+        if staff_filter:
+            staff_list = User.objects.filter(id=staff_filter, is_active=True)
+        else:
+            staff_list = User.objects.filter(
+                id__in=staff_with_transactions,
+                is_active=True
+            ).order_by('username')
+
+        # Build report for each staff
+        staff_reports = []
+        grand_totals = {
+            'card': Decimal('0.00'),
+            'cons': Decimal('0.00'),
+            'lab': Decimal('0.00'),
+            'drugs': Decimal('0.00'),
+            'scan': Decimal('0.00'),
+            'services': Decimal('0.00'),
+            'surgery': Decimal('0.00'),
+            'other': Decimal('0.00'),
+            'collections': Decimal('0.00'),
+            'expenses': Decimal('0.00'),
+            'withdrawals': Decimal('0.00'),
+            'net': Decimal('0.00'),
+        }
+
+        for staff in staff_list:
+            data = get_staff_collection_data(staff, from_date, to_date)
+
+            report = {
+                'staff': staff,
+                'card_total': data['card_total'],
+                'cons_total': data['cons_total'],
+                'lab_total': data['lab_total'],
+                'drugs_total': data['drugs_total'],
+                'scan_total': data['scan_total'],
+                'services_total': data['services_total'],
+                'surgery_total': data['surgery_total'],
+                'other_total': data['other_total'],
+                'total_collections': data['total_collections'],
+                'cash_expenses': data['cash_expenses'],
+                'wallet_withdrawals': data['wallet_withdrawals'],
+                'net_to_remit': data['net_cash_to_remit'],
+            }
+
+            staff_reports.append(report)
+
+            # Update grand totals
+            grand_totals['card'] += data['card_total']
+            grand_totals['cons'] += data['cons_total']
+            grand_totals['lab'] += data['lab_total']
+            grand_totals['drugs'] += data['drugs_total']
+            grand_totals['scan'] += data['scan_total']
+            grand_totals['services'] += data['services_total']
+            grand_totals['surgery'] += data['surgery_total']
+            grand_totals['other'] += data['other_total']
+            grand_totals['collections'] += data['total_collections']
+            grand_totals['expenses'] += data['cash_expenses']
+            grand_totals['withdrawals'] += data['wallet_withdrawals']
+            grand_totals['net'] += data['net_cash_to_remit']
+
+        context.update({
+            'from_date': from_date,
+            'to_date': to_date,
+            'staff_filter': staff_filter,
+            'all_staff': User.objects.filter(is_active=True).order_by('username'),
+            'staff_reports': staff_reports,
+            'grand_totals': grand_totals,
+        })
+
+        return context
+
+
+class StaffTransactionHistoryView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    template_name = 'finance/staff_transaction_history.html'
+    permission_required = 'finance.view_staff_history'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Date range
+        from_date = self.request.GET.get('from_date')
+        to_date = self.request.GET.get('to_date')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Staff (default to logged-in user or allow selection)
+        staff_id = self.request.GET.get('staff_id')
+        if staff_id:
+            staff = User.objects.get(id=staff_id)
+        else:
+            staff = self.request.user
+
+        # Get all transactions
+
+        # 1. Registration Payments
+        registrations = RegistrationPaymentModel.objects.filter(
+            created_by=staff,
+            date__range=[from_date, to_date]
+        ).order_by('-created_at')
+
+        # 2. Patient Transactions
+        patient_transactions = PatientTransactionModel.objects.filter(
+            received_by=staff,
+            date__range=[from_date, to_date],
+            status='completed'
+        ).select_related('patient').order_by('-created_at')
+
+        # 3. Expenses
+        expenses = Expense.objects.filter(
+            paid_by=staff,
+            date__range=[from_date, to_date]
+        ).order_by('-date')
+
+        # 4. Wallet Withdrawals
+        withdrawals = WalletWithdrawalRecord.objects.filter(
+            withdrawn_by=staff,
+            withdrawal_date__date__range=[from_date, to_date]
+        ).select_related('patient').order_by('-withdrawal_date')
+
+        # Summary counts
+        summary = {
+            'total_registrations': registrations.count(),
+            'total_transactions': patient_transactions.count(),
+            'total_expenses': expenses.count(),
+            'total_withdrawals': withdrawals.count(),
+            'total_reg_amount': registrations.aggregate(
+                total=Sum('amount')
+            )['total'] or Decimal('0.00'),
+            'total_transaction_amount': patient_transactions.aggregate(
+                total=Sum('direct_payment_amount')
+            )['total'] or Decimal('0.00'),
+            'total_expense_amount': expenses.aggregate(
+                total=Sum('amount')
+            )['total'] or Decimal('0.00'),
+            'total_withdrawal_amount': withdrawals.aggregate(
+                total=Sum('amount')
+            )['total'] or Decimal('0.00'),
+        }
+
+        context.update({
+            'from_date': from_date,
+            'to_date': to_date,
+            'staff': staff,
+            'all_staff': User.objects.filter(is_active=True).order_by('username'),
+            'registrations': registrations,
+            'patient_transactions': patient_transactions,
+            'expenses': expenses,
+            'withdrawals': withdrawals,
+            'summary': summary,
+        })
+
+        return context
+
+
+class StaffTransactionHistoryExcelView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'finance.view_staff_history'
+
+    def get(self, request, *args, **kwargs):
+        # Get parameters
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        staff_id = request.GET.get('staff_id')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        if staff_id:
+            staff = User.objects.get(id=staff_id)
+        else:
+            staff = request.user
+
+        # Get all transactions
+        registrations = RegistrationPaymentModel.objects.filter(
+            created_by=staff,
+            date__range=[from_date, to_date]
+        ).order_by('-created_at')
+
+        patient_transactions = PatientTransactionModel.objects.filter(
+            received_by=staff,
+            date__range=[from_date, to_date],
+            status='completed'
+        ).select_related('patient').order_by('-created_at')
+
+        expenses = Expense.objects.filter(
+            paid_by=staff,
+            date__range=[from_date, to_date]
+        ).order_by('-date')
+
+        withdrawals = WalletWithdrawalRecord.objects.filter(
+            withdrawn_by=staff,
+            withdrawal_date__date__range=[from_date, to_date]
+        ).select_related('patient').order_by('-withdrawal_date')
+
+        # Create workbook with multiple sheets
+        wb = Workbook()
+
+        # Styles
+        header_font = Font(bold=True, size=11, color="FFFFFF")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+
+        # Sheet 1: Registrations
+        ws1 = wb.active
+        ws1.title = "Registrations"
+
+        ws1.append(['Transaction ID', 'Patient Name', 'Amount', 'Payment Method', 'Date', 'Status'])
+        for col in range(1, 7):
+            ws1.cell(row=1, column=col).font = header_font
+            ws1.cell(row=1, column=col).fill = header_fill
+
+        for reg in registrations:
+            ws1.append([
+                reg.transaction_id,
+                reg.full_name,
+                float(reg.amount),
+                reg.payment_method,
+                reg.date.strftime('%Y-%m-%d') if reg.date else '',
+                reg.registration_status
+            ])
+
+        ws1.column_dimensions['A'].width = 20
+        ws1.column_dimensions['B'].width = 30
+        ws1.column_dimensions['C'].width = 15
+        ws1.column_dimensions['D'].width = 15
+        ws1.column_dimensions['E'].width = 12
+        ws1.column_dimensions['F'].width = 15
+
+        # Sheet 2: Patient Transactions
+        ws2 = wb.create_sheet("Patient Transactions")
+
+        ws2.append(['Transaction ID', 'Patient', 'Type', 'Amount', 'Payment Method', 'Date'])
+        for col in range(1, 7):
+            ws2.cell(row=1, column=col).font = header_font
+            ws2.cell(row=1, column=col).fill = header_fill
+
+        for trans in patient_transactions:
+            patient_name = f"{trans.patient.first_name} {trans.patient.last_name}" if trans.patient else "N/A"
+            ws2.append([
+                trans.transaction_id,
+                patient_name,
+                trans.get_transaction_type_display(),
+                float(trans.direct_payment_amount),
+                trans.payment_method,
+                trans.date.strftime('%Y-%m-%d')
+            ])
+
+        ws2.column_dimensions['A'].width = 20
+        ws2.column_dimensions['B'].width = 30
+        ws2.column_dimensions['C'].width = 25
+        ws2.column_dimensions['D'].width = 15
+        ws2.column_dimensions['E'].width = 15
+        ws2.column_dimensions['F'].width = 12
+
+        # Sheet 3: Expenses
+        ws3 = wb.create_sheet("Expenses")
+
+        ws3.append(['Expense Number', 'Title', 'Category', 'Amount', 'Payment Method', 'Date'])
+        for col in range(1, 7):
+            ws3.cell(row=1, column=col).font = header_font
+            ws3.cell(row=1, column=col).fill = header_fill
+
+        for exp in expenses:
+            ws3.append([
+                exp.expense_number,
+                exp.title,
+                exp.category.name,
+                float(exp.amount),
+                exp.payment_method,
+                exp.date.strftime('%Y-%m-%d')
+            ])
+
+        ws3.column_dimensions['A'].width = 20
+        ws3.column_dimensions['B'].width = 35
+        ws3.column_dimensions['C'].width = 20
+        ws3.column_dimensions['D'].width = 15
+        ws3.column_dimensions['E'].width = 15
+        ws3.column_dimensions['F'].width = 12
+
+        # Sheet 4: Withdrawals
+        ws4 = wb.create_sheet("Withdrawals")
+
+        ws4.append(['Patient', 'Amount', 'Date', 'Notes'])
+        for col in range(1, 5):
+            ws4.cell(row=1, column=col).font = header_font
+            ws4.cell(row=1, column=col).fill = header_fill
+
+        for withdrawal in withdrawals:
+            patient_name = f"{withdrawal.patient.first_name} {withdrawal.patient.last_name}" if withdrawal.patient else "N/A"
+            ws4.append([
+                patient_name,
+                float(withdrawal.amount),
+                withdrawal.withdrawal_date.strftime('%Y-%m-%d %H:%M'),
+                withdrawal.notes or ''
+            ])
+
+        ws4.column_dimensions['A'].width = 30
+        ws4.column_dimensions['B'].width = 15
+        ws4.column_dimensions['C'].width = 20
+        ws4.column_dimensions['D'].width = 40
+
+        # Response
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"transaction_history_{staff.username}_{from_date.strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+
+
+class StaffTransactionHistoryPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'finance.view_staff_history'
+
+    def get(self, request, *args, **kwargs):
+        # Get parameters
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        staff_id = request.GET.get('staff_id')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        if staff_id:
+            staff = User.objects.get(id=staff_id)
+        else:
+            staff = request.user
+
+        # Get all transactions
+        registrations = RegistrationPaymentModel.objects.filter(
+            created_by=staff,
+            date__range=[from_date, to_date]
+        ).order_by('-created_at')[:50]  # Limit for PDF
+
+        patient_transactions = PatientTransactionModel.objects.filter(
+            received_by=staff,
+            date__range=[from_date, to_date],
+            status='completed'
+        ).select_related('patient').order_by('-created_at')[:50]
+
+        expenses = Expense.objects.filter(
+            paid_by=staff,
+            date__range=[from_date, to_date]
+        ).order_by('-date')[:50]
+
+        withdrawals = WalletWithdrawalRecord.objects.filter(
+            withdrawn_by=staff,
+            withdrawal_date__date__range=[from_date, to_date]
+        ).select_related('patient').order_by('-withdrawal_date')[:50]
+
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30,
+                                topMargin=30, bottomMargin=30)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            alignment=TA_CENTER,
+            spaceAfter=12
+        )
+
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            alignment=TA_CENTER,
+            spaceAfter=6
+        )
+
+        section_style = ParagraphStyle(
+            'SectionTitle',
+            parent=styles['Heading2'],
+            fontSize=12,
+            spaceAfter=10
+        )
+
+        # Header
+        elements.append(Paragraph("Staff Transaction History", title_style))
+        elements.append(Paragraph(
+            f"{staff.get_full_name() or staff.username}",
+            subtitle_style
+        ))
+        elements.append(Paragraph(
+            f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}",
+            subtitle_style
+        ))
+        elements.append(Spacer(1, 0.3 * inch))
+
+        # Registrations
+        if registrations.exists():
+            elements.append(Paragraph("Registrations", section_style))
+            reg_data = [['Transaction ID', 'Patient', 'Amount', 'Date']]
+            for reg in registrations:
+                reg_data.append([
+                    reg.transaction_id,
+                    reg.full_name[:25],
+                    f'₦{reg.amount:,.2f}',
+                    reg.date.strftime('%Y-%m-%d') if reg.date else ''
+                ])
+
+            reg_table = Table(reg_data, colWidths=[1.5 * inch, 2.5 * inch, 1.2 * inch, 1 * inch])
+            reg_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(reg_table)
+            elements.append(Spacer(1, 0.2 * inch))
+
+        # Patient Transactions
+        if patient_transactions.exists():
+            elements.append(Paragraph("Patient Transactions", section_style))
+            trans_data = [['Transaction ID', 'Type', 'Amount', 'Date']]
+            for trans in patient_transactions:
+                trans_data.append([
+                    trans.transaction_id,
+                    trans.get_transaction_type_display()[:20],
+                    f'₦{trans.direct_payment_amount:,.2f}',
+                    trans.date.strftime('%Y-%m-%d')
+                ])
+
+            trans_table = Table(trans_data, colWidths=[1.5 * inch, 2.5 * inch, 1.2 * inch, 1 * inch])
+            trans_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(trans_table)
+            elements.append(Spacer(1, 0.2 * inch))
+
+        # Expenses
+        if expenses.exists():
+            elements.append(Paragraph("Expenses", section_style))
+            exp_data = [['Expense #', 'Title', 'Amount', 'Date']]
+            for exp in expenses:
+                exp_data.append([
+                    exp.expense_number,
+                    exp.title[:25],
+                    f'₦{exp.amount:,.2f}',
+                    exp.date.strftime('%Y-%m-%d')
+                ])
+
+            exp_table = Table(exp_data, colWidths=[1.5 * inch, 2.5 * inch, 1.2 * inch, 1 * inch])
+            exp_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d9534f')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(exp_table)
+            elements.append(Spacer(1, 0.2 * inch))
+
+        # Withdrawals
+        if withdrawals.exists():
+            elements.append(Paragraph("Wallet Withdrawals", section_style))
+            withdr_data = [['Patient', 'Amount', 'Date']]
+            for withdrawal in withdrawals:
+                patient_name = f"{withdrawal.patient.first_name} {withdrawal.patient.last_name}" if withdrawal.patient else "N/A"
+                withdr_data.append([
+                    patient_name[:30],
+                    f'₦{withdrawal.amount:,.2f}',
+                    withdrawal.withdrawal_date.strftime('%Y-%m-%d')
+                ])
+
+            withdr_table = Table(withdr_data, colWidths=[3 * inch, 1.5 * inch, 1.5 * inch])
+            withdr_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6c757d')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(withdr_table)
+
+        # Note if records were limited
+        if (registrations.count() == 50 or patient_transactions.count() == 50 or
+                expenses.count() == 50 or withdrawals.count() == 50):
+            elements.append(Spacer(1, 0.2 * inch))
+            elements.append(Paragraph(
+                "<i>Note: Only the most recent 50 records per section are shown. "
+                "Use Excel export for complete data.</i>",
+                styles['Normal']
+            ))
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        filename = f"transaction_history_{staff.username}_{from_date.strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "All Staff Collections"
+
+        # Styles
+        header_font = Font(bold=True, size=14)
+        column_font = Font(bold=True, size=10, color="FFFFFF")
+        column_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill(start_color="28A745", end_color="28A745", fill_type="solid")
+
+        row = 1
+
+        # Header
+        ws.merge_cells(f'A{row}:M{row}')
+        cell = ws[f'A{row}']
+        cell.value = "All Staff Collections Report"
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+        row += 1
+
+        ws.merge_cells(f'A{row}:M{row}')
+        cell = ws[f'A{row}']
+        cell.value = f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}"
+        cell.alignment = Alignment(horizontal='center')
+        row += 2
+
+        # Column headers
+        headers = [
+            'Staff', 'CARD', 'CONS', 'LAB', 'DRUGS', 'SCAN',
+            'Services', 'Surgery', 'Other', 'Collections',
+            'Expenses', 'Withdrawals', 'Net'
+        ]
+
+        for col, header in enumerate(headers, start=1):
+            cell = ws.cell(row=row, column=col, value=header)
+            cell.font = column_font
+            cell.fill = column_fill
+            cell.alignment = Alignment(horizontal='center')
+        row += 1
+
+        # Data rows
+        grand_totals = {
+            'card': Decimal('0.00'),
+            'cons': Decimal('0.00'),
+            'lab': Decimal('0.00'),
+            'drugs': Decimal('0.00'),
+            'scan': Decimal('0.00'),
+            'services': Decimal('0.00'),
+            'surgery': Decimal('0.00'),
+            'other': Decimal('0.00'),
+            'collections': Decimal('0.00'),
+            'expenses': Decimal('0.00'),
+            'withdrawals': Decimal('0.00'),
+            'net': Decimal('0.00'),
+        }
+
+        for staff in staff_list:
+            data = get_staff_collection_data(staff, from_date, to_date)
+
+            ws.cell(row=row, column=1, value=staff.get_full_name() or staff.username)
+            ws.cell(row=row, column=2, value=float(data['card_total']))
+            ws.cell(row=row, column=3, value=float(data['cons_total']))
+            ws.cell(row=row, column=4, value=float(data['lab_total']))
+            ws.cell(row=row, column=5, value=float(data['drugs_total']))
+            ws.cell(row=row, column=6, value=float(data['scan_total']))
+            ws.cell(row=row, column=7, value=float(data['services_total']))
+            ws.cell(row=row, column=8, value=float(data['surgery_total']))
+            ws.cell(row=row, column=9, value=float(data['other_total']))
+            ws.cell(row=row, column=10, value=float(data['total_collections']))
+            ws.cell(row=row, column=11, value=float(data['cash_expenses']))
+            ws.cell(row=row, column=12, value=float(data['wallet_withdrawals']))
+            ws.cell(row=row, column=13, value=float(data['net_cash_to_remit']))
+
+            # Format numbers
+            for col in range(2, 14):
+                ws.cell(row=row, column=col).number_format = '#,##0.00'
+                ws.cell(row=row, column=col).alignment = Alignment(horizontal='right')
+
+            # Update grand totals
+            grand_totals['card'] += data['card_total']
+            grand_totals['cons'] += data['cons_total']
+            grand_totals['lab'] += data['lab_total']
+            grand_totals['drugs'] += data['drugs_total']
+            grand_totals['scan'] += data['scan_total']
+            grand_totals['services'] += data['services_total']
+            grand_totals['surgery'] += data['surgery_total']
+            grand_totals['other'] += data['other_total']
+            grand_totals['collections'] += data['total_collections']
+            grand_totals['expenses'] += data['cash_expenses']
+            grand_totals['withdrawals'] += data['wallet_withdrawals']
+            grand_totals['net'] += data['net_cash_to_remit']
+
+            row += 1
+
+        # Grand total row
+        ws.cell(row=row, column=1, value="GRAND TOTAL").font = total_font
+        ws.cell(row=row, column=1).fill = total_fill
+
+        ws.cell(row=row, column=2, value=float(grand_totals['card'])).font = total_font
+        ws.cell(row=row, column=2).fill = total_fill
+        ws.cell(row=row, column=3, value=float(grand_totals['cons'])).font = total_font
+        ws.cell(row=row, column=3).fill = total_fill
+        ws.cell(row=row, column=4, value=float(grand_totals['lab'])).font = total_font
+        ws.cell(row=row, column=4).fill = total_fill
+        ws.cell(row=row, column=5, value=float(grand_totals['drugs'])).font = total_font
+        ws.cell(row=row, column=5).fill = total_fill
+        ws.cell(row=row, column=6, value=float(grand_totals['scan'])).font = total_font
+        ws.cell(row=row, column=6).fill = total_fill
+        ws.cell(row=row, column=7, value=float(grand_totals['services'])).font = total_font
+        ws.cell(row=row, column=7).fill = total_fill
+        ws.cell(row=row, column=8, value=float(grand_totals['surgery'])).font = total_font
+        ws.cell(row=row, column=8).fill = total_fill
+        ws.cell(row=row, column=9, value=float(grand_totals['other'])).font = total_font
+        ws.cell(row=row, column=9).fill = total_fill
+        ws.cell(row=row, column=10, value=float(grand_totals['collections'])).font = total_font
+        ws.cell(row=row, column=10).fill = total_fill
+        ws.cell(row=row, column=11, value=float(grand_totals['expenses'])).font = total_font
+        ws.cell(row=row, column=11).fill = total_fill
+        ws.cell(row=row, column=12, value=float(grand_totals['withdrawals'])).font = total_font
+        ws.cell(row=row, column=12).fill = total_fill
+        ws.cell(row=row, column=13, value=float(grand_totals['net'])).font = total_font
+        ws.cell(row=row, column=13).fill = total_fill
+
+        # Format grand total numbers
+        for col in range(2, 14):
+            ws.cell(row=row, column=col).number_format = '#,##0.00'
+            ws.cell(row=row, column=col).alignment = Alignment(horizontal='right')
+
+        # Column widths
+        ws.column_dimensions['A'].width = 25
+        for col in range(2, 14):
+            ws.column_dimensions[get_column_letter(col)].width = 12
+
+        # Response
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"all_staff_collections_{from_date.strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+
+
+
+# ============================================================================
+# EXCEL EXPORTS
+# ============================================================================
+
+class PersonalStaffCollectionExcelView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'finance.view_staff_collections'
+
+    def get(self, request, *args, **kwargs):
+        # Get parameters
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        staff_id = request.GET.get('staff_id')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        if staff_id:
+            staff = User.objects.get(id=staff_id)
+        else:
+            staff = request.user
+
+        # Get data
+        data = get_staff_collection_data(staff, from_date, to_date)
+
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Staff Collection"
+
+        # Styles
+        header_font = Font(bold=True, size=14)
+        section_font = Font(bold=True, size=11, color="FFFFFF")
+        section_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        total_font = Font(bold=True, size=11)
+        total_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
+        row = 1
+
+        # Header
+        ws.merge_cells(f'A{row}:C{row}')
+        cell = ws[f'A{row}']
+        cell.value = f"Staff Collection Report - {staff.get_full_name() or staff.username}"
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+        row += 1
+
+        ws.merge_cells(f'A{row}:C{row}')
+        cell = ws[f'A{row}']
+        cell.value = f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}"
+        cell.alignment = Alignment(horizontal='center')
+        row += 2
+
+        # Income section header
+        ws[f'A{row}'] = "INCOME BREAKDOWN"
+        ws[f'A{row}'].font = section_font
+        ws[f'A{row}'].fill = section_fill
+        ws.merge_cells(f'A{row}:B{row}')
+        row += 1
+
+        # Income items
+        income_items = [
+            ('Card (Registration)', data['card_total']),
+            ('Consultation', data['cons_total']),
+            ('Laboratory', data['lab_total']),
+            ('Drugs', data['drugs_total']),
+            ('Scan/Imaging', data['scan_total']),
+        ]
+
+        for label, amount in income_items:
+            ws.cell(row=row, column=1, value=label)
+            ws.cell(row=row, column=2, value=float(amount))
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+            row += 1
+
+        # Dynamic service categories
+        for service in data['service_breakdown']:
+            ws.cell(row=row, column=1, value=service['name'])
+            ws.cell(row=row, column=2, value=float(service['amount']))
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+            row += 1
+
+        # Surgery
+        ws.cell(row=row, column=1, value='Surgery')
+        ws.cell(row=row, column=2, value=float(data['surgery_total']))
+        ws.cell(row=row, column=2).number_format = '#,##0.00'
+        ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+        row += 1
+
+        # Dynamic other payments
+        for other in data['other_breakdown']:
+            ws.cell(row=row, column=1, value=other['name'])
+            ws.cell(row=row, column=2, value=float(other['amount']))
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+            row += 1
+
+        # Total collections
+        ws.cell(row=row, column=1, value="TOTAL COLLECTIONS").font = total_font
+        ws.cell(row=row, column=1).fill = total_fill
+        ws.cell(row=row, column=2, value=float(data['total_collections'])).font = total_font
+        ws.cell(row=row, column=2).fill = total_fill
+        ws.cell(row=row, column=2).number_format = '#,##0.00'
+        ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+        row += 2
+
+        # Cash Out section
+        ws[f'A{row}'] = "CASH OUT"
+        ws[f'A{row}'].font = section_font
+        ws[f'A{row}'].fill = section_fill
+        ws.merge_cells(f'A{row}:B{row}')
+        row += 1
+
+        ws.cell(row=row, column=1, value="Expenses (Cash Paid)")
+        ws.cell(row=row, column=2, value=float(data['cash_expenses']))
+        ws.cell(row=row, column=2).number_format = '#,##0.00'
+        ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+        row += 1
+
+        ws.cell(row=row, column=1, value="Wallet Withdrawals (Refunds)")
+        ws.cell(row=row, column=2, value=float(data['wallet_withdrawals']))
+        ws.cell(row=row, column=2).number_format = '#,##0.00'
+        ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+        row += 1
+
+        ws.cell(row=row, column=1, value="TOTAL CASH OUT").font = total_font
+        ws.cell(row=row, column=1).fill = total_fill
+        ws.cell(row=row, column=2, value=float(data['total_cash_out'])).font = total_font
+        ws.cell(row=row, column=2).fill = total_fill
+        ws.cell(row=row, column=2).number_format = '#,##0.00'
+        ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+        row += 2
+
+        # Remittance section
+        ws[f'A{row}'] = "REMITTANCE CALCULATION"
+        ws[f'A{row}'].font = section_font
+        ws[f'A{row}'].fill = section_fill
+        ws.merge_cells(f'A{row}:B{row}')
+        row += 1
+
+        remittance_items = [
+            ('Cash Collections', data['cash_collections']),
+            ('Transfer Collections', data['transfer_collections']),
+            ('Less: Cash Expenses', -data['cash_expenses']),
+            ('Less: Wallet Withdrawals', -data['wallet_withdrawals']),
+            ('Less: Previous Remittances', -data['previous_cash_remitted']),
+        ]
+
+        for label, amount in remittance_items:
+            ws.cell(row=row, column=1, value=label)
+            ws.cell(row=row, column=2, value=float(amount))
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+            row += 1
+
+        # Net to remit
+        green_fill = PatternFill(start_color="28A745", end_color="28A745", fill_type="solid")
+        ws.cell(row=row, column=1, value="NET CASH TO REMIT").font = Font(bold=True, color="FFFFFF")
+        ws.cell(row=row, column=1).fill = green_fill
+        ws.cell(row=row, column=2, value=float(data['net_cash_to_remit'])).font = Font(bold=True, color="FFFFFF")
+        ws.cell(row=row, column=2).fill = green_fill
+        ws.cell(row=row, column=2).number_format = '#,##0.00'
+        ws.cell(row=row, column=2).alignment = Alignment(horizontal='right')
+
+        # Column widths
+        ws.column_dimensions['A'].width = 35
+        ws.column_dimensions['B'].width = 18
+
+        # Response
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"staff_collection_{staff.username}_{from_date.strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+
+
+class PersonalStaffCollectionPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'finance.view_staff_collections'
+
+    def get(self, request, *args, **kwargs):
+        # Get parameters
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        staff_id = request.GET.get('staff_id')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        if staff_id:
+            staff = User.objects.get(id=staff_id)
+        else:
+            staff = request.user
+
+        # Get data
+        data = get_staff_collection_data(staff, from_date, to_date)
+
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30,
+                                topMargin=30, bottomMargin=30)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            alignment=TA_CENTER,
+            spaceAfter=12
+        )
+
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            alignment=TA_CENTER,
+            spaceAfter=6
+        )
+
+        # Header
+        elements.append(Paragraph("Staff Collection Report", title_style))
+        elements.append(Paragraph(
+            f"{staff.get_full_name() or staff.username}",
+            subtitle_style
+        ))
+        elements.append(Paragraph(
+            f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}",
+            subtitle_style
+        ))
+        elements.append(Spacer(1, 0.4 * inch))
+
+        # Income Table
+        income_data = [
+            ['Category', 'Amount'],
+            ['Card (Registration)', f'₦{data["card_total"]:,.2f}'],
+            ['Consultation', f'₦{data["cons_total"]:,.2f}'],
+            ['Laboratory', f'₦{data["lab_total"]:,.2f}'],
+            ['Drugs', f'₦{data["drugs_total"]:,.2f}'],
+            ['Scan/Imaging', f'₦{data["scan_total"]:,.2f}'],
+        ]
+
+        # Add dynamic service categories
+        for service in data['service_breakdown']:
+            income_data.append([service['name'], f'₦{service["amount"]:,.2f}'])
+
+        # Add surgery
+        income_data.append(['Surgery', f'₦{data["surgery_total"]:,.2f}'])
+
+        # Add dynamic other payments
+        for other in data['other_breakdown']:
+            income_data.append([other['name'], f'₦{other["amount"]:,.2f}'])
+
+        # Add total
+        income_data.append(['', ''])
+        income_data.append(['TOTAL COLLECTIONS', f'₦{data["total_collections"]:,.2f}'])
+
+        income_table = Table(income_data, colWidths=[3.5 * inch, 2 * inch])
+        income_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('GRID', (0, 0), (-1, -3), 1, colors.grey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f0f0')),
+            ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor('#4472C4')),
+        ]))
+
+        elements.append(income_table)
+        elements.append(Spacer(1, 0.3 * inch))
+
+        # Cash Out Table
+        cashout_data = [
+            ['Cash Out', 'Amount'],
+            ['Expenses (Cash Paid)', f'₦{data["cash_expenses"]:,.2f}'],
+            ['Wallet Withdrawals (Refunds)', f'₦{data["wallet_withdrawals"]:,.2f}'],
+            ['', ''],
+            ['TOTAL CASH OUT', f'₦{data["total_cash_out"]:,.2f}'],
+        ]
+
+        cashout_table = Table(cashout_data, colWidths=[3.5 * inch, 2 * inch])
+        cashout_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d9534f')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('GRID', (0, 0), (-1, -2), 1, colors.grey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor('#d9534f')),
+        ]))
+
+        elements.append(cashout_table)
+        elements.append(Spacer(1, 0.3 * inch))
+
+        # Remittance Calculation
+        remittance_data = [
+            ['Remittance Calculation', 'Amount'],
+            ['Cash Collections', f'₦{data["cash_collections"]:,.2f}'],
+            ['Transfer Collections', f'₦{data["transfer_collections"]:,.2f}'],
+            ['Less: Cash Expenses', f'-₦{data["cash_expenses"]:,.2f}'],
+            ['Less: Wallet Withdrawals', f'-₦{data["wallet_withdrawals"]:,.2f}'],
+            ['Less: Previous Remittances', f'-₦{data["previous_cash_remitted"]:,.2f}'],
+        ]
+
+        remittance_table = Table(remittance_data, colWidths=[3.5 * inch, 2 * inch])
+        remittance_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6c757d')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        ]))
+
+        elements.append(remittance_table)
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Net Remittance
+        net_data = [
+            ['NET CASH TO REMIT', f'₦{data["net_cash_to_remit"]:,.2f}'],
+        ]
+
+        net_table = Table(net_data, colWidths=[3.5 * inch, 2 * inch])
+        net_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#28a745')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 2, colors.black),
+        ]))
+
+        elements.append(net_table)
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        filename = f"staff_collection_{staff.username}_{from_date.strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+
+
+class AllStaffCollectionsExcelView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'finance.view_all_staff_collections'
+
+    def get(self, request, *args, **kwargs):
+        # Get parameters
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        staff_filter = request.GET.get('staff_filter')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Determine staff with transactions in the period
+        staff_with_transactions = set()
+
+        # From registrations
+        staff_with_transactions.update(
+            RegistrationPaymentModel.objects.filter(
+                date__range=[from_date, to_date]
+            ).values_list('created_by_id', flat=True)
+        )
+
+        # From patient transactions
+        staff_with_transactions.update(
+            PatientTransactionModel.objects.filter(
+                date__range=[from_date, to_date],
+                status='completed'
+            ).values_list('received_by_id', flat=True)
+        )
+
+        # From expenses
+        staff_with_transactions.update(
+            Expense.objects.filter(
+                date__range=[from_date, to_date],
+                payment_method='cash'
+            ).values_list('paid_by_id', flat=True)
+        )
+
+        # From withdrawals
+        staff_with_transactions.update(
+            WalletWithdrawalRecord.objects.filter(
+                withdrawal_date__date__range=[from_date, to_date]
+            ).values_list('withdrawn_by_id', flat=True)
+        )
+
+        staff_with_transactions.discard(None)
+
+        # Resolve staff list based on optional filter
+        if staff_filter:
+            staff_list = User.objects.filter(id=staff_filter, is_active=True)
+        else:
+            staff_list = User.objects.filter(
+                id__in=staff_with_transactions,
+                is_active=True
+            ).order_by('username')
+
+        # Build report rows and grand totals
+        grand_totals = {
+            'card': Decimal('0.00'),
+            'cons': Decimal('0.00'),
+            'lab': Decimal('0.00'),
+            'drugs': Decimal('0.00'),
+            'scan': Decimal('0.00'),
+            'services': Decimal('0.00'),
+            'surgery': Decimal('0.00'),
+            'other': Decimal('0.00'),
+            'collections': Decimal('0.00'),
+            'expenses': Decimal('0.00'),
+            'withdrawals': Decimal('0.00'),
+            'net': Decimal('0.00'),
+        }
+
+        staff_rows = []
+
+        for staff in staff_list:
+            data = get_staff_collection_data(staff, from_date, to_date)
+
+            row = {
+                'staff': staff,
+                'card_total': data['card_total'],
+                'cons_total': data['cons_total'],
+                'lab_total': data['lab_total'],
+                'drugs_total': data['drugs_total'],
+                'scan_total': data['scan_total'],
+                'services_total': data['services_total'],
+                'surgery_total': data['surgery_total'],
+                'other_total': data['other_total'],
+                'total_collections': data['total_collections'],
+                'cash_expenses': data['cash_expenses'],
+                'wallet_withdrawals': data['wallet_withdrawals'],
+                'net_cash_to_remit': data['net_cash_to_remit'],
+            }
+
+            staff_rows.append(row)
+
+            # Update grand totals
+            grand_totals['card'] += data['card_total']
+            grand_totals['cons'] += data['cons_total']
+            grand_totals['lab'] += data['lab_total']
+            grand_totals['drugs'] += data['drugs_total']
+            grand_totals['scan'] += data['scan_total']
+            grand_totals['services'] += data['services_total']
+            grand_totals['surgery'] += data['surgery_total']
+            grand_totals['other'] += data['other_total']
+            grand_totals['collections'] += data['total_collections']
+            grand_totals['expenses'] += data['cash_expenses']
+            grand_totals['withdrawals'] += data['wallet_withdrawals']
+            grand_totals['net'] += data['net_cash_to_remit']
+
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "All Staff Collections"
+
+        # Styles
+        header_font = Font(bold=True, size=12)
+        section_font = Font(bold=True, size=10, color="FFFFFF")
+        section_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        total_font = Font(bold=True, size=11, color="FFFFFF")
+        total_fill = PatternFill(start_color="28A745", end_color="28A745", fill_type="solid")
+
+        row_idx = 1
+
+        # Header title
+        ws.merge_cells(f'A{row_idx}:M{row_idx}')
+        ws[f'A{row_idx}'] = f"All Staff Collections - {from_date.strftime('%b %d, %Y')} to {to_date.strftime('%b %d, %Y')}"
+        ws[f'A{row_idx}'].font = header_font
+        ws[f'A{row_idx}'].alignment = Alignment(horizontal='center')
+        row_idx += 2
+
+        # Column headers
+        headers = [
+            'Staff', 'Card (Reg)', 'Consultation', 'Laboratory', 'Drugs', 'Scan/Imaging',
+            'Services', 'Surgery', 'Other', 'Total Collections', 'Cash Expenses', 'Wallet Withdrawals', 'Net to Remit'
+        ]
+
+        for col_idx, h in enumerate(headers, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=h)
+            cell.font = section_font
+            cell.fill = section_fill
+            if col_idx > 1:
+                cell.alignment = Alignment(horizontal='right')
+        row_idx += 1
+
+        # Data rows
+        for r in staff_rows:
+            ws.cell(row=row_idx, column=1, value=r['staff'].get_full_name() or r['staff'].username)
+            ws.cell(row=row_idx, column=2, value=float(r['card_total']))
+            ws.cell(row=row_idx, column=3, value=float(r['cons_total']))
+            ws.cell(row=row_idx, column=4, value=float(r['lab_total']))
+            ws.cell(row=row_idx, column=5, value=float(r['drugs_total']))
+            ws.cell(row=row_idx, column=6, value=float(r['scan_total']))
+            ws.cell(row=row_idx, column=7, value=float(r['services_total']))
+            ws.cell(row=row_idx, column=8, value=float(r['surgery_total']))
+            ws.cell(row=row_idx, column=9, value=float(r['other_total']))
+            ws.cell(row=row_idx, column=10, value=float(r['total_collections']))
+            ws.cell(row=row_idx, column=11, value=float(r['cash_expenses']))
+            ws.cell(row=row_idx, column=12, value=float(r['wallet_withdrawals']))
+            ws.cell(row=row_idx, column=13, value=float(r['net_cash_to_remit']))
+
+            # Apply number formats and right alignment for numeric cols
+            for c in range(2, 14):
+                ws.cell(row=row_idx, column=c).number_format = '#,##0.00'
+                ws.cell(row=row_idx, column=c).alignment = Alignment(horizontal='right')
+
+            row_idx += 1
+
+        # Grand total row
+        ws.cell(row=row_idx, column=1, value='GRAND TOTAL').font = total_font
+        ws.cell(row=row_idx, column=1).fill = total_fill
+        totals_values = [
+            grand_totals['card'], grand_totals['cons'], grand_totals['lab'],
+            grand_totals['drugs'], grand_totals['scan'], grand_totals['services'],
+            grand_totals['surgery'], grand_totals['other'], grand_totals['collections'],
+            grand_totals['expenses'], grand_totals['withdrawals'], grand_totals['net']
+        ]
+
+        for i, val in enumerate(totals_values, start=2):
+            cell = ws.cell(row=row_idx, column=i, value=float(val))
+            cell.font = total_font
+            cell.fill = total_fill
+            cell.number_format = '#,##0.00'
+            cell.alignment = Alignment(horizontal='right')
+
+        # Column widths
+        ws.column_dimensions['A'].width = 30
+        for col in ['B','C','D','E','F','G','H','I','J','K','L','M']:
+            ws.column_dimensions[col].width = 15
+
+        # Response
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"all_staff_collections_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+
+
+class AllStaffCollectionsPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'finance.view_all_staff_collections'
+
+    def get(self, request, *args, **kwargs):
+        # Get parameters
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        staff_filter = request.GET.get('staff_filter')
+
+        if not from_date:
+            from_date = date.today()
+        else:
+            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            to_date = date.today()
+        else:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        # Determine staff with transactions in the period
+        staff_with_transactions = set()
+
+        staff_with_transactions.update(
+            RegistrationPaymentModel.objects.filter(
+                date__range=[from_date, to_date]
+            ).values_list('created_by_id', flat=True)
+        )
+
+        staff_with_transactions.update(
+            PatientTransactionModel.objects.filter(
+                date__range=[from_date, to_date],
+                status='completed'
+            ).values_list('received_by_id', flat=True)
+        )
+
+        staff_with_transactions.update(
+            Expense.objects.filter(
+                date__range=[from_date, to_date],
+                payment_method='cash'
+            ).values_list('paid_by_id', flat=True)
+        )
+
+        staff_with_transactions.update(
+            WalletWithdrawalRecord.objects.filter(
+                withdrawal_date__date__range=[from_date, to_date]
+            ).values_list('withdrawn_by_id', flat=True)
+        )
+
+        staff_with_transactions.discard(None)
+
+        if staff_filter:
+            staff_list = User.objects.filter(id=staff_filter, is_active=True)
+        else:
+            staff_list = User.objects.filter(id__in=staff_with_transactions, is_active=True).order_by('username')
+
+        # Build data and grand totals
+        financial_rows = []
+        grand_totals = {
+            'card': Decimal('0.00'),
+            'cons': Decimal('0.00'),
+            'lab': Decimal('0.00'),
+            'drugs': Decimal('0.00'),
+            'scan': Decimal('0.00'),
+            'services': Decimal('0.00'),
+            'surgery': Decimal('0.00'),
+            'other': Decimal('0.00'),
+            'collections': Decimal('0.00'),
+            'expenses': Decimal('0.00'),
+            'withdrawals': Decimal('0.00'),
+            'net': Decimal('0.00'),
+        }
+
+        for staff in staff_list:
+            data = get_staff_collection_data(staff, from_date, to_date)
+            financial_rows.append([
+                staff.get_full_name() or staff.username,
+                f'₦{data["card_total"]:,.2f}',
+                f'₦{data["cons_total"]:,.2f}',
+                f'₦{data["lab_total"]:,.2f}',
+                f'₦{data["drugs_total"]:,.2f}',
+                f'₦{data["scan_total"]:,.2f}',
+                f'₦{data["services_total"]:,.2f}',
+                f'₦{data["surgery_total"]:,.2f}',
+                f'₦{data["other_total"]:,.2f}',
+                f'₦{data["total_collections"]:,.2f}',
+                f'₦{data["cash_expenses"]:,.2f}',
+                f'₦{data["wallet_withdrawals"]:,.2f}',
+                f'₦{data["net_cash_to_remit"]:,.2f}',
+            ])
+
+            # Update grand totals
+            grand_totals['card'] += data['card_total']
+            grand_totals['cons'] += data['cons_total']
+            grand_totals['lab'] += data['lab_total']
+            grand_totals['drugs'] += data['drugs_total']
+            grand_totals['scan'] += data['scan_total']
+            grand_totals['services'] += data['services_total']
+            grand_totals['surgery'] += data['surgery_total']
+            grand_totals['other'] += data['other_total']
+            grand_totals['collections'] += data['total_collections']
+            grand_totals['expenses'] += data['cash_expenses']
+            grand_totals['withdrawals'] += data['wallet_withdrawals']
+            grand_totals['net'] += data['net_cash_to_remit']
+
+        # Build PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title = f'All Staff Collections - {from_date.strftime("%b %d, %Y")} to {to_date.strftime("%b %d, %Y")} '
+        title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=TA_CENTER)
+        elements.append(Paragraph(title, title_style))
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Table header + rows
+        table_data = [[
+            'Staff', 'Card (Reg)', 'Consult', 'Lab', 'Drugs', 'Scan', 'Services', 'Surgery', 'Other',
+            'Collections', 'Expenses', 'Withdrawals', 'Net'
+        ]]
+
+        table_data.extend(financial_rows)
+
+        # Grand totals row
+        table_data.append(['' for _ in range(len(table_data[0]))])
+        table_data.append([
+            'GRAND TOTAL',
+            f'₦{grand_totals["card"]:,.2f}',
+            f'₦{grand_totals["cons"]:,.2f}',
+            f'₦{grand_totals["lab"]:,.2f}',
+            f'₦{grand_totals["drugs"]:,.2f}',
+            f'₦{grand_totals["scan"]:,.2f}',
+            f'₦{grand_totals["services"]:,.2f}',
+            f'₦{grand_totals["surgery"]:,.2f}',
+            f'₦{grand_totals["other"]:,.2f}',
+            f'₦{grand_totals["collections"]:,.2f}',
+            f'₦{grand_totals["expenses"]:,.2f}',
+            f'₦{grand_totals["withdrawals"]:,.2f}',
+            f'₦{grand_totals["net"]:,.2f}',
+        ])
+
+        table = Table(table_data, repeatRows=1, colWidths=[2.2*inch] + [0.9*inch]*12)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#28a745')),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.whitesmoke),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ]))
+
+        elements.append(table)
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type='application/pdf')
+        filename = f"all_staff_collections_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response

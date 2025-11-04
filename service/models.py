@@ -18,6 +18,12 @@ class ServiceCategory(models.Model):
         ],
         default='mixed'
     )
+    specializations = models.ManyToManyField(
+        'consultation.SpecializationModel',  # Adjust app name if different
+        blank=True,
+        related_name='service_categories',
+        help_text="Specializations this category belongs to (leave empty for general categories)"
+    )
     show_as_record_column = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -331,8 +331,19 @@ class PatientVitalsModel(models.Model):
 class DiagnosisOption(models.Model):
     name = models.CharField(max_length=200, unique=True)
     icd_code = models.CharField(max_length=20, blank=True, null=True)
+
+    # NEW: Link to specializations
+    specializations = models.ManyToManyField(
+        'SpecializationModel',
+        related_name='diagnosis_options',
+        help_text="Specializations that can use this diagnosis"
+    )
+
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
 
     def __str__(self):
         return self.name
@@ -342,7 +353,6 @@ class DiagnosisOption(models.Model):
 class ConsultationSessionModel(models.Model):
     queue_entry = models.OneToOneField(PatientQueueModel, on_delete=models.CASCADE, related_name='consultation')
 
-    # Consultation classification
     consultation_type = models.CharField(
         max_length=20,
         choices=[
@@ -355,9 +365,9 @@ class ConsultationSessionModel(models.Model):
     # Main consultation note
     assessment = models.TextField(help_text="Comprehensive consultation notes")
     chief_complaint = models.TextField(help_text="Comprehensive consultation notes")
-    diagnosis = models.TextField(help_text="Comprehensive consultation notes")
+    diagnosis = models.TextField(help_text="Comprehensive consultation notes")  # Keep for backward compatibility
 
-    # Diagnosis fields (only for NEW consultations)
+    # PRIMARY Diagnosis (already exists - keep as ForeignKey)
     primary_diagnosis = models.ForeignKey(
         DiagnosisOption,
         on_delete=models.SET_NULL,
@@ -366,6 +376,15 @@ class ConsultationSessionModel(models.Model):
         related_name='primary_consultations',
         help_text="Required for new consultations"
     )
+
+    # NEW: SECONDARY Diagnoses (ManyToMany)
+    secondary_diagnoses = models.ManyToManyField(
+        DiagnosisOption,
+        blank=True,
+        related_name='secondary_consultations',
+        help_text="Additional diagnoses for this consultation"
+    )
+
     other_diagnosis_text = models.CharField(
         max_length=500,
         blank=True,
@@ -373,7 +392,6 @@ class ConsultationSessionModel(models.Model):
         help_text="If diagnosis not in list above"
     )
 
-    # Case completion status
     case_status = models.CharField(
         max_length=20,
         choices=[
@@ -386,14 +404,12 @@ class ConsultationSessionModel(models.Model):
         help_text="Mark as 'completed' to make next visit a NEW consultation"
     )
 
-    # Optional voice recording
     voice_recording = models.FileField(
         upload_to='consultations/',
         null=True,
         blank=True
     )
 
-    # Session status
     status = models.CharField(
         max_length=20,
         choices=[
@@ -403,13 +419,11 @@ class ConsultationSessionModel(models.Model):
         default='in_progress'
     )
 
-    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
-        # Auto-determine consultation type on creation
-        if not self.pk:  # New record
+        if not self.pk:
             self.consultation_type = self.determine_consultation_type()
         super().save(*args, **kwargs)
 
@@ -417,24 +431,19 @@ class ConsultationSessionModel(models.Model):
         """Determine if this is a new or follow-up consultation"""
         patient = self.queue_entry.patient
 
-        # Check for previous consultations for this patient
         previous_consultations = ConsultationSessionModel.objects.filter(
             queue_entry__patient=patient,
             status='completed'
         ).order_by('-completed_at')
 
-        # If no previous consultations, it's NEW
         if not previous_consultations.exists():
             return 'new'
 
-        # Get the most recent consultation
         last_consultation = previous_consultations.first()
 
-        # If last consultation was marked as completed/discharged, this is NEW
         if last_consultation.case_status in ['completed', 'discharged']:
             return 'new'
 
-        # Otherwise, it's a follow-up
         return 'follow_up'
 
     def complete_consultation(self):
@@ -442,13 +451,10 @@ class ConsultationSessionModel(models.Model):
         self.status = 'completed'
         self.completed_at = timezone.now()
         self.save()
-
-        # Also complete the queue entry
         self.queue_entry.complete_consultation()
 
     def __str__(self):
         return f"{self.get_consultation_type_display()}: {self.queue_entry.patient} - {self.created_at.strftime('%Y-%m-%d')}"
-
 
 # 9. DOCTOR SCHEDULE (When doctors are available)
 class DoctorScheduleModel(models.Model):

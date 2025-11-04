@@ -279,6 +279,9 @@ class ScanOrderModel(models.Model):
     class Meta:
         db_table = 'scan_orders'
         ordering = ['-ordered_at']
+        permissions = [
+            ("view_financial_report", "Can view scan financial reports"),
+        ]
 
     def __str__(self):
         return f"{self.template.name} - {self.patient} ({self.order_number})"

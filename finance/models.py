@@ -354,6 +354,13 @@ class PatientTransactionModel(models.Model):
             models.Index(fields=['parent_transaction']),  # NEW INDEX
         ]
 
+        permissions = [
+            ("view_staff_collections", "Can view staff collection reports"),
+            ("view_all_staff_collections", "Can view all staff collections"),
+            ("view_financial_reports", "Can view financial reports"),
+            ("view_staff_history", "Can view staff transaction history"),
+        ]
+
 
 class PatientRefundModel(models.Model):
     patient = models.ForeignKey('patient.PatientModel', on_delete=models.SET_NULL, null=True)
@@ -415,16 +422,41 @@ class MoneyRemittance(models.Model):
 
 
 class Expense(models.Model):
-    expense_number = models.CharField(max_length=50, unique=True, blank=True)  # Now optional at the form level
+    expense_number = models.CharField(max_length=50, unique=True, blank=True)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     category = models.ForeignKey(ExpenseCategory, on_delete=models.CASCADE)
     department = models.ForeignKey('human_resource.DepartmentModel', on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     date = models.DateField()
-    paid_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    # ===== UPDATED FIELD =====
+    paid_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='expenses_paid',
+        help_text="Staff member who paid this expense"
+    )
+    # =========================
+
     invoice_reference = models.CharField(max_length=200, blank=True)
-    payment_method = models.CharField(max_length=50, blank=True)
+
+    # ===== NEW FIELD WITH CHOICES =====
+    payment_method = models.CharField(
+        max_length=20,
+        choices=[
+            ('cash', 'Cash'),
+            ('transfer', 'Bank Transfer'),
+            ('cheque', 'Cheque'),
+            ('pos', 'POS/Card'),
+        ],
+        default='cash',
+        help_text="Method used to pay this expense"
+    )
+    # ==================================
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -432,7 +464,6 @@ class Expense(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.expense_number:
-            # Generate a unique number based on the date and an incrementing count
             today_str = now().strftime('%Y%m%d')
             prefix = f'EXP-{today_str}'
             last_expense = Expense.objects.filter(expense_number__startswith=prefix).order_by('expense_number').last()
@@ -448,6 +479,11 @@ class Expense(models.Model):
 
     def __str__(self):
         return f"{self.expense_number} - {self.title} - {self.amount}"
+
+    @property
+    def is_cash_expense(self):
+        """Check if this expense was paid in cash"""
+        return self.payment_method == 'cash'
 
 
 class IncomeCategory(models.Model):

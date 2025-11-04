@@ -71,7 +71,11 @@ from .views import (
     finance_service_patient_payment, finance_wallet_tools_entry, finance_wallet_history, finance_wallet_withdrawal,
     finance_process_refund, process_direct_payment, transaction_list, transaction_detail, wallet_funding_only_page,
     UnifiedPaymentView, ajax_process_consultation_payment, ajax_reuse_consultation_payment,
-    ajax_get_admission_surgery_details, ajax_process_other_payment,
+    ajax_get_admission_surgery_details, ajax_process_other_payment, StaffTransactionHistoryView,
+    PersonalStaffCollectionExcelView, PersonalStaffCollectionView, AllStaffCollectionsView,
+    AllStaffCollectionsExcelView,
+    AllStaffCollectionsPDFView, StaffTransactionHistoryExcelView, PersonalStaffCollectionPDFView,
+    StaffTransactionHistoryPDFView,
 )
 
 urlpatterns = [
@@ -209,5 +213,19 @@ urlpatterns = [
     # AJAX endpoint for other payments
     path('ajax/payment/other/', ajax_process_other_payment, name='ajax_process_other_payment'),
 
-]
+
+    path('personal-collection/',PersonalStaffCollectionView.as_view(),name='personal_staff_collection'),
+    path('personal-collection/export/excel/', PersonalStaffCollectionExcelView.as_view(),name='personal_collection_export_excel'),
+    path('personal-collection/export/pdf/', PersonalStaffCollectionPDFView.as_view(),name='personal_collection_export_pdf'),
+
+    # ==== ALL STAFF COLLECTIONS ====
+    path('all-staff-collections/', AllStaffCollectionsView.as_view(), name='all_staff_collections'),
+    path('all-staff-collections/export/excel/', AllStaffCollectionsExcelView.as_view(), name='all_staff_export_excel'),
+    path('all-staff-collections/export/pdf/', AllStaffCollectionsPDFView.as_view(), name='all_staff_export_pdf'),
+
+    # ==== STAFF TRANSACTION HISTORY ====
+    path('transaction-history/', StaffTransactionHistoryView.as_view(), name='staff_transaction_history'),
+    path('transaction-history/export/excel/', StaffTransactionHistoryExcelView.as_view(), name='staff_history_export_excel'),
+    path('transaction-history/export/pdf/', StaffTransactionHistoryPDFView.as_view(), name='staff_history_export_pdf'),
+   ]
 

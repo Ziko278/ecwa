@@ -187,6 +187,21 @@
                     <i class="bi bi-circle"></i><span>All Payments</span>
                 </a>
             </li>
+            <li>
+                <a href="{% url 'personal_staff_collection' %}">
+                    <i class="bi bi-circle"></i><span>My Collections</span>
+                </a>
+            </li>
+            <li>
+                <a href="{% url 'all_staff_collections' %}">
+                    <i class="bi bi-circle"></i><span>All Staff Collections</span>
+                </a>
+            </li>
+            <li>
+                <a href="{% url 'staff_transaction_history' %}">
+                    <i class="bi bi-circle"></i><span>Transaction History</span>
+                </a>
+            </li>
 
             <li>
                 <a href="{% url 'finance_dashboard' %}">
@@ -275,6 +290,11 @@
           <li>
             <a href="{% url 'specialization_group_index' %}">
               <i class="bi bi-circle"></i><span>Specialization Groups</span>
+            </a>
+          </li>
+            <li>
+            <a href="{% url 'diagnosis_index' %}">
+              <i class="bi bi-circle"></i><span>Diagnosis</span>
             </a>
           </li>
           {% endif %}
@@ -564,6 +584,11 @@
               <i class="bi bi-circle"></i><span>Lab Reports</span>
             </a>
           </li>
+            <li>
+            <a href="{% url 'lab_report_log' %}">
+              <i class="bi bi-circle"></i><span>Lab Test Log</span>
+            </a>
+          </li>
           {% endif %}
           {% if perms.laboratory.view_labtestcategorymodel %}
           <li>
@@ -624,6 +649,11 @@
             <li>
             <a href="{% url 'scan_reports' %}">
               <i class="bi bi-circle"></i><span>Scan Reports</span>
+            </a>
+          </li>
+            <li>
+            <a href="{% url 'scan_report_log' %}">
+              <i class="bi bi-circle"></i><span>Scan Log</span>
             </a>
           </li>
           {% endif %}
@@ -752,10 +782,56 @@
       </li>
       {% endif %}
 
+         {% if perms.site.change_siteinfo or perms.auth.view_group %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" data-bs-target="#report-nav" data-bs-toggle="collapse" href="#">
+          <i class="bi bi-gear-fill"></i><span>Report</span><i class="bi bi-chevron-down ms-auto"></i>
+        </a>
+        <ul id="report-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+
+          <li>
+
+            <a href="{% url 'general_financial_report' %}">
+              <i class="bi bi-circle"></i><span>Financial Report</span>
+            </a>
+          </li>
+            <li>
+
+            <a href="#">
+              <i class="bi bi-circle"></i><span>Clinical Report</span>
+            </a>
+
+          </li>
+            <li>
+            <a href="#">
+              <i class="bi bi-circle"></i><span>Statistical Form</span>
+            </a>
+          </li>
+
+
+            <li>
+            <a href="{% url 'consultation_report' %}">
+              <i class="bi bi-circle"></i><span>Consultation Report</span>
+            </a>
+          </li>
+            <li>
+            <a href="{% url 'lab_report_financial' %}">
+              <i class="bi bi-circle"></i><span>Lab Financial Report</span>
+            </a>
+          </li>
+            <li>
+            <a href="{% url 'scan_report_financial' %}">
+              <i class="bi bi-circle"></i><span>Scan Financial Report</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      {% endif %}
+
       {% if perms.site.change_siteinfo or perms.auth.view_group %}
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#tables-nav" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-gear-fill"></i><span>SETTING</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-gear-fill"></i><span>Setting</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="tables-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
           {% if perms.site.change_siteinfo %} <li>
@@ -774,6 +850,8 @@
         </ul>
       </li>
       {% endif %}
+
+
 
       <li class="nav-heading">Account</li>
 

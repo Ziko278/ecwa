@@ -226,6 +226,14 @@ class SurgeryType(models.Model):
             ('emergency', 'Emergency Surgery'),
         ]
     )
+    specialization = models.ForeignKey(
+        'consultation.SpecializationModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='surgery_types',
+        help_text="Medical specialization that performs this surgery type"
+    )
     base_surgeon_fee = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -461,6 +469,15 @@ class Surgery(models.Model):
     actual_start_time = models.DateTimeField(null=True, blank=True)
     actual_end_time = models.DateTimeField(null=True, blank=True)
 
+    specialization = models.ForeignKey(
+        'consultation.SpecializationModel',  # Adjust app name if different
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='surgeries',
+        help_text="Medical specialization performing this surgery"
+    )
+
     # Staff
     primary_surgeon = models.ForeignKey(
         User,
@@ -540,6 +557,12 @@ class Surgery(models.Model):
             # Generate surgery number
             from datetime import datetime
             self.surgery_number = f"SUR{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+        if not self.specialization:
+            try:
+                self.specialization = self.surgery_type.specialization
+            except:
+                pass
         super().save(*args, **kwargs)
 
     def __str__(self):

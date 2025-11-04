@@ -181,6 +181,9 @@ class LabTestOrderModel(models.Model):
     class Meta:
         db_table = 'lab_test_orders'
         ordering = ['-ordered_at']
+        permissions = [
+            ("view_financial_report", "Can view financial reports"),
+        ]
 
     def __str__(self):
         return f"{self.template.name} - {self.patient} ({self.order_number})"

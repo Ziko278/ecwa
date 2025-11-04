@@ -1,0 +1,133 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<div class="col-lg-12 grid-margin stretch-card">
+  <div class="card">
+    <div class="card-body">
+      <h4 class="card-title">ACTIONS:
+        <span class="card-description">Hover an Icon to reveal its function</span>
+      </h4>
+
+      <a title="Edit Diagnosis" type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#edit">
+        <i class="bi bi-pencil-square"></i>
+      </a>
+
+      <a title="Delete Diagnosis" type="button" class="btn btn-danger" href="{% url 'diagnosis_delete' diagnosis.id %}">
+        <i class="bi bi-trash"></i>
+      </a>
+
+      <a onclick="window.history.back()" title="Go Back" style="float:right" class="btn btn-danger"><i class="bi bi-arrow-left"></i></a>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-12">
+    <div class="card">
+      <div class="card-body pt-3">
+        <ul class="nav nav-tabs nav-tabs-bordered">
+          <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" data-bs-target="#diagnosis-data">Diagnosis Data</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" data-bs-target="#specializations-list">Linked Specializations</a></li>
+        </ul>
+
+        <div class="tab-content pt-2">
+          <div class="tab-pane fade show active profile-overview" id="diagnosis-data">
+            <div class="col-12 grid-margin">
+              <div class="card">
+                <div class="card-body" style="padding:20px">
+                  <p><b>Diagnosis Name: </b>{{ diagnosis.name|title }}</p>
+                  <p><b>ICD-10 Code: </b>{{ diagnosis.icd_code|default:"N/A" }}</p>
+                  <p><b>Status: </b>
+                    {% if diagnosis.is_active %}
+                        <span class="badge bg-success">Active</span>
+                    {% else %}
+                        <span class="badge bg-danger">Inactive</span>
+                    {% endif %}
+                  </p>
+                  <p><b>Created At: </b>{{ diagnosis.created_at|date:"F d, Y P" }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-pane fade profile-overview" id="specializations-list">
+            <div class="card-body">
+              <h5 class="card-title">Specializations that use this Diagnosis</h5>
+              <table class="table table-borderless datatable">
+                <thead>
+                  <tr>
+                    <th>#</th><th>Name</th><th>Code</th><th>Group</th><th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for spec in diagnosis.specializations.all %}
+                  <tr>
+                    <th scope="row">{{ forloop.counter }}</th>
+                    <td>{{ spec.name|title }}</td>
+                    <td>{{ spec.code|upper }}</td>
+                    <td>{{ spec.group.name|title|default:"N/A" }}</td>
+                    <td><a href="{% url 'specialization_detail' spec.id %}" class="btn btn-primary"><i class="bi bi-eye"></i></a></td>
+                  </tr>
+                  {% empty %}
+                  <tr><td colspan="5"><h3 class="text-center">No Specializations are linked to this Diagnosis Yet</h3></td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form method="POST" action="{% url 'diagnosis_edit' diagnosis.id %}">
+    {% csrf_token %}
+    <div class="modal fade" id="edit" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><b>Edit Diagnosis Option</b></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-floating">
+                        <input type="text" name="name" value="{{ diagnosis.name }}" autocomplete="off" required class="form-control" id="id_name">
+                        <label for="id_name">Diagnosis Name<span style="color:red"><b>*</b></span></label>
+                    </div><br />
+
+                    <div class="form-floating">
+                        <input type="text" name="icd_code" value="{{ diagnosis.icd_code|default_if_none:'' }}" autocomplete="off" class="form-control" id="id_icd_code">
+                        <label for="id_icd_code">ICD-10 Code</label>
+                    </div><br />
+
+                    <div class="mb-3">
+                        <label for="id_specializations" class="form-label">Link to Specializations</label>
+                        <select name="specializations" class="form-control select2" multiple id="id_specializations">
+                            {% for spec in all_specializations %}
+                                <option value="{{ spec.id }}" 
+                                    {% if spec in diagnosis.specializations.all %}selected{% endif %}>
+                                    {{ spec.name|title }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div><br />
+
+                    <div class="form-check">
+                        <input type="checkbox" name="is_active" class="form-check-input" id="id_is_active" {% if diagnosis.is_active %}checked{% endif %}>
+                        <label class="form-check-label" for="id_is_active">
+                            Is Active
+                        </label>
+                    </div><br />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}

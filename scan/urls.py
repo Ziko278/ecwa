@@ -70,6 +70,9 @@ urlpatterns = [
     path('reports/', ScanReportView.as_view(), name='scan_reports'),
     path('reports/export/excel/', ScanReportExportExcelView.as_view(), name='scan_report_export_excel'),
     path('reports/export/pdf/', ScanReportExportPDFView.as_view(), name='scan_report_export_pdf'),
+    path('reports/scan-log/', ScanLogView.as_view(), name='scan_report_log'),
+    path('reports/scan-log/export/excel/', ScanLogExportExcelView.as_view(), name='scan_report_log_export_excel'),
+    path('reports/scan-log/export/pdf/', ScanLogExportPDFView.as_view(), name='scan_report_log_export_pdf'),
 
     # -------------------------
     # Image Management

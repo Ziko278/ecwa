@@ -51,6 +51,10 @@ urlpatterns = [
     path('reports/', LabReportView.as_view(), name='lab_reports'),
     path('reports/export/excel/', LabReportExportExcelView.as_view(), name='lab_report_export_excel'),
     path('reports/export/pdf/', LabReportExportPDFView.as_view(), name='lab_report_export_pdf'),
+    
+    path('reports/log/', LabTestLogView.as_view(), name='lab_report_log'),
+    path('reports/log/export/excel/', LabTestLogExportExcelView.as_view(), name='lab_report_log_export_excel'),
+    path('reports/log/export/pdf/', LabTestLogExportPDFView.as_view(), name='lab_report_log_export_pdf'),
 
     path('results/', LabTestResultListView.as_view(), name='lab_result_index'),
     path('results/create/', LabTestResultCreateView.as_view(), name='lab_result_create'),

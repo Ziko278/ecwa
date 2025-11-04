@@ -3473,3 +3473,335 @@ class ScanReportExportPDFView(LoginRequiredMixin, PermissionRequiredMixin, View)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
+
+class ScanLogView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    template_name = 'scan/reports/log.html'
+    permission_required = 'scan.view_scanordermodel'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        from_date = self.request.GET.get('from_date')
+        to_date = self.request.GET.get('to_date')
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
+
+        if not to_date:
+            today = date.today()
+            if today.month == 12:
+                to_date = today.replace(day=31)
+            else:
+                to_date = (today.replace(month=today.month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        default_title = f'Scan Log ({from_date.strftime("%b %d, %Y")} - {to_date.strftime("%b %d, %Y")})'
+        report_title = self.request.GET.get('title', default_title)
+
+        orders_qs = ScanOrderModel.objects.filter(
+            ordered_at__date__range=[from_date, to_date]
+        ).exclude(
+            status__in=['pending', 'cancelled']
+        ).select_related(
+            'patient',
+            'template',
+            'result__verified_by__user_staff_profile__staff'
+        ).order_by('ordered_at')
+
+        totals = orders_qs.aggregate(
+            total_amount=Sum('amount_charged'),
+            total_patients=Count('patient', distinct=True)
+        )
+
+        context.update({
+            'from_date': from_date,
+            'to_date': to_date,
+            'report_title': report_title,
+            'orders': orders_qs,
+            'total_amount': totals['total_amount'] or Decimal('0.00'),
+            'total_patients': totals['total_patients'] or 0,
+        })
+        return context
+
+
+class ScanLogExportExcelView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'scan.view_scanordermodel'
+
+    def get(self, request, *args, **kwargs):
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        report_title = request.GET.get('title', 'Scan Log')
+        show_status = request.GET.get('show_status', 'true') == 'true'
+        show_amount = request.GET.get('show_amount', 'true') == 'true'
+        show_scientist = request.GET.get('show_scientist', 'true') == 'true'
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
+        if not to_date:
+            today = date.today()
+            if today.month == 12:
+                to_date = today.replace(day=31)
+            else:
+                to_date = (today.replace(month=today.month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        orders_qs = ScanOrderModel.objects.filter(
+            ordered_at__date__range=[from_date, to_date]
+        ).exclude(
+            status__in=['pending', 'cancelled']
+        ).select_related(
+            'patient', 'template', 'result__verified_by'
+        ).order_by('ordered_at')
+
+        totals = orders_qs.aggregate(
+            total_amount=Sum('amount_charged'),
+            total_patients=Count('patient', distinct=True)
+        )
+        total_amount = totals['total_amount'] or Decimal('0.00')
+        total_patients = totals['total_patients'] or 0
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Scan Log"
+
+        # Styles
+        header_font = Font(bold=True, size=14)
+        title_font = Font(bold=True, size=12)
+        table_header_font = Font(bold=True, size=11, color="FFFFFF")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        total_font = Font(bold=True, size=11)
+        border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'),
+                        bottom=Side(style='thin'))
+
+        # Header section adapted for Scan/Site info
+        scan_setting = ScanSettingModel.objects.first()
+        site_info = SiteInfoModel.objects.first()
+        row = 1
+        if scan_setting and scan_setting.scan_name:
+            ws.merge_cells(f'A{row}:H{row}');
+            cell = ws[f'A{row}'];
+            cell.value = scan_setting.scan_name;
+            cell.font = header_font;
+            cell.alignment = Alignment(horizontal='center');
+            row += 1
+        elif site_info:
+            ws.merge_cells(f'A{row}:H{row}');
+            cell = ws[f'A{row}'];
+            cell.value = site_info.name;
+            cell.font = header_font;
+            cell.alignment = Alignment(horizontal='center');
+            row += 1
+        row += 1
+
+        ws.merge_cells(f'A{row}:H{row}');
+        cell = ws[f'A{row}'];
+        cell.value = report_title;
+        cell.font = title_font;
+        cell.alignment = Alignment(horizontal='center');
+        row += 1
+        ws.merge_cells(f'A{row}:H{row}');
+        cell = ws[f'A{row}'];
+        cell.value = f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}";
+        cell.alignment = Alignment(horizontal='center');
+        row += 2
+
+        # Table Headers
+        headers = ['S/N', 'Date', 'Patient ID', 'Patient Name', 'Scan Name']
+        if show_status: headers.append('Status')
+        if show_amount: headers.append('Amount')
+        if show_scientist: headers.append('Verified By')
+
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=col_num, value=header)
+            cell.font = table_header_font;
+            cell.fill = header_fill;
+            cell.border = border
+        row += 1
+
+        # Data Rows
+        for idx, order in enumerate(orders_qs, 1):
+            col = 1
+            ws.cell(row=row, column=col, value=idx).border = border;
+            col += 1
+            ws.cell(row=row, column=col, value=order.ordered_at.strftime('%Y-%m-%d %H:%M')).border = border;
+            col += 1
+            ws.cell(row=row, column=col, value=order.patient.card_number).border = border;
+            col += 1
+            ws.cell(row=row, column=col, value=order.patient.__str__()).border = border;
+            col += 1
+            ws.cell(row=row, column=col, value=order.template.name).border = border;
+            col += 1
+
+            if show_status:
+                ws.cell(row=row, column=col, value=order.get_status_display()).border = border;
+                col += 1
+            if show_amount:
+                cell = ws.cell(row=row, column=col, value=order.amount_charged);
+                cell.number_format = '#,##0.00';
+                cell.border = border;
+                col += 1
+
+            if show_scientist:
+                verifier = 'N/A'
+                if hasattr(order, 'result') and order.result and order.result.verified_by:
+                    user = order.result.verified_by
+                    if hasattr(user,
+                               'user_staff_profile') and user.user_staff_profile and user.user_staff_profile.staff:
+                        verifier = user.user_staff_profile.staff.__str__()
+                    else:
+                        verifier = user.get_full_name()
+                ws.cell(row=row, column=col, value=verifier).border = border;
+                col += 1
+            row += 1
+
+        # Total Row
+        ws.cell(row=row, column=5, value="TOTAL").font = total_font
+        ws.cell(row=row, column=5).border = border
+
+        col_offset = 6
+        if show_status:
+            ws.cell(row=row, column=col_offset).border = border;
+            col_offset += 1
+        if show_amount:
+            cell = ws.cell(row=row, column=col_offset, value=total_amount);
+            cell.font = total_font;
+            cell.number_format = '#,##0.00';
+            cell.border = border;
+            col_offset += 1
+        if show_scientist:
+            cell = ws.cell(row=row, column=col_offset, value=f"{total_patients} Unique Patients");
+            cell.font = total_font;
+            cell.border = border
+
+        ws.column_dimensions['A'].width = 6;
+        ws.column_dimensions['B'].width = 18;
+        ws.column_dimensions['C'].width = 15;
+        ws.column_dimensions['D'].width = 30;
+        ws.column_dimensions['E'].width = 35
+        if show_status: ws.column_dimensions['F'].width = 15
+        if show_amount: ws.column_dimensions['G'].width = 15
+        if show_scientist: ws.column_dimensions['H'].width = 30
+
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        filename = f"scan_log_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+
+
+class ScanLogExportPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'scan.view_scanordermodel'
+
+    def get(self, request, *args, **kwargs):
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+        report_title = request.GET.get('title', 'Scan Log')
+        show_status = request.GET.get('show_status', 'true') == 'true'
+        show_amount = request.GET.get('show_amount', 'true') == 'true'
+        show_scientist = request.GET.get('show_scientist', 'true') == 'true'
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
+        if not to_date:
+            today = date.today()
+            if today.month == 12:
+                to_date = today.replace(day=31)
+            else:
+                to_date = (today.replace(month=today.month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        orders_qs = ScanOrderModel.objects.filter(
+            ordered_at__date__range=[from_date, to_date]
+        ).exclude(
+            status__in=['pending', 'cancelled']
+        ).select_related(
+            'patient', 'template', 'result__verified_by'
+        ).order_by('ordered_at')
+
+        totals = orders_qs.aggregate(Sum('amount_charged'), Count('patient', distinct=True))
+        total_amount = totals['amount_charged__sum'] or Decimal('0.00')
+        total_patients = totals['patient__count'] or 0
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30,
+                                bottomMargin=30)
+        elements = []
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, alignment=TA_CENTER,
+                                     spaceAfter=12)
+        subtitle_style = ParagraphStyle('CustomSubtitle', parent=styles['Normal'], fontSize=11, alignment=TA_CENTER,
+                                        spaceAfter=6)
+
+        # Header adapted for Scan/Site info
+        scan_setting = ScanSettingModel.objects.first()
+        site_info = SiteInfoModel.objects.first()
+        if scan_setting and scan_setting.scan_name:
+            elements.append(Paragraph(scan_setting.scan_name, title_style))
+        elif site_info:
+            elements.append(Paragraph(site_info.name, title_style))
+
+        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(Paragraph(report_title, title_style))
+        elements.append(
+            Paragraph(f"Period: {from_date.strftime('%B %d, %Y')} to {to_date.strftime('%B %d, %Y')}", subtitle_style))
+        elements.append(Spacer(1, 0.2 * inch))
+
+        headers = ['S/N', 'Date', 'Patient ID', 'Patient Name', 'Scan Name']
+        col_widths = [0.4 * inch, 0.9 * inch, 0.9 * inch, 1.8 * inch, 2.0 * inch]
+        if show_status: headers.append('Status'); col_widths.append(1.0 * inch)
+        if show_amount: headers.append('Amount'); col_widths.append(0.8 * inch)
+        if show_scientist: headers.append('Verified By'); col_widths.append(1.5 * inch)
+        table_data = [headers]
+
+        for idx, order in enumerate(orders_qs, 1):
+            row = [str(idx), order.ordered_at.strftime('%y-%m-%d %H:%M'), order.patient.card_number,
+                   order.patient.__str__(), order.template.name]
+            if show_status: row.append(order.get_status_display())
+            if show_amount: row.append(f"{order.amount_charged:,.2f}")
+            if show_scientist:
+                verifier = 'N/A'
+                if hasattr(order, 'result') and order.result and order.result.verified_by:
+                    user = order.result.verified_by
+                    if hasattr(user,
+                               'user_staff_profile') and user.user_staff_profile and user.user_staff_profile.staff:
+                        verifier = user.user_staff_profile.staff.__str__()
+                    else:
+                        verifier = user.get_full_name()
+                row.append(verifier)
+            table_data.append(row)
+
+        total_row = ['', '', '', '', 'TOTAL']
+        if show_status: total_row.append('')
+        if show_amount: total_row.append(f"{total_amount:,.2f}")
+        if show_scientist: total_row.append(f"{total_patients} Unique Patients")
+        table_data.append(total_row)
+
+        table = Table(table_data, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'), ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey), ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f0f0f0')]),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'), ('FONTSIZE', (0, -1), (-1, -1), 9),
+            ('GRID', (0, -1), (-1, -1), 1, colors.black), ('ALIGN', (4, -1), (-1, -1), 'RIGHT'),
+        ]))
+        elements.append(table)
+
+        doc.build(elements)
+        buffer.seek(0)
+        response = HttpResponse(buffer, content_type='application/pdf')
+        filename = f"scan_log_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response

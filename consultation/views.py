@@ -71,6 +71,90 @@ class ConsultationContextMixin:
 
 
 # -------------------------
+# 2. DIAGNOSIS OPTION VIEWS
+# -------------------------
+class DiagnosisOptionCreateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    SuccessMessageMixin, CreateView
+):
+    model = DiagnosisOption
+    permission_required = 'consultation.add_diagnosisoption'
+    form_class = DiagnosisOptionForm
+    template_name = 'consultation/diagnosis/index.html'
+    success_message = 'Diagnosis Option Successfully Registered'
+
+    def get_success_url(self):
+        return reverse('diagnosis_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('diagnosis_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class DiagnosisOptionListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = DiagnosisOption
+    permission_required = 'consultation.view_diagnosisoption'
+    template_name = 'consultation/diagnosis/index.html'
+    context_object_name = "diagnosis_list"
+
+    def get_queryset(self):
+        return DiagnosisOption.objects.all().prefetch_related('specializations').order_by('name')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['form'] = DiagnosisOptionForm()
+        # Pass all specializations for the 'Edit' modal's select dropdown
+        context['all_specializations'] = SpecializationModel.objects.all().order_by('name')
+        return context
+
+
+class DiagnosisOptionUpdateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin,
+    SuccessMessageMixin, UpdateView
+):
+    model = DiagnosisOption
+    permission_required = 'consultation.change_diagnosisoption'
+    form_class = DiagnosisOptionForm
+    template_name = 'consultation/diagnosis/index.html'
+    success_message = 'Diagnosis Option Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('diagnosis_index')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == 'GET':
+            return redirect(reverse('diagnosis_index'))
+        return super().dispatch(request, *args, **kwargs)
+
+
+class DiagnosisOptionDeleteView(
+    LoginRequiredMixin, PermissionRequiredMixin, SuccessMessageMixin, DeleteView
+):
+    model = DiagnosisOption
+    permission_required = 'consultation.delete_diagnosisoption'
+    template_name = 'consultation/diagnosis/delete.html'
+    context_object_name = "diagnosis"
+    success_message = 'Diagnosis Option Successfully Deleted'
+
+    def get_success_url(self):
+        return reverse('diagnosis_index')
+
+
+class DiagnosisOptionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = DiagnosisOption
+    permission_required = 'consultation.view_diagnosisoption'
+    template_name = 'consultation/diagnosis/detail.html'
+    context_object_name = "diagnosis"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Pass all specializations for the 'Edit' modal
+        context['all_specializations'] = SpecializationModel.objects.all().order_by('name')
+        return context
+
+
+# -------------------------
 # 1. SPECIALIZATION VIEWS
 # -------------------------
 class SpecializationCreateView(

@@ -17,6 +17,11 @@ urlpatterns = [
     path('specialization-group/<int:pk>/update/', SpecializationGroupUpdateView.as_view(), name='specialization_group_update'),
     path('specialization-group/<int:pk>/delete/', SpecializationGroupDeleteView.as_view(), name='specialization_group_delete'),
 
+    path('diagnosis/create', DiagnosisOptionCreateView.as_view(), name='diagnosis_create'),
+    path('diagnosis/index', DiagnosisOptionListView.as_view(), name='diagnosis_index'),
+    path('diagnosis/<int:pk>/detail', DiagnosisOptionDetailView.as_view(), name='diagnosis_detail'),
+    path('diagnosis/<int:pk>/edit', DiagnosisOptionUpdateView.as_view(), name='diagnosis_edit'),
+    path('diagnosis/<int:pk>/delete', DiagnosisOptionDeleteView.as_view(), name='diagnosis_delete'),
 
     # -------------------------
     # 2. CONSULTATION BLOCKS URLS

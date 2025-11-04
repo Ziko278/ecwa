@@ -1,0 +1,229 @@
+{% extends 'admin_site/layout.html' %}
+{% load static humanize %}
+{% block 'main' %}
+<style>
+.report-container {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 24px;
+    margin-bottom: 20px;
+}
+.report-header {
+    border-bottom: 2px solid #4472C4;
+    padding-bottom: 16px;
+    margin-bottom: 24px;
+}
+.filters-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 6px;
+    margin-bottom: 24px;
+}
+.form-group {
+    margin-bottom: 16px;
+}
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #333;
+}
+.form-control {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.btn-primary {
+    background: #4472C4;
+    color: white;
+}
+.btn-success {
+    background: #28a745;
+    color: white;
+}
+.btn-info {
+    background: #17a2b8;
+    color: white;
+}
+.controls-bar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+}
+.data-table th {
+    background: #4472C4;
+    color: white;
+    padding: 12px;
+    text-align: left;
+    font-size: 12px;
+}
+.data-table td {
+    padding: 10px;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 13px;
+}
+.data-table tbody tr:nth-child(even) {
+    background: #f8f9fa;
+}
+.data-table td.right {
+    text-align: right;
+}
+.data-table tfoot td {
+    font-weight: 700;
+    background: #f8f9fa;
+    border-top: 2px solid #4472C4;
+    padding: 16px 10px;
+}
+.table-responsive {
+    overflow-x: auto;
+}
+</style>
+
+<div class="report-container">
+    <div class="report-header">
+        <h2>All Staff Collections Report</h2>
+        <p style="color: #666; margin: 0;">Comprehensive financial activity for all staff members</p>
+    </div>
+
+    <div class="filters-section">
+        <form method="get" id="reportForm">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <div class="form-group">
+                    <label for="from_date">From Date</label>
+                    <input type="date" name="from_date" id="from_date" class="form-control" value="{{ from_date|date:'Y-m-d' }}">
+                </div>
+                <div class="form-group">
+                    <label for="to_date">To Date</label>
+                    <input type="date" name="to_date" id="to_date" class="form-control" value="{{ to_date|date:'Y-m-d' }}">
+                </div>
+                <div class="form-group">
+                    <label for="staff_filter">Filter by Staff</label>
+                    <select name="staff_filter" id="staff_filter" class="form-control">
+                        <option value="">All Staff</option>
+                        {% for s in all_staff %}
+                        <option value="{{ s.id }}" {% if staff_filter == s.id|stringformat:"s" %}selected{% endif %}>
+                            {{ s.get_full_name|default:s.username }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top: 16px;">
+                <button type="submit" class="btn btn-primary">Generate Report</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="controls-bar">
+        <button class="btn btn-success" onclick="exportToExcel()">
+            <i class="fas fa-file-excel"></i> Export Excel
+        </button>
+        <button class="btn btn-info" onclick="exportToPDF()">
+            <i class="fas fa-file-pdf"></i> Export PDF
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Staff</th>
+                    <th class="right">CARD</th>
+                    <th class="right">CONS</th>
+                    <th class="right">LAB</th>
+                    <th class="right">DRUGS</th>
+                    <th class="right">SCAN</th>
+                    <th class="right">Services</th>
+                    <th class="right">Surgery</th>
+                    <th class="right">Other</th>
+                    <th class="right">Collections</th>
+                    <th class="right">Expenses</th>
+                    <th class="right">Withdrawals</th>
+                    <th class="right">Net</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for report in staff_reports %}
+                <tr>
+                    <td>{{ report.staff.get_full_name|default:report.staff.username }}</td>
+                    <td class="right">{{ report.card_total|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ report.cons_total|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ report.lab_total|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ report.drugs_total|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ report.scan_total|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ report.services_total|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ report.surgery_total|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ report.other_total|floatformat:2|intcomma }}</td>
+                    <td class="right"><strong>{{ report.total_collections|floatformat:2|intcomma }}</strong></td>
+                    <td class="right" style="color: #d9534f;">{{ report.cash_expenses|floatformat:2|intcomma }}</td>
+                    <td class="right" style="color: #d9534f;">{{ report.wallet_withdrawals|floatformat:2|intcomma }}</td>
+                    <td class="right" style="color: #28a745;"><strong>{{ report.net_to_remit|floatformat:2|intcomma }}</strong></td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="13" style="text-align: center; padding: 40px; color: #999;">
+                        No staff collections found for the selected period.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td>GRAND TOTAL</td>
+                    <td class="right">{{ grand_totals.card|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.cons|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.lab|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.drugs|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.scan|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.services|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.surgery|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.other|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.collections|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.expenses|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.withdrawals|floatformat:2|intcomma }}</td>
+                    <td class="right">{{ grand_totals.net|floatformat:2|intcomma }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<script>
+function getParams() {
+    const fromDate = document.getElementById('from_date').value;
+    const toDate = document.getElementById('to_date').value;
+    const staffFilter = document.getElementById('staff_filter').value;
+    
+    return new URLSearchParams({
+        from_date: fromDate,
+        to_date: toDate,
+        staff_filter: staffFilter
+    });
+}
+
+function exportToExcel() {
+    const params = getParams();
+    window.location.href = `{% url 'all_staff_export_excel' %}?${params.toString()}`;
+}
+
+function exportToPDF() {
+    const params = getParams();
+    window.location.href = `{% url 'all_staff_export_pdf' %}?${params.toString()}`;
+}
+</script>
+{% endblock %}
