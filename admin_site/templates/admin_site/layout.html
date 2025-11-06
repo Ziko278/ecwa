@@ -679,20 +679,20 @@
         </ul>
       </li>
       {% endif %}
-        {% if perms.service.add_itemordermodel or perms.service.view_itemordermodel or perms.service.view_serviceitemmodel or perms.service.view_servicecategorymodel %}
+        {% if perms.service.add_patientservicetransaction or perms.service.view_patientservicetransaction  or perms.service.view_servicecategory %}
       <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#services-nav" data-bs-toggle="collapse" href="#">
             <i class="bi bi-card-checklist"></i><span>Services & Inventory</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="services-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
-            {% if perms.service.add_itemordermodel %}
+            {% if perms.service.view_patientservicetransaction %}
             <li>
             <a href="{% url 'patient_order_page' %}">
                 <i class="bi bi-circle"></i><span>New Order</span>
             </a>
             </li>
             {% endif %}
-            {% if perms.service.view_itemordermodel %}
+            {% if perms.service.view_patientservicetransaction %}
             <li>
             <a href="{% url 'item_order_list' %}">
                 <i class="bi bi-circle"></i><span>Item Orders</span>
@@ -703,17 +703,21 @@
             </a>
             </li>
             {% endif %}
-            {% if perms.service.view_serviceitemmodel %}
+            {% if perms.service.view_servicecategory %}
             <li>
             <a href="{% url 'service_item_list' %}">
                 <i class="bi bi-circle"></i><span>Service Items</span>
             </a>
             </li>
+             {% endif %}
             <li>
+               {% if perms.service.view_patientservicetransaction %}
             <a href="{% url 'service_dashboard' %}">
                 <i class="bi bi-circle"></i><span>Dashboard</span>
             </a>
             </li>
+             {% endif %}
+            {% if perms.service.view_servicecategory %}
             <li>
             <a href="{% url 'service_item_batch_list' %}">
                 <i class="bi bi-circle"></i><span>Stock Batch</span>
