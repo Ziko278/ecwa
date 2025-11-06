@@ -173,6 +173,12 @@
                     <i class="bi bi-circle"></i><span>New Registration Payments</span>
                 </a>
             </li>
+            <li>
+                <a href="{% url 'wallet_funding_only' %}">
+                    <i class="bi bi-circle"></i><span>Fund Patient Wallet</span>
+                </a>
+            </li>
+
             {% endif %}
             {% if perms.finance.view_patienttransactionmodel %}
             <li>

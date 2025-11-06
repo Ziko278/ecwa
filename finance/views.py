@@ -4484,23 +4484,7 @@ def wallet_funding_only_page(request):
         'patient': patient,
     }
 
-    return render(request, 'finance/wallet_funding_only.html', context)
-
-
-from django.contrib.auth.decorators import login_required, permission_required
-from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.views.generic import TemplateView
-from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
-from django.db import transaction
-from django.db.models import Sum, F, DecimalField, ExpressionWrapper
-from django.utils import timezone
-from django.urls import reverse
-from decimal import Decimal
-from datetime import date, timedelta, time
-import logging
-
-logger = logging.getLogger(__name__)
+    return render(request, 'finance/wallet/wallet_funding_only.html', context)
 
 
 class UnifiedPaymentView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
