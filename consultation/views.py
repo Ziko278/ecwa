@@ -5173,7 +5173,6 @@ def ajax_search_service_items(request):
     queryset = ServiceItem.objects.filter(
         Q(name__icontains=query) | Q(description__icontains=query),
         is_active=True,
-
     ).select_related('category')
 
     if category_id:
@@ -5239,10 +5238,10 @@ def order_multiple_services_or_items(request):
 
                 elif order_type == 'item':
                     item = get_object_or_404(ServiceItem, pk=template_id)
-                    if item.stock_quantity < quantity:
-                        return JsonResponse(
-                            {'error': f'Not enough stock for {item.name}. Available: {item.stock_quantity}'},
-                            status=400)
+                    # if item.stock_quantity < quantity:
+                    #     return JsonResponse(
+                    #         {'error': f'Not enough stock for {item.name}. Available: {item.stock_quantity}'},
+                    #         status=400)
 
                     tx = PatientServiceTransaction.objects.create(
                         patient=patient,
