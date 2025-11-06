@@ -4215,7 +4215,7 @@ def process_direct_payment(request):
                     service=svc
                 )
 
-                svc.status = 'completed'
+                svc.status = 'paid'
                 svc.save()
                 child_transactions_created.append(child_trans)
 

@@ -53,7 +53,7 @@
                                 {% if tx.status == 'fully_dispensed' %}bg-success
                                 {% elif tx.status == 'partially_dispensed' %}bg-info text-dark
                                 {% else %}bg-secondary{% endif %}">
-                                
+                                {{ tx.status.title }}
                             </span>
                         </td>
                     </tr>
