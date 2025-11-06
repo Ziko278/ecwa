@@ -1909,6 +1909,7 @@ Excel & PDF Exports
 # MAIN VIEW
 # ============================================================================
 
+
 class GeneralFinancialReportView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = 'admin_site/reports/general_financial_report.html'
     permission_required = 'finance.view_financial_reports'

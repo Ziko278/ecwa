@@ -5173,7 +5173,7 @@ def ajax_search_service_items(request):
     queryset = ServiceItem.objects.filter(
         Q(name__icontains=query) | Q(description__icontains=query),
         is_active=True,
-        stock_quantity__gt=0
+
     ).select_related('category')
 
     if category_id:
