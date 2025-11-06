@@ -3,7 +3,7 @@ import calendar
 from datetime import timedelta, date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
-
+from datetime import date, timedelta, time
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.models import User
 from django.contrib.messages.views import SuccessMessageMixin
@@ -58,6 +58,9 @@ import uuid
 from pharmacy.models import DrugOrderModel
 from scan.models import ScanOrderModel
 from service.models import PatientServiceTransaction, ServiceCategory
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RegistrationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
