@@ -240,4 +240,8 @@ urlpatterns = [
     path('ajax/delete-service-order/<int:order_id>/', delete_service_order, name='delete_service_order'),
     path('service-result/<int:result_id>/view/', view_service_result, name='view_service_result'),
 
+    path('ajax/search-diagnoses/', ajax_search_diagnoses, name='ajax_search_diagnoses'),
+    path('ajax/save-diagnosis/', ajax_save_diagnosis, name='ajax_save_diagnosis'),
+    path('bulk-diagnosis-update/', bulk_diagnosis_update, name='bulk_diagnosis_update'),
+
 ]

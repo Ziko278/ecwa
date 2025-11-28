@@ -330,7 +330,7 @@
       {% if perms.patient.add_patientmodel or perms.patient.view_patientmodel or perms.patient.view_registrationfeemodel or perms.patient.can_view_patient_dashboard %}
        <li class="nav-item">
         <a class="nav-link collapsed" data-bs-target="#sb_att" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-person-vcard"></i><span>Patient</span><i class="bi bi-chevron-down ms-auto"></i>
+          <i class="bi bi-person-vcard"></i><span>Patient Record</span><i class="bi bi-chevron-down ms-auto"></i>
         </a>
         <ul id="sb_att" class="nav-content collapse " data-bs-parent="#sidebar-nav">
           {% if perms.patient.add_patientmodel %}
@@ -354,7 +354,14 @@
             </a>
           </li>
           {% endif %}
-          {% if perms.patient.can_view_patient_dashboard %}
+            {% if perms.patient.view_patientmodel %}
+          <li>
+            <a href="{% url 'bulk_diagnosis_update' %}">
+              <i class="bi bi-circle"></i><span>Update Diagnoses</span>
+            </a>
+          </li>
+          {% endif %}
+             {% if perms.patient.can_view_patient_dashboard %}
           <li>
             <a href="{% url 'patient_dashboard' %}">
               <i class="bi bi-circle"></i><span>Patient Dashboard</span>
@@ -415,6 +422,11 @@
             <li>
             <a href="{% url 'surgery_type_index' %}">
                 <i class="bi bi-circle"></i><span>Surgery Types</span>
+            </a>
+            </li>
+            <li>
+            <a href="{% url 'admission_type_index' %}">
+                <i class="bi bi-circle"></i><span>Admission Types</span>
             </a>
             </li>
             {% endif %}

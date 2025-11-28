@@ -16,17 +16,21 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 import logging
 
+from consultation.models import ConsultationSessionModel
+from finance.models import PatientTransactionModel
 from laboratory.models import LabTestOrderModel, LabTestTemplateModel, LabTestCategoryModel
 from pharmacy.models import DrugOrderModel, DrugModel, ExternalPrescription
 from scan.models import ScanOrderModel, ScanTemplateModel, ScanCategoryModel
+from service.models import ServiceCategory, PatientServiceTransaction
+from .helpers import clear_pending_admission_orders
 from .models import (
     InpatientSettings, Ward, Bed, SurgeryType, SurgeryDrug, SurgeryLab, SurgeryScan,
-    Admission, Surgery
+    Admission, Surgery, AdmissionTask, AdmissionType
 )
 from .forms import (
     InpatientSettingsForm, WardForm, BedForm, SurgeryTypeForm, AdmissionForm,
     AdmissionUpdateForm, SurgeryForm, SurgeryUpdateForm, SurgeryDrugForm,
-    SurgeryLabForm, SurgeryScanForm
+    SurgeryLabForm, SurgeryScanForm, AdmissionTypeForm, AdmissionTaskForm, AdmissionDepositForm, DischargeForm
 )
 from patient.models import PatientModel
 
@@ -1424,3 +1428,592 @@ def surgery_order_multiple_imaging(request):
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# -------------------------
+# Admission Type Views
+# -------------------------
+class AdmissionTypeListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = AdmissionType
+    permission_required = 'inpatient.view_admissiontype'
+    template_name = 'inpatient/admission_type/index.html'
+    context_object_name = 'admission_type_list'
+    paginate_by = 20
+
+    def get_queryset(self):
+        queryset = AdmissionType.objects.all()
+
+        # Search functionality
+        search = self.request.GET.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(description__icontains=search)
+            )
+
+        return queryset.order_by('name')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['search_query'] = self.request.GET.get('search', '')
+        return context
+
+
+class AdmissionTypeCreateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
+):
+    model = AdmissionType
+    permission_required = 'inpatient.add_admissiontype'
+    form_class = AdmissionTypeForm
+    template_name = 'inpatient/admission_type/create.html'
+    success_message = 'Admission Type Successfully Created'
+
+    def get_success_url(self):
+        return reverse('admission_type_index')
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user
+        messages.success(self.request, self.success_message)
+        return super().form_valid(form)
+
+
+class AdmissionTypeUpdateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
+):
+    model = AdmissionType
+    permission_required = 'inpatient.change_admissiontype'
+    form_class = AdmissionTypeForm
+    template_name = 'inpatient/admission_type/create.html'
+    success_message = 'Admission Type Successfully Updated'
+
+    def get_success_url(self):
+        return reverse('admission_type_index')
+
+    def form_valid(self, form):
+        messages.success(self.request, self.success_message)
+        return super().form_valid(form)
+
+
+class AdmissionTypeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = AdmissionType
+    permission_required = 'inpatient.view_admissiontype'
+    template_name = 'inpatient/admission_type/detail.html'
+    context_object_name = 'admission_type'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        admission_type = self.object
+
+        # Get statistics
+        context['stats'] = {
+            'total_admissions': admission_type.admissions.count(),
+            'active_admissions': admission_type.admissions.filter(status='active').count(),
+            'total_revenue': admission_type.admissions.aggregate(
+                total=Sum('total_charges')
+            )['total'] or Decimal('0.00')
+        }
+
+        return context
+
+
+# -------------------------
+# Ward Round Views
+# -------------------------
+@login_required
+@permission_required('inpatient.add_wardround')
+def ward_round_search_admission(request):
+    """Search for admission to start ward round"""
+    if request.method == 'POST':
+        card_number = request.POST.get('card_number', '').strip()
+        if not card_number:
+            messages.error(request, 'Please enter patient card number')
+            return render(request, 'inpatient/ward_round/search_admission.html')
+
+        try:
+            patient = PatientModel.objects.get(card_number__iexact=card_number)
+
+            # Check for active admission
+            active_admission = Admission.objects.filter(
+                patient=patient,
+                status='active'
+            ).first()
+
+            if not active_admission:
+                messages.error(request, f'No active admission found for patient {patient}')
+                return render(request, 'inpatient/ward_round/search_admission.html')
+
+            # Check for in-progress ward round
+            in_progress_round = ConsultationSessionModel.objects.filter(
+                admission=active_admission,
+                status='in_progress'
+            ).first()
+
+            if in_progress_round:
+                messages.info(request, 'Resuming existing ward round')
+                return redirect('ward_round_detail', pk=in_progress_round.pk)
+
+            # Create new ward round
+            return redirect('ward_round_create_for_admission', admission_id=active_admission.id)
+
+        except PatientModel.DoesNotExist:
+            messages.error(request, 'Patient not found with this card number')
+
+    return render(request, 'inpatient/ward_round/search_admission.html')
+
+
+@login_required
+@permission_required('inpatient.add_wardround')
+def ward_round_create_for_admission(request, admission_id):
+    """Create ward round for specific admission"""
+    admission = get_object_or_404(Admission, pk=admission_id, status='active')
+
+    if request.method == 'POST':
+        # Create ward round
+        ward_round = ConsultationSessionModel.objects.create(
+            admission=admission,
+            doctor=request.user,
+            status='in_progress'
+        )
+
+        messages.success(request, f'Ward round {ward_round.round_number} started')
+        return redirect('ward_round_detail', pk=ward_round.pk)
+
+    return render(request, 'inpatient/ward_round/confirm_start.html', {
+        'admission': admission
+    })
+
+
+class WardRoundDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    model = ConsultationSessionModel
+    permission_required = 'inpatient.view_wardround'
+    template_name = 'inpatient/ward_round/detail.html'
+    context_object_name = 'ward_round'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        ward_round = self.object
+        admission = ward_round.admission
+
+        # Get recent consultations/ward rounds
+        context['recent_ward_rounds'] = admission.ward_rounds.filter(
+            status='completed'
+        ).order_by('-round_date')[:5]
+
+        # Get orders created during this ward round
+        context['prescriptions'] = DrugOrderModel.objects.filter(
+            admission=admission,
+            ordered_at__gte=ward_round.created_at
+        ).select_related('drug')
+
+        context['lab_tests'] = LabTestOrderModel.objects.filter(
+            admission=admission,
+            ordered_at__gte=ward_round.created_at
+        ).select_related('template')
+
+        context['scans'] = ScanOrderModel.objects.filter(
+            admission=admission,
+            ordered_at__gte=ward_round.created_at
+        ).select_related('template')
+
+        context['service_transactions'] = PatientServiceTransaction.objects.filter(
+            admission=admission,
+            created_at__gte=ward_round.created_at
+        ).select_related('service', 'service_item')
+
+        # Get lab/scan categories for modals
+        context['lab_categories'] = LabTestCategoryModel.objects.all()
+        context['scan_categories'] = ScanCategoryModel.objects.all()
+        context['service_categories'] = ServiceCategory.objects.all()
+        context['item_categories'] = ServiceCategory.objects.filter(
+            category_type__in=['item', 'mixed']
+        )
+
+        # Admission info
+        context['admission'] = admission
+        context['patient'] = admission.patient
+
+        return context
+
+
+@login_required
+@permission_required('inpatient.change_wardround')
+def save_ward_round(request, pk):
+    """Save ward round clinical notes via AJAX"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+
+    # Update fields
+    ward_round.chief_complaint = request.POST.get('chief_complaint', '')
+    ward_round.assessment = request.POST.get('assessment', '')
+    ward_round.plan = request.POST.get('plan', '')
+
+    # Handle vitals (JSON)
+    vitals = {}
+    if request.POST.get('bp'):
+        vitals['bp'] = request.POST.get('bp')
+    if request.POST.get('temp'):
+        vitals['temp'] = request.POST.get('temp')
+    if request.POST.get('pulse'):
+        vitals['pulse'] = request.POST.get('pulse')
+    if request.POST.get('spo2'):
+        vitals['spo2'] = request.POST.get('spo2')
+    if request.POST.get('weight'):
+        vitals['weight'] = request.POST.get('weight')
+
+    if vitals:
+        ward_round.vitals = vitals
+
+    ward_round.save()
+
+    return JsonResponse({'success': True, 'message': 'Ward round saved successfully'})
+
+
+@login_required
+@permission_required('inpatient.change_wardround')
+def complete_ward_round(request, pk):
+    """Complete ward round"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+
+    ward_round.status = 'completed'
+    ward_round.completed_at = timezone.now()
+    ward_round.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Ward round completed successfully'
+    })
+
+
+@login_required
+@permission_required('inpatient.change_wardround')
+def pause_ward_round(request, pk):
+    """Pause ward round"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+
+    ward_round.status = 'paused'
+    ward_round.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Ward round paused'
+    })
+
+
+# -------------------------
+# Admission Task Views
+# -------------------------
+class AdmissionTaskListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    model = AdmissionTask
+    permission_required = 'inpatient.view_admissiontask'
+    template_name = 'inpatient/task/index.html'
+    context_object_name = 'task_list'
+    paginate_by = 50
+
+    def get_queryset(self):
+        queryset = AdmissionTask.objects.select_related(
+            'admission__patient', 'drug_order__drug', 'assigned_to'
+        ).all()
+
+        # Filter by status
+        status = self.request.GET.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+        else:
+            # Default: show pending and in_progress
+            queryset = queryset.filter(status__in=['pending', 'in_progress'])
+
+        # Filter by date
+        date_filter = self.request.GET.get('date_filter')
+        today = timezone.now().date()
+
+        if date_filter == 'today':
+            queryset = queryset.filter(scheduled_datetime__date=today)
+        elif date_filter == 'overdue':
+            queryset = queryset.filter(
+                scheduled_datetime__lt=timezone.now(),
+                status__in=['pending', 'in_progress']
+            )
+        elif date_filter == 'upcoming':
+            queryset = queryset.filter(
+                scheduled_datetime__date__gt=today,
+                status='pending'
+            )
+
+        # Filter by admission
+        admission_id = self.request.GET.get('admission')
+        if admission_id:
+            queryset = queryset.filter(admission_id=admission_id)
+
+        return queryset.order_by('scheduled_datetime')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Count statistics
+        context['stats'] = {
+            'pending': AdmissionTask.objects.filter(status='pending').count(),
+            'overdue': AdmissionTask.objects.filter(
+                scheduled_datetime__lt=timezone.now(),
+                status__in=['pending', 'in_progress']
+            ).count(),
+            'today': AdmissionTask.objects.filter(
+                scheduled_datetime__date=timezone.now().date(),
+                status__in=['pending', 'in_progress']
+            ).count(),
+        }
+
+        context['selected_status'] = self.request.GET.get('status', '')
+        context['selected_date_filter'] = self.request.GET.get('date_filter', '')
+
+        return context
+
+
+class AdmissionTaskCreateView(
+    LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
+):
+    model = AdmissionTask
+    permission_required = 'inpatient.add_admissiontask'
+    form_class = AdmissionTaskForm
+    template_name = 'inpatient/task/create.html'
+    success_message = 'Task Successfully Created'
+
+    def get_success_url(self):
+        return reverse('admission_task_index')
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user
+        messages.success(self.request, self.success_message)
+        return super().form_valid(form)
+
+
+@login_required
+@permission_required('inpatient.change_admissiontask')
+def mark_task_completed(request, pk):
+    """Mark task as completed"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    task = get_object_or_404(AdmissionTask, pk=pk)
+
+    task.status = 'completed'
+    task.completed_datetime = timezone.now()
+    task.completed_by = request.user
+    task.completion_notes = request.POST.get('notes', '')
+    task.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Task marked as completed'
+    })
+
+
+@login_required
+@permission_required('inpatient.change_admissiontask')
+def cancel_task(request, pk):
+    """Cancel task"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    task = get_object_or_404(AdmissionTask, pk=pk)
+
+    task.status = 'cancelled'
+    task.notes = request.POST.get('reason', '')
+    task.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Task cancelled'
+    })
+
+
+# -------------------------
+# Admission Deposit & Discharge Views
+# -------------------------
+@login_required
+@permission_required('finance.add_patienttransactionmodel')
+def process_admission_deposit(request, admission_id):
+    """Process admission deposit payment"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    admission = get_object_or_404(Admission, pk=admission_id)
+
+    form = AdmissionDepositForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
+
+    deposit_amount = form.cleaned_data['deposit_amount']
+    payment_method = form.cleaned_data['payment_method']
+    notes = form.cleaned_data.get('notes', '')
+
+    try:
+        with transaction.atomic():
+            # Get old balance
+            old_deposit = admission.deposit_balance
+
+            # Update admission
+            admission.deposit_balance += deposit_amount
+            admission.total_paid += deposit_amount
+            admission.save()
+
+            # Create transaction
+            PatientTransactionModel.objects.create(
+                patient=admission.patient,
+                transaction_type='admission_payment',
+                transaction_direction='in',
+                amount=deposit_amount,
+                admission=admission,
+                payment_method=payment_method,
+                received_by=request.user,
+                old_balance=admission.patient.wallet_balance,
+                new_balance=admission.patient.wallet_balance,
+                status='completed',
+                date=timezone.now().date()
+            )
+
+            # Clear pending orders if any
+            pending_result = clear_pending_admission_orders(admission, deposit_amount)
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Deposit of ₦{deposit_amount:,.2f} received successfully',
+                'new_deposit_balance': float(admission.deposit_balance),
+                'old_deposit_balance': float(old_deposit),
+                'orders_cleared': pending_result['orders_cleared'],
+                'amount_used_for_orders': float(pending_result['amount_used'])
+            })
+
+    except Exception as e:
+        logger.exception("Error processing admission deposit")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@permission_required('inpatient.change_admission')
+def discharge_patient(request, admission_id):
+    """Discharge patient from admission"""
+    admission = get_object_or_404(Admission, pk=admission_id, status='active')
+
+    if request.method == 'POST':
+        form = DischargeForm(request.POST, instance=admission)
+        if form.is_valid():
+            admission = form.save(commit=False)
+            admission.status = 'discharged'
+
+            # Free up the bed
+            if admission.bed:
+                admission.bed.status = 'available'
+                admission.bed.save()
+
+            admission.save()
+
+            messages.success(request, f'Patient {admission.patient} discharged successfully')
+            return redirect('admission_detail', pk=admission.pk)
+        else:
+            # Show errors
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"{field}: {error}")
+    else:
+        form = DischargeForm(instance=admission)
+
+    # Calculate final bill
+    context = {
+        'admission': admission,
+        'form': form,
+        'billing_summary': {
+            'total_charges': admission.total_charges,
+            'total_paid': admission.total_paid,
+            'deposit_remaining': admission.deposit_balance,
+            'balance_due': admission.debt_balance,
+        }
+    }
+
+    return render(request, 'inpatient/admission/discharge.html', context)
+
+
+# -------------------------
+# Dashboard Enhancements
+# -------------------------
+@login_required
+@permission_required('inpatient.view_admission')
+def inpatient_dashboard(request):
+    """Enhanced dashboard with tasks and notifications"""
+    today = date.today()
+    now = timezone.now()
+
+    # Basic statistics
+    stats = {
+        'total_wards': Ward.objects.filter(is_active=True).count(),
+        'total_beds': Bed.objects.filter(is_active=True).count(),
+        'occupied_beds': Bed.objects.filter(status='occupied').count(),
+        'available_beds': Bed.objects.filter(status='available').count(),
+        'active_admissions': Admission.objects.filter(status='active').count(),
+        'surgeries_today': Surgery.objects.filter(scheduled_date__date=today).count(),
+        'surgeries_pending': Surgery.objects.filter(status='scheduled').count(),
+    }
+
+    # Task statistics
+    stats['tasks_overdue'] = AdmissionTask.objects.filter(
+        scheduled_datetime__lt=now,
+        status__in=['pending', 'in_progress']
+    ).count()
+
+    stats['tasks_today'] = AdmissionTask.objects.filter(
+        scheduled_datetime__date=today,
+        status__in=['pending', 'in_progress']
+    ).count()
+
+    # Calculate occupancy rate
+    if stats['total_beds'] > 0:
+        stats['occupancy_rate'] = round((stats['occupied_beds'] / stats['total_beds']) * 100, 1)
+    else:
+        stats['occupancy_rate'] = 0
+
+    # Recent admissions
+    recent_admissions = Admission.objects.filter(
+        admission_date__gte=today - timedelta(days=7)
+    ).select_related('patient', 'bed__ward', 'admission_type').order_by('-admission_date')[:10]
+
+    # Upcoming surgeries
+    upcoming_surgeries = Surgery.objects.filter(
+        scheduled_date__gte=now,
+        status='scheduled'
+    ).select_related('patient', 'surgery_type').order_by('scheduled_date')[:10]
+
+    # Ward occupancy
+    ward_occupancy = Ward.objects.filter(is_active=True).annotate(
+        total_beds=Count('beds', filter=Q(beds__is_active=True)),
+        occupied_beds=Count('beds', filter=Q(beds__status='occupied')),
+        available_beds=Count('beds', filter=Q(beds__status='available'))
+    ).order_by('name')
+
+    # Overdue tasks
+    overdue_tasks = AdmissionTask.objects.filter(
+        scheduled_datetime__lt=now,
+        status__in=['pending', 'in_progress']
+    ).select_related('admission__patient', 'drug_order__drug').order_by('scheduled_datetime')[:10]
+
+    # Today's tasks
+    todays_tasks = AdmissionTask.objects.filter(
+        scheduled_datetime__date=today,
+        status__in=['pending', 'in_progress']
+    ).select_related('admission__patient', 'drug_order__drug').order_by('scheduled_datetime')[:15]
+
+    context = {
+        'stats': stats,
+        'recent_admissions': recent_admissions,
+        'upcoming_surgeries': upcoming_surgeries,
+        'ward_occupancy': ward_occupancy,
+        'overdue_tasks': overdue_tasks,
+        'todays_tasks': todays_tasks,
+    }
+
+    return render(request, 'inpatient/dashboard.html', context)

@@ -15,7 +15,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.timezone import now
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
@@ -1283,7 +1283,7 @@ def update_patient_vitals_ajax(request, queue_pk):
         if not hasattr(queue_entry, 'vitals'):
             return JsonResponse({'success': False, 'error': 'No existing vitals found for this patient'}, status=400)
 
-        if queue_entry.status not in ['waiting_vitals', 'vitals_done', 'consultation_paused']:
+        if queue_entry.status not in ['waiting_vitals', 'with_doctor', 'vitals_done', 'consultation_paused']:
             return JsonResponse({'success': False, 'error': 'Cannot update vitals at this stage'}, status=400)
 
         # Update the existing vitals record
@@ -5312,6 +5312,147 @@ def view_service_result(request, result_id):
         'interpretation': result.interpretation,
         'result_data': result.result_data
     })
+
+
+@login_required
+@require_http_methods(["GET"])
+def ajax_search_diagnoses(request):
+    """AJAX endpoint for diagnosis search"""
+    query = request.GET.get('q', '').strip()
+    specialization_id = request.GET.get('specialization_id', None)
+
+    if len(query) < 2:
+        return JsonResponse({'diagnoses': []})
+
+    diagnoses = DiagnosisOption.objects.filter(
+        is_active=True,
+        name__icontains=query
+    )
+
+    # Filter by specialization if provided
+    if specialization_id:
+        diagnoses = diagnoses.filter(specializations__id=specialization_id)
+
+    diagnoses = diagnoses.distinct()[:20]  # Limit results
+
+    results = [{
+        'id': diag.id,
+        'name': diag.name,
+        'icd_code': diag.icd_code or ''
+    } for diag in diagnoses]
+
+    return JsonResponse({'diagnoses': results})
+
+
+@login_required
+@require_http_methods(["POST"])
+def ajax_save_diagnosis(request):
+    """AJAX endpoint to save/remove diagnosis"""
+    try:
+        data = json.loads(request.body)
+        consultation_id = data.get('consultation_id')
+        diag_type = data.get('type')  # 'primary' or 'secondary'
+        diagnosis_id = data.get('diagnosis_id')
+        removed_id = data.get('removed_id')
+
+        consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
+
+        # Check permissions (doctor owns this consultation)
+        if consultation.queue_entry and consultation.queue_entry.consultant.staff.staff_profile.user != request.user:
+            return JsonResponse({'success': False, 'error': 'Access denied'}, status=403)
+
+        if removed_id:
+            # Remove diagnosis
+            if diag_type == 'primary':
+                consultation.primary_diagnosis = None
+                consultation.secondary_diagnoses.clear()  # Clear all secondary when primary is removed
+                message = 'Primary diagnosis removed'
+            else:
+                diagnosis = get_object_or_404(DiagnosisOption, id=removed_id)
+                consultation.secondary_diagnoses.remove(diagnosis)
+                message = 'Secondary diagnosis removed'
+        else:
+            # Add diagnosis
+            diagnosis = get_object_or_404(DiagnosisOption, id=diagnosis_id)
+
+            if diag_type == 'primary':
+                consultation.primary_diagnosis = diagnosis
+                message = 'Primary diagnosis saved'
+            else:
+                consultation.secondary_diagnoses.add(diagnosis)
+                message = 'Secondary diagnosis added'
+
+        consultation.save()
+
+        return JsonResponse({'success': True, 'message': message})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@permission_required('consultation.change_consultationsessionmodel', raise_exception=True)
+def bulk_diagnosis_update(request):
+    """Bulk update page for diagnoses"""
+
+    # Get filter parameters
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    specialization_id = request.GET.get('specialization')
+    patient_search = request.GET.get('patient_search', '').strip()
+    show_all = request.GET.get('show_all') == 'true'
+
+    # Default date range: last 30 days
+    if not start_date:
+        start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    if not end_date:
+        end_date = datetime.now().strftime('%Y-%m-%d')
+
+    # Base queryset
+    consultations = ConsultationSessionModel.objects.filter(
+        status='completed',
+        queue_entry__isnull=False  # Only OPD consultations
+    ).select_related(
+        'queue_entry__patient',
+        'queue_entry__specialization',
+        'primary_diagnosis'
+    ).prefetch_related('secondary_diagnoses')
+
+    # Apply date filter
+    if start_date:
+        consultations = consultations.filter(created_at__date__gte=start_date)
+    if end_date:
+        consultations = consultations.filter(created_at__date__lte=end_date)
+
+    # Apply specialization filter
+    if specialization_id:
+        consultations = consultations.filter(queue_entry__specialization_id=specialization_id)
+
+    # Apply patient search
+    if patient_search:
+        consultations = consultations.filter(
+            Q(queue_entry__patient__first_name__icontains=patient_search) |
+            Q(queue_entry__patient__last_name__icontains=patient_search) |
+            Q(queue_entry__patient__card_number__icontains=patient_search)
+        )
+
+    # Filter by diagnosis status (default: only sessions without primary)
+    if not show_all:
+        consultations = consultations.filter(primary_diagnosis__isnull=True)
+
+    consultations = consultations.order_by('-created_at')
+
+    # Get all specializations for filter dropdown
+    specializations = SpecializationModel.objects.filter().order_by('name')
+
+    context = {
+        'consultations': consultations,
+        'specializations': specializations,
+        'default_start_date': start_date,
+        'default_end_date': end_date,
+    }
+
+    return render(request, 'consultation/doctor/bulk_diagnosis_update.html', context)
 
 
 # --- End: New AJAX Views ---

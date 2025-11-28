@@ -177,6 +177,20 @@ class LabTestOrderModel(models.Model):
 
     # Notes
     special_instructions = models.TextField(blank=True)
+    # Payment tracking
+    payment_method = models.CharField(
+        max_length=20,
+        choices=[
+            ('cash', 'Cash'),
+            ('card', 'Card'),
+            ('transfer', 'Transfer'),
+            ('wallet', 'Patient Wallet'),
+            ('admission', 'Admission Deposit'),
+            ('insurance', 'Insurance'),
+        ],
+        default='cash',
+        blank=True
+    )
 
     class Meta:
         db_table = 'lab_test_orders'

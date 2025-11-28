@@ -28,7 +28,7 @@
         <!-- Patient Information Card -->
         <div class="col-lg-12">
              <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <h4 class="alert-heading">Admitting Patient: {{ patient.get_full_name }}</h4>
+                <h4 class="alert-heading">Admitting Patient: {{ patient|title }}</h4>
                 <p>
                     <strong>Card Number:</strong> {{ patient.card_number }} |
                     <strong>Phone:</strong> {{ patient.phone|default:"N/A" }} |
@@ -50,7 +50,7 @@
                     <form method="post" class="row g-3">
                         {% csrf_token %}
                         <!-- This field is set by the view, so we don't need to show it -->
-                        {{ form.patientModel.as_hidden }}
+                        {{ form.patient.as_hidden }}
 
                         <!-- Admission Details Section -->
                         <div class="col-12">

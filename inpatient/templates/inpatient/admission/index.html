@@ -63,7 +63,7 @@
                                 {% for admission in admission_list %}
                                 <tr>
                                     <th scope="row"><a href="{% url 'admission_detail' admission.pk %}">{{ admission.admission_number }}</a></th>
-                                    <td>{{ admission.patientModel.get_full_name }}</td>
+                                    <td>{{ admission.patient|title }}</td>
                                     <td>{{ admission.ward_name|default:'N/A' }} / {{ admission.bed.bed_number|default:'N/A' }}</td>
                                     <td>{{ admission.admission_date|date:"d M, Y P" }}</td>
                                     <td>

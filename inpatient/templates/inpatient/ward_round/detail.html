@@ -1,0 +1,570 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<style>
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 9999;
+}
+
+.mini-toast {
+    min-width: 250px;
+    margin-bottom: 10px;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.mini-toast.hiding {
+    animation: slideOut 0.3s ease-out forwards;
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+}
+</style>
+
+<div class="row">
+    <div class="col-lg-12 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">
+                    Ward Round: {{ ward_round.admission.patient|title }}
+                    <span class="badge bg-info ms-2">{{ ward_round.round_number }}</span>
+                    <div class="float-end">
+                        <a href="{% url 'admission_detail' ward_round.admission.pk %}" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Admission
+                        </a>
+                        <button class="btn btn-sm btn-warning" onclick="pauseWardRound()" id="pauseBtn">
+                            <i class="bi bi-pause"></i> Pause
+                        </button>
+                        <button class="btn btn-sm btn-success" onclick="completeWardRound()" id="completeBtn">
+                            <i class="bi bi-check"></i> Complete
+                        </button>
+                    </div>
+                </h4>
+                <p class="card-description">
+                    Patient: {{ ward_round.admission.patient.card_number|upper }} |
+                    {{ ward_round.admission.patient.age }} yrs, {{ ward_round.admission.patient.gender|title }} |
+                    Admission: {{ ward_round.admission.admission_number }} |
+                    Day {{ ward_round.admission.length_of_stay_days }} of admission
+                </p>
+
+                {% include 'admin_site/partials/error.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Left Sidebar: Patient Info & Quick Actions -->
+    <div class="col-lg-3">
+        <!-- Financial Summary -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">Financial Status</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <small class="text-muted">Deposit:</small><br>
+                        <strong class="{% if admission.deposit_balance > 0 %}text-success{% else %}text-danger{% endif %}">
+                            ₦{{ admission.deposit_balance|floatformat:2 }}
+                        </strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">Debt:</small><br>
+                        <strong class="{% if admission.debt_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                            ₦{{ admission.debt_balance|floatformat:2 }}
+                        </strong>
+                    </div>
+                </div>
+                {% if admission.debt_limit_reached %}
+                <div class="alert alert-danger mt-2 mb-0 p-2">
+                    <small><i class="bi bi-exclamation-triangle"></i> Debt limit reached!</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">Quick Actions</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-sm btn-primary" onclick="prescribeDrug()">
+                        <i class="bi bi-prescription2"></i> Prescribe Drug
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="orderLabTest()">
+                        <i class="bi bi-clipboard2-pulse"></i> Order Lab Test
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="orderScan()">
+                        <i class="bi bi-camera"></i> Order Imaging
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="orderService()">
+                        <i class="bi bi-journal-check"></i> Order Service
+                    </button>
+                    <button class="btn btn-sm btn-dark" onclick="orderItem()">
+                        <i class="bi bi-box-seam"></i> Order Item
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Ward Rounds -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Recent Ward Rounds</h6>
+            </div>
+            <div class="card-body">
+                {% if recent_ward_rounds %}
+                    {% for prev in recent_ward_rounds|slice:":3" %}
+                    <div class="border-bottom pb-2 mb-2">
+                        <small class="text-muted">{{ prev.round_date|date:"M d" }}</small><br>
+                        <small>{{ prev.assessment|truncatechars:40|default:"No assessment" }}</small>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <small class="text-muted">No previous ward rounds</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content: Ward Round Form -->
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="wardRoundTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="clinical-tab" data-bs-toggle="tab" data-bs-target="#clinical-pane" type="button" role="tab">
+                            <i class="bi bi-file-medical"></i> Clinical Notes
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="prescriptions-tab" data-bs-toggle="tab" data-bs-target="#prescriptions-pane" type="button" role="tab">
+                            <i class="bi bi-prescription2"></i> Prescriptions
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tests-tab" data-bs-toggle="tab" data-bs-target="#tests-pane" type="button" role="tab">
+                            <i class="bi bi-clipboard2-pulse"></i> Tests & Scans
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#services-pane" type="button" role="tab">
+                            <i class="bi bi-journal-check"></i> Services & Items
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="wardRoundTabContent">
+                    <!-- Clinical Notes Tab -->
+                    <div class="tab-pane fade show active" id="clinical-pane" role="tabpanel">
+                        <form id="wardRoundForm">
+                            {% csrf_token %}
+                            <input type="hidden" name="ward_round_id" value="{{ ward_round.id }}">
+
+                            <!-- Vitals Section -->
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <h6 class="text-primary mb-3">Vital Signs</h6>
+                                </div>
+
+                                <div class="col-md-3">
+                                    <div class="mb-3">
+                                        <label class="form-label">Blood Pressure</label>
+                                        <input type="text" class="form-control" name="bp" placeholder="e.g., 120/80" value="{{ ward_round.vitals.bp|default:'' }}">
+                                    </div>
+                                </div>
+
+                                <div class="col-md-3">
+                                    <div class="mb-3">
+                                        <label class="form-label">Temperature (°C)</label>
+                                        <input type="text" class="form-control" name="temp" placeholder="e.g., 37.2" value="{{ ward_round.vitals.temp|default:'' }}">
+                                    </div>
+                                </div>
+
+                                <div class="col-md-3">
+                                    <div class="mb-3">
+                                        <label class="form-label">Pulse (bpm)</label>
+                                        <input type="text" class="form-control" name="pulse" placeholder="e.g., 72" value="{{ ward_round.vitals.pulse|default:'' }}">
+                                    </div>
+                                </div>
+
+                                <div class="col-md-3">
+                                    <div class="mb-3">
+                                        <label class="form-label">SpO2 (%)</label>
+                                        <input type="text" class="form-control" name="spo2" placeholder="e.g., 98" value="{{ ward_round.vitals.spo2|default:'' }}">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Clinical Notes -->
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <h6 class="text-primary mb-3">Clinical Notes</h6>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Chief Complaint / Review of Systems</label>
+                                        <textarea class="form-control" name="chief_complaint" rows="2" placeholder="Patient's current complaints...">{{ ward_round.chief_complaint }}</textarea>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Clinical Assessment</label>
+                                        <textarea class="form-control" name="assessment" rows="4" placeholder="Assessment and findings...">{{ ward_round.assessment }}</textarea>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Plan</label>
+                                        <textarea class="form-control" name="plan" rows="4" placeholder="Treatment plan and next steps...">{{ ward_round.plan }}</textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-between">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-check"></i> Save & Continue
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Prescriptions Tab -->
+                    <div class="tab-pane fade" id="prescriptions-pane" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6>Prescribed Medications</h6>
+                            <button class="btn btn-sm btn-primary" id="add-drug-in-tab-btn">
+                                <i class="bi bi-plus"></i> Add Drug
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="prescriptionsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Drug</th>
+                                        <th>Dosage</th>
+                                        <th>Duration</th>
+                                        <th>Quantity</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for prescription in prescriptions %}
+                                    <tr data-prescription-id="{{ prescription.id }}" data-type="internal">
+                                        <td>
+                                            <strong>{{ prescription.drug.brand_name|default:prescription.drug.generic_name }}</strong>
+                                            <small class="text-muted d-block">{{ prescription.drug.formulation }}</small>
+                                        </td>
+                                        <td>{{ prescription.dosage_instructions|truncatechars:30 }}</td>
+                                        <td>{{ prescription.duration }}</td>
+                                        <td>{{ prescription.quantity_ordered }}</td>
+                                        <td>
+                                            <span class="badge bg-{% if prescription.status == 'paid' or prescription.status == 'dispensed' %}success{% else %}warning{% endif %}">
+                                                {{ prescription.get_status_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDrug({{ prescription.id }})" title="Delete">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-3">
+                                            No medications prescribed yet
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tests & Scans Tab -->
+                    <div class="tab-pane fade" id="tests-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6>Lab Tests Ordered</h6>
+                                    <button class="btn btn-sm btn-info" id="order-test-in-tab-btn">
+                                        <i class="bi bi-plus"></i> Order Lab Test
+                                    </button>
+                                </div>
+
+                                <div class="list-group" id="internal-lab-test-list">
+                                    {% for test in lab_tests %}
+                                    <div class="list-group-item" data-lab-id="{{ test.id }}">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ test.template.name }}</strong>
+                                                <small class="text-muted d-block">{{ test.order_number }}</small>
+                                            </div>
+                                            <span class="badge bg-secondary">{{ test.get_status_display }}</span>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">
+                                        No lab tests ordered
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6>Scans Ordered</h6>
+                                    <button class="btn btn-sm btn-warning" id="order-scan-in-tab-btn">
+                                        <i class="bi bi-plus"></i> Order Imaging
+                                    </button>
+                                </div>
+
+                                <div class="list-group" id="internal-scan-list">
+                                    {% for scan in scans %}
+                                    <div class="list-group-item" data-scan-id="{{ scan.id }}">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ scan.template.name }}</strong>
+                                                <small class="text-muted d-block">{{ scan.order_number }}</small>
+                                            </div>
+                                            <span class="badge bg-secondary">{{ scan.get_status_display }}</span>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">
+                                        No scans ordered
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Services & Items Tab -->
+                    <div class="tab-pane fade" id="services-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6>Services Ordered</h6>
+                                    <button class="btn btn-sm btn-success" id="order-service-in-tab-btn">
+                                        <i class="bi bi-plus"></i> Order Service
+                                    </button>
+                                </div>
+                                <div class="list-group">
+                                    {% for tx in service_transactions %}
+                                    {% if tx.service %}
+                                    <div class="list-group-item">
+                                        <strong>{{ tx.service.name }}</strong> (x{{ tx.quantity }})
+                                        <small class="text-muted d-block">{{ tx.get_status_display }}</small>
+                                    </div>
+                                    {% endif %}
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">No services ordered yet</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6>Items Ordered</h6>
+                                    <button class="btn btn-sm btn-dark" id="order-item-in-tab-btn">
+                                        <i class="bi bi-plus"></i> Order Item
+                                    </button>
+                                </div>
+                                <div class="list-group">
+                                    {% for tx in service_transactions %}
+                                    {% if tx.service_item %}
+                                    <div class="list-group-item">
+                                        <strong>{{ tx.service_item.name }}</strong> (x{{ tx.quantity }})
+                                        <small class="text-muted d-block">{{ tx.get_status_display }}</small>
+                                    </div>
+                                    {% endif %}
+                                    {% empty %}
+                                    <div class="list-group-item text-center text-muted">No items ordered yet</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container"></div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+const wardRoundId = {{ ward_round.id }};
+const admissionId = {{ ward_round.admission.id }};
+let autoSaveTimer;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-save every 30 seconds
+    autoSaveTimer = setInterval(saveDraft, 30000);
+});
+
+// Ward round form submission
+document.getElementById('wardRoundForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+
+    submitBtn.textContent = 'Saving...';
+    submitBtn.disabled = true;
+
+    fetch(`/inpatient/ward-rounds/${wardRoundId}/save/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMiniToast('Ward round notes saved successfully', 'success');
+        } else {
+            alert('Error: ' + (data.error || 'Failed to save'));
+        }
+    })
+    .catch(error => alert('An unexpected error occurred.'))
+    .finally(() => {
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+    });
+});
+
+function saveDraft() {
+    const form = document.getElementById('wardRoundForm');
+    const formData = new FormData(form);
+
+    fetch(`/inpatient/ward-rounds/${wardRoundId}/save/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
+    })
+    .then(response => response.json())
+    .catch(error => console.error('Auto-save failed:', error));
+}
+
+function pauseWardRound() {
+    if (!confirm('Are you sure you want to pause this ward round?')) return;
+
+    fetch(`/inpatient/ward-rounds/${wardRoundId}/pause/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Ward round paused. Redirecting...');
+            window.location.href = `/inpatient/admissions/${admissionId}/`;
+        } else {
+            alert('Error: ' + (data.error || 'Failed to pause'));
+        }
+    });
+}
+
+function completeWardRound() {
+    if (!confirm('Are you sure you want to complete this ward round?')) return;
+
+    saveDraft();
+
+    setTimeout(() => {
+        fetch(`/inpatient/ward-rounds/${wardRoundId}/complete/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Ward round completed successfully');
+                clearInterval(autoSaveTimer);
+                window.location.href = `/inpatient/admissions/${admissionId}/`;
+            } else {
+                alert('Error: ' + (data.error || 'Failed to complete'));
+            }
+        });
+    }, 500);
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showMiniToast(message, type = 'success') {
+    const toastContainer = document.querySelector('.toast-container');
+    const toastId = 'toast-' + Date.now();
+    const bgColor = type === 'success' ? 'bg-success' : 'bg-danger';
+    const icon = type === 'success' ? 'bi-check-circle' : 'bi-x-circle';
+    const toastHTML = `
+        <div class="alert alert-dismissible fade show mini-toast ${bgColor} text-white" role="alert" id="${toastId}">
+            <i class="bi ${icon} me-2"></i>${message}
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+    setTimeout(() => {
+        const toast = document.getElementById(toastId);
+        if (toast) {
+            toast.classList.add('hiding');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 3000);
+}
+
+// Placeholder functions for ordering (implement as needed)
+function prescribeDrug() { alert('Drug prescription modal - implement similar to consultation'); }
+function orderLabTest() { alert('Lab test modal - implement similar to consultation'); }
+function orderScan() { alert('Scan modal - implement similar to consultation'); }
+function orderService() { alert('Service modal - implement similar to consultation'); }
+function orderItem() { alert('Item modal - implement similar to consultation'); }
+function deleteDrug(id) { alert('Delete drug ' + id); }
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (autoSaveTimer) clearInterval(autoSaveTimer);
+});
+</script>
+
+{% endblock %}

@@ -1,3 +1,5 @@
 from django.contrib import admin
+from inpatient.models import *
 
-# Register your models here.
+
+admin.site.register(Admission)

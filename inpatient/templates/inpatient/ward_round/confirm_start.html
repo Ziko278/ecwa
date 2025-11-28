@@ -1,0 +1,54 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>Start Ward Round</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'ward_round_search_admission' %}">Ward Round</a></li>
+            <li class="breadcrumb-item active">Confirm</li>
+        </ol>
+    </nav>
+</div>
+
+<section class="section">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title text-center">Confirm Ward Round</h5>
+
+                    <div class="alert alert-info">
+                        <h4 class="alert-heading">Patient: {{ admission.patient.get_full_name|title }}</h4>
+                        <hr>
+                        <p class="mb-0">
+                            <strong>Card Number:</strong> {{ admission.patient.card_number }} <br>
+                            <strong>Admission Number:</strong> {{ admission.admission_number }} <br>
+                            <strong>Admission Type:</strong> {{ admission.admission_type.name }} <br>
+                            <strong>Ward/Bed:</strong> {{ admission.ward_name|default:'N/A' }} / {{ admission.bed.bed_number|default:'N/A' }} <br>
+                            <strong>Admitted On:</strong> {{ admission.admission_date|date:"d M, Y P" }} <br>
+                            <strong>Length of Stay:</strong> {{ admission.length_of_stay_days }} day(s)
+                        </p>
+                    </div>
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="text-center">
+                            <a href="{% url 'ward_round_search_admission' %}" class="btn btn-secondary btn-lg">
+                                <i class="bi bi-arrow-left"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-play-circle"></i> Start Ward Round
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

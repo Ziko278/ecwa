@@ -74,6 +74,32 @@
                         </div>
                     </div>
 
+                    <!-- NEW: Admission Fee Settings -->
+                    <h5 class="card-title mt-4">Admission Fee Settings</h5>
+
+                    <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Charge Admission Fee</div>
+                        <div class="col-lg-8 col-md-7">
+                            {% if settings.charge_admission_fee %}
+                                <span class="badge bg-success">Enabled</span>
+                                at <strong class="text-dark">₦{{ settings.admission_fee_amount|floatformat:2 }}</strong>
+                            {% else %}
+                                <span class="badge bg-secondary">Disabled</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- NEW: Debt Management -->
+                    <h5 class="card-title mt-4">Debt Management</h5>
+
+                    <div class="row mb-3">
+                        <div class="col-lg-4 col-md-5 label">Default Maximum Debt</div>
+                        <div class="col-lg-8 col-md-7">
+                            <strong class="text-dark">₦{{ settings.default_max_debt|floatformat:2 }}</strong>
+                            <small class="text-muted d-block">Services are blocked when debt reaches this limit (can be overridden per admission type)</small>
+                        </div>
+                    </div>
+
                     <!-- Auto Compilation Settings -->
                     <h5 class="card-title mt-4">Auto-Compilation Settings (for Surgery Packages)</h5>
 

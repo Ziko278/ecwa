@@ -72,35 +72,70 @@
                             </div>
                         </div>
 
-                         <div class="col-md-12">
+                        <div class="col-md-12">
                             <div class="form-floating">
                                 {{ form.bed_daily_cost }}
                                 <label for="{{ form.bed_daily_cost.id_for_label }}">Default Daily Bed Cost (₦)</label>
                             </div>
                         </div>
 
+                        <!-- NEW: Admission Fee Settings -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Admission Fee Settings</h6>
+                            <hr>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                {{ form.charge_admission_fee }}
+                                <label class="form-check-label" for="{{ form.charge_admission_fee.id_for_label }}">
+                                    Charge One-Time Admission Fee
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.admission_fee_amount }}
+                                <label for="{{ form.admission_fee_amount.id_for_label }}">Admission Fee Amount (₦)</label>
+                            </div>
+                        </div>
+
+                        <!-- NEW: Debt Management -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Debt Management</h6>
+                            <hr>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.default_max_debt }}
+                                <label for="{{ form.default_max_debt.id_for_label }}">Default Maximum Debt Allowed (₦)</label>
+                            </div>
+                            <small class="text-muted">Maximum debt allowed before blocking services (can be overridden per admission type)</small>
+                        </div>
 
                         <!-- Auto Compilation Settings Section -->
                         <div class="col-12 mt-4">
                             <h6 class="card-subtitle mb-2 text-muted">Auto-Compilation for Surgery Packages</h6>
-                             <p class="small">Automatically include pre-defined items from a surgery package in the patient's bill.</p>
+                            <p class="small">Automatically include pre-defined items from a surgery package in the patient's bill.</p>
                             <hr>
                         </div>
 
                         <div class="col-md-4">
-                             <div class="form-check form-switch">
+                            <div class="form-check form-switch">
                                 {{ form.compile_surgery_drugs }}
                                 <label class="form-check-label" for="{{ form.compile_surgery_drugs.id_for_label }}">Compile Surgery Drugs</label>
                             </div>
                         </div>
-                         <div class="col-md-4">
-                             <div class="form-check form-switch">
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
                                 {{ form.compile_surgery_labs }}
                                 <label class="form-check-label" for="{{ form.compile_surgery_labs.id_for_label }}">Compile Surgery Lab Tests</label>
                             </div>
                         </div>
-                         <div class="col-md-4">
-                             <div class="form-check form-switch">
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
                                 {{ form.compile_surgery_scans }}
                                 <label class="form-check-label" for="{{ form.compile_surgery_scans.id_for_label }}">Compile Surgery Scans</label>
                             </div>

@@ -105,33 +105,64 @@
                 <h6 class="mb-0">Current Vitals</h6>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-6">
-                        <small class="text-muted">BP:</small><br>
-                        <strong>{{ consultation.queue_entry.vitals.blood_pressure }}</strong>
-                    </div>
-                    <div class="col-6">
-                        <small class="text-muted">Pulse:</small><br>
-                        <strong>{{ consultation.queue_entry.vitals.pulse_rate|default:"--" }}</strong>
-                    </div>
-                </div>
-                <div class="row mt-2">
-                    <div class="col-6">
-                        <small class="text-muted">Temp:</small><br>
-                        <strong>{{ consultation.queue_entry.vitals.temperature|default:"--" }}°C</strong>
-                    </div>
-                    <div class="col-6">
-                        <small class="text-muted">SpO2:</small><br>
-                        <strong>{{ consultation.queue_entry.vitals.oxygen_saturation|default:"--" }}%</strong>
-                    </div>
-                </div>
-                {% if consultation.queue_entry.vitals.chief_complaint %}
-                <div class="mt-2">
-                    <small class="text-muted">Chief Complaint:</small><br>
-                    <small>{{ consultation.queue_entry.vitals.chief_complaint }}</small>
-                </div>
-                {% endif %}
-            </div>
+    <div class="row">
+        <div class="col-6">
+            <small class="text-muted">BP:</small><br>
+            <strong>{{ consultation.queue_entry.vitals.blood_pressure }}</strong>
+        </div>
+        <div class="col-6">
+            <small class="text-muted">Pulse:</small><br>
+            <strong>{{ consultation.queue_entry.vitals.pulse_rate|default:"--" }}</strong>
+        </div>
+    </div>
+    <div class="row mt-2">
+        <div class="col-6">
+            <small class="text-muted">Temp:</small><br>
+            <strong>{{ consultation.queue_entry.vitals.temperature|default:"--" }}°C</strong>
+        </div>
+        <div class="col-6">
+            <small class="text-muted">SpO2:</small><br>
+            <strong>{{ consultation.queue_entry.vitals.oxygen_saturation|default:"--" }}%</strong>
+        </div>
+    </div>
+    <!-- NEW: Weight Row -->
+    <div class="row mt-2">
+        <div class="col-6">
+            <small class="text-muted">Weight:</small><br>
+            <strong>{{ consultation.queue_entry.vitals.weight|default:"--" }} kg</strong>
+        </div>
+        {% if consultation.queue_entry.vitals.height %}
+        <div class="col-6">
+            <small class="text-muted">Height:</small><br>
+            <strong>{{ consultation.queue_entry.vitals.height }} cm</strong>
+        </div>
+        {% endif %}
+
+        <!-- Show other non-blank fields -->
+        {% if consultation.queue_entry.vitals.respiratory_rate %}
+
+        <div class="col-6">
+            <small class="text-muted">Resp. Rate:</small><br>
+            <strong>{{ consultation.queue_entry.vitals.respiratory_rate }}/min</strong>
+        </div>
+        {% endif %}
+
+        {% if consultation.queue_entry.vitals.bmi %}
+        <div class="col-6">
+            <small class="text-muted">BMI:</small><br>
+            <strong>{{ consultation.queue_entry.vitals.bmi }}</strong>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if consultation.queue_entry.vitals.chief_complaint %}
+    <div class="mt-2 col-12">
+        <small class="text-muted">Chief Complaint:</small><br>
+        <small>{{ consultation.queue_entry.vitals.chief_complaint }}</small>
+    </div>
+    {% endif %}
+</div>
+
         </div>
         {% endif %}
 
@@ -265,17 +296,57 @@
                                     <h6 class="text-primary mb-3">History & Examination</h6>
 
                                     <div class="row">
-                                        <div class="col-md-6">
+                                        <div class="col-md-12">
                                             <div class="mb-3">
                                                 <label class="form-label">Chief Complaint</label>
                                                 <textarea class="form-control" name="chief_complaint" rows="2" placeholder="What is the patient complaining of?">{{ consultation.chief_complaint }}</textarea>
                                             </div>
                                         </div>
 
-                                        <div class="col-md-6">
+                                        <div class="col-md-12">
                                             <div class="mb-3">
                                                 <label class="form-label">Diagnosis</label>
-                                                <textarea class="form-control" name="diagnosis" rows="2" placeholder="Primary and secondary diagnoses...">{{ consultation.diagnosis }}</textarea>
+
+                                                <!-- Selected Diagnoses Display -->
+                                                <div id="selected-diagnoses-container" class="mb-2">
+                                                    <!-- Primary diagnosis will show here -->
+                                                    {% if consultation.primary_diagnosis %}
+                                                    <span class="badge bg-primary me-2 mb-2 diagnosis-badge" data-diagnosis-id="{{ consultation.primary_diagnosis.id }}" data-type="primary">
+                                                        <strong>Primary:</strong> {{ consultation.primary_diagnosis.name }}
+                                                        <button type="button" class="btn-close btn-close-white ms-2" style="font-size: 0.7rem;" onclick="removeDiagnosis('primary', {{ consultation.primary_diagnosis.id }})"></button>
+                                                    </span>
+                                                    {% endif %}
+
+                                                    <!-- Secondary diagnoses will show here -->
+                                                    {% for diag in consultation.secondary_diagnoses.all %}
+                                                    <span class="badge bg-warning text-dark me-2 mb-2 diagnosis-badge" data-diagnosis-id="{{ diag.id }}" data-type="secondary">
+                                                        <strong>Secondary:</strong> {{ diag.name }}
+                                                        <button type="button" class="btn-close ms-2" style="font-size: 0.7rem;" onclick="removeDiagnosis('secondary', {{ diag.id }})"></button>
+                                                    </span>
+                                                    {% endfor %}
+                                                </div>
+
+                                                <!-- Search Input -->
+                                                <div class="position-relative">
+                                                    <input
+                                                        type="text"
+                                                        class="form-control"
+                                                        id="diagnosis-search-input"
+                                                        name="diagnosis_search_text"
+                                                        placeholder="{% if consultation.primary_diagnosis %}Search for secondary diagnosis...{% else %}Search for primary diagnosis first...{% endif %}"
+                                                        autocomplete="off"
+                                                    />
+                                                    <div id="diagnosis-search-results" class="list-group position-absolute w-100" style="z-index: 1050; display: none; max-height: 300px; overflow-y: auto;"></div>
+                                                </div>
+
+                                                <!-- Hidden fields for form submission -->
+                                                <input type="hidden" name="primary_diagnosis_id" id="primary-diagnosis-id" value="{{ consultation.primary_diagnosis.id|default:'' }}">
+                                                <input type="hidden" name="secondary_diagnosis_ids" id="secondary-diagnosis-ids" value="{% for diag in consultation.secondary_diagnoses.all %}{{ diag.id }}{% if not forloop.last %},{% endif %}{% endfor %}">
+
+                                                <!-- Fallback text field (old diagnosis field) -->
+                                                <input type="hidden" name="diagnosis" id="diagnosis-text-fallback" value="{{ consultation.diagnosis }}">
+
+                                                <small class="text-muted">Type to search diagnoses. First selection = Primary, subsequent = Secondary.</small>
                                             </div>
                                         </div>
                                     </div>
@@ -1139,6 +1210,15 @@ document.getElementById('consultationForm').addEventListener('submit', function(
     if (typeof tinymce !== 'undefined') tinymce.triggerSave();
 
     const formData = new FormData(this);
+
+    // PATCH: Capture unsaved diagnosis text as fallback
+    const searchInput = document.getElementById('diagnosis-search-input');
+    const unsavedText = searchInput.value.trim();
+    if (unsavedText && !hasPrimaryDiagnosis) {
+        formData.set('diagnosis', unsavedText);
+        document.getElementById('diagnosis-text-fallback').value = unsavedText;
+    }
+
     const submitBtn = this.querySelector('button[type="submit"]');
     const originalText = submitBtn.textContent;
 
@@ -1414,9 +1494,11 @@ function calculateQuantity(formRowEl) {
 
     if (!quantityInput) return;
 
-    const nonCalculableTypes = ['cream', 'drop', 'ointment', 'syrup'];
-    if (nonCalculableTypes.includes(unitType)) {
+    // PATCH: Handle cream, ointment, syrup, drops - always 1
+    const alwaysOneTypes = ['cream', 'ointment', 'syrup', 'drop', 'drops'];
+    if (alwaysOneTypes.includes(unitType)) {
         quantityInput.value = 1;
+        quantityInput.readOnly = false; // Allow override
         updateQuantityDisplay(1, packSize, unitType, quantityDisplay);
         return;
     }
@@ -1430,18 +1512,22 @@ function calculateQuantity(formRowEl) {
         else durationDays = num;
     }
 
+    // PATCH: Handle injection/drip - 1 × duration
     if (unitType === 'injection' || unitType === 'drip') {
         if (durationDays > 0) {
             const totalUnits = 1 * durationDays;
             quantityInput.value = totalUnits;
+            quantityInput.readOnly = false; // Allow override
             updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
         } else {
-            quantityInput.value = '';
-            updateQuantityDisplay(0, packSize, unitType, quantityDisplay);
+            quantityInput.value = 1; // Default to 1 if no duration
+            quantityInput.readOnly = false;
+            updateQuantityDisplay(1, packSize, unitType, quantityDisplay);
         }
         return;
     }
 
+    // Rest of your existing calculation logic for tablets/capsules...
     let dailyDose = 0;
     let dose = 0;
     const doseMatch = cleanedDosage.match(/^(\d+(\.\d+)?)/);
@@ -1449,7 +1535,7 @@ function calculateQuantity(formRowEl) {
     if (doseMatch) {
         dose = parseFloat(doseMatch[1]);
     } else {
-        // BUG FIX #6: Check for roman numerals
+        // Check for roman numerals
         if (cleanedDosage.startsWith('iii')) dose = 3;
         else if (cleanedDosage.startsWith('ii')) dose = 2;
         else if (cleanedDosage.startsWith('iv')) dose = 4;
@@ -1477,9 +1563,11 @@ function calculateQuantity(formRowEl) {
     if (dailyDose > 0 && durationDays > 0) {
         const totalUnits = Math.ceil(dailyDose * durationDays);
         quantityInput.value = totalUnits;
+        quantityInput.readOnly = false; // Allow override
         updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
     } else {
         quantityInput.value = '';
+        quantityInput.readOnly = false;
         updateQuantityDisplay(0, packSize, unitType, quantityDisplay);
     }
 }
@@ -2627,6 +2715,194 @@ window.addEventListener('beforeunload', function() {
 });
 </script>
 
+<script>
+    // --- Diagnosis Search Functionality ---
+    let hasPrimaryDiagnosis = {{ consultation.primary_diagnosis.id|default:'null' }} !== null;
+    let secondaryDiagnosisIds = [{% for diag in consultation.secondary_diagnoses.all %}{{ diag.id }}{% if not forloop.last %},{% endif %}{% endfor %}];
+    const specializationId = {{ consultation.queue_entry.specialization.id|default:'null' }};
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('diagnosis-search-input');
+        const resultsContainer = document.getElementById('diagnosis-search-results');
+        const selectedContainer = document.getElementById('selected-diagnoses-container');
+
+        let searchTimeout;
+
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+
+            if (query.length < 2) {
+                resultsContainer.style.display = 'none';
+                return;
+            }
+
+            searchTimeout = setTimeout(() => {
+                searchDiagnoses(query);
+            }, 300);
+        });
+
+        // Hide results when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !resultsContainer.contains(e.target)) {
+                resultsContainer.style.display = 'none';
+            }
+        });
+    });
+
+    function searchDiagnoses(query) {
+        const resultsContainer = document.getElementById('diagnosis-search-results');
+
+        let url = `/portal/consultation/ajax/search-diagnoses/?q=${encodeURIComponent(query)}`;
+        if (specializationId) {
+            url += `&specialization_id=${specializationId}`;
+        }
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                resultsContainer.innerHTML = '';
+
+                if (data.diagnoses && data.diagnoses.length > 0) {
+                    data.diagnoses.forEach(diag => {
+                        const item = document.createElement('a');
+                        item.href = '#';
+                        item.className = 'list-group-item list-group-item-action';
+                        item.innerHTML = `<strong>${diag.name}</strong>`;
+                        if (diag.icd_code) {
+                            item.innerHTML += ` <small class="text-muted">(${diag.icd_code})</small>`;
+                        }
+
+                        item.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            selectDiagnosis(diag.id, diag.name, diag.icd_code);
+                        });
+
+                        resultsContainer.appendChild(item);
+                    });
+                    resultsContainer.style.display = 'block';
+                } else {
+                    resultsContainer.innerHTML = '<span class="list-group-item">No diagnoses found</span>';
+                    resultsContainer.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Diagnosis search error:', error);
+                resultsContainer.style.display = 'none';
+            });
+    }
+
+    function selectDiagnosis(diagnosisId, diagnosisName, icdCode) {
+        const searchInput = document.getElementById('diagnosis-search-input');
+        const resultsContainer = document.getElementById('diagnosis-search-results');
+        const selectedContainer = document.getElementById('selected-diagnoses-container');
+
+        const isPrimary = !hasPrimaryDiagnosis;
+
+        if (isPrimary) {
+            // Set as primary
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-primary me-2 mb-2 diagnosis-badge';
+            badge.dataset.diagnosisId = diagnosisId;
+            badge.dataset.type = 'primary';
+            badge.innerHTML = `<strong>Primary:</strong> ${diagnosisName} <button type="button" class="btn-close btn-close-white ms-2" style="font-size: 0.7rem;" onclick="removeDiagnosis('primary', ${diagnosisId})"></button>`;
+
+            selectedContainer.insertBefore(badge, selectedContainer.firstChild);
+
+            document.getElementById('primary-diagnosis-id').value = diagnosisId;
+            hasPrimaryDiagnosis = true;
+
+            // Update placeholder
+            searchInput.placeholder = 'Search for secondary diagnosis...';
+
+            // Save to backend
+            saveDiagnosisToBackend('primary', diagnosisId);
+
+        } else {
+            // Check if already added as secondary
+            if (secondaryDiagnosisIds.includes(diagnosisId)) {
+                showMiniToast('This diagnosis is already added as secondary', 'warning');
+                searchInput.value = '';
+                resultsContainer.style.display = 'none';
+                return;
+            }
+
+            // Add as secondary
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-warning text-dark me-2 mb-2 diagnosis-badge';
+            badge.dataset.diagnosisId = diagnosisId;
+            badge.dataset.type = 'secondary';
+            badge.innerHTML = `<strong>Secondary:</strong> ${diagnosisName} <button type="button" class="btn-close ms-2" style="font-size: 0.7rem;" onclick="removeDiagnosis('secondary', ${diagnosisId})"></button>`;
+
+            selectedContainer.appendChild(badge);
+
+            secondaryDiagnosisIds.push(diagnosisId);
+            document.getElementById('secondary-diagnosis-ids').value = secondaryDiagnosisIds.join(',');
+
+            // Save to backend
+            saveDiagnosisToBackend('secondary', diagnosisId);
+        }
+
+        // Clear search
+        searchInput.value = '';
+        resultsContainer.style.display = 'none';
+    }
+
+    function removeDiagnosis(type, diagnosisId) {
+        const badge = document.querySelector(`.diagnosis-badge[data-diagnosis-id="${diagnosisId}"][data-type="${type}"]`);
+        if (badge) {
+            badge.remove();
+        }
+
+        if (type === 'primary') {
+            document.getElementById('primary-diagnosis-id').value = '';
+            hasPrimaryDiagnosis = false;
+            document.getElementById('diagnosis-search-input').placeholder = 'Search for primary diagnosis first...';
+
+            // Also clear all secondary diagnoses
+            document.querySelectorAll('.diagnosis-badge[data-type="secondary"]').forEach(b => b.remove());
+            secondaryDiagnosisIds = [];
+            document.getElementById('secondary-diagnosis-ids').value = '';
+
+        } else {
+            secondaryDiagnosisIds = secondaryDiagnosisIds.filter(id => id !== diagnosisId);
+            document.getElementById('secondary-diagnosis-ids').value = secondaryDiagnosisIds.join(',');
+        }
+
+        // Save to backend
+        saveDiagnosisToBackend(type, null, diagnosisId);
+    }
+
+    function saveDiagnosisToBackend(type, diagnosisId, removedId = null) {
+        const payload = {
+            consultation_id: consultationId,
+            type: type,
+            diagnosis_id: diagnosisId,
+            removed_id: removedId
+        };
+
+        fetch('/portal/consultation/ajax/save-diagnosis/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showMiniToast(data.message, 'success');
+            } else {
+                showAlert(data.error || 'Failed to save diagnosis', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Save diagnosis error:', error);
+            showAlert('Network error while saving diagnosis', 'danger');
+        });
+    }
+</script>
 
 <!-- MODALS (Confirmation, Message, Allergy) -->
 <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">

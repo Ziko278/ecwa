@@ -1,0 +1,536 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<style>
+.diagnosis-cell {
+    min-width: 250px;
+}
+.diagnosis-search-wrapper {
+    position: relative;
+}
+.diagnosis-results-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1050;
+    max-height: 200px;
+    overflow-y: auto;
+    display: none;
+}
+.table-responsive {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.sticky-header {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+}
+.saving-indicator {
+    display: inline-block;
+    margin-left: 5px;
+    font-size: 0.8rem;
+}
+</style>
+
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title">Bulk Diagnosis Update</h4>
+                <p class="card-description">Update primary and secondary diagnoses for past consultations</p>
+
+                <!-- Filters Section -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <label class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="filter-start-date" value="{{ default_start_date }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">End Date</label>
+                        <input type="date" class="form-control" id="filter-end-date" value="{{ default_end_date }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Specialization</label>
+                        <select class="form-select" id="filter-specialization">
+                            <option value="">All Specializations</option>
+                            {% for spec in specializations %}
+                            <option value="{{ spec.id }}">{{ spec.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Search Patient</label>
+                        <input type="text" class="form-control" id="filter-patient-search" placeholder="Name or Card Number">
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="filter-show-all">
+                            <label class="form-check-label" for="filter-show-all">
+                                Show all sessions (including those with primary diagnosis)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button class="btn btn-primary" id="apply-filters">
+                            <i class="bi bi-funnel"></i> Apply Filters
+                        </button>
+                        <button class="btn btn-secondary" id="reset-filters">
+                            <i class="bi bi-arrow-clockwise"></i> Reset
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results Count -->
+                <div class="alert alert-info" role="alert">
+                    <strong id="results-count">{{ consultations.count }}</strong> consultation(s) found
+                </div>
+
+                <!-- Consultations Table -->
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" id="consultations-table">
+                        <thead class="sticky-header">
+                            <tr>
+                                <th style="width: 120px;">Date</th>
+                                <th style="width: 150px;">Patient Name</th>
+                                <th style="width: 100px;">Card Number</th>
+                                <th style="width: 120px;">Specialization</th>
+                                <th style="width: 120px;">Written Diagnosis</th>
+                                <th class="diagnosis-cell">Primary Diagnosis</th>
+                                <th class="diagnosis-cell">Secondary Diagnoses</th>
+                            </tr>
+                        </thead>
+                        <tbody id="consultations-tbody">
+                            {% for consultation in consultations %}
+                            <tr data-consultation-id="{{ consultation.id }}" data-specialization-id="{{ consultation.queue_entry.specialization.id|default:'' }}">
+                                <td>{{ consultation.created_at|date:"M d, Y" }}</td>
+                                <td>{{ consultation.queue_entry.patient }}</td>
+                                <td>{{ consultation.queue_entry.patient.card_number }}</td>
+                                <td>
+                                    {% if consultation.queue_entry.specialization %}
+                                        {{ consultation.queue_entry.specialization.name }}
+                                    {% else %}
+                                        <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ consultation.diagnosis }}</td>
+                                <td class="diagnosis-cell">
+                                    <div class="diagnosis-search-wrapper" data-type="primary">
+                                        <!-- Display existing primary -->
+                                        <div class="selected-diagnosis mb-2">
+                                            {% if consultation.primary_diagnosis %}
+                                            <span class="badge bg-primary diagnosis-badge" data-diagnosis-id="{{ consultation.primary_diagnosis.id }}">
+                                                {{ consultation.primary_diagnosis.name }}
+                                                <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.6rem;" onclick="removeBulkDiagnosis(this, {{ consultation.id }}, 'primary', {{ consultation.primary_diagnosis.id }})"></button>
+                                            </span>
+                                            {% else %}
+                                            <small class="text-muted">Not set</small>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <!-- Search input -->
+                                        <input 
+                                            type="text" 
+                                            class="form-control form-control-sm diagnosis-search-input"
+                                            placeholder="Search primary..."
+                                            autocomplete="off"
+                                        />
+                                        <div class="diagnosis-results-dropdown list-group"></div>
+                                        <span class="saving-indicator text-success" style="display: none;">
+                                            <i class="bi bi-check-circle"></i> Saved
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="diagnosis-cell">
+                                    <div class="diagnosis-search-wrapper" data-type="secondary">
+                                        <!-- Display existing secondary -->
+                                        <div class="selected-diagnosis mb-2">
+                                            {% for diag in consultation.secondary_diagnoses.all %}
+                                            <span class="badge bg-warning text-dark me-1 mb-1 diagnosis-badge" data-diagnosis-id="{{ diag.id }}">
+                                                {{ diag.name }}
+                                                <button type="button" class="btn-close ms-1" style="font-size: 0.6rem;" onclick="removeBulkDiagnosis(this, {{ consultation.id }}, 'secondary', {{ diag.id }})"></button>
+                                            </span>
+                                            {% empty %}
+                                            <small class="text-muted">None</small>
+                                            {% endfor %}
+                                        </div>
+                                        
+                                        <!-- Search input -->
+                                        <input 
+                                            type="text" 
+                                            class="form-control form-control-sm diagnosis-search-input"
+                                            placeholder="Search secondary..."
+                                            autocomplete="off"
+                                        />
+                                        <div class="diagnosis-results-dropdown list-group"></div>
+                                        <span class="saving-indicator text-success" style="display: none;">
+                                            <i class="bi bi-check-circle"></i> Saved
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    No consultations found matching the criteria
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    initializeBulkDiagnosisSearch();
+    setupFilters();
+});
+
+function initializeBulkDiagnosisSearch() {
+    const searchInputs = document.querySelectorAll('.diagnosis-search-input');
+    
+    searchInputs.forEach(input => {
+        let searchTimeout;
+        
+        input.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            const wrapper = this.closest('.diagnosis-search-wrapper');
+            const resultsDropdown = wrapper.querySelector('.diagnosis-results-dropdown');
+            
+            if (query.length < 2) {
+                resultsDropdown.style.display = 'none';
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => {
+                searchBulkDiagnoses(this, query);
+            }, 300);
+        });
+        
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!input.contains(e.target) && !input.closest('.diagnosis-search-wrapper').contains(e.target)) {
+                const dropdown = input.closest('.diagnosis-search-wrapper').querySelector('.diagnosis-results-dropdown');
+                if (dropdown) dropdown.style.display = 'none';
+            }
+        });
+    });
+}
+
+function searchBulkDiagnoses(inputElement, query) {
+    const wrapper = inputElement.closest('.diagnosis-search-wrapper');
+    const resultsDropdown = wrapper.querySelector('.diagnosis-results-dropdown');
+    const row = inputElement.closest('tr');
+    const specializationId = row.dataset.specializationId;
+    
+    let url = `/portal/consultation/ajax/search-diagnoses/?q=${encodeURIComponent(query)}`;
+    if (specializationId) {
+        url += `&specialization_id=${specializationId}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            resultsDropdown.innerHTML = '';
+            
+            if (data.diagnoses && data.diagnoses.length > 0) {
+                data.diagnoses.forEach(diag => {
+                    const item = document.createElement('a');
+                    item.href = '#';
+                    item.className = 'list-group-item list-group-item-action list-group-item-sm';
+                    item.innerHTML = `<strong>${diag.name}</strong>`;
+                    if (diag.icd_code) {
+                        item.innerHTML += ` <small class="text-muted">(${diag.icd_code})</small>`;
+                    }
+                    
+                    item.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        selectBulkDiagnosis(inputElement, diag.id, diag.name);
+                    });
+                    
+                    resultsDropdown.appendChild(item);
+                });
+                resultsDropdown.style.display = 'block';
+            } else {
+                resultsDropdown.innerHTML = '<span class="list-group-item">No diagnoses found</span>';
+                resultsDropdown.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Diagnosis search error:', error);
+            resultsDropdown.style.display = 'none';
+        });
+}
+
+function selectBulkDiagnosis(inputElement, diagnosisId, diagnosisName) {
+    const wrapper = inputElement.closest('.diagnosis-search-wrapper');
+    const type = wrapper.dataset.type;
+    const row = inputElement.closest('tr');
+    const consultationId = row.dataset.consultationId;
+    const selectedContainer = wrapper.querySelector('.selected-diagnosis');
+    const resultsDropdown = wrapper.querySelector('.diagnosis-results-dropdown');
+    const savingIndicator = wrapper.querySelector('.saving-indicator');
+    
+    // Check if already selected (for secondary)
+    if (type === 'secondary') {
+        const existing = selectedContainer.querySelector(`[data-diagnosis-id="${diagnosisId}"]`);
+        if (existing) {
+            inputElement.value = '';
+            resultsDropdown.style.display = 'none';
+            showMiniToast('Diagnosis already added', 'warning');
+            return;
+        }
+    }
+    
+    // Clear input
+    inputElement.value = '';
+    resultsDropdown.style.display = 'none';
+    
+    // Show saving indicator
+    savingIndicator.style.display = 'inline-block';
+    
+    // Save to backend
+    const payload = {
+        consultation_id: consultationId,
+        type: type,
+        diagnosis_id: diagnosisId
+    };
+    
+    fetch('/portal/consultation/ajax/save-diagnosis/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update UI
+            if (type === 'primary') {
+                // Replace existing primary badge
+                selectedContainer.innerHTML = `
+                    <span class="badge bg-primary diagnosis-badge" data-diagnosis-id="${diagnosisId}">
+                        ${diagnosisName}
+                        <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.6rem;" onclick="removeBulkDiagnosis(this, ${consultationId}, 'primary', ${diagnosisId})"></button>
+                    </span>
+                `;
+            } else {
+                // Add secondary badge
+                const existingText = selectedContainer.querySelector('.text-muted');
+                if (existingText && existingText.textContent.trim() === 'None') {
+                    selectedContainer.innerHTML = '';
+                }
+                
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-warning text-dark me-1 mb-1 diagnosis-badge';
+                badge.dataset.diagnosisId = diagnosisId;
+                badge.innerHTML = `${diagnosisName} <button type="button" class="btn-close ms-1" style="font-size: 0.6rem;" onclick="removeBulkDiagnosis(this, ${consultationId}, 'secondary', ${diagnosisId})"></button>`;
+                selectedContainer.appendChild(badge);
+            }
+            
+            // Hide saving indicator after 2 seconds
+            setTimeout(() => {
+                savingIndicator.style.display = 'none';
+            }, 2000);
+            
+            showMiniToast(data.message, 'success');
+        } else {
+            savingIndicator.style.display = 'none';
+            showMiniToast(data.error || 'Failed to save', 'danger');
+        }
+    })
+    .catch(error => {
+        savingIndicator.style.display = 'none';
+        console.error('Save error:', error);
+        showMiniToast('Network error', 'danger');
+    });
+}
+
+function removeBulkDiagnosis(buttonElement, consultationId, type, diagnosisId) {
+    const badge = buttonElement.closest('.diagnosis-badge');
+    const wrapper = buttonElement.closest('.diagnosis-search-wrapper');
+    const savingIndicator = wrapper.querySelector('.saving-indicator');
+    const selectedContainer = wrapper.querySelector('.selected-diagnosis');
+    
+    // Show saving indicator
+    savingIndicator.style.display = 'inline-block';
+    
+    const payload = {
+        consultation_id: consultationId,
+        type: type,
+        removed_id: diagnosisId
+    };
+    
+    fetch('/portal/consultation/ajax/save-diagnosis/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove badge
+            badge.remove();
+            
+            // Update UI if needed
+            if (type === 'primary') {
+                selectedContainer.innerHTML = '<small class="text-muted">Not set</small>';
+            } else {
+                // Check if no secondary diagnoses left
+                const remainingBadges = selectedContainer.querySelectorAll('.diagnosis-badge');
+                if (remainingBadges.length === 0) {
+                    selectedContainer.innerHTML = '<small class="text-muted">None</small>';
+                }
+            }
+            
+            // Hide saving indicator
+            setTimeout(() => {
+                savingIndicator.style.display = 'none';
+            }, 2000);
+            
+            showMiniToast(data.message, 'success');
+        } else {
+            savingIndicator.style.display = 'none';
+            showMiniToast(data.error || 'Failed to remove', 'danger');
+        }
+    })
+    .catch(error => {
+        savingIndicator.style.display = 'none';
+        console.error('Remove error:', error);
+        showMiniToast('Network error', 'danger');
+    });
+}
+
+function setupFilters() {
+    document.getElementById('apply-filters').addEventListener('click', applyFilters);
+    document.getElementById('reset-filters').addEventListener('click', resetFilters);
+    
+    // Apply filters on Enter key in search box
+    document.getElementById('filter-patient-search').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            applyFilters();
+        }
+    });
+}
+
+function applyFilters() {
+    const startDate = document.getElementById('filter-start-date').value;
+    const endDate = document.getElementById('filter-end-date').value;
+    const specializationId = document.getElementById('filter-specialization').value;
+    const patientSearch = document.getElementById('filter-patient-search').value;
+    const showAll = document.getElementById('filter-show-all').checked;
+    
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (specializationId) params.append('specialization', specializationId);
+    if (patientSearch) params.append('patient_search', patientSearch);
+    if (showAll) params.append('show_all', 'true');
+    
+    window.location.href = `{% url 'bulk_diagnosis_update' %}?${params.toString()}`;
+}
+
+function resetFilters() {
+    window.location.href = `{% url 'bulk_diagnosis_update' %}`;
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showMiniToast(message, type = 'success') {
+    const toastContainer = document.querySelector('.toast-container') || createToastContainer();
+    const toastId = 'toast-' + Date.now();
+    const bgColor = type === 'success' ? 'bg-success' : (type === 'warning' ? 'bg-warning' : 'bg-danger');
+    const icon = type === 'success' ? 'bi-check-circle' : (type === 'warning' ? 'bi-exclamation-triangle' : 'bi-x-circle');
+    
+    const toastHTML = `
+        <div class="alert alert-dismissible fade show mini-toast ${bgColor} text-white" role="alert" id="${toastId}">
+            <i class="bi ${icon} me-2"></i>${message}
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+    
+    setTimeout(() => {
+        const toast = document.getElementById(toastId);
+        if (toast) {
+            toast.classList.add('hiding');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 3000);
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.className = 'toast-container';
+    container.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999;';
+    document.body.appendChild(container);
+    return container;
+}
+</script>
+
+<!-- Toast styles (reuse from consultation page) -->
+<style>
+.mini-toast {
+    min-width: 250px;
+    margin-bottom: 10px;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.mini-toast.hiding {
+    animation: slideOut 0.3s ease-out forwards;
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+}
+</style>
+
+{% endblock %}

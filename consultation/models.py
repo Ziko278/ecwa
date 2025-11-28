@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 
+from django.db.models import Q
 from django.utils import timezone
 
 from finance.models import PatientTransactionModel
@@ -351,7 +352,25 @@ class DiagnosisOption(models.Model):
 
 # 8. CONSULTATION SESSIONS (The actual consultation)
 class ConsultationSessionModel(models.Model):
-    queue_entry = models.OneToOneField(PatientQueueModel, on_delete=models.CASCADE, related_name='consultation')
+    # For OPD consultations
+    queue_entry = models.OneToOneField(
+        PatientQueueModel,
+        on_delete=models.CASCADE,
+        related_name='consultation',
+        null=True,
+        blank=True,
+        help_text="For OPD consultations"
+    )
+
+    # For inpatient consultations (ward rounds)
+    admission = models.ForeignKey(
+        'inpatient.Admission',
+        on_delete=models.CASCADE,
+        related_name='consultations',
+        null=True,
+        blank=True,
+        help_text="For inpatient ward rounds"
+    )
 
     consultation_type = models.CharField(
         max_length=20,
@@ -362,12 +381,12 @@ class ConsultationSessionModel(models.Model):
         help_text="Only NEW consultations appear in OPD register"
     )
 
-    # Main consultation note
-    assessment = models.TextField(help_text="Comprehensive consultation notes")
-    chief_complaint = models.TextField(help_text="Comprehensive consultation notes")
-    diagnosis = models.TextField(help_text="Comprehensive consultation notes")  # Keep for backward compatibility
+    # Clinical notes
+    chief_complaint = models.TextField()
+    assessment = models.TextField()
+    diagnosis = models.TextField()
 
-    # PRIMARY Diagnosis (already exists - keep as ForeignKey)
+    # Diagnoses
     primary_diagnosis = models.ForeignKey(
         DiagnosisOption,
         on_delete=models.SET_NULL,
@@ -377,7 +396,6 @@ class ConsultationSessionModel(models.Model):
         help_text="Required for new consultations"
     )
 
-    # NEW: SECONDARY Diagnoses (ManyToMany)
     secondary_diagnoses = models.ManyToManyField(
         DiagnosisOption,
         blank=True,
@@ -390,6 +408,13 @@ class ConsultationSessionModel(models.Model):
         blank=True,
         null=True,
         help_text="If diagnosis not in list above"
+    )
+
+    # Vitals (for ward rounds)
+    vitals = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='Patient vitals: {"bp": "120/80", "temp": 37.2, "pulse": 72, "spo2": 98, "weight": 70}'
     )
 
     case_status = models.CharField(
@@ -422,6 +447,17 @@ class ConsultationSessionModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                        Q(queue_entry__isnull=False, admission__isnull=True) |
+                        Q(queue_entry__isnull=True, admission__isnull=False)
+                ),
+                name='either_queue_or_admission'
+            )
+        ]
+
     def save(self, *args, **kwargs):
         if not self.pk:
             self.consultation_type = self.determine_consultation_type()
@@ -429,10 +465,11 @@ class ConsultationSessionModel(models.Model):
 
     def determine_consultation_type(self):
         """Determine if this is a new or follow-up consultation"""
-        patient = self.queue_entry.patient
+        # Get patient from either queue_entry or admission
+        patient = self.patient
 
         previous_consultations = ConsultationSessionModel.objects.filter(
-            queue_entry__patient=patient,
+            Q(queue_entry__patient=patient) | Q(admission__patient=patient),
             status='completed'
         ).order_by('-completed_at')
 
@@ -451,10 +488,39 @@ class ConsultationSessionModel(models.Model):
         self.status = 'completed'
         self.completed_at = timezone.now()
         self.save()
-        self.queue_entry.complete_consultation()
+
+        # Complete queue entry if OPD
+        if self.queue_entry:
+            self.queue_entry.complete_consultation()
+
+    @property
+    def patient(self):
+        """Get patient from either queue_entry or admission"""
+        if self.queue_entry:
+            return self.queue_entry.patient
+        return self.admission.patient
+
+    @property
+    def doctor(self):
+        """Get doctor from either queue_entry or admission"""
+        if self.queue_entry:
+            return self.queue_entry.doctor
+        return self.admission.attending_doctor
+
+    @property
+    def is_ward_round(self):
+        """Check if this is a ward round (inpatient consultation)"""
+        return self.admission is not None
+
+    @property
+    def is_opd(self):
+        """Check if this is an OPD consultation"""
+        return self.queue_entry is not None
 
     def __str__(self):
-        return f"{self.get_consultation_type_display()}: {self.queue_entry.patient} - {self.created_at.strftime('%Y-%m-%d')}"
+        encounter = "Ward Round" if self.is_ward_round else "OPD"
+        return f"{encounter} - {self.patient} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
 
 # 9. DOCTOR SCHEDULE (When doctors are available)
 class DoctorScheduleModel(models.Model):

@@ -1,3 +1,4 @@
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from django.contrib.auth.models import User
 from decimal import Decimal
@@ -80,6 +81,34 @@ class HMOCoveragePlanModel(models.Model):
     surgery_coverage_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=50.00)
     surgery_annual_limit = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
+    # Admission coverage
+    admission_coverage = models.CharField(
+        max_length=20,
+        choices=COVERAGE_CHOICES,  # Uses existing COVERAGE_CHOICES
+        default='include_selected',
+        help_text="Coverage type for admission/bed fees"
+    )
+    selected_admission_types = models.ManyToManyField(
+        'inpatient.AdmissionType',
+        blank=True,
+        related_name='insurance_plans',
+        help_text="Which admission types are covered (if include_selected or exclude_selected)"
+    )
+    admission_coverage_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('70.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Percentage of admission costs covered by insurance"
+    )
+    admission_annual_limit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Annual limit for admission-related costs"
+    )
+
     # Administrative
     require_verification = models.BooleanField(default=False)
     require_referral = models.BooleanField(default=False)
@@ -134,6 +163,18 @@ class HMOCoveragePlanModel(models.Model):
             return self.selected_radiology.filter(id=scan.id).exists()
         if self.radiology_coverage == 'exclude_selected':
             return not self.selected_radiology.filter(id=scan.id).exists()
+        return False
+
+    def is_admission_type_covered(self, admission_type):
+        """Check if a specific admission type is covered by this plan"""
+        if self.admission_coverage == 'all':
+            return True
+        if self.admission_coverage == 'none':
+            return False
+        if self.admission_coverage == 'include_selected':
+            return self.selected_admission_types.filter(id=admission_type.id).exists()
+        if self.admission_coverage == 'exclude_selected':
+            return not self.selected_admission_types.filter(id=admission_type.id).exists()
         return False
 
 
@@ -191,6 +232,7 @@ class InsuranceClaimModel(models.Model):
         ('surgery', 'Surgery'),
         ('admission', 'Admission'),
         ('services', 'Services'),
+        ('ward_round', 'Ward Round'),
     ]
 
     claim_number = models.CharField(max_length=50, unique=True)

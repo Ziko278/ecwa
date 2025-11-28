@@ -9,6 +9,12 @@ urlpatterns = [
     path('settings/', InpatientSettingsDetailView.as_view(), name='inpatient_settings_detail'),
     path('settings/edit/', InpatientSettingsUpdateView.as_view(), name='inpatient_settings_edit'),
 
+    # Admission Types (NEW)
+    path('admission-types/', AdmissionTypeListView.as_view(), name='admission_type_index'),
+    path('admission-types/create/', AdmissionTypeCreateView.as_view(), name='admission_type_create'),
+    path('admission-types/<int:pk>/', AdmissionTypeDetailView.as_view(), name='admission_type_detail'),
+    path('admission-types/<int:pk>/edit/', AdmissionTypeUpdateView.as_view(), name='admission_type_edit'),
+
     # Ward Management
     path('wards/', WardListView.as_view(), name='ward_index'),
     path('wards/create/', WardCreateView.as_view(), name='ward_create'),
@@ -20,7 +26,6 @@ urlpatterns = [
     path('beds/create/', BedCreateView.as_view(), name='bed_create'),
     path('beds/<int:pk>/edit/', BedUpdateView.as_view(), name='bed_edit'),
     path('beds/<int:pk>/delete/', BedDeleteView.as_view(), name='bed_delete'),
-
 
     # Surgery Types
     path('surgery-types/', SurgeryTypeListView.as_view(), name='surgery_type_index'),
@@ -47,10 +52,24 @@ urlpatterns = [
     path('admissions/<int:pk>/', AdmissionDetailView.as_view(), name='admission_detail'),
     path('admissions/<int:pk>/edit/', AdmissionUpdateView.as_view(), name='admission_edit'),
 
-    # Admission Services Management (AJAX)
-    path('admissions/<int:pk>/add-drug/', add_drug_to_admission, name='add_drug_to_admission'),
-    path('admissions/<int:pk>/add-lab/', add_lab_to_admission, name='add_lab_to_admission'),
-    path('admissions/<int:pk>/add-scan/', add_scan_to_admission, name='add_scan_to_admission'),
+    # NEW: Deposit & Discharge
+    path('admissions/<int:admission_id>/deposit/', process_admission_deposit, name='process_admission_deposit'),
+    path('admissions/<int:admission_id>/discharge/', discharge_patient, name='discharge_patient'),
+
+    # Ward Rounds (NEW)
+    path('ward-rounds/search/', ward_round_search_admission, name='ward_round_search_admission'),
+    path('ward-rounds/create/<int:admission_id>/', ward_round_create_for_admission,
+         name='ward_round_create_for_admission'),
+    path('ward-rounds/<int:pk>/', WardRoundDetailView.as_view(), name='ward_round_detail'),
+    path('ward-rounds/<int:pk>/save/', save_ward_round, name='save_ward_round'),
+    path('ward-rounds/<int:pk>/complete/', complete_ward_round, name='complete_ward_round'),
+    path('ward-rounds/<int:pk>/pause/', pause_ward_round, name='pause_ward_round'),
+
+    # Admission Tasks (NEW)
+    path('tasks/', AdmissionTaskListView.as_view(), name='admission_task_index'),
+    path('tasks/create/', AdmissionTaskCreateView.as_view(), name='admission_task_create'),
+    path('tasks/<int:pk>/complete/', mark_task_completed, name='mark_task_completed'),
+    path('tasks/<int:pk>/cancel/', cancel_task, name='cancel_task'),
 
     # Surgeries
     path('surgeries/', SurgeryListView.as_view(), name='surgery_index'),
@@ -66,11 +85,13 @@ urlpatterns = [
     path('search/surgery-types/', search_surgery_types_ajax, name='search_surgery_types_ajax'),
     path('get-surgery-fees/<int:pk>/', get_surgery_type_details_ajax, name='get_surgery_type_details_ajax'),
 
+    # Surgery Service Management
     path('surgeries/<int:pk>/add-service/', add_service_order_to_surgery, name='add_service_order_to_surgery'),
-    path('surgeries/<int:pk>/remove-service/<int:order_id>/', remove_service_order_from_surgery, name='remove_service_order_from_surgery'),
+    path('surgeries/<int:pk>/remove-service/<int:order_id>/', remove_service_order_from_surgery,
+         name='remove_service_order_from_surgery'),
 
+    # Surgery Multi-order endpoints
     path('ajax/surgery/prescribe-multiple/', surgery_prescribe_multiple, name='surgery_prescribe_multiple'),
     path('ajax/surgery/order-lab-tests/', surgery_order_multiple_labs, name='surgery_order_multiple_labs'),
     path('ajax/surgery/order-imaging/', surgery_order_multiple_imaging, name='surgery_order_multiple_imaging'),
-
 ]

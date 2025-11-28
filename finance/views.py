@@ -4538,7 +4538,7 @@ def ajax_get_admission_surgery_details(request):
             scan_costs = scan_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
             other_services_costs = other_services.aggregate(total=Sum('total_amount'))['total'] or 0
 
-            base_fee = (admission.admission_fee_charged or 0) + (admission.bed_fee_charged or 0)
+            base_fee = 1000 # (admission.admission_fee_charged or 0) + (admission.bed_fee_charged or 0)
             total_bill = base_fee + drug_costs + lab_costs + scan_costs + other_services_costs
 
             total_paid = PatientTransactionModel.objects.filter(

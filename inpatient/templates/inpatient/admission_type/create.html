@@ -1,0 +1,132 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+
+<div class="pagetitle">
+    <h1>{% if object %}Edit{% else %}Create{% endif %} Admission Type</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'admission_type_index' %}">Admission Types</a></li>
+            <li class="breadcrumb-item active">{% if object %}Edit{% else %}Create{% endif %}</li>
+        </ol>
+    </nav>
+</div>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Admission Type Details</h5>
+                    <p class="text-muted">Define pricing and requirements for this admission type</p>
+
+                    {% include 'admin_site/partials/error.html' %}
+
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+
+                        <!-- Basic Information -->
+                        <div class="col-12">
+                            <h6 class="card-subtitle mb-2 text-muted">Basic Information</h6>
+                            <hr>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.name }}
+                                <label for="{{ form.name.id_for_label }}">Name <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.description }}
+                                <label for="{{ form.description.id_for_label }}">Description</label>
+                            </div>
+                        </div>
+
+                        <!-- Pricing -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Pricing</h6>
+                            <hr>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.bed_daily_fee }}
+                                <label for="{{ form.bed_daily_fee.id_for_label }}">Bed Daily Fee (₦) <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.consultation_fee }}
+                                <label for="{{ form.consultation_fee.id_for_label }}">Consultation Fee (₦) <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.consultation_fee_duration_days }}
+                                <label for="{{ form.consultation_fee_duration_days.id_for_label }}">Consultation Fee Duration (Days) <span class="text-danger">*</span></label>
+                            </div>
+                            <small class="text-muted">How many days one consultation fee covers (e.g., 3 = fee is valid for 3 days)</small>
+                        </div>
+
+                        <!-- Deposit & Debt -->
+                        <div class="col-12 mt-4">
+                            <h6 class="card-subtitle mb-2 text-muted">Deposit & Debt Management</h6>
+                            <hr>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-check form-switch">
+                                {{ form.requires_deposit }}
+                                <label class="form-check-label" for="{{ form.requires_deposit.id_for_label }}">
+                                    Requires Initial Deposit
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.minimum_deposit_amount }}
+                                <label for="{{ form.minimum_deposit_amount.id_for_label }}">Minimum Deposit (₦)</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
+                                {{ form.max_debt_allowed }}
+                                <label for="{{ form.max_debt_allowed.id_for_label }}">Maximum Debt Allowed (₦)</label>
+                            </div>
+                        </div>
+
+                        <!-- Status -->
+                        <div class="col-12 mt-4">
+                            <div class="form-check form-switch">
+                                {{ form.is_active }}
+                                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                                    Active
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="text-end mt-4">
+                            <a href="{% url 'admission_type_index' %}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">
+                                {% if object %}Update{% else %}Create{% endif %} Admission Type
+                            </button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

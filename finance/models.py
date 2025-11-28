@@ -155,6 +155,7 @@ class PatientTransactionModel(models.Model):
                                     related_name='transactions')
 
     scan_order = models.ForeignKey('scan.ScanOrderModel', on_delete=models.SET_NULL, null=True,  blank=True,  related_name='transactions')
+
     # NEW FIELDS
     parent_transaction = models.ForeignKey(
         'self',

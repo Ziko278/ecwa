@@ -562,6 +562,31 @@ class DrugOrderModel(models.Model):
         blank=True,
         related_name='drug_consultation_order',
     )
+    # Task generation for administration
+    generate_tasks = models.BooleanField(
+        default=False,
+        help_text="Auto-generate administration tasks for this drug?"
+    )
+    first_dose_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Time for first dose (e.g., 08:00 AM) - used for task generation"
+    )
+
+    # Payment tracking
+    payment_method = models.CharField(
+        max_length=20,
+        choices=[
+            ('cash', 'Cash'),
+            ('card', 'Card'),
+            ('transfer', 'Transfer'),
+            ('wallet', 'Patient Wallet'),
+            ('admission', 'Admission Deposit'),
+            ('insurance', 'Insurance'),
+        ],
+        default='cash',
+        blank=True
+    )
 
     class Meta:
         db_table = 'drug_orders'

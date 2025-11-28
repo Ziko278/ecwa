@@ -3,9 +3,12 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from human_resource.models import DepartmentModel
+from consultation.models import ConsultationSessionModel
+from human_resource.models import DepartmentModel, StaffProfileModel
+from pharmacy.models import DrugOrderModel
 from .models import (
-    InpatientSettings, Ward, Bed, SurgeryType, SurgeryDrug, SurgeryLab, SurgeryScan, Admission, Surgery
+    InpatientSettings, Ward, Bed, SurgeryType, SurgeryDrug, SurgeryLab, SurgeryScan, Admission, Surgery, AdmissionType,
+ AdmissionTask
 )
 
 
@@ -16,7 +19,8 @@ class InpatientSettingsForm(forms.ModelForm):
             'bed_billing_for_admission', 'bed_billing_for_surgery',
             'admission_billing_type', 'admission_amount',
             'surgery_billing_type', 'surgery_amount', 'bed_daily_cost',
-            'compile_surgery_drugs', 'compile_surgery_labs', 'compile_surgery_scans'
+            'compile_surgery_drugs', 'compile_surgery_labs', 'compile_surgery_scans',
+            'charge_admission_fee', 'admission_fee_amount', 'default_max_debt'
         ]
         widgets = {
             'bed_billing_for_admission': forms.Select(attrs={'class': 'form-control'}),
@@ -34,6 +38,17 @@ class InpatientSettingsForm(forms.ModelForm):
                 'min': '0'
             }),
             'bed_daily_cost': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'step': '0.01',
+                'min': '0'
+            }),
+            'charge_admission_fee': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'admission_fee_amount': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'step': '0.01',
+                'min': '0'
+            }),
+            'default_max_debt': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'step': '0.01',
                 'min': '0'
@@ -577,3 +592,231 @@ class SurgeryScanForm(forms.ModelForm):
                 'placeholder': 'e.g., Intra-op, Follow-up'
             }),
         }
+
+
+# ============================================
+# NEW FORMS FOR ADMISSION TYPES, WARD ROUNDS, AND TASKS
+# ============================================
+
+class AdmissionTypeForm(forms.ModelForm):
+    """Form for creating/editing admission types"""
+
+    class Meta:
+        model = AdmissionType
+        fields = [
+            'name', 'description', 'bed_daily_fee', 'consultation_fee',
+            'consultation_fee_duration_days', 'requires_deposit',
+            'minimum_deposit_amount', 'max_debt_allowed', 'is_active'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g., General Ward, ICU, Private Room'
+            }),
+            'description': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': 'Description of this admission type (optional)'
+            }),
+            'bed_daily_fee': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'step': '0.01',
+                'min': '0',
+                'placeholder': 'Daily bed charge'
+            }),
+            'consultation_fee': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'step': '0.01',
+                'min': '0',
+                'placeholder': 'Fee per ward round'
+            }),
+            'consultation_fee_duration_days': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '1',
+                'placeholder': 'How many days this fee covers'
+            }),
+            'requires_deposit': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'minimum_deposit_amount': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'step': '0.01',
+                'min': '0',
+                'placeholder': 'Minimum deposit required'
+            }),
+            'max_debt_allowed': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'step': '0.01',
+                'min': '0',
+                'placeholder': 'Maximum debt before blocking services'
+            }),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+
+class WardRoundForm(forms.ModelForm):
+    class Meta:
+        model = ConsultationSessionModel  # Changed from WardRound
+        fields = [
+            'admission',           # Keep this
+            'chief_complaint',     # Already exists in ConsultationSessionModel
+            'assessment',          # Already exists
+            'diagnosis',           # Use this instead of 'plan'
+        ]
+        widgets = {
+            'admission': forms.Select(attrs={'class': 'form-control'}),
+            'chief_complaint': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': 'Patient\'s current complaints'
+            }),
+            'assessment': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 4,
+                'placeholder': 'Clinical assessment and findings'
+            }),
+            'diagnosis': forms.Textarea(attrs={  # Changed from 'plan'
+                'class': 'form-control',
+                'rows': 4,
+                'placeholder': 'Diagnosis and treatment plan'
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Only show active admissions
+        self.fields['admission'].queryset = Admission.objects.filter(
+            status='active'
+        ).select_related('patient', 'bed__ward')
+
+
+class AdmissionTaskForm(forms.ModelForm):
+    """Form for creating/editing admission tasks"""
+
+    class Meta:
+        model = AdmissionTask
+        fields = [
+            'admission', 'task_type', 'drug_order', 'description',
+            'scheduled_datetime', 'assigned_to', 'priority', 'notes'
+        ]
+        widgets = {
+            'admission': forms.Select(attrs={'class': 'form-control'}),
+            'task_type': forms.Select(attrs={'class': 'form-control'}),
+            'drug_order': forms.Select(attrs={
+                'class': 'form-control',
+                'required': False
+            }),
+            'description': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': 'What needs to be done?'
+            }),
+            'scheduled_datetime': forms.DateTimeInput(attrs={
+                'class': 'form-control',
+                'type': 'datetime-local'
+            }),
+            'assigned_to': forms.Select(attrs={'class': 'form-control'}),
+            'priority': forms.Select(attrs={'class': 'form-control'}),
+            'notes': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 2,
+                'placeholder': 'Additional instructions (optional)'
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Only show active admissions
+        self.fields['admission'].queryset = Admission.objects.filter(
+            status='active'
+        ).select_related('patient')
+
+        # Only show pending drug orders for the admission (if admission is set)
+        if self.instance and self.instance.admission:
+            self.fields['drug_order'].queryset = DrugOrderModel.objects.filter(
+                admission=self.instance.admission,
+                status__in=['pending', 'paid']
+            ).select_related('drug')
+        else:
+            self.fields['drug_order'].queryset = DrugOrderModel.objects.none()
+
+        # Only show active staff for assignment
+        self.fields['assigned_to'].queryset = User.objects.filter(
+            is_active=True
+        ).order_by('first_name', 'last_name')
+
+        # Make drug_order optional
+        self.fields['drug_order'].required = False
+
+
+class AdmissionDepositForm(forms.Form):
+    """Form for receiving admission deposit payments"""
+    deposit_amount = forms.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=0.01,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'step': '0.01',
+            'placeholder': 'Enter deposit amount'
+        }),
+        label='Deposit Amount'
+    )
+    payment_method = forms.ChoiceField(
+        choices=[
+            ('cash', 'Cash'),
+            ('card', 'Card'),
+            ('transfer', 'Bank Transfer'),
+            ('pos', 'POS'),
+        ],
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        label='Payment Method'
+    )
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': 'form-control',
+            'rows': 2,
+            'placeholder': 'Additional notes (optional)'
+        }),
+        label='Notes'
+    )
+
+
+class DischargeForm(forms.ModelForm):
+    """Form for discharging a patient"""
+
+    class Meta:
+        model = Admission
+        fields = ['actual_discharge_date', 'discharge_notes']
+        widgets = {
+            'actual_discharge_date': forms.DateTimeInput(attrs={
+                'class': 'form-control',
+                'type': 'datetime-local',
+                'value': timezone.now().strftime('%Y-%m-%dT%H:%M')  # Default to now
+            }),
+            'discharge_notes': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 5,
+                'placeholder': 'Discharge summary, instructions, medications, follow-up appointments, etc.'
+            }),
+        }
+
+    def clean_actual_discharge_date(self):
+        discharge_date = self.cleaned_data.get('actual_discharge_date')
+
+        # Cannot discharge in the future
+        if discharge_date and discharge_date > timezone.now():
+            raise ValidationError("Discharge date cannot be in the future")
+
+        # Cannot discharge before admission
+        if discharge_date and self.instance.admission_date:
+            if discharge_date < self.instance.admission_date:
+                raise ValidationError("Discharge date cannot be before admission date")
+
+        return discharge_date
+
+    def clean_discharge_notes(self):
+        notes = self.cleaned_data.get('discharge_notes')
+        if not notes or notes.strip() == '':
+            raise ValidationError("Discharge notes are required")
+        return notes
