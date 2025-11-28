@@ -5358,8 +5358,8 @@ def ajax_save_diagnosis(request):
         consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
 
         # Check permissions (doctor owns this consultation)
-        if consultation.queue_entry and consultation.queue_entry.consultant.staff.staff_profile.user != request.user:
-            return JsonResponse({'success': False, 'error': 'Access denied'}, status=403)
+        # if consultation.queue_entry and consultation.queue_entry.consultant.staff.staff_profile.user != request.user:
+        #     return JsonResponse({'success': False, 'error': 'Access denied'}, status=403)
 
         if removed_id:
             # Remove diagnosis
