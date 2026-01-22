@@ -531,6 +531,75 @@ class AdmissionListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
         return context
 
 
+@login_required
+@permission_required('inpatient.change_admission')
+@require_POST
+def confirm_admission(request, admission_id):
+    """
+    Confirm a pending admission after payment verification.
+    Called by ward attendant.
+    """
+    admission = get_object_or_404(Admission, pk=admission_id)
+
+    # Check if admission is pending
+    if admission.status != 'pending':
+        return JsonResponse({
+            'success': False,
+            'error': 'Only pending admissions can be confirmed'
+        }, status=400)
+
+    # Check if minimum deposit is met
+    if not admission.can_be_confirmed:
+        return JsonResponse({
+            'success': False,
+            'error': f'Minimum deposit of ₦{admission.admission_type.minimum_deposit_amount:,.2f} not met. Current deposit: ₦{admission.deposit_balance:,.2f}'
+        }, status=400)
+
+    # Get bed from request if provided
+    bed_id = request.POST.get('bed_id')
+    bed = None
+
+    if bed_id:
+        try:
+            bed = Bed.objects.get(pk=bed_id, is_active=True)
+            if bed.status not in ['available', 'reserved']:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Bed {bed.bed_number} is not available'
+                }, status=400)
+        except Bed.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Selected bed not found'
+            }, status=404)
+
+    try:
+        # Confirm the admission
+        admission.confirm_admission(confirmed_by=request.user, bed=bed)
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Admission {admission.admission_number} confirmed successfully',
+            'admission_number': admission.admission_number,
+            'bed': str(admission.bed) if admission.bed else None
+        })
+
+    except ValueError as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+    except Exception as e:
+        logger.exception("Error confirming admission")
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected error occurred'
+        }, status=500)
+
+
+# -------------------------
+# UPDATE: Admission Detail View - Add more context
+# -------------------------
 class AdmissionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = Admission
     permission_required = 'inpatient.view_admission'
@@ -544,28 +613,71 @@ class AdmissionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVie
         # Get associated surgeries
         context['surgeries'] = admission.surgeries.all().select_related('surgery_type')
 
-        # Get billing information (placeholder - implement based on your billing system)
+        # Get ward rounds (consultations)
+        context['ward_rounds'] = admission.consultations.all().select_related(
+            'primary_diagnosis'
+        ).prefetch_related('secondary_diagnoses').order_by('-created_at')
+
+        # Get orders
+        context['drug_orders'] = admission.drug_orders.all().select_related(
+            'drug', 'ordered_by'
+        ).order_by('-ordered_at')
+
+        context['lab_tests'] = admission.lab_test_orders.all().select_related(
+            'template', 'ordered_by'
+        ).order_by('-ordered_at')
+
+        context['scans'] = admission.scan_orders.all().select_related(
+            'template', 'ordered_by'
+        ).order_by('-ordered_at')
+
+        # context['service_transactions'] = admission.service_transactions.all().select_related(
+        #     'service', 'service_item', 'performed_by'
+        # ).order_by('-created_at')
+
+        # Get tasks
+        context['pending_tasks'] = admission.tasks.filter(
+            status__in=['pending', 'in_progress']
+        ).order_by('scheduled_datetime')
+
+        # Available beds for confirmation (if pending)
+        if admission.is_pending:
+            context['available_beds'] = Bed.objects.filter(
+                status='available',
+                is_active=True,
+                ward__is_active=True
+            ).select_related('ward').order_by('ward__name', 'bed_number')
+
+        # Categories for ordering modals
+        context['lab_categories'] = LabTestCategoryModel.objects.all()
+        context['scan_categories'] = ScanCategoryModel.objects.all()
+        context['service_categories'] = ServiceCategory.objects.filter(
+            category_type__in=['service', 'mixed']
+        )
+        context['item_categories'] = ServiceCategory.objects.filter(
+            category_type__in=['item', 'mixed']
+        )
+
+        # Billing summary
         context['billing_summary'] = self.get_billing_summary(admission)
 
-        # Forms for updates
+        # Forms
         context['update_form'] = AdmissionUpdateForm(instance=admission)
 
         return context
 
     def get_billing_summary(self, admission):
         """Calculate billing summary for admission"""
-        # This is a placeholder - implement based on your billing system
         return {
-            'admission_fee': Decimal('0.00'),
-            'bed_charges': Decimal('0.00'),
-            'drug_charges': Decimal('0.00'),
-            'lab_charges': Decimal('0.00'),
-            'scan_charges': Decimal('0.00'),
-            'surgery_charges': Decimal('0.00'),
-            'total_charges': Decimal('0.00'),
-            'total_paid': Decimal('0.00'),
-            'balance': Decimal('0.00'),
+            'total_charges': admission.total_charges,
+            'total_paid': admission.total_paid,
+            'deposit_balance': admission.deposit_balance,
+            'balance_due': admission.debt_balance,
+            'can_be_confirmed': admission.can_be_confirmed if admission.is_pending else False,
+            'minimum_deposit_required': admission.admission_type.minimum_deposit_amount if admission.admission_type else Decimal(
+                '0.00')
         }
+
 
 
 class AdmissionUpdateView(
@@ -1515,138 +1627,135 @@ class AdmissionTypeDetailView(LoginRequiredMixin, PermissionRequiredMixin, Detai
         return context
 
 
-# -------------------------
-# Ward Round Views
-# -------------------------
 @login_required
-@permission_required('inpatient.add_wardround')
-def ward_round_search_admission(request):
-    """Search for admission to start ward round"""
-    if request.method == 'POST':
-        card_number = request.POST.get('card_number', '').strip()
-        if not card_number:
-            messages.error(request, 'Please enter patient card number')
-            return render(request, 'inpatient/ward_round/search_admission.html')
+@permission_required('inpatient.add_consultationsessionmodel')
+def start_ward_round(request, admission_id):
+    """
+    AJAX endpoint to start a new ward round for an admission.
+    Returns JSON response with ward_round_id.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
-        try:
-            patient = PatientModel.objects.get(card_number__iexact=card_number)
+    admission = get_object_or_404(Admission, pk=admission_id)
 
-            # Check for active admission
-            active_admission = Admission.objects.filter(
-                patient=patient,
-                status='active'
-            ).first()
+    # Check if admission is active
+    if admission.status != 'active':
+        return JsonResponse({
+            'success': False,
+            'error': 'Cannot start ward round for a non-active admission'
+        }, status=400)
 
-            if not active_admission:
-                messages.error(request, f'No active admission found for patient {patient}')
-                return render(request, 'inpatient/ward_round/search_admission.html')
+    # Check for existing in-progress ward round
+    in_progress_round = admission.consultations.filter(
+        status='in_progress'
+    ).first()
 
-            # Check for in-progress ward round
-            in_progress_round = ConsultationSessionModel.objects.filter(
-                admission=active_admission,
-                status='in_progress'
-            ).first()
+    if in_progress_round:
+        return JsonResponse({
+            'success': True,
+            'ward_round_id': in_progress_round.pk,
+            'message': 'Resuming existing ward round'
+        })
 
-            if in_progress_round:
-                messages.info(request, 'Resuming existing ward round')
-                return redirect('ward_round_detail', pk=in_progress_round.pk)
+    # Get last ward round for diagnosis inheritance
+    last_round = admission.consultations.filter(
+        status='completed'
+    ).order_by('-created_at').first()
 
-            # Create new ward round
-            return redirect('ward_round_create_for_admission', admission_id=active_admission.id)
+    # Create new ward round
+    ward_round = ConsultationSessionModel.objects.create(
+        admission=admission,
+        status='in_progress',
+        chief_complaint='',
+        assessment='',
+        diagnosis=''
+    )
 
-        except PatientModel.DoesNotExist:
-            messages.error(request, 'Patient not found with this card number')
+    # Inherit diagnoses from last ward round
+    if last_round:
+        if last_round.primary_diagnosis:
+            ward_round.primary_diagnosis = last_round.primary_diagnosis
+            ward_round.save()
 
-    return render(request, 'inpatient/ward_round/search_admission.html')
+        if last_round.secondary_diagnoses.exists():
+            ward_round.secondary_diagnoses.set(last_round.secondary_diagnoses.all())
 
-
-@login_required
-@permission_required('inpatient.add_wardround')
-def ward_round_create_for_admission(request, admission_id):
-    """Create ward round for specific admission"""
-    admission = get_object_or_404(Admission, pk=admission_id, status='active')
-
-    if request.method == 'POST':
-        # Create ward round
-        ward_round = ConsultationSessionModel.objects.create(
-            admission=admission,
-            doctor=request.user,
-            status='in_progress'
-        )
-
-        messages.success(request, f'Ward round {ward_round.round_number} started')
-        return redirect('ward_round_detail', pk=ward_round.pk)
-
-    return render(request, 'inpatient/ward_round/confirm_start.html', {
-        'admission': admission
+    return JsonResponse({
+        'success': True,
+        'ward_round_id': ward_round.pk,
+        'message': 'Ward round started successfully'
     })
 
 
-class WardRoundDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
-    model = ConsultationSessionModel
-    permission_required = 'inpatient.view_wardround'
-    template_name = 'inpatient/ward_round/detail.html'
-    context_object_name = 'ward_round'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        ward_round = self.object
-        admission = ward_round.admission
-
-        # Get recent consultations/ward rounds
-        context['recent_ward_rounds'] = admission.ward_rounds.filter(
-            status='completed'
-        ).order_by('-round_date')[:5]
-
-        # Get orders created during this ward round
-        context['prescriptions'] = DrugOrderModel.objects.filter(
-            admission=admission,
-            ordered_at__gte=ward_round.created_at
-        ).select_related('drug')
-
-        context['lab_tests'] = LabTestOrderModel.objects.filter(
-            admission=admission,
-            ordered_at__gte=ward_round.created_at
-        ).select_related('template')
-
-        context['scans'] = ScanOrderModel.objects.filter(
-            admission=admission,
-            ordered_at__gte=ward_round.created_at
-        ).select_related('template')
-
-        context['service_transactions'] = PatientServiceTransaction.objects.filter(
-            admission=admission,
-            created_at__gte=ward_round.created_at
-        ).select_related('service', 'service_item')
-
-        # Get lab/scan categories for modals
-        context['lab_categories'] = LabTestCategoryModel.objects.all()
-        context['scan_categories'] = ScanCategoryModel.objects.all()
-        context['service_categories'] = ServiceCategory.objects.all()
-        context['item_categories'] = ServiceCategory.objects.filter(
-            category_type__in=['item', 'mixed']
-        )
-
-        # Admission info
-        context['admission'] = admission
-        context['patient'] = admission.patient
-
-        return context
-
-
 @login_required
-@permission_required('inpatient.change_wardround')
+@permission_required('inpatient.view_consultationsessionmodel')
+def ward_round_detail(request, pk):
+    """
+    Display ward round detail page (similar to consultation page).
+    """
+    ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+    admission = ward_round.admission
+
+    if not admission:
+        messages.error(request, 'This is not a ward round consultation')
+        return redirect('doctor_dashboard')
+
+    # Get recent ward rounds for this admission
+    recent_ward_rounds = admission.consultations.filter(
+        status='completed'
+    ).order_by('-created_at')[:5]
+
+    # Get orders created during this ward round
+    prescriptions = ward_round.drug_orders.all().select_related('drug')
+    external_prescriptions = ward_round.external_prescriptions.all()
+    lab_tests = ward_round.lab_test_orders.all().select_related('template')
+    external_lab_tests = ward_round.external_lab_orders.all()
+    scans = ward_round.scan_orders.all().select_related('template')
+    external_scans = ward_round.external_scan_orders.all()
+    service_transactions = ward_round.service_transactions.all().select_related('service', 'service_item')
+
+    # Categories for modals
+    lab_categories = LabTestCategoryModel.objects.all()
+    scan_categories = ScanCategoryModel.objects.all()
+    service_categories = ServiceCategory.objects.filter(category_type__in=['service', 'mixed'])
+    item_categories = ServiceCategory.objects.filter(category_type__in=['item', 'mixed'])
+
+    context = {
+        'consultation': ward_round,  # Use same variable name as consultation template
+        'admission': admission,
+        'recent_ward_rounds': recent_ward_rounds,
+        'prescriptions': prescriptions,
+        'external_prescriptions': external_prescriptions,
+        'lab_tests': lab_tests,
+        'external_lab_tests': external_lab_tests,
+        'scans': scans,
+        'external_scans': external_scans,
+        'service_transactions': service_transactions,
+        'lab_categories': lab_categories,
+        'scan_categories': scan_categories,
+        'service_categories': service_categories,
+        'item_categories': item_categories,
+    }
+
+    return render(request, 'inpatient/ward_round/detail.html', context)
+
+
+# -------------------------
+# NEW: Ward Round AJAX Views
+# -------------------------
+@login_required
+@require_POST
 def save_ward_round(request, pk):
     """Save ward round clinical notes via AJAX"""
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST method required'}, status=405)
-
     ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+
+    if not ward_round.admission:
+        return JsonResponse({'error': 'Not a ward round'}, status=400)
 
     # Update fields
     ward_round.chief_complaint = request.POST.get('chief_complaint', '')
     ward_round.assessment = request.POST.get('assessment', '')
-    ward_round.plan = request.POST.get('plan', '')
 
     # Handle vitals (JSON)
     vitals = {}
@@ -1660,6 +1769,8 @@ def save_ward_round(request, pk):
         vitals['spo2'] = request.POST.get('spo2')
     if request.POST.get('weight'):
         vitals['weight'] = request.POST.get('weight')
+    if request.POST.get('height'):
+        vitals['height'] = request.POST.get('height')
 
     if vitals:
         ward_round.vitals = vitals
@@ -1670,17 +1781,21 @@ def save_ward_round(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_wardround')
+@require_POST
 def complete_ward_round(request, pk):
     """Complete ward round"""
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST method required'}, status=405)
-
     ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+
+    if not ward_round.admission:
+        return JsonResponse({'error': 'Not a ward round'}, status=400)
 
     ward_round.status = 'completed'
     ward_round.completed_at = timezone.now()
     ward_round.save()
+
+    # Trigger consultation fee charging (via signal)
+    from .signals import check_and_charge_consultation_fee
+    check_and_charge_consultation_fee(ward_round)
 
     return JsonResponse({
         'success': True,
@@ -1689,13 +1804,13 @@ def complete_ward_round(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_wardround')
+@require_POST
 def pause_ward_round(request, pk):
     """Pause ward round"""
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST method required'}, status=405)
-
     ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+
+    if not ward_round.admission:
+        return JsonResponse({'error': 'Not a ward round'}, status=400)
 
     ward_round.status = 'paused'
     ward_round.save()
@@ -1704,6 +1819,163 @@ def pause_ward_round(request, pk):
         'success': True,
         'message': 'Ward round paused'
     })
+
+
+# -------------------------
+# UPDATE: Existing AJAX views to support admission context
+# -------------------------
+@login_required
+@permission_required('inpatient.change_admission')
+def add_drug_to_admission(request, pk):
+    """Add drug order to admission (AJAX)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    admission = get_object_or_404(Admission, pk=pk)
+
+    # Check if admission is active
+    if admission.status != 'active':
+        return JsonResponse({'error': 'Cannot add orders to non-active admission'}, status=400)
+
+    drug_id = request.POST.get('drug_id')
+
+    if not drug_id:
+        return JsonResponse({'error': 'Drug ID is required'}, status=400)
+
+    try:
+        from pharmacy.models import DrugModel, DrugOrderModel
+
+        drug = get_object_or_404(DrugModel, pk=drug_id)
+
+        # Get form data
+        quantity = request.POST.get('quantity', 1)
+        dosage_instructions = request.POST.get('dosage_instructions', '')
+        duration = request.POST.get('duration', '')
+
+        # Create drug order
+        drug_order = DrugOrderModel.objects.create(
+            patient=admission.patient,
+            admission=admission,
+            drug=drug,
+            quantity_ordered=float(quantity),
+            dosage_instructions=dosage_instructions,
+            duration=duration,
+            ordered_by=request.user,
+            status='pending'
+        )
+
+        drug_name = drug.brand_name if drug.brand_name else str(drug.formulation)
+        return JsonResponse({
+            'success': True,
+            'message': f'{drug_name} ordered for patient',
+            'drug_order': {
+                'id': drug_order.id,
+                'name': drug_name,
+                'quantity': drug_order.quantity_ordered,
+                'order_number': drug_order.order_number,
+                'status': drug_order.status
+            }
+        })
+    except Exception as e:
+        logger.exception("Error adding drug order to admission")
+        return JsonResponse({'error': 'Failed to add drug order'}, status=500)
+
+
+@login_required
+@permission_required('inpatient.change_admission')
+def add_lab_to_admission(request, pk):
+    """Add lab test order to admission (AJAX)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    admission = get_object_or_404(Admission, pk=pk)
+
+    if admission.status != 'active':
+        return JsonResponse({'error': 'Cannot add orders to non-active admission'}, status=400)
+
+    lab_id = request.POST.get('lab_id')
+
+    if not lab_id:
+        return JsonResponse({'error': 'Lab test ID is required'}, status=400)
+
+    try:
+        from laboratory.models import LabTestTemplateModel, LabTestOrderModel
+
+        lab_template = get_object_or_404(LabTestTemplateModel, pk=lab_id)
+
+        # Create lab order
+        lab_order = LabTestOrderModel.objects.create(
+            patient=admission.patient,
+            admission=admission,
+            template=lab_template,
+            ordered_by=request.user,
+            status='pending',
+            source='doctor'
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f'{lab_template.name} ordered for patient',
+            'lab_order': {
+                'id': lab_order.id,
+                'name': lab_template.name,
+                'order_number': lab_order.order_number,
+                'status': lab_order.status
+            }
+        })
+    except Exception as e:
+        logger.exception("Error adding lab order to admission")
+        return JsonResponse({'error': 'Failed to add lab order'}, status=500)
+
+
+@login_required
+@permission_required('inpatient.change_admission')
+def add_scan_to_admission(request, pk):
+    """Add scan order to admission (AJAX)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    admission = get_object_or_404(Admission, pk=pk)
+
+    if admission.status != 'active':
+        return JsonResponse({'error': 'Cannot add orders to non-active admission'}, status=400)
+
+    scan_id = request.POST.get('scan_id')
+
+    if not scan_id:
+        return JsonResponse({'error': 'Scan ID is required'}, status=400)
+
+    try:
+        from scan.models import ScanTemplateModel, ScanOrderModel
+
+        scan_template = get_object_or_404(ScanTemplateModel, pk=scan_id)
+
+        # Get clinical indication
+        clinical_indication = request.POST.get('clinical_indication', '')
+
+        # Create scan order
+        scan_order = ScanOrderModel.objects.create(
+            patient=admission.patient,
+            admission=admission,
+            template=scan_template,
+            ordered_by=request.user,
+            status='pending',
+            clinical_indication=clinical_indication
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f'{scan_template.name} ordered for patient',
+            'scan_order': {
+                'id': scan_order.id,
+                'name': scan_template.name,
+                'order_number': scan_order.order_number,
+                'status': scan_order.status
+            }
+        })
+    except Exception as e:
+        logger.exception("Error adding scan order to admission")
+        return JsonResponse({'error': 'Failed to add scan order'}, status=500)
 
 
 # -------------------------

@@ -78,46 +78,46 @@ def get_patient_dashboard_context(request):
 
     # Registration status statistics
     pending_registrations = RegistrationPaymentModel.objects.filter(
-        registration_status='pending'
+        registration_status='pending', status='confirmed',
     ).count()
 
     # Old vs New patients (based on registration fee type)
     old_patients_total = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='old'
+        registration_fee__patient_type='old', status='confirmed',
     ).count()
     new_patients_total = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='new'
+        registration_fee__patient_type='new', status='confirmed',
     ).count()
 
     # Time-based statistics for old patients
     old_patients_today = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='old',
+        registration_fee__patient_type='old', status='confirmed',
         date=today
     ).count()
 
     old_patients_week = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='old',
+        registration_fee__patient_type='old', status='confirmed',
         date__gte=week_start
     ).count()
 
     old_patients_month = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='old',
+        registration_fee__patient_type='old', status='confirmed',
         date__gte=month_start
     ).count()
 
     # Time-based statistics for new patients
     new_patients_today = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='new',
+        registration_fee__patient_type='new', status='confirmed',
         date=today
     ).count()
 
     new_patients_week = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='new',
+        registration_fee__patient_type='new', status='confirmed',
         date__gte=week_start
     ).count()
 
     new_patients_month = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='new',
+        registration_fee__patient_type='new', status='confirmed',
         date__gte=month_start
     ).count()
 
@@ -126,13 +126,13 @@ def get_patient_dashboard_context(request):
     last_month_end = month_start - timedelta(days=1)
 
     old_patients_last_month = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='old',
+        registration_fee__patient_type='old', status='confirmed',
         date__gte=last_month_start,
         date__lte=last_month_end
     ).count()
 
     new_patients_last_month = RegistrationPaymentModel.objects.filter(
-        registration_fee__patient_type='new',
+        registration_fee__patient_type='new', status='confirmed',
         date__gte=last_month_start,
         date__lte=last_month_end
     ).count()
@@ -158,16 +158,16 @@ def get_patient_dashboard_context(request):
 
     # Revenue statistics
     total_revenue = RegistrationPaymentModel.objects.filter(
-        registration_status='completed'
+        registration_status='completed', status='confirmed',
     ).aggregate(Sum('amount'))['amount__sum'] or 0
 
     revenue_today = RegistrationPaymentModel.objects.filter(
-        registration_status='completed',
+        registration_status='completed', status='confirmed',
         date=today
     ).aggregate(Sum('amount'))['amount__sum'] or 0
 
     revenue_month = RegistrationPaymentModel.objects.filter(
-        registration_status='completed',
+        registration_status='completed', status='confirmed',
         date__gte=month_start
     ).aggregate(Sum('amount'))['amount__sum'] or 0
 
@@ -1945,7 +1945,7 @@ class GeneralFinancialReportView(LoginRequiredMixin, PermissionRequiredMixin, Te
 
         # 1. CARD (Registration)
         card_total = RegistrationPaymentModel.objects.filter(
-            date__range=[from_date, to_date]
+            date__range=[from_date, to_date], status='confirmed'
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         financial_data.append({
@@ -2101,7 +2101,7 @@ class GeneralFinancialReportExcelView(LoginRequiredMixin, PermissionRequiredMixi
 
         # 1. CARD (Registration)
         card_total = RegistrationPaymentModel.objects.filter(
-            date__range=[from_date, to_date]
+            date__range=[from_date, to_date], status='confirmed'
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         financial_data.append(('Card (Registration)', card_total))
@@ -2296,7 +2296,7 @@ class GeneralFinancialReportPDFView(LoginRequiredMixin, PermissionRequiredMixin,
 
         # 1. CARD (Registration)
         card_total = RegistrationPaymentModel.objects.filter(
-            date__range=[from_date, to_date]
+            date__range=[from_date, to_date], status='confirmed'
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
         financial_data.append(('Card (Registration)', card_total))

@@ -113,7 +113,46 @@ class WalletWithdrawalRecord(models.Model):
 
 
 class PatientTransactionModel(models.Model):
-    patient = models.ForeignKey('patient.PatientModel', on_delete=models.SET_NULL, null=True)
+
+    # NEW: Allow null patient for walk-in customers
+    patient = models.ForeignKey(
+        'patient.PatientModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    # NEW: Store walk-in customer name
+    customer_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Name of walk-in customer (only used when patient is null)"
+    )
+
+    # NEW: Track transaction source
+    SOURCE_CHOICES = [
+        ('consultation', 'Consultation'),
+        ('admission', 'Admission'),
+        ('walkin', 'Walk-in Sale'),
+        ('other', 'Other'),
+    ]
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default='other',
+        help_text="Source of this transaction"
+    )
+
+
+    registration_payment = models.ForeignKey(
+        'patient.RegistrationPaymentModel',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transactions',
+        help_text="Links pre-registration transactions to registration payment record"
+    )
 
     TRANSACTION_TYPE = (
         ('wallet_funding', 'WALLET FUNDING'),
@@ -345,6 +384,13 @@ class PatientTransactionModel(models.Model):
         if self.is_parent_transaction:
             return self.child_transactions.count()
         return 1 if self.is_standalone_transaction else 0
+
+    @property
+    def customer_display(self):
+        """Returns patient name or walk-in customer name"""
+        if self.patient:
+            return str(self.patient)
+        return self.customer_name or "Walk-in Customer"
 
     class Meta:
         ordering = ['-created_at']

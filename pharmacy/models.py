@@ -457,12 +457,38 @@ class DrugOrderModel(models.Model):
         ('returned', 'Returned'),
     ]
 
+
+    # MODIFIED: Allow null patient
     patient = models.ForeignKey(
         'patient.PatientModel',
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name='drug_prescriptions',
-        help_text="The patient for whom the drug is ordered."
+        help_text="The patient for whom the drug is ordered (null for walk-ins)."
     )
+
+    # NEW: Walk-in customer name
+    customer_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Name of walk-in customer (only used when patient is null)"
+    )
+
+    # NEW: Source tracking
+    SOURCE_CHOICES = [
+        ('consultation', 'Consultation'),
+        ('admission', 'Admission'),
+        ('walkin', 'Walk-in Sale'),
+    ]
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default='walkin',
+        help_text="Source of this drug order"
+    )
+
     drug = models.ForeignKey(
         DrugModel, # Assuming DrugModel is in the same app
         on_delete=models.CASCADE,
@@ -630,6 +656,13 @@ class DrugOrderModel(models.Model):
     def total_amount(self):
         """Calculate total amount for the drug order"""
         return Decimal(str(self.quantity_ordered)) * self.drug.selling_price
+
+    @property
+    def customer_display(self):
+        """Returns patient name or walk-in customer name"""
+        if self.patient:
+            return str(self.patient)
+        return self.customer_name or "Walk-in Customer"
 
 
 class ExternalPrescription(models.Model):

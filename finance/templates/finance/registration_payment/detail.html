@@ -6,8 +6,7 @@
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h4 class="card-title mb-0">Payment Details</h4>
                 <div>
-                    <a href="#"
-                        class="btn btn-success me-2">
+                    <a href="#" class="btn btn-success me-2">
                         <i class="mdi mdi-printer"></i> Print Receipt
                     </a>
                     <a href="{% url 'registration_payment_index' %}" class="btn btn-outline-secondary">
@@ -15,6 +14,17 @@
                     </a>
                 </div>
             </div>
+
+            <!-- Status Alert (if reverted) -->
+            {% if payment.status == 'reverted' %}
+            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                <h5 class="alert-heading"><i class="mdi mdi-alert"></i> Payment Reverted</h5>
+                <hr>
+                <p><strong>Reverted By:</strong> {{ payment.reverted_by.user_staff_profile }}</p>
+                <p><strong>Reason:</strong> {{ payment.reason_for_revert }}</p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endif %}
 
             <div class="row">
                 <!-- Transaction Info -->
@@ -74,9 +84,13 @@
                 {% endif %}</td>
                                         </tr>
                                         <tr>
-                                            <td><strong>Registration Status:</strong></td>
+                                            <td><strong>Status:</strong></td>
                                             <td>
-                                                <span class="badge bg-success">{{ payment.registration_status|title }}</span>
+                                                {% if payment.status == 'reverted' %}
+                                                <span class="badge bg-danger">Reverted</span>
+                                                {% else %}
+                                                <span class="badge bg-success">{{ payment.status|title }}</span>
+                                                {% endif %}
                                             </td>
                                         </tr>
                                     </table>
@@ -98,7 +112,7 @@
                             <table class="table table-borderless">
                                 <tr>
                                     <td><strong>Registration:</strong></td>
-                                    <td class="text-end">₦{{ payment.registration_fee.amount }}</td>
+                                    <td class="text-end">₦{{ payment.registration_fee.amount|floatformat:2 }}</td>
                                 </tr>
                                 <tr>
                                     <td><small>{{ payment.registration_fee.title }}</small></td>
@@ -108,7 +122,7 @@
                                 {% if payment.consultation_fee %}
                                 <tr>
                                     <td><strong>Consultation:</strong></td>
-                                    <td class="text-end">₦{{ payment.consultation_amount }}</td>
+                                    <td class="text-end">₦{{ payment.consultation_amount|floatformat:2 }}</td>
                                 </tr>
                                 <tr>
                                     <td><small>{{ payment.consultation_fee }}</small></td>
@@ -118,7 +132,7 @@
 
                                 <tr class="border-top">
                                     <td><strong class="h5">Total Amount:</strong></td>
-                                    <td class="text-end"><strong class="h4 text-success">₦{{ payment.amount }}</strong></td>
+                                    <td class="text-end"><strong class="h4 text-success">₦{{ payment.total_services_amount|floatformat:2 }}</strong></td>
                                 </tr>
                             </table>
                         </div>
@@ -131,10 +145,17 @@
                         </div>
                         <div class="card-body">
                             <div class="d-grid gap-2">
-                                <a href="#"
-                                   target="_blank" class="btn btn-success">
+                                <a href="#" target="_blank" class="btn btn-success">
                                     <i class="mdi mdi-printer"></i> Print Receipt
                                 </a>
+
+                                <!-- Revert Button (only show if status is confirmed) -->
+                                {% if payment.status == 'confirmed' %}
+                                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#revertModal">
+                                    <i class="mdi mdi-undo"></i> Revert Payment
+                                </button>
+                                {% endif %}
+
                                 <a href="{% url 'registration_payment_create' %}" class="btn btn-outline-primary">
                                     <i class="mdi mdi-plus"></i> New Payment
                                 </a>
@@ -175,7 +196,7 @@
                                     <h6>Payment Information</h6>
                                     <ul class="list-unstyled">
                                         <li><strong>Payment Method:</strong> {{ payment.payment_method|title }}</li>
-                                        <li><strong>Registration Status:</strong> {{ payment.registration_status|title }}</li>
+                                        <li><strong>Status:</strong> {{ payment.status|title }}</li>
                                         <li><strong>Created:</strong> {{ payment.created_at|date:"M d, Y H:i A" }}</li>
                                     </ul>
                                 </div>
@@ -197,4 +218,71 @@
         </div>
     </div>
 </div>
+
+<!-- Revert Payment Modal -->
+<div class="modal fade" id="revertModal" tabindex="-1" aria-labelledby="revertModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="revertModalLabel">
+                    <i class="mdi mdi-alert-circle"></i> Revert Payment
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'revert_registration_payment' payment.pk %}" id="revertForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="mdi mdi-alert"></i> <strong>Warning!</strong> This action will revert the payment and cancel any associated transactions.
+                    </div>
+
+                    <div class="mb-3">
+                        <p><strong>Transaction ID:</strong> {{ payment.transaction_id }}</p>
+                        <p><strong>Patient Name:</strong> {{ payment.full_name|title }}</p>
+                        <p><strong>Amount:</strong> ₦{{ payment.total_services_amount|floatformat:2 }}</p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="reason_for_revert" class="form-label">
+                            Reason for Reverting <span class="text-danger">*</span>
+                        </label>
+                        <textarea
+                            class="form-control"
+                            id="reason_for_revert"
+                            name="reason_for_revert"
+                            rows="4"
+                            required
+                            placeholder="Please provide a detailed reason for reverting this payment..."></textarea>
+                        <small class="text-muted">This reason will be recorded and cannot be changed.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="mdi mdi-close"></i> Cancel
+                    </button>
+                    <button type="submit" class="btn btn-danger" id="confirmRevertBtn">
+                        <i class="mdi mdi-undo"></i> Confirm Revert
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Add confirmation before submitting
+document.getElementById('revertForm').addEventListener('submit', function(e) {
+    const reason = document.getElementById('reason_for_revert').value.trim();
+    if (reason.length < 10) {
+        e.preventDefault();
+        alert('Please provide a detailed reason (at least 10 characters).');
+        return false;
+    }
+
+    if (!confirm('Are you absolutely sure you want to revert this payment? This action cannot be undone.')) {
+        e.preventDefault();
+        return false;
+    }
+});
+</script>
 {% endblock %}

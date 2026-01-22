@@ -174,11 +174,36 @@ class ScanImageModel(models.Model):
 
 class ScanOrderModel(models.Model):
     """Individual scan orders for patients"""
-    # Using Patient model from your existing system
+
     patient = models.ForeignKey(
         'patient.PatientModel',
         on_delete=models.CASCADE,
+        null=True,  # ADD: null=True
+        blank=True,  # ADD: blank=True
         related_name='scan_orders'
+    )
+
+    # ADD: Walk-in customer name
+    customer_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Name of walk-in customer (only used when patient is null)"
+    )
+
+    # ADD: Source tracking
+    SOURCE_CHOICES = [
+        ('consultation', 'Consultation'),
+        ('admission', 'Admission'),
+        ('walkin', 'Walk-in'),  # ADD: New option
+    ]
+
+    # ADD: Source field (if not already present)
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default='walkin',
+        help_text="Source of this scan order"
     )
 
     # Template remains required at DB level (you set it when creating orders programmatically)
@@ -296,9 +321,20 @@ class ScanOrderModel(models.Model):
         permissions = [
             ("view_financial_report", "Can view scan financial reports"),
         ]
+        indexes = [
+            models.Index(fields=['source', 'status']),  # ADD: New index
+        ]
+
+    @property
+    def customer_display(self):
+        """Returns patient name or walk-in customer name"""
+        if self.patient:
+            return str(self.patient)
+        return self.customer_name or "Walk-in Customer"
 
     def __str__(self):
-        return f"{self.template.name} - {self.patient} ({self.order_number})"
+        customer = str(self.patient) if self.patient else self.customer_name or "Walk-in"  # MODIFY
+        return f"{self.template.name} - {customer} ({self.order_number})"
 
     def save(self, *args, **kwargs):
         if not self.order_number:

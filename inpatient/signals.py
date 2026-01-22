@@ -140,14 +140,23 @@ def check_and_charge_consultation_fee(ward_round):
     ward_round.save(update_fields=['consultation_fee_charged'])
 
 
+# Replace the existing charge_initial_admission_fees function with this:
+
 def charge_initial_admission_fees(admission):
     """
-    Charge initial fees when patient is admitted:
+    Charge initial fees when patient admission is ACTIVATED (not just created).
+    This is called when status changes from 'pending' to 'active'.
+
+    Charges:
     1. One-time admission fee (if enabled in settings)
     2. First day bed fee
 
     Note: Consultation fee is NOT charged here - it's charged during first ward round
     """
+    # Only charge if admission is being activated
+    if admission.status != 'active' or not admission.admission_activated_date:
+        return
+
     settings = get_inpatient_settings()
     admission_type = admission.admission_type
 
@@ -228,6 +237,27 @@ def charge_initial_admission_fees(admission):
         status='completed',
         date=timezone.now().date()
     )
+
+
+# MODIFY the existing signal to only charge when status becomes 'active'
+@receiver(post_save, sender=Admission)
+def handle_admission_activation(sender, instance, created, **kwargs):
+    """
+    When admission status changes to 'active':
+    1. Charge initial admission fee (if enabled)
+    2. Charge first day bed fee
+
+    This replaces the old handle_admission_creation signal.
+    """
+    # Only charge when admission is activated
+    if instance.status == 'active' and instance.admission_activated_date:
+        # Check if this is a status change (not initial creation as active)
+        if not created:
+            # Use transaction.on_commit to ensure the admission is saved first
+            transaction.on_commit(lambda: charge_initial_admission_fees(instance))
+        elif created and instance.status == 'active':
+            # Handle case where admission is created directly as active (shouldn't happen now, but just in case)
+            transaction.on_commit(lambda: charge_initial_admission_fees(instance))
 
 
 def parse_dosage_frequency(dosage_instructions):

@@ -166,6 +166,11 @@
                     <i class="bi bi-circle"></i><span>Make Other Payment</span>
                 </a>
             </li>
+            <li>
+                <a href="{% url 'direct_sales' %}">
+                    <i class="bi bi-circle"></i><span>Walk In Sales</span>
+                </a>
+            </li>
             {% endif %}
             {% if perms.finance.add_patienttransactionmodel %}
             <li>

@@ -78,7 +78,7 @@
 
                             <td>
                                 <div>
-                                    <strong>{{ t.patient|default:"N/A"|title }}</strong>
+                                    <strong>{{ t.customer_display|default:"N/A"|title }}</strong>
                                     <br><small class="text-muted">ID: {{ t.transaction_id }}</small>
                                 </div>
                             </td>
@@ -107,7 +107,7 @@
                                 <small class="text-muted">{{ t.created_at|date:"H:i A" }}</small>
                             </td>
                             <td>
-                                <span class="badge 
+                                <span class="badge
                                     {% if t.status == 'completed' %}bg-success
                                     {% elif t.status == 'pending' %}bg-warning
                                     {% elif t.status == 'failed' %}bg-danger

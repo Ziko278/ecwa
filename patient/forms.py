@@ -53,7 +53,7 @@ class RegistrationPaymentForm(forms.ModelForm):
         fields = [
             'full_name', 'old_card_number', 'registration_fee', 'amount',
             'transaction_id', 'registration_status',
-            'consultation_paid', 'consultation_fee'
+            'consultation_paid', 'consultation_fee', 'status'
         ]
         widgets = {
             'full_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Full Name'}),

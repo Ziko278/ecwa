@@ -253,6 +253,10 @@ class PatientCreateView(
                 messages.error(request, 'This payment has already been used for registration or is not pending.')
                 return redirect('pending_patient_index')
 
+            if payment.status == 'reverted':
+                messages.error(request, 'This payment has been reverted.')
+                return redirect('pending_patient_index')
+
             # Attach to request for reuse in other methods to avoid requery
             request._registration_payment = payment
             return super().dispatch(request, *args, **kwargs)
@@ -867,7 +871,7 @@ class PatientPendingListView(LoginRequiredMixin, PermissionRequiredMixin, ListVi
 
     def get_queryset(self):
         return RegistrationPaymentModel.objects.filter(
-            registration_status='pending'
+            registration_status='pending', status='confirmed'
         ).order_by('-created_at')
 
     def get_context_data(self, **kwargs):

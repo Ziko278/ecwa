@@ -4,7 +4,8 @@
     <div class="card">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4 class="card-title mb-0">Registration Payments {{ timeframe }}</h4>
+                <h4 class="card-title mb-0">Registration Payments {{ timeframe }}
+                    {% if current_status != 'all' %}({{ current_status|title }}){% endif %}</h4>
                 <a href="{% url 'registration_payment_create' %}" class="btn btn-primary">
                     <i class="bi bi-plus"></i> New Payment
                 </a>
@@ -14,18 +15,27 @@
             <div class="card mb-4" style="background-color: #f8f9fa;">
                 <div class="card-body py-3">
                     <form method="get" class="row align-items-end">
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label small">Start Date</label>
                             <input type="date" name="start_date" value="{{ request.GET.start_date }}" class="form-control">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label small">End Date</label>
                             <input type="date" name="end_date" value="{{ request.GET.end_date }}" class="form-control">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label small">Search</label>
                             <input type="text" name="search" value="{{ request.GET.search }}"
                                    placeholder="Name, Card Number, or Transaction ID" class="form-control">
+                        </div>
+                        <!-- NEW: Status Filter -->
+                        <div class="col-md-2">
+                            <label class="form-label small">Status</label>
+                            <select name="status" class="form-select">
+                                {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="col-md-2">
                             <button class="btn btn-outline-primary w-100">
@@ -46,7 +56,7 @@
                             <th>Patient Details</th>
                             <th>Services</th>
                             <th>Amount</th>
-                            <th>Method</th>
+                            <th>Status</th>
                             <th>Date/Time</th>
                             <th>Cashier</th>
                             <th>Actions</th>
@@ -79,8 +89,8 @@
                                 <strong class="text-success">₦{{ p.amount }}</strong>
                             </td>
                             <td>
-                                <span class="badge {% if p.payment_method == 'cash' %}bg-success{% elif p.payment_method == 'transfer' %}bg-info{% else %}bg-warning{% endif %}">
-                                    {{ p.payment_method|title }}
+                                <span class="badge {% if p.registration_status == 'completed' %}bg-success{% elif p.registration_status == 'pending' %}bg-warning{% elif p.registration_status == 'reverted' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                    {{ p.registration_status }}
                                 </span>
                             </td>
                             <td>
@@ -126,7 +136,7 @@
             <!-- Summary -->
             {% if payments %}
             <div class="row mt-4">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card bg-light">
                         <div class="card-body text-center">
                             <h5>Total Payments</h5>
@@ -134,7 +144,16 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <!-- NEW: Status Summary Card -->
+                <div class="col-md-3">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h5>Status Filter</h5>
+                            <h3 class="text-info">{{ current_status|title }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
                     <div class="card bg-light">
                         <div class="card-body text-center">
                             <h5>Total Amount</h5>
@@ -142,11 +161,35 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <!-- Status Counts -->
+                <div class="col-md-3">
                     <div class="card bg-light">
                         <div class="card-body text-center">
-                            <h5>Period</h5>
-                            <h3 class="text-info">{{ timeframe|slice:"4:" }}</h3>
+                            <h5>Status Breakdown</h5>
+                            {% if status_counts.all %}
+                                <div class="d-flex justify-content-between">
+                                    <span>All: {{ status_counts.all }}</span>
+                                    <span class="badge bg-secondary ms-2">100%</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Pending: {{ status_counts.pending.count }}</span>
+                                    <span class="badge bg-warning ms-2">{{ status_counts.pending.percentage|floatformat:0 }}%</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Completed: {{ status_counts.completed.count }}</span>
+                                    <span class="badge bg-success ms-2">{{ status_counts.completed.percentage|floatformat:0 }}%</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Reverted: {{ status_counts.reverted.count }}</span>
+                                    <span class="badge bg-danger ms-2">{{ status_counts.reverted.percentage|floatformat:0 }}%</span>
+                                </div>
+                            </div>
+                            {% else %}
+                                <div class="d-flex justify-content-between">
+                                    <span>{{ current_status|title }}:</span>
+                                    <span class="badge bg-info ms-2">{{ status_counts.status.percentage|floatformat:0 }}%</span>
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

@@ -37,6 +37,13 @@
 
                         <div class="col-md-6">
                             <div class="form-floating">
+                                {{ form.bed }}
+                                <label for="{{ form.bed.id_for_label }}">Bed</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="form-floating">
                                 {{ form.attending_doctor }}
                                 <label for="{{ form.attending_doctor.id_for_label }}">Attending Doctor</label>
                             </div>

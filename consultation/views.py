@@ -3721,10 +3721,6 @@ def ajax_search_drugs(request):
             is_active=True
         ).select_related('formulation__generic_drug', 'manufacturer')[:20]
 
-        print('ooooooooooooooooooooooooooooooooooooooo')
-        print(drugs)
-        print('ooooooooooooooooooooooooooooooooooooooo')
-
         drugs_data = []
         for drug in drugs:
 
@@ -3784,10 +3780,6 @@ def ajax_drug_search_consult(request):
             is_active=True,
             pharmacy_quantity__gt=0
         ).select_related('formulation__generic_drug')[:15]
-
-        print('ooooooooooooooooooooooooooooooooooooooo')
-        print(drugs)
-        print('ooooooooooooooooooooooooooooooooooooooo')
 
         drugs_data = [{
             'id': drug.id,

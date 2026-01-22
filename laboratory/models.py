@@ -104,7 +104,38 @@ class LabTestTemplateModel(models.Model):
 class LabTestOrderModel(models.Model):
     """Individual test orders for patients"""
     # Using Patient model from your existing system
-    patient = models.ForeignKey('patient.PatientModel', on_delete=models.CASCADE, related_name='lab_orders')
+    # MODIFY existing patient field
+    patient = models.ForeignKey(
+        'patient.PatientModel',
+        on_delete=models.CASCADE,
+        null=True,  # ADD: null=True
+        blank=True,  # ADD: blank=True
+        related_name='lab_orders'
+    )
+
+    # ADD: Walk-in customer name
+    customer_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Name of walk-in customer (only used when patient is null)"
+    )
+
+    # ADD: Source tracking
+    SOURCE_CHOICES = [
+        ('doctor', 'Doctor Prescribed'),
+        ('lab', 'Lab Direct Order'),
+        ('admission', 'Admission'),
+        ('walkin', 'Walk-in'),  # ADD: New option
+    ]
+
+    # MODIFY existing source field
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default='walkin',  # CHANGE: Default to 'walkin' for direct sales
+        help_text='Source of the test order'
+    )
     template = models.ForeignKey(LabTestTemplateModel, on_delete=models.CASCADE, related_name='orders')
 
     # Order details
@@ -121,16 +152,7 @@ class LabTestOrderModel(models.Model):
         ('cancelled', 'Cancelled'),
     ]
     status = models.CharField(max_length=20, blank=True, choices=STATUS_CHOICES, default='pending')
-    SOURCE_CHOICES = [
-        ('doctor', 'Doctor Prescribed'),
-        ('lab', 'Lab Direct Order'),
-    ]
-    source = models.CharField(
-        max_length=20,
-        choices=SOURCE_CHOICES,
-        default='lab',
-        help_text='Source of the test order'
-    )
+
     admission = models.ForeignKey(
         'inpatient.Admission',
         on_delete=models.SET_NULL,
@@ -198,9 +220,22 @@ class LabTestOrderModel(models.Model):
         permissions = [
             ("view_financial_report", "Can view financial reports"),
         ]
+        indexes = [
+            models.Index(fields=['source', 'status']),
+        ]
 
+
+    @property
+    def customer_display(self):
+        """Returns patient name or walk-in customer name"""
+        if self.patient:
+            return str(self.patient)
+        return self.customer_name or "Walk-in Customer"
+
+    # MODIFY existing __str__ method
     def __str__(self):
-        return f"{self.template.name} - {self.patient} ({self.order_number})"
+        customer = str(self.patient) if self.patient else self.customer_name or "Walk-in"  # MODIFY
+        return f"{self.template.name} - {customer} ({self.order_number})"
 
     def save(self, *args, **kwargs):
         if not self.order_number:

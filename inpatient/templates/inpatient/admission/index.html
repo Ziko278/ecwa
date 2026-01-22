@@ -77,9 +77,10 @@
                                             <span class="badge bg-danger">{{ admission.get_status_display }}</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ admission.attending_doctor|default:"N/A" }}</td>
+                                    <td>{{ admission.attending_doctor.user_staff_profile|default:"N/A" }}</td>
                                     <td class="text-center">
                                         <a href="{% url 'admission_detail' admission.pk %}" class="btn btn-info btn-sm" title="View Details"><i class="bi bi-eye"></i></a>
+                                        <a href="{% url 'admission_edit' admission.pk %}" class="btn btn-warning btn-sm" title="Update Admission"><i class="bi bi-pencil"></i></a>
                                     </td>
                                 </tr>
                                 {% empty %}

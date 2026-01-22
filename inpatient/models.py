@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from django.utils import timezone
@@ -416,15 +416,25 @@ class Admission(models.Model):
     status = models.CharField(
         max_length=20,
         choices=[
+            ('pending', 'Pending Confirmation'),  # NEW
             ('active', 'Active'),
             ('discharged', 'Discharged'),
             ('transferred', 'Transferred'),
             ('deceased', 'Deceased'),
             ('absconded', 'Absconded'),
         ],
-        default='active'
+        default='pending'  # CHANGED from 'active'
     )
+
     admission_date = models.DateTimeField(default=timezone.now)
+
+    # NEW: Separate activation date for billing
+    admission_activated_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Date when admission was confirmed and billing started"
+    )
+
     expected_discharge_date = models.DateField(null=True, blank=True)
     actual_discharge_date = models.DateTimeField(null=True, blank=True)
 
@@ -447,6 +457,7 @@ class Admission(models.Model):
     # Notes
     admission_notes = models.TextField(blank=True, null=True)
     discharge_notes = models.TextField(blank=True, null=True)
+
     # Financial tracking
     deposit_balance = models.DecimalField(
         max_digits=12,
@@ -497,7 +508,11 @@ class Admission(models.Model):
 
         # Update bed status
         if self.bed:
-            if self.status == 'active':
+            if self.status == 'pending':
+                # Reserve bed for pending admission
+                self.bed.status = 'reserved'
+            elif self.status == 'active':
+                # Occupy bed for active admission
                 self.bed.status = 'occupied'
             elif self.status in ['discharged', 'transferred', 'deceased', 'absconded']:
                 # Only free the bed if this is the current admission
@@ -520,6 +535,10 @@ class Admission(models.Model):
         return self.status == 'active'
 
     @property
+    def is_pending(self):
+        return self.status == 'pending'
+
+    @property
     def ward_name(self):
         return self.bed.ward.name if self.bed else None
 
@@ -537,20 +556,16 @@ class Admission(models.Model):
     @property
     def length_of_stay_days(self):
         """
-        Calculate length of stay in days.
+        Calculate length of stay in days from ACTIVATION date.
         Rule: Any part of a day counts as a full day.
-        Examples:
-        - Admitted Jan 1 10:00 AM, Discharged Jan 1 10:01 AM = 1 day
-        - Admitted Jan 1 10:00 AM, Discharged Jan 2 10:00 AM = 2 days
-        - Admitted Jan 1 10:00 AM, Discharged Jan 2 10:01 AM = 2 days
         """
-        if not self.admission_date:
+        if not self.admission_activated_date:
             return 0
 
         end_datetime = self.actual_discharge_date or timezone.now()
 
-        # Calculate the difference in days
-        delta = end_datetime.date() - self.admission_date.date()
+        # Calculate from activation date, not admission date
+        delta = end_datetime.date() - self.admission_activated_date.date()
 
         # Add 1 because partial day = full day
         return delta.days + 1
@@ -569,6 +584,60 @@ class Admission(models.Model):
     def last_ward_round(self):
         """Get most recent ward round"""
         return self.consultations.order_by('-created_at').first()
+
+    @property
+    def can_be_confirmed(self):
+        """Check if admission can be confirmed (has minimum deposit)"""
+        if self.status != 'pending':
+            return False
+        if not self.admission_type:
+            return False
+        return self.deposit_balance >= self.admission_type.minimum_deposit_amount
+
+    def confirm_admission(self, confirmed_by, bed=None):
+        """
+        Confirm a pending admission.
+        Called by ward attendant after verifying payment.
+        """
+        if self.status != 'pending':
+            raise ValueError("Only pending admissions can be confirmed")
+
+        if not self.can_be_confirmed:
+            raise ValueError("Minimum deposit not met. Cannot confirm admission.")
+
+        with transaction.atomic():
+            self.status = 'active'
+            self.admission_activated_date = timezone.now()
+
+            # Assign bed if provided
+            if bed:
+                # Free old bed if exists
+                if self.bed and self.bed != bed:
+                    old_bed = self.bed
+                    old_bed.status = 'available'
+                    old_bed.save()
+
+                self.bed = bed
+                bed.status = 'occupied'
+                bed.save()
+            elif self.bed:
+                # Bed was already reserved, just occupy it
+                self.bed.status = 'occupied'
+                self.bed.save()
+
+            self.save()
+
+            # Trigger initial charges via signal
+            from django.db.models.signals import post_save
+            post_save.send(
+                sender=self.__class__,
+                instance=self,
+                created=False,
+                update_fields=['status', 'admission_activated_date']
+            )
+
+        return True
+
 
 class Ward(models.Model):
     """Hospital wards/departments"""
@@ -615,6 +684,7 @@ class Ward(models.Model):
         return 0
 
 
+
 class Bed(models.Model):
     """Individual beds within wards"""
     ward = models.ForeignKey(Ward, on_delete=models.CASCADE, related_name='beds')
@@ -635,8 +705,8 @@ class Bed(models.Model):
         choices=[
             ('available', 'Available'),
             ('occupied', 'Occupied'),
+            ('reserved', 'Reserved'),  # NEW - for pending admissions
             ('maintenance', 'Under Maintenance'),
-            ('reserved', 'Reserved'),
             ('cleaning', 'Being Cleaned'),
         ],
         default='available',
@@ -667,9 +737,9 @@ class Bed(models.Model):
     @property
     def current_patient(self):
         """Get the currently admitted patient in this bed"""
-        if self.status == 'occupied':
-            active_admission = self.admissions.filter(status='active').first()
-            return active_admission.patientModel if active_admission else None
+        if self.status in ['occupied', 'reserved']:
+            active_admission = self.admissions.filter(status__in=['active', 'pending']).first()
+            return active_admission.patient if active_admission else None
         return None
 
 

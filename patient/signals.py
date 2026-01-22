@@ -11,7 +11,7 @@ import logging
 from admin_site.models import ActivityLogModel
 from consultation.models import PatientQueueModel
 from finance.models import PatientTransactionModel
-from patient.models import RegistrationFeeModel, PatientModel, PatientWalletModel
+from patient.models import RegistrationFeeModel, PatientModel, PatientWalletModel, RegistrationPaymentModel
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +125,55 @@ def log_registration_fee_delete(sender, instance, **kwargs):
     )
 
 
+@receiver(post_save, sender=RegistrationPaymentModel)
+def create_consultation_payment(sender, instance: RegistrationPaymentModel, created, **kwargs):
+    """
+    After a patient is created, if registration_payment.consultation_paid is True,
+    create ConsultationPayment and add the patient to the queue.
+    """
+    if not created:
+        return
+
+    payment = instance
+    if not payment:
+        return
+
+    # Only proceed if consultation was paid
+    if not getattr(payment, 'consultation_paid', False):
+        return
+
+    try:
+        with transaction.atomic():
+            # 1. Create ConsultationPaymentModel
+
+            validity_days = payment.consultation_fee.validity_in_days
+            today = date.today()
+            cutoff_time = time(20, 0)  # 8:00 PM
+            start_date_for_validity = today if timezone.now().time() < cutoff_time else today + timedelta(days=1)
+            valid_till = start_date_for_validity + timedelta(days=validity_days - 1)
+
+            consult_payment = PatientTransactionModel.objects.create(
+                registration_payment=payment,
+                fee_structure=payment.consultation_fee,
+                transaction_type='consultation_payment',
+                transaction_direction='out',
+                amount=payment.consultation_fee.amount if payment.consultation_fee else 0,
+                direct_payment_amount=payment.consultation_fee.amount if payment.consultation_fee else 0,
+                date=date.today(),
+                payment_method=payment.payment_method or 'cash',
+                status='completed',
+                received_by=payment.created_by,
+                old_balance=0,
+                new_balance=0,
+                valid_till = valid_till
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to create consultation payment: {e}", exc_info=True)
+
+
 @receiver(post_save, sender=PatientModel)
-def create_consultation_payment_and_queue(sender, instance: PatientModel, created, **kwargs):
+def link_consultation_payment_and_queue(sender, instance: PatientModel, created, **kwargs):
     """
     After a patient is created, if registration_payment.consultation_paid is True,
     create ConsultationPayment and add the patient to the queue.
@@ -139,40 +186,24 @@ def create_consultation_payment_and_queue(sender, instance: PatientModel, create
         logger.warning(f"Patient {instance.pk} has no registration payment linked.")
         return
 
+    try:
+        with transaction.atomic():
+            # 1. Link Patient to consultation
+            consult_payment = PatientTransactionModel.objects.get(registration_payment=payment)
+            consult_payment.patient = instance
+            consult_payment.save()
+
+            logger.info(f"Consultation linked to patient {instance.pk}")
+
+    except Exception as e:
+        logger.error(f"Failed to create consultation link for patient {instance.pk}: {e}", exc_info=True)
+
     # Only proceed if consultation was paid
     if not getattr(payment, 'consultation_paid', False):
         return
 
-    patient_wallet = instance.wallet
-
     try:
         with transaction.atomic():
-            # 1. Create ConsultationPaymentModel
-
-            patient_wallet = instance.wallet
-
-            validity_days = payment.consultation_fee.validity_in_days
-            today = date.today()
-            cutoff_time = time(20, 0)  # 8:00 PM
-            start_date_for_validity = today if timezone.now().time() < cutoff_time else today + timedelta(days=1)
-            valid_till = start_date_for_validity + timedelta(days=validity_days - 1)
-
-            consult_payment = PatientTransactionModel.objects.create(
-                patient=instance,
-                fee_structure=payment.consultation_fee,
-                transaction_type='consultation_payment',
-                transaction_direction='out',
-                amount=payment.consultation_fee.amount if payment.consultation_fee else 0,
-                date=date.today(),
-                payment_method=payment.payment_method or 'cash',
-                status='completed',
-                received_by=payment.created_by,
-                old_balance=Decimal(patient_wallet.amount) + Decimal(
-                    payment.consultation_fee.amount) if payment.consultation_fee else 0,
-                new_balance=patient_wallet.amount,
-                valid_till = valid_till
-
-            )
 
             # 2. Add patient to PatientQueueModel
             PatientQueueModel.objects.create(
@@ -181,7 +212,7 @@ def create_consultation_payment_and_queue(sender, instance: PatientModel, create
                 status='waiting_vitals'
             )
 
-            logger.info(f"Consultation payment and queue created for patient {instance.pk}")
+            logger.info(f"Queue created for patient {instance.pk}")
 
     except Exception as e:
-        logger.error(f"Failed to create consultation payment or queue for patient {instance.pk}: {e}", exc_info=True)
+        logger.error(f"Failed to create queue for patient {instance.pk}: {e}", exc_info=True)

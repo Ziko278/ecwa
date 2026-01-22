@@ -12,6 +12,22 @@ from .models import (
 )
 
 
+class UserFullNameModelChoiceField(forms.ModelChoiceField):
+    """A ModelChoiceField that displays the user's full name from their staff profile."""
+
+    def label_from_instance(self, obj):
+        # obj is a User instance
+        try:
+            # Use the relationship provided to get the full name from the StaffModel's __str__ method
+            if hasattr(obj, 'user_staff_profile') and obj.user_staff_profile.staff:
+                return str(obj.user_staff_profile.staff)
+        except (StaffProfileModel.DoesNotExist, AttributeError):
+            # Fallback if profile or staff link is broken
+            pass
+        # Final fallback to username if no full name is found
+        return obj.username
+
+
 class InpatientSettingsForm(forms.ModelForm):
     class Meta:
         model = InpatientSettings
@@ -53,9 +69,7 @@ class InpatientSettingsForm(forms.ModelForm):
                 'step': '0.01',
                 'min': '0'
             }),
-            'compile_admission_drugs': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'compile_admission_labs': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'compile_admission_scans': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+
             'compile_surgery_drugs': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'compile_surgery_labs': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'compile_surgery_scans': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -204,6 +218,13 @@ class SurgeryTypeForm(forms.ModelForm):
 
 
 class AdmissionForm(forms.ModelForm):
+    attending_doctor = UserFullNameModelChoiceField(
+        queryset=User.objects.filter(is_active=True).order_by('first_name', 'last_name'),
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        empty_label="Select Attending Doctor",
+        required=False
+    )
+
     class Meta:
         model = Admission
         fields = [
@@ -239,12 +260,15 @@ class AdmissionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Only show available beds
+        # Show available AND reserved beds (for reassignment)
         self.fields['bed'].queryset = Bed.objects.filter(
-            status='available',
+            status__in=['available', 'reserved'],
             is_active=True,
             ward__is_active=True
         )
+        # Make bed optional (can be assigned later during confirmation)
+        self.fields['bed'].required = False
+
         # Only show active staff for attending doctor
         self.fields['attending_doctor'].queryset = User.objects.filter(
             is_active=True
@@ -255,8 +279,8 @@ class AdmissionForm(forms.ModelForm):
         bed = cleaned_data.get('bed')
         expected_discharge = cleaned_data.get('expected_discharge_date')
 
-        # Validate bed availability
-        if bed and bed.status != 'available':
+        # Validate bed availability if provided
+        if bed and bed.status not in ['available', 'reserved']:
             raise ValidationError(f"Bed {bed} is not available")
 
         # Validate expected discharge date
@@ -267,11 +291,17 @@ class AdmissionForm(forms.ModelForm):
 
 
 class AdmissionUpdateForm(forms.ModelForm):
+    attending_doctor = UserFullNameModelChoiceField(
+        queryset=User.objects.filter(is_active=True).order_by('first_name', 'last_name'),
+        widget = forms.Select(attrs={'class': 'form-control'}),
+        empty_label = "Select Attending Doctor", required=False
+    )
+
     class Meta:
         model = Admission
         fields = [
             'status', 'actual_discharge_date', 'discharge_notes',
-            'attending_doctor', 'admission_notes'
+            'attending_doctor', 'admission_notes', 'bed'
         ]
         widgets = {
             'status': forms.Select(attrs={'class': 'form-control'}),
@@ -285,6 +315,7 @@ class AdmissionUpdateForm(forms.ModelForm):
                 'placeholder': 'Discharge notes and instructions'
             }),
             'attending_doctor': forms.Select(attrs={'class': 'form-control'}),
+            'bed': forms.Select(attrs={'class': 'form-control'}),
             'admission_notes': forms.Textarea(attrs={
                 'class': 'form-control',
                 'rows': 4,
@@ -294,6 +325,17 @@ class AdmissionUpdateForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Only show active beds. Allow the current bed even if occupied.
+        current_bed = self.instance.bed
+        self.fields['bed'].queryset = Bed.objects.filter(
+            is_active=True,
+            ward__is_active=True
+        ).exclude(
+            status='maintenance'
+        ).exclude(
+            status='cleaning'
+        )
+
         self.fields['attending_doctor'].queryset = User.objects.filter(
             is_active=True
         ).order_by('first_name', 'last_name')
@@ -303,6 +345,7 @@ class AdmissionUpdateForm(forms.ModelForm):
         status = cleaned_data.get('status')
         actual_discharge_date = cleaned_data.get('actual_discharge_date')
         discharge_notes = cleaned_data.get('discharge_notes')
+        bed = cleaned_data.get('bed')
 
         # Require discharge date and notes for discharged patients
         if status == 'discharged':
@@ -315,23 +358,11 @@ class AdmissionUpdateForm(forms.ModelForm):
         if actual_discharge_date and actual_discharge_date > timezone.now():
             raise ValidationError("Actual discharge date cannot be in the future")
 
+        if bed and self.instance.bed != bed:
+            if bed.status != 'available':
+                raise ValidationError(f"Bed {bed} is not available for new assignments.")
+
         return cleaned_data
-
-
-class UserFullNameModelChoiceField(forms.ModelChoiceField):
-    """A ModelChoiceField that displays the user's full name from their staff profile."""
-
-    def label_from_instance(self, obj):
-        # obj is a User instance
-        try:
-            # Use the relationship provided to get the full name from the StaffModel's __str__ method
-            if hasattr(obj, 'user_staff_profile') and obj.user_staff_profile.staff:
-                return str(obj.user_staff_profile.staff)
-        except (StaffProfileModel.DoesNotExist, AttributeError):
-            # Fallback if profile or staff link is broken
-            pass
-        # Final fallback to username if no full name is found
-        return obj.username
 
 
 class SurgeryForm(forms.ModelForm):

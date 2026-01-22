@@ -195,11 +195,11 @@
         </div>
 
         <!-- Patient Info -->
-        {% if transaction.patient %}
+        {% if transaction.customer_display %}
         <div class="section">
             <div class="info-row">
                 <span class="info-label">Patient Name:</span>
-                <span>{{ transaction.patient|upper }}</span>
+                <span>{{ transaction.customer_display|upper }}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Card Number:</span>

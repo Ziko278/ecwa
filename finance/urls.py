@@ -75,7 +75,8 @@ from .views import (
     PersonalStaffCollectionExcelView, PersonalStaffCollectionView, AllStaffCollectionsView,
     AllStaffCollectionsExcelView,
     AllStaffCollectionsPDFView, StaffTransactionHistoryExcelView, PersonalStaffCollectionPDFView,
-    StaffTransactionHistoryPDFView,
+    StaffTransactionHistoryPDFView, RevertRegistrationPaymentView, direct_sales_page, verify_customer_for_sales,
+    add_order_item_ajax, process_direct_sales_payment,
 )
 
 urlpatterns = [
@@ -84,6 +85,8 @@ urlpatterns = [
     path('registration-payment/index/', RegistrationPaymentListView.as_view(), name='registration_payment_index'),
     path('registration-payments/<int:pk>/', RegistrationPaymentDetailView.as_view(), name='registration_payment_detail'),
     path('registration-payments/<int:pk>/receipt/', print_receipt, name='print_registration_receipt'),
+    path('registration-payments/<int:pk>/revert/', RevertRegistrationPaymentView.as_view(),
+         name='revert_registration_payment'),
 
     # Wallet & Patient Payments
     path('funding/', patient_wallet_funding, name='patient_funding'),
@@ -227,5 +230,11 @@ urlpatterns = [
     path('transaction-history/', StaffTransactionHistoryView.as_view(), name='staff_transaction_history'),
     path('transaction-history/export/excel/', StaffTransactionHistoryExcelView.as_view(), name='staff_history_export_excel'),
     path('transaction-history/export/pdf/', StaffTransactionHistoryPDFView.as_view(), name='staff_history_export_pdf'),
-   ]
+
+    path('direct-sales/', direct_sales_page, name='direct_sales'),
+    path('api/verify-customer/', verify_customer_for_sales, name='verify_customer_for_sales'),
+    path('api/add-order-item/', add_order_item_ajax, name='add_order_item_ajax'),
+    path('api/process-direct-sales-payment/', process_direct_sales_payment, name='process_direct_sales_payment'),
+
+]
 

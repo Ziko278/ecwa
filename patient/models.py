@@ -8,7 +8,7 @@ from admin_site.model_info import *
 from consultation.models import ConsultationFeeModel
 
 REGISTRATION_STATUS = (
-    ('pending', 'PENDING'), ('completed', 'COMPLETED'), ('cancelled', 'CANCELLED')
+    ('pending', 'PENDING'), ('completed', 'COMPLETED'), ('reverted', 'REVERTED')
 )
 
 PAYMENT_METHODS = (
@@ -39,6 +39,8 @@ class RegistrationFeeModel(models.Model):
 class RegistrationPaymentModel(models.Model):
     """Enhanced Registration Payment Model with auto-generated transaction ID"""
     full_name = models.CharField(max_length=200)
+    STATUS = (('confirmed', 'CONFIRMED'), ('pending', 'CONFIRMED'), ('reverted', 'REVERTED'))
+    status = models.CharField(max_length=200, blank=True, default='confirmed', choices=STATUS)
     old_card_number = models.CharField(max_length=200, blank=True)
     registration_fee = models.ForeignKey('RegistrationFeeModel', on_delete=models.SET_NULL, null=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -51,12 +53,14 @@ class RegistrationPaymentModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, blank=True)
     date = models.DateField(auto_now_add=True, blank=True, null=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reg_payment_created_by')
+    reverted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reg_payment_reverted_by')
+    reason_for_revert = models.CharField(max_length=200, blank=True, default='')
 
     class Meta:
         ordering = ['-id']
 
     def __str__(self):
-        return f"{self.full_name.upper()} - {self.transaction_id}"
+        return f"{self.full_name.upper()} - {self.transaction_id} - {self.status}"
 
     def generate_transaction_id(self):
         """Generate unique transaction ID with REG prefix"""
@@ -73,16 +77,20 @@ class RegistrationPaymentModel(models.Model):
             self.transaction_id = self.generate_transaction_id()
 
         # Calculate amounts if not provided
-        if self.registration_fee and not self.amount:
+        if self.registration_fee:
             self.amount = self.registration_fee.amount
 
         if self.consultation_paid and self.consultation_fee:
             self.consultation_amount = self.consultation_fee.amount
-            # Add consultation amount to total if not already included
-            if self.registration_fee:
-                self.amount = self.registration_fee.amount + self.consultation_amount
+
+        if self.status == 'reverted':
+            self.registration_status = self.status
 
         super(RegistrationPaymentModel, self).save(*args, **kwargs)
+
+    def get_registration_status_display(self):
+        """Return the display value for registration_status"""
+        return dict(self.REGISTRATION_STATUS).get(self.registration_status, self.registration_status)
 
     @property
     def is_old_patient(self):

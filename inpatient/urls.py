@@ -56,14 +56,16 @@ urlpatterns = [
     path('admissions/<int:admission_id>/deposit/', process_admission_deposit, name='process_admission_deposit'),
     path('admissions/<int:admission_id>/discharge/', discharge_patient, name='discharge_patient'),
 
-    # Ward Rounds (NEW)
-    path('ward-rounds/search/', ward_round_search_admission, name='ward_round_search_admission'),
-    path('ward-rounds/create/<int:admission_id>/', ward_round_create_for_admission,
-         name='ward_round_create_for_admission'),
-    path('ward-rounds/<int:pk>/', WardRoundDetailView.as_view(), name='ward_round_detail'),
-    path('ward-rounds/<int:pk>/save/', save_ward_round, name='save_ward_round'),
-    path('ward-rounds/<int:pk>/complete/', complete_ward_round, name='complete_ward_round'),
-    path('ward-rounds/<int:pk>/pause/', pause_ward_round, name='pause_ward_round'),
+    path('admission/<int:admission_id>/confirm/', confirm_admission, name='confirm_admission'),
+
+    # Ward rounds
+    path('admission/<int:admission_id>/start-ward-round/', start_ward_round, name='start_ward_round'),
+    path('ward-round/<int:pk>/', ward_round_detail, name='ward_round_detail'),
+
+    # Ward round AJAX
+    path('ward-round/<int:pk>/save/', save_ward_round, name='save_ward_round'),
+    path('ward-round/<int:pk>/complete/', complete_ward_round, name='complete_ward_round'),
+    path('ward-round/<int:pk>/pause/', pause_ward_round, name='pause_ward_round'),
 
     # Admission Tasks (NEW)
     path('tasks/', AdmissionTaskListView.as_view(), name='admission_task_index'),

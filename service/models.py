@@ -97,7 +97,35 @@ class ServiceItem(models.Model):
 
 class PatientServiceTransaction(models.Model):
     """Records of services/items provided to patients"""
-    patient = models.ForeignKey(PatientModel, on_delete=models.CASCADE)
+    patient = models.ForeignKey(
+        'patient.PatientModel',
+        on_delete=models.CASCADE,
+        null=True,  # ADD: null=True
+        blank=True,  # ADD: blank=True
+    )
+
+    # ADD: Walk-in customer name
+    customer_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Name of walk-in customer (only used when patient is null)"
+    )
+
+    # ADD: Source tracking
+    SOURCE_CHOICES = [
+        ('consultation', 'Consultation'),
+        ('admission', 'Admission'),
+        ('walkin', 'Walk-in Sale'),  # ADD: New option
+    ]
+
+    # ADD: Source field
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default='walkin',
+        help_text="Source of this transaction"
+    )
 
     # Service or Item (only one should be filled)
     service = models.ForeignKey(Service, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
@@ -149,6 +177,10 @@ class PatientServiceTransaction(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            # ... existing indexes ...
+            models.Index(fields=['source', 'status']),  # ADD: New index
+        ]
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -220,9 +252,18 @@ class PatientServiceTransaction(models.Model):
                         created_by=self.performed_by
                     )
 
+    @property
+    def customer_display(self):
+        """Returns patient name or walk-in customer name"""
+        if self.patient:
+            return str(self.patient)
+        return self.customer_name or "Walk-in Customer"
+
+    # MODIFY existing __str__ method
     def __str__(self):
         item_name = self.service.name if self.service else self.service_item.name
-        return f"{self.patient} - {item_name} ({self.created_at.strftime('%Y-%m-%d')})"
+        customer = str(self.patient) if self.patient else self.customer_name or "Walk-in"  # MODIFY
+        return f"{customer} - {item_name} ({self.created_at.strftime('%Y-%m-%d')})"
 
     @property
     def balance_due(self):

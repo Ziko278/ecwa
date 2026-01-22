@@ -156,7 +156,7 @@
                     {% endif %}
 
                     <!-- Patient Information -->
-                    {% if transaction.patient %}
+                    {% if transaction.customer_display %}
                     <div class="card mb-4">
                         <div class="card-header bg-info text-white">
                             <h5 class="card-title mb-0">
@@ -166,7 +166,7 @@
                         <div class="card-body">
                             <dl class="row">
                                 <dt class="col-sm-3">Full Name:</dt>
-                                <dd class="col-sm-9">{{ transaction.patient|title }}</dd>
+                                <dd class="col-sm-9">{{ transaction.customer_display|title }}</dd>
 
                                 <dt class="col-sm-3">Card Number:</dt>
                                 <dd class="col-sm-9">{{ transaction.patient.card_number|default:"N/A" }}</dd>

@@ -22,7 +22,7 @@ from django.views.generic import CreateView, ListView, DetailView, UpdateView, D
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db.models import Q, Sum, Avg, F, Count, ExpressionWrapper, DecimalField, Prefetch
 from django.contrib import messages
-from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
+from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.template.loader import render_to_string
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Side, Border
@@ -57,7 +57,7 @@ import uuid
 
 from pharmacy.models import DrugOrderModel
 from scan.models import ScanOrderModel
-from service.models import PatientServiceTransaction, ServiceCategory
+from service.models import PatientServiceTransaction, ServiceCategory, ServiceItem, Service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -73,31 +73,136 @@ class RegistrationPaymentCreateView(LoginRequiredMixin, PermissionRequiredMixin,
         return reverse('registration_payment_detail', kwargs={'pk': self.object.pk})
 
     def form_valid(self, form):
+        # Normalize the name for comparison
+        full_name = form.instance.full_name.strip().lower()
+
+        # Check for recent duplicate entries from THIS STAFF MEMBER only (last 5 transactions)
+        recent_duplicates = RegistrationPaymentModel.objects.filter(
+            full_name__iexact=full_name,  # Case-insensitive exact match
+            created_by=self.request.user,  # Only check THIS staff's transactions
+            status='confirmed'  # Only check confirmed payments
+        ).order_by('-id')[:5]  # Get last 5 transactions
+
+        if recent_duplicates.exists():
+            # Get the most recent duplicate
+            latest_duplicate = recent_duplicates.first()
+
+            # Calculate time difference
+            from django.utils import timezone
+            time_diff = timezone.now() - latest_duplicate.created_at
+            minutes_ago = int(time_diff.total_seconds() / 60)
+
+            messages.error(
+                self.request,
+                f"⚠️ You just created a payment for '{form.instance.full_name}' {minutes_ago} minute(s) ago! "
+                f"Transaction ID: {latest_duplicate.transaction_id} | "
+                f"Please review to avoid duplicate entry."
+            )
+
+            # Redirect to the existing payment's detail page
+            return HttpResponseRedirect(
+                reverse('registration_payment_detail', kwargs={'pk': latest_duplicate.pk})
+            )
+
+        # Set created_by
         form.instance.created_by = self.request.user
+
         # Generate transaction ID
         if not form.instance.transaction_id:
             form.instance.transaction_id = f"REG{uuid.uuid4().hex[:8].upper()}"
 
-        # Calculate total amount
-        total = form.instance.registration_fee.amount if form.instance.registration_fee else 0
+        # Calculate amounts - ONLY registration fee
+        if form.instance.registration_fee:
+            form.instance.amount = form.instance.registration_fee.amount
+
+        # Set consultation paid flag if consultation fee is selected
         if form.instance.consultation_fee:
             form.instance.consultation_paid = True
             form.instance.consultation_amount = form.instance.consultation_fee.amount
-            total += form.instance.consultation_amount
 
-        form.instance.amount = total
-        messages.success(self.request, f"Payment recorded successfully! Transaction ID: {form.instance.transaction_id}")
+        messages.success(
+            self.request,
+            f"✅ Payment recorded successfully! Transaction ID: {form.instance.transaction_id}"
+        )
+
         return super().form_valid(form)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+
         # Fetch registration fees
         reg_fees = RegistrationFeeModel.objects.all().values('id', 'title', 'amount', 'patient_type')
         context['registration_fees'] = json.dumps(list(reg_fees), cls=DjangoJSONEncoder)
 
         # Consultation fees for the select
         context['consultation_fees'] = ConsultationFeeModel.objects.filter(patient_category='regular')
+
         return context
+
+
+class RevertRegistrationPaymentView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """
+    View to revert a registration payment.
+    Checks if payment has been used to register a patient before reverting.
+    """
+    permission_required = 'patient.change_registrationpaymentmodel'  # Adjust permission as needed
+
+    def post(self, request, pk):
+        payment = get_object_or_404(RegistrationPaymentModel, pk=pk)
+        reason = request.POST.get('reason_for_revert', '').strip()
+
+        # Validation: Check if already reverted
+        if payment.status == 'reverted':
+            messages.error(request, f"Payment {payment.transaction_id} has already been reverted.")
+            return redirect('registration_payment_detail', pk=pk)
+
+        # Validation: Check if reason is provided
+        if not reason:
+            messages.error(request, "Please provide a reason for reverting this payment.")
+            return redirect('registration_payment_detail', pk=pk)
+
+        # Critical Check: Has this payment been used to register a patient?
+        try:
+            patient = PatientModel.objects.get(registration_payment=payment)
+            messages.error(
+                request,
+                f"Cannot revert payment {payment.transaction_id}. "
+                f"It has already been used to register patient: {patient} (Card: {patient.card_number})"
+            )
+            return redirect('registration_payment_detail', pk=pk)
+        except PatientModel.DoesNotExist:
+            # Good - no patient registered with this payment yet
+            pass
+
+        # Perform the revert
+        try:
+            with transaction.atomic():
+                # Update payment status
+                payment.status = 'reverted'
+                payment.reverted_by = request.user
+                payment.reason_for_revert = reason
+                payment.save()
+
+                # Cancel any associated consultation transaction (if it exists)
+                consultation_transactions = PatientTransactionModel.objects.filter(
+                    registration_payment=payment,
+                    transaction_type='consultation_payment',
+                    patient__isnull=True  # Only cancel if not yet linked to patient
+                ).delete()
+
+                messages.success(
+                    request,
+                    f"Payment {payment.transaction_id} (₦{payment.total_services_amount:,.2f}) "
+                    f"has been successfully reverted. "
+                )
+
+        except Exception as e:
+            messages.error(
+                request,
+                f"Failed to revert payment: {str(e)}"
+            )
+
+        return redirect('registration_payment_detail', pk=pk)
 
 
 class RegistrationPaymentDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
@@ -120,6 +225,7 @@ class RegistrationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, L
         start_date = self.request.GET.get("start_date")
         end_date = self.request.GET.get("end_date")
         search = self.request.GET.get("search")
+        status = self.request.GET.get("status")  # NEW: Add status filter
 
         if not start_date and not end_date:
             today = now().date()
@@ -132,6 +238,10 @@ class RegistrationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, L
             qs = qs.filter(Q(full_name__icontains=search) | Q(old_card_number__icontains=search) | Q(
                 transaction_id__icontains=search))
 
+        # NEW: Filter by status
+        if status and status != 'all':  # 'all' will show all statuses
+            qs = qs.filter(registration_status=status)
+
         return qs.order_by("-created_at")
 
     def get_context_data(self, **kwargs):
@@ -140,6 +250,7 @@ class RegistrationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, L
         # Determine timeframe for title
         start_date = self.request.GET.get("start_date")
         end_date = self.request.GET.get("end_date")
+        status = self.request.GET.get("status")  # Get status filter
 
         if start_date and end_date:
             if start_date == end_date:
@@ -151,7 +262,48 @@ class RegistrationPaymentListView(LoginRequiredMixin, PermissionRequiredMixin, L
 
         # Calculate total amount
         payments = context['payments']
-        context['total_amount'] = sum(payment.amount for payment in payments)
+        context['total_amount'] = sum(payment.amount for payment in payments if payment.status == 'confirmed')
+
+        # Add status to context
+        context['current_status'] = status or 'all'  # Current filter status
+        context['status_choices'] = [
+            ('all', 'All Statuses'),
+            ('pending', 'Pending'),
+            ('completed', 'Completed'),
+            ('reverted', 'Reverted')
+        ]
+
+        # Calculate status counts and percentages
+        total_count = payments.count()
+        context['status_counts'] = {
+            'all': total_count,
+            'pending': {
+                'count': payments.filter(registration_status='pending').count(),
+                'percentage': (payments.filter(
+                    registration_status='pending').count() / total_count * 100) if total_count > 0 else 0
+            },
+            'completed': {
+                'count': payments.filter(registration_status='completed').count(),
+                'percentage': (payments.filter(
+                    registration_status='completed').count() / total_count * 100) if total_count > 0 else 0
+            },
+            'reverted': {
+                'count': payments.filter(registration_status='reverted').count(),
+                'percentage': (payments.filter(
+                    registration_status='reverted').count() / total_count * 100) if total_count > 0 else 0
+            }
+        }
+
+        if status and status != 'all':
+            # For specific status, calculate percentage against total
+            status_count = payments.filter(registration_status=status).count()
+            context['status_counts'] = {
+                'all': total_count,
+                status: {
+                    'count': status_count,
+                    'percentage': (status_count / total_count * 100) if total_count > 0 else 0
+                }
+            }
 
         return context
 
@@ -4922,7 +5074,7 @@ def get_staff_collection_data(staff, from_date, to_date):
     # 1. CARD (Registration) - ALL records
     data['card_total'] = RegistrationPaymentModel.objects.filter(
         created_by=staff,
-        date__range=[from_date, to_date]
+        date__range=[from_date, to_date], status='confirmed'
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
     # 2. CONS (Consultation)
@@ -5071,7 +5223,7 @@ def get_staff_collection_data(staff, from_date, to_date):
     # Add registration payments (check payment_method)
     reg_payments = RegistrationPaymentModel.objects.filter(
         created_by=staff,
-        date__range=[from_date, to_date]
+        date__range=[from_date, to_date], status='confirmed'
     )
 
     for reg in reg_payments:
@@ -5185,7 +5337,7 @@ class AllStaffCollectionsView(LoginRequiredMixin, PermissionRequiredMixin, Templ
         # From registrations
         staff_with_transactions.update(
             RegistrationPaymentModel.objects.filter(
-                date__range=[from_date, to_date]
+                date__range=[from_date, to_date], status='confirmed'
             ).values_list('created_by_id', flat=True)
         )
 
@@ -5321,7 +5473,7 @@ class StaffTransactionHistoryView(LoginRequiredMixin, PermissionRequiredMixin, T
         # 1. Registration Payments
         registrations = RegistrationPaymentModel.objects.filter(
             created_by=staff,
-            date__range=[from_date, to_date]
+            date__range=[from_date, to_date], status='confirmed'
         ).order_by('-created_at')
 
         # 2. Patient Transactions
@@ -5405,7 +5557,7 @@ class StaffTransactionHistoryExcelView(LoginRequiredMixin, PermissionRequiredMix
         # Get all transactions
         registrations = RegistrationPaymentModel.objects.filter(
             created_by=staff,
-            date__range=[from_date, to_date]
+            date__range=[from_date, to_date], status='confirmed'
         ).order_by('-created_at')
 
         patient_transactions = PatientTransactionModel.objects.filter(
@@ -5567,7 +5719,7 @@ class StaffTransactionHistoryPDFView(LoginRequiredMixin, PermissionRequiredMixin
         # Get all transactions
         registrations = RegistrationPaymentModel.objects.filter(
             created_by=staff,
-            date__range=[from_date, to_date]
+            date__range=[from_date, to_date], status='confirmed'
         ).order_by('-created_at')[:50]  # Limit for PDF
 
         patient_transactions = PatientTransactionModel.objects.filter(
@@ -6262,7 +6414,6 @@ class PersonalStaffCollectionPDFView(LoginRequiredMixin, PermissionRequiredMixin
         return response
 
 
-
 class AllStaffCollectionsExcelView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = 'finance.view_all_staff_collections'
 
@@ -6633,3 +6784,1052 @@ class AllStaffCollectionsPDFView(LoginRequiredMixin, PermissionRequiredMixin, Vi
         filename = f"all_staff_collections_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+def direct_sales_page(request):
+    """Main page for direct sales to walk-ins and registered patients"""
+    context = {
+        'service_categories': ServiceCategory.objects.filter(is_active=True).prefetch_related(
+            'services', 'service_items'
+        ),
+    }
+    return render(request, 'finance/payment/direct_sales.html', context)
+
+
+@login_required
+@permission_required('finance.view_patienttransactionmodel', raise_exception=True)
+@require_http_methods(["GET"])
+def verify_customer_for_sales(request):
+    """
+    Verify customer - either registered patient or walk-in.
+    For registered patients, load their pending walk-in orders.
+    """
+    customer_type = request.GET.get('type', 'patient')  # 'patient' or 'walkin'
+
+    if customer_type == 'patient':
+        card_number = request.GET.get('card_number', '').strip()
+        if not card_number:
+            return JsonResponse({'error': 'Card number required'}, status=400)
+
+        try:
+            patient = PatientModel.objects.get(card_number__iexact=card_number)
+
+            # Get wallet balance
+            wallet, _ = PatientWalletModel.objects.get_or_create(
+                patient=patient,
+                defaults={'amount': Decimal('0.00')}
+            )
+
+            # Get pending walk-in orders (from last 30 days, no consultation/admission)
+            thirty_days_ago = timezone.now() - timedelta(days=30)
+
+            pending_drugs = DrugOrderModel.objects.filter(
+                patient=patient,
+                status='pending',
+                source='walkin',
+                consultation__isnull=True,
+                admission__isnull=True,
+                ordered_at__gte=thirty_days_ago
+            ).select_related('drug')
+
+            pending_labs = LabTestOrderModel.objects.filter(
+                patient=patient,
+                status='pending',
+                source='walkin',
+                consultation__isnull=True,
+                admission__isnull=True,
+                ordered_at__gte=thirty_days_ago
+            ).select_related('template')
+
+            pending_scans = ScanOrderModel.objects.filter(
+                patient=patient,
+                status='pending',
+                source='walkin',
+                consultation__isnull=True,
+                admission__isnull=True,
+                ordered_at__gte=thirty_days_ago
+            ).select_related('template')
+
+            pending_services = PatientServiceTransaction.objects.filter(
+                patient=patient,
+                status='pending_payment',
+                source='walkin',
+                consultation__isnull=True,
+                admission__isnull=True,
+                created_at__gte=thirty_days_ago
+            ).select_related('service', 'service_item')
+
+            # Get insurance info for pending orders
+            from insurance.claim_helpers import get_orders_with_claim_info
+
+            # Process drugs with insurance info
+            drugs_data = []
+            if pending_drugs:
+                drug_results = get_orders_with_claim_info(pending_drugs, 'drug')
+                for res in drug_results:
+                    order = res['order']
+                    drugs_data.append({
+                        'id': order.id,
+                        'name': f"{order.drug.brand_name or order.drug.generic_name} ({order.drug.formulation.form_type})",
+                        'quantity': order.quantity_ordered,
+                        'amount': float(res['patient_amount']),
+                        'base_amount': float(res['base_amount']),
+                        'order_number': order.order_number,
+                        'ordered_date': order.ordered_at.strftime('%Y-%m-%d'),
+                        'has_pending_claim': res.get('has_pending_claim', False),
+                        'pending_claim_number': res.get('pending_claim_number', ''),
+                        'has_approved_claim': res.get('has_approved_claim', False),
+                        'claim_number': res.get('claim_number', ''),
+                    })
+
+            # Process labs with insurance info
+            labs_data = []
+            if pending_labs:
+                lab_results = get_orders_with_claim_info(pending_labs, 'lab')
+                for res in lab_results:
+                    order = res['order']
+                    labs_data.append({
+                        'id': order.id,
+                        'name': order.template.name,
+                        'amount': float(res['patient_amount']),
+                        'base_amount': float(res['base_amount']),
+                        'order_number': order.order_number,
+                        'ordered_date': order.ordered_at.strftime('%Y-%m-%d'),
+                        'has_pending_claim': res.get('has_pending_claim', False),
+                        'pending_claim_number': res.get('pending_claim_number', ''),
+                        'has_approved_claim': res.get('has_approved_claim', False),
+                        'claim_number': res.get('claim_number', ''),
+                    })
+
+            # Process scans with insurance info
+            scans_data = []
+            if pending_scans:
+                scan_results = get_orders_with_claim_info(pending_scans, 'scan')
+                for res in scan_results:
+                    order = res['order']
+                    scans_data.append({
+                        'id': order.id,
+                        'name': order.template.name,
+                        'amount': float(res['patient_amount']),
+                        'base_amount': float(res['base_amount']),
+                        'order_number': order.order_number,
+                        'ordered_date': order.ordered_at.strftime('%Y-%m-%d'),
+                        'has_pending_claim': res.get('has_pending_claim', False),
+                        'pending_claim_number': res.get('pending_claim_number', ''),
+                        'has_approved_claim': res.get('has_approved_claim', False),
+                        'claim_number': res.get('claim_number', ''),
+                    })
+
+            # Process services (no insurance for services)
+            services_data = []
+            for svc in pending_services:
+                services_data.append({
+                    'id': svc.id,
+                    'name': svc.service.name if svc.service else svc.service_item.name,
+                    'quantity': svc.quantity,
+                    'amount': float(svc.total_amount),
+                    'base_amount': float(svc.total_amount),
+                    'created_date': svc.created_at.strftime('%Y-%m-%d'),
+                    'has_pending_claim': False,
+                    'has_approved_claim': False,
+                })
+
+            # Format response
+            return JsonResponse({
+                'success': True,
+                'customer_type': 'patient',
+                'patient': {
+                    'id': patient.id,
+                    'full_name': f"{patient.first_name} {patient.last_name}",
+                    'card_number': patient.card_number,
+                    'phone': patient.mobile or '',
+                    'age': patient.age() or '',
+                    'gender': patient.get_gender_display() if patient.gender else '',
+                },
+                'wallet': {
+                    'balance': float(wallet.amount),
+                    'formatted_balance': f'₦{wallet.amount:,.2f}'
+                },
+                'pending_orders': {
+                    'drugs': drugs_data,
+                    'labs': labs_data,
+                    'scans': scans_data,
+                    'services': services_data,
+                }
+            })
+
+        except PatientModel.DoesNotExist:
+            return JsonResponse({'error': 'Patient not found'}, status=404)
+
+    else:  # walk-in
+        name = request.GET.get('name', '').strip()
+        if not name:
+            return JsonResponse({'error': 'Customer name required'}, status=400)
+
+        return JsonResponse({
+            'success': True,
+            'customer_type': 'walkin',
+            'customer_name': name,
+            'wallet': {
+                'balance': 0,
+                'formatted_balance': '₦0.00'
+            },
+            'pending_orders': {
+                'drugs': [],
+                'labs': [],
+                'scans': [],
+                'services': []
+            }
+        })
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+@require_http_methods(["POST"])
+def add_order_item_ajax(request):
+    """
+    Add a single order item (drug/lab/scan/service).
+    For registered patients: Save immediately and create insurance claim if applicable.
+    For walk-ins: Return success (client stores in memory until payment).
+    """
+    try:
+        # Read the request body once and parse it
+        body = request.body.decode('utf-8')
+        data = json.loads(body)
+
+        customer_type = data.get('customer_type')  # 'patient' or 'walkin'
+        item_type = data.get('item_type')  # 'drug', 'lab', 'scan', 'service', 'item'
+        item_id = data.get('item_id')
+        quantity = int(data.get('quantity', 1))
+
+        # Get customer info
+        patient = None
+        customer_name = ''
+
+        if customer_type == 'patient':
+            patient_id = data.get('patient_id')
+            if not patient_id:
+                return JsonResponse({'error': 'Patient ID required'}, status=400)
+            patient = get_object_or_404(PatientModel, id=patient_id)
+        else:
+            customer_name = data.get('customer_name', '').strip()
+            if not customer_name:
+                return JsonResponse({'error': 'Customer name required'}, status=400)
+
+        # For registered patients: Save order immediately
+        if patient:
+            with transaction.atomic():
+                if item_type == 'drug':
+                    from pharmacy.models import DrugModel
+                    drug = get_object_or_404(DrugModel, id=item_id)
+
+                    # Additional data for drugs
+                    dosage = data.get('dosage', '').strip()
+                    duration = data.get('duration', '').strip()
+                    notes = data.get('notes', '').strip()
+
+                    order = DrugOrderModel.objects.create(
+                        patient=patient,
+                        drug=drug,
+                        quantity_ordered=quantity,
+                        dosage_instructions=dosage,
+                        duration=duration,
+                        notes=notes,
+                        ordered_by=request.user,
+                        status='pending',
+                        source='walkin',
+                        payment_method='cash'
+                    )
+
+                    # Get insurance info for this order
+                    from insurance.claim_helpers import get_orders_with_claim_info
+                    drug_results = get_orders_with_claim_info([order], 'drug')
+                    res = drug_results[0] if drug_results else {}
+
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Drug order created. Patient should get insurance approval before payment if applicable.',
+                        'order': {
+                            'id': order.id,
+                            'order_number': order.order_number,
+                            'item_type': 'drug',
+                            'name': f"{drug.brand_name or drug.generic_name} ({drug.formulation.form_type})",
+                            'quantity': quantity,
+                            'amount': float(res.get('patient_amount', order.total_amount)),
+                            'base_amount': float(res.get('base_amount', order.total_amount)),
+                            'has_pending_claim': res.get('has_pending_claim', False),
+                            'pending_claim_number': res.get('pending_claim_number', ''),
+                            'has_approved_claim': res.get('has_approved_claim', False),
+                            'claim_number': res.get('claim_number', ''),
+                        }
+                    })
+
+                elif item_type == 'lab':
+                    from laboratory.models import LabTestTemplateModel
+                    template = get_object_or_404(LabTestTemplateModel, id=item_id)
+
+                    instructions = data.get('instructions', '').strip()
+
+                    order = LabTestOrderModel.objects.create(
+                        patient=patient,
+                        template=template,
+                        ordered_by=request.user,
+                        status='pending',
+                        source='walkin',
+                        special_instructions=instructions,
+                        payment_method='cash'
+                    )
+
+                    # Get insurance info for this order
+                    from insurance.claim_helpers import get_orders_with_claim_info
+                    lab_results = get_orders_with_claim_info([order], 'lab')
+                    res = lab_results[0] if lab_results else {}
+
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Lab test ordered. Patient should get insurance approval before payment if applicable.',
+                        'order': {
+                            'id': order.id,
+                            'order_number': order.order_number,
+                            'item_type': 'lab',
+                            'name': template.name,
+                            'amount': float(res.get('patient_amount', order.total_amount)),
+                            'base_amount': float(res.get('base_amount', order.total_amount)),
+                            'has_pending_claim': res.get('has_pending_claim', False),
+                            'pending_claim_number': res.get('pending_claim_number', ''),
+                            'has_approved_claim': res.get('has_approved_claim', False),
+                            'claim_number': res.get('claim_number', ''),
+                        }
+                    })
+
+                elif item_type == 'scan':
+                    from scan.models import ScanTemplateModel
+                    template = get_object_or_404(ScanTemplateModel, id=item_id)
+
+                    indication = data.get('indication', '').strip()
+
+                    order = ScanOrderModel.objects.create(
+                        patient=patient,
+                        template=template,
+                        ordered_by=request.user,
+                        status='pending',
+                        source='walkin',
+                        clinical_indication=indication,
+                        payment_method='cash'
+                    )
+
+                    # Get insurance info for this order
+                    from insurance.claim_helpers import get_orders_with_claim_info
+                    scan_results = get_orders_with_claim_info([order], 'scan')
+                    res = scan_results[0] if scan_results else {}
+
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Scan ordered. Patient should get insurance approval before payment if applicable.',
+                        'order': {
+                            'id': order.id,
+                            'order_number': order.order_number,
+                            'item_type': 'scan',
+                            'name': template.name,
+                            'amount': float(res.get('patient_amount', order.total_amount)),
+                            'base_amount': float(res.get('base_amount', order.total_amount)),
+                            'has_pending_claim': res.get('has_pending_claim', False),
+                            'pending_claim_number': res.get('pending_claim_number', ''),
+                            'has_approved_claim': res.get('has_approved_claim', False),
+                            'claim_number': res.get('claim_number', ''),
+                        }
+                    })
+
+                elif item_type == 'service':
+                    service = get_object_or_404(Service, id=item_id)
+
+                    notes = data.get('notes', '').strip()
+
+                    txn = PatientServiceTransaction.objects.create(
+                        patient=patient,
+                        service=service,
+                        quantity=quantity,
+                        unit_price=service.price,
+                        total_amount=service.price * quantity,
+                        performed_by=request.user,
+                        status='pending_payment',
+                        source='walkin',
+                        notes=notes
+                    )
+
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Service ordered.',
+                        'order': {
+                            'id': txn.id,
+                            'item_type': 'service',
+                            'name': service.name,
+                            'quantity': quantity,
+                            'amount': float(txn.total_amount),
+                            'base_amount': float(txn.total_amount),
+                            'has_pending_claim': False,
+                            'has_approved_claim': False,
+                        }
+                    })
+
+                elif item_type == 'item':
+                    service_item = get_object_or_404(ServiceItem, id=item_id)
+
+                    notes = data.get('notes', '').strip()
+
+                    txn = PatientServiceTransaction.objects.create(
+                        patient=patient,
+                        service_item=service_item,
+                        quantity=quantity,
+                        unit_price=service_item.price,
+                        total_amount=service_item.price * quantity,
+                        performed_by=request.user,
+                        status='pending_payment',
+                        source='walkin',
+                        notes=notes
+                    )
+
+                    return JsonResponse({
+                        'success': True,
+                        'message': 'Item ordered.',
+                        'order': {
+                            'id': txn.id,
+                            'item_type': 'item',
+                            'name': service_item.name,
+                            'quantity': quantity,
+                            'amount': float(txn.total_amount),
+                            'base_amount': float(txn.total_amount),
+                            'has_pending_claim': False,
+                            'has_approved_claim': False,
+                        }
+                    })
+
+        else:
+            # For walk-ins: Just validate and return item info
+            # Client will store in memory until payment
+            if item_type == 'drug':
+                from pharmacy.models import DrugModel
+                drug = get_object_or_404(DrugModel, id=item_id)
+                total = drug.selling_price * quantity
+
+                return JsonResponse({
+                    'success': True,
+                    'order': {
+                        'item_id': item_id,
+                        'item_type': 'drug',
+                        'name': f"{drug.brand_name or drug.generic_name} ({drug.formulation.form_type})",
+                        'quantity': quantity,
+                        'unit_price': float(drug.selling_price),
+                        'amount': float(total),
+                    }
+                })
+
+            elif item_type == 'lab':
+                from laboratory.models import LabTestTemplateModel
+                template = get_object_or_404(LabTestTemplateModel, id=item_id)
+
+                return JsonResponse({
+                    'success': True,
+                    'order': {
+                        'item_id': item_id,
+                        'item_type': 'lab',
+                        'name': template.name,
+                        'quantity': 1,
+                        'unit_price': float(template.price),
+                        'amount': float(template.price),
+                    }
+                })
+
+            elif item_type == 'scan':
+                from scan.models import ScanTemplateModel
+                template = get_object_or_404(ScanTemplateModel, id=item_id)
+
+                return JsonResponse({
+                    'success': True,
+                    'order': {
+                        'item_id': item_id,
+                        'item_type': 'scan',
+                        'name': template.name,
+                        'quantity': 1,
+                        'unit_price': float(template.price),
+                        'amount': float(template.price),
+                    }
+                })
+
+            elif item_type == 'service':
+                service = get_object_or_404(Service, id=item_id)
+                total = service.price * quantity
+
+                return JsonResponse({
+                    'success': True,
+                    'order': {
+                        'item_id': item_id,
+                        'item_type': 'service',
+                        'name': service.name,
+                        'quantity': quantity,
+                        'unit_price': float(service.price),
+                        'amount': float(total),
+                    }
+                })
+
+            elif item_type == 'item':
+                service_item = get_object_or_404(ServiceItem, id=item_id)
+                total = service_item.price * quantity
+
+                return JsonResponse({
+                    'success': True,
+                    'order': {
+                        'item_id': item_id,
+                        'item_type': 'item',
+                        'name': service_item.name,
+                        'quantity': quantity,
+                        'unit_price': float(service_item.price),
+                        'amount': float(total),
+                    }
+                })
+
+        return JsonResponse({'error': 'Invalid item type'}, status=400)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+@require_http_methods(["POST"])
+def process_direct_sales_payment(request):
+    """
+    Process payment for direct sales.
+
+    For registered patients:
+    - Payment for existing pending orders (already saved with insurance)
+    - Use wallet if available
+
+    For walk-ins:
+    - Create all orders atomically
+    - Process payment
+    - No insurance, no wallet
+    """
+    try:
+        # Read the request body once and parse it
+        body = request.body.decode('utf-8')
+        data = json.loads(body)
+
+        customer_type = data.get('customer_type')
+        payment_method = data.get('payment_method', 'cash')
+        use_wallet = data.get('use_wallet', False)
+
+        # Cart items (for walk-ins or additional items for registered patients)
+        cart_items = data.get('cart_items', [])
+
+        # Selected pending order IDs (for registered patients)
+        selected_pending = data.get('selected_pending', {})
+
+        if customer_type == 'patient':
+            patient_id = data.get('patient_id')
+            if not patient_id:
+                return JsonResponse({'error': 'Patient ID required'}, status=400)
+
+            patient = get_object_or_404(PatientModel, id=patient_id)
+
+            with transaction.atomic():
+                # Get wallet
+                wallet, _ = PatientWalletModel.objects.get_or_create(
+                    patient=patient,
+                    defaults={'amount': Decimal('0.00')}
+                )
+                wallet = PatientWalletModel.objects.select_for_update().get(pk=wallet.pk)
+                old_wallet_balance = wallet.amount
+
+                # Collect all orders to pay for
+                orders_to_pay = {
+                    'drugs': [],
+                    'labs': [],
+                    'scans': [],
+                    'services': []
+                }
+
+                # Add selected pending orders
+                if selected_pending.get('drugs'):
+                    orders_to_pay['drugs'].extend(
+                        DrugOrderModel.objects.filter(
+                            id__in=selected_pending['drugs'],
+                            patient=patient,
+                            status='pending'
+                        )
+                    )
+
+                if selected_pending.get('labs'):
+                    orders_to_pay['labs'].extend(
+                        LabTestOrderModel.objects.filter(
+                            id__in=selected_pending['labs'],
+                            patient=patient,
+                            status='pending'
+                        )
+                    )
+
+                if selected_pending.get('scans'):
+                    orders_to_pay['scans'].extend(
+                        ScanOrderModel.objects.filter(
+                            id__in=selected_pending['scans'],
+                            patient=patient,
+                            status='pending'
+                        )
+                    )
+
+                if selected_pending.get('services'):
+                    orders_to_pay['services'].extend(
+                        PatientServiceTransaction.objects.filter(
+                            id__in=selected_pending['services'],
+                            patient=patient,
+                            status='pending_payment'
+                        )
+                    )
+
+                # Calculate total (with insurance adjustments)
+                from insurance.claim_helpers import get_orders_with_claim_info
+
+                total_amount = Decimal('0.00')
+                patient_amounts = {}
+
+                if orders_to_pay['drugs']:
+                    drug_results = get_orders_with_claim_info(orders_to_pay['drugs'], 'drug')
+                    for res in drug_results:
+                        order = res['order']
+                        patient_amt = _to_decimal(res['patient_amount'])
+                        patient_amounts[('drug', order.id)] = patient_amt
+                        total_amount += patient_amt
+
+                if orders_to_pay['labs']:
+                    lab_results = get_orders_with_claim_info(orders_to_pay['labs'], 'lab')
+                    for res in lab_results:
+                        order = res['order']
+                        patient_amt = _to_decimal(res['patient_amount'])
+                        patient_amounts[('lab', order.id)] = patient_amt
+                        total_amount += patient_amt
+
+                if orders_to_pay['scans']:
+                    scan_results = get_orders_with_claim_info(orders_to_pay['scans'], 'scan')
+                    for res in scan_results:
+                        order = res['order']
+                        patient_amt = _to_decimal(res['patient_amount'])
+                        patient_amounts[('scan', order.id)] = patient_amt
+                        total_amount += patient_amt
+
+                for svc in orders_to_pay['services']:
+                    amt = _to_decimal(svc.total_amount)
+                    patient_amounts[('service', svc.id)] = amt
+                    total_amount += amt
+
+                # Handle wallet
+                wallet_used = Decimal('0.00')
+                if use_wallet and old_wallet_balance > Decimal('0.00'):
+                    wallet_used = min(old_wallet_balance, total_amount)
+                    wallet.amount = old_wallet_balance - wallet_used
+                    wallet.save()
+
+                remaining = total_amount - wallet_used
+
+                # Create parent transaction
+                parent_txn = None
+                wallet_txn = None
+
+                if wallet_used > Decimal('0.00'):
+                    wallet_txn = PatientTransactionModel.objects.create(
+                        patient=patient,
+                        transaction_type='wallet_withdrawal',
+                        transaction_direction='out',
+                        amount=wallet_used,
+                        old_balance=old_wallet_balance,
+                        new_balance=wallet.amount,
+                        payment_method='wallet',
+                        received_by=request.user,
+                        status='completed',
+                        date=timezone.now().date(),
+                        source='walkin'
+                    )
+
+                if remaining > Decimal('0.00'):
+                    parent_txn = PatientTransactionModel.objects.create(
+                        patient=patient,
+                        transaction_type='direct_payment',
+                        transaction_direction='in',
+                        amount=remaining,
+                        old_balance=wallet.amount,
+                        new_balance=wallet.amount,
+                        payment_method=payment_method,
+                        received_by=request.user,
+                        status='completed',
+                        date=timezone.now().date(),
+                        source='walkin'
+                    )
+
+                # Create child transactions and update orders
+                child_txns = []
+
+                remaining_wallet = wallet_used
+
+                def allocate_payment(order_amount):
+                    nonlocal remaining_wallet
+                    wallet_portion = Decimal('0.00')
+                    if remaining_wallet > Decimal('0.00'):
+                        wallet_portion = min(remaining_wallet, order_amount)
+                    direct_portion = order_amount - wallet_portion
+                    remaining_wallet -= wallet_portion
+                    return wallet_portion, direct_portion
+
+                # Process drugs
+                for drug_order in orders_to_pay['drugs']:
+                    patient_amt = patient_amounts[('drug', drug_order.id)]
+                    wallet_portion, direct_portion = allocate_payment(patient_amt)
+
+                    child_txn = PatientTransactionModel.objects.create(
+                        patient=patient,
+                        transaction_type='drug_payment',
+                        transaction_direction='out',
+                        amount=patient_amt,
+                        old_balance=old_wallet_balance,
+                        new_balance=wallet.amount,
+                        payment_method=payment_method if direct_portion > 0 else 'wallet',
+                        received_by=request.user,
+                        status='completed',
+                        date=timezone.now().date(),
+                        parent_transaction=parent_txn if direct_portion > 0 else wallet_txn,
+                        wallet_amount_used=wallet_portion,
+                        direct_payment_amount=direct_portion,
+                        drug_order=drug_order,
+                        source='walkin'
+                    )
+
+                    drug_order.status = 'paid'
+                    drug_order.save()
+                    child_txns.append(child_txn)
+
+                # Process labs
+                for lab_order in orders_to_pay['labs']:
+                    patient_amt = patient_amounts[('lab', lab_order.id)]
+                    wallet_portion, direct_portion = allocate_payment(patient_amt)
+
+                    child_txn = PatientTransactionModel.objects.create(
+                        patient=patient,
+                        transaction_type='lab_payment',
+                        transaction_direction='out',
+                        amount=patient_amt,
+                        old_balance=old_wallet_balance,
+                        new_balance=wallet.amount,
+                        payment_method=payment_method if direct_portion > 0 else 'wallet',
+                        received_by=request.user,
+                        status='completed',
+                        date=timezone.now().date(),
+                        parent_transaction=parent_txn if direct_portion > 0 else wallet_txn,
+                        wallet_amount_used=wallet_portion,
+                        direct_payment_amount=direct_portion,
+                        lab_structure=lab_order,
+                        source='walkin'
+                    )
+
+                    lab_order.status = 'paid'
+                    lab_order.save()
+                    child_txns.append(child_txn)
+
+                # Process scans
+                for scan_order in orders_to_pay['scans']:
+                    patient_amt = patient_amounts[('scan', scan_order.id)]
+                    wallet_portion, direct_portion = allocate_payment(patient_amt)
+
+                    child_txn = PatientTransactionModel.objects.create(
+                        patient=patient,
+                        transaction_type='scan_payment',
+                        transaction_direction='out',
+                        amount=patient_amt,
+                        old_balance=old_wallet_balance,
+                        new_balance=wallet.amount,
+                        payment_method=payment_method if direct_portion > 0 else 'wallet',
+                        received_by=request.user,
+                        status='completed',
+                        date=timezone.now().date(),
+                        parent_transaction=parent_txn if direct_portion > 0 else wallet_txn,
+                        wallet_amount_used=wallet_portion,
+                        direct_payment_amount=direct_portion,
+                        scan_order=scan_order,
+                        source='walkin'
+                    )
+
+                    scan_order.status = 'paid'
+                    scan_order.save()
+                    child_txns.append(child_txn)
+
+                # Process services
+                for svc_txn in orders_to_pay['services']:
+                    patient_amt = patient_amounts[('service', svc_txn.id)]
+                    wallet_portion, direct_portion = allocate_payment(patient_amt)
+
+                    child_txn = PatientTransactionModel.objects.create(
+                        patient=patient,
+                        transaction_type='service',
+                        transaction_direction='out',
+                        amount=patient_amt,
+                        old_balance=old_wallet_balance,
+                        new_balance=wallet.amount,
+                        payment_method=payment_method if direct_portion > 0 else 'wallet',
+                        received_by=request.user,
+                        status='completed',
+                        date=timezone.now().date(),
+                        parent_transaction=parent_txn if direct_portion > 0 else wallet_txn,
+                        wallet_amount_used=wallet_portion,
+                        direct_payment_amount=direct_portion,
+                        service=svc_txn,
+                        source='walkin'
+                    )
+
+                    svc_txn.status = 'paid'
+                    svc_txn.save()
+                    child_txns.append(child_txn)
+
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Payment successful! ₦{total_amount:,.2f} paid for {len(child_txns)} item(s)',
+                    'total_paid': float(total_amount),
+                    'wallet_used': float(wallet_used),
+                    'direct_paid': float(remaining),
+                    'new_wallet_balance': float(wallet.amount),
+                    'items_paid': len(child_txns),
+                    'transaction_id': parent_txn.id if parent_txn else wallet_txn.id,
+                })
+
+        else:  # walk-in customer
+            customer_name = data.get('customer_name', '').strip()
+            if not customer_name:
+                return JsonResponse({'error': 'Customer name required'}, status=400)
+
+            if not cart_items:
+                return JsonResponse({'error': 'No items in cart'}, status=400)
+
+            with transaction.atomic():
+                # Create all orders and calculate total
+                created_orders = []
+                total_amount = Decimal('0.00')
+
+                for item in cart_items:
+                    item_type = item['item_type']
+                    item_id = item['item_id']
+                    quantity = int(item.get('quantity', 1))
+
+                    if item_type == 'drug':
+                        from pharmacy.models import DrugModel
+                        drug = get_object_or_404(DrugModel, id=item_id)
+
+                        order = DrugOrderModel.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            drug=drug,
+                            quantity_ordered=quantity,
+                            dosage_instructions=item.get('dosage', ''),
+                            duration=item.get('duration', ''),
+                            notes=item.get('notes', ''),
+                            ordered_by=request.user,
+                            status='paid',
+                            source='walkin',
+                            payment_method=payment_method
+                        )
+                        created_orders.append(('drug', order))
+                        total_amount += order.total_amount
+
+                    elif item_type == 'lab':
+                        from laboratory.models import LabTestTemplateModel
+                        template = get_object_or_404(LabTestTemplateModel, id=item_id)
+
+                        order = LabTestOrderModel.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            template=template,
+                            ordered_by=request.user,
+                            status='paid',
+                            source='walkin',
+                            special_instructions=item.get('instructions', ''),
+                            payment_method=payment_method
+                        )
+                        created_orders.append(('lab', order))
+                        total_amount += order.total_amount
+
+                    elif item_type == 'scan':
+                        from scan.models import ScanTemplateModel
+                        template = get_object_or_404(ScanTemplateModel, id=item_id)
+
+                        order = ScanOrderModel.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            template=template,
+                            ordered_by=request.user,
+                            status='paid',
+                            source='walkin',
+                            clinical_indication=item.get('indication', ''),
+                            payment_method=payment_method
+                        )
+                        created_orders.append(('scan', order))
+                        total_amount += order.total_amount
+
+                    elif item_type == 'service':
+                        service = get_object_or_404(Service, id=item_id)
+
+                        txn = PatientServiceTransaction.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            service=service,
+                            quantity=quantity,
+                            unit_price=service.price,
+                            total_amount=service.price * quantity,
+                            performed_by=request.user,
+                            status='paid',
+                            source='walkin',
+                            notes=item.get('notes', '')
+                        )
+                        created_orders.append(('service', txn))
+                        total_amount += txn.total_amount
+
+                    elif item_type == 'item':
+                        service_item = get_object_or_404(ServiceItem, id=item_id)
+
+                        # Check stock
+                        if service_item.stock_quantity < quantity:
+                            return JsonResponse({
+                                'error': f'Insufficient stock for {service_item.name}. Available: {service_item.stock_quantity}, Requested: {quantity}'
+                            }, status=400)
+
+                        txn = PatientServiceTransaction.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            service_item=service_item,
+                            quantity=quantity,
+                            unit_price=service_item.price,
+                            total_amount=service_item.price * quantity,
+                            performed_by=request.user,
+                            status='paid',
+                            source='walkin',
+                            notes=item.get('notes', '')
+                        )
+
+                        # Update stock
+                        service_item.stock_quantity -= quantity
+                        service_item.save()
+
+                        # Create stock movement record
+                        from service.models import ServiceItemStockMovement
+                        ServiceItemStockMovement.objects.create(
+                            service_item=service_item,
+                            movement_type='sale',
+                            quantity=-quantity,
+                            reference_type='sale',
+                            reference_id=txn.id,
+                            notes=f"Direct sale to {customer_name}",
+                            created_by=request.user
+                        )
+
+                        created_orders.append(('item', txn))
+                        total_amount += txn.total_amount
+
+                # Create transaction record
+                txn = PatientTransactionModel.objects.create(
+                    patient=None,
+                    customer_name=customer_name,
+                    transaction_type='direct_payment',
+                    transaction_direction='in',
+                    amount=total_amount,
+                    old_balance=Decimal('0.00'),
+                    new_balance=Decimal('0.00'),
+                    payment_method=payment_method,
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    source='walkin'
+                )
+
+                # Create child transactions for each order
+                for order_type, order in created_orders:
+                    if order_type == 'drug':
+                        PatientTransactionModel.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            transaction_type='drug_payment',
+                            transaction_direction='out',
+                            amount=order.total_amount,
+                            old_balance=Decimal('0.00'),
+                            new_balance=Decimal('0.00'),
+                            payment_method=payment_method,
+                            received_by=request.user,
+                            status='completed',
+                            date=timezone.now().date(),
+                            parent_transaction=txn,
+                            drug_order=order,
+                            source='walkin'
+                        )
+
+                    elif order_type == 'lab':
+                        PatientTransactionModel.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            transaction_type='lab_payment',
+                            transaction_direction='out',
+                            amount=order.total_amount,
+                            old_balance=Decimal('0.00'),
+                            new_balance=Decimal('0.00'),
+                            payment_method=payment_method,
+                            received_by=request.user,
+                            status='completed',
+                            date=timezone.now().date(),
+                            parent_transaction=txn,
+                            lab_structure=order,
+                            source='walkin'
+                        )
+
+                    elif order_type == 'scan':
+                        PatientTransactionModel.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            transaction_type='scan_payment',
+                            transaction_direction='out',
+                            amount=order.total_amount,
+                            old_balance=Decimal('0.00'),
+                            new_balance=Decimal('0.00'),
+                            payment_method=payment_method,
+                            received_by=request.user,
+                            status='completed',
+                            date=timezone.now().date(),
+                            parent_transaction=txn,
+                            scan_order=order,
+                            source='walkin'
+                        )
+
+                    elif order_type in ('service', 'item'):
+                        PatientTransactionModel.objects.create(
+                            patient=None,
+                            customer_name=customer_name,
+                            transaction_type='service' if order_type == 'service' else 'item',
+                            transaction_direction='out',
+                            amount=order.total_amount,
+                            old_balance=Decimal('0.00'),
+                            new_balance=Decimal('0.00'),
+                            payment_method=payment_method,
+                            received_by=request.user,
+                            status='completed',
+                            date=timezone.now().date(),
+                            parent_transaction=txn,
+                            service=order,
+                            source='walkin'
+                        )
+
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Payment successful! ₦{total_amount:,.2f} paid for {len(created_orders)} item(s)',
+                    'total_paid': float(total_amount),
+                    'wallet_used': 0.0,
+                    'direct_paid': float(total_amount),
+                    'new_wallet_balance': 0.0,
+                    'items_paid': len(created_orders),
+                    'transaction_id': txn.id,
+                })
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
