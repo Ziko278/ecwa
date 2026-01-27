@@ -329,3 +329,155 @@ class ConsultationDocument(models.Model):
     @property
     def filename(self):
         return os.path.basename(self.document.name)
+
+
+class RegistrationReportTemplate(models.Model):
+    """Template for recurring registration reports"""
+    title = models.CharField(max_length=200, unique=True)
+    age_min = models.IntegerField(null=True, blank=True,
+                                  help_text="Minimum age (leave blank for no minimum)")
+    age_max = models.IntegerField(null=True, blank=True,
+                                  help_text="Maximum age (leave blank for no maximum)")
+    gender = models.CharField(max_length=10, choices=GENDER, blank=True,
+                              help_text="Leave blank for all genders")
+    marital_status = models.CharField(max_length=30, choices=MARITAL_STATUS, blank=True,
+                                      help_text="Leave blank for all statuses")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['title']
+        verbose_name = 'Registration Report Template'
+        verbose_name_plural = 'Registration Report Templates'
+
+    def __str__(self):
+        return self.title
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        # At least one filter must be set
+        if not any([self.age_min, self.age_max, self.gender, self.marital_status]):
+            raise ValidationError('At least one filter (age, gender, or marital status) must be set.')
+
+        # Age validation
+        if self.age_min is not None and self.age_max is not None:
+            if self.age_min > self.age_max:
+                raise ValidationError('Minimum age cannot be greater than maximum age.')
+
+        # Check for duplicate combinations
+        existing = RegistrationReportTemplate.objects.filter(
+            age_min=self.age_min,
+            age_max=self.age_max,
+            gender=self.gender or '',
+            marital_status=self.marital_status or ''
+        ).exclude(pk=self.pk)
+
+        if existing.exists():
+            raise ValidationError('A template with this combination already exists.')
+
+    def get_patient_count(self, from_date, to_date):
+        """Calculate patient count for this template within date range"""
+        from datetime import date
+
+        queryset = PatientModel.objects.filter(
+            created_at__date__range=[from_date, to_date],
+            status='active'
+        )
+
+        # Apply age filters
+        if self.age_min is not None or self.age_max is not None:
+            today = date.today()
+
+            if self.age_max is not None:
+                # Calculate birth date for max age
+                max_birth_date = date(today.year - self.age_max, today.month, today.day)
+                queryset = queryset.filter(date_of_birth__gte=max_birth_date)
+
+            if self.age_min is not None:
+                # Calculate birth date for min age
+                min_birth_date = date(today.year - self.age_min - 1, today.month, today.day)
+                queryset = queryset.filter(date_of_birth__lte=min_birth_date)
+
+        # Apply gender filter
+        if self.gender:
+            queryset = queryset.filter(gender=self.gender)
+
+        # Apply marital status filter
+        if self.marital_status:
+            queryset = queryset.filter(marital_status=self.marital_status)
+
+        return queryset.count()
+
+
+class ConsultationReportTemplate(models.Model):
+    """Template for recurring consultation diagnosis reports"""
+    title = models.CharField(max_length=200, unique=True)
+    age_min = models.IntegerField(null=True, blank=True,
+                                  help_text="Minimum age (leave blank for no minimum)")
+    age_max = models.IntegerField(null=True, blank=True,
+                                  help_text="Maximum age (leave blank for no maximum)")
+    diagnosis = models.ForeignKey('consultation.DiagnosisOption', on_delete=models.CASCADE,
+                                  help_text="Primary diagnosis to track")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['title']
+        verbose_name = 'Consultation Report Template'
+        verbose_name_plural = 'Consultation Report Templates'
+
+    def __str__(self):
+        return self.title
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        # Age validation
+        if self.age_min is not None and self.age_max is not None:
+            if self.age_min > self.age_max:
+                raise ValidationError('Minimum age cannot be greater than maximum age.')
+
+        # Check for duplicate combinations
+        existing = ConsultationReportTemplate.objects.filter(
+            age_min=self.age_min,
+            age_max=self.age_max,
+            diagnosis=self.diagnosis
+        ).exclude(pk=self.pk)
+
+        if existing.exists():
+            raise ValidationError('A template with this combination already exists.')
+
+    def get_consultation_count(self, from_date, to_date):
+        """Calculate consultation count for this template within date range"""
+        from datetime import date
+        from consultation.models import ConsultationSessionModel
+
+        queryset = ConsultationSessionModel.objects.filter(
+            created_at__date__range=[from_date, to_date],
+            status='completed',
+            primary_diagnosis=self.diagnosis
+        )
+
+        # Apply age filters if specified
+        if self.age_min is not None or self.age_max is not None:
+            patient_ids = []
+            today = date.today()
+
+            for consultation in queryset.select_related('queue_entry__patient'):
+                patient = consultation.queue_entry.patient
+                if patient.date_of_birth:
+                    age = today.year - patient.date_of_birth.year - (
+                            (today.month, today.day) < (patient.date_of_birth.month, patient.date_of_birth.day)
+                    )
+
+                    if self.age_min is not None and age < self.age_min:
+                        continue
+                    if self.age_max is not None and age > self.age_max:
+                        continue
+
+                    patient_ids.append(consultation.id)
+
+            queryset = queryset.filter(id__in=patient_ids)
+
+        return queryset.count()

@@ -2,6 +2,7 @@ import logging
 import json
 from decimal import Decimal
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 from django import forms
 from django.contrib import messages
@@ -1893,14 +1894,18 @@ def process_dispense_ajax(request):
         dispense_items = json.loads(request.POST.get('dispense_items', '[]'))
         payment_items = json.loads(request.POST.get('payment_items', '[]'))
 
-        if not patient_id:
-            return JsonResponse({'error': 'Patient ID required'}, status=400)
+        patient = None
+        wallet = SimpleNamespace(amount=Decimal('0.00'))
 
-        patient = get_object_or_404(PatientModel, id=patient_id)
-        wallet = PatientWalletModel.objects.get_or_create(
-            patient=patient,
-            defaults={'amount': Decimal('0.00')}
-        )[0]
+        if patient_id:
+            patient = get_object_or_404(PatientModel, id=patient_id)
+            wallet = PatientWalletModel.objects.get_or_create(
+                patient=patient,
+                defaults={'amount': Decimal('0.00')}
+            )[0]
+
+        # if not patient_id:
+        #     return JsonResponse({'error': 'Patient ID required'}, status=400)
 
         dispensed_count = 0
         paid_count = 0
@@ -2614,3 +2619,320 @@ def pharmacy_dashboard_print(request):
     """
     context = get_pharmacy_dashboard_context(request)
     return render(request, 'pharmacy/dashboard_print.html', context)
+
+
+@login_required
+@permission_required('pharmacy.add_drugordermodel', raise_exception=True)
+def walkin_dispense_page(request):
+    """Main walk-in dispensing page - shows list of all walk-in orders"""
+    return render(request, 'pharmacy/dispense/walkin_dispense.html')
+
+
+@login_required
+def walkin_orders_list_ajax(request):
+    """
+    Get all walk-in transactions that have drug orders needing dispensing.
+    Groups by parent transaction to show all items together.
+    """
+    try:
+        # Get parent transactions (direct_payment) with source='walkin'
+        # that have at least one drug order not fully dispensed
+        from django.db.models import Q, Count, Sum, F, ExpressionWrapper, DecimalField
+
+        # Subquery to check if transaction has pending drug orders
+        parent_transactions = PatientTransactionModel.objects.filter(
+            transaction_type='direct_payment',
+            source='walkin',
+            parent_transaction__isnull=True,  # Only parents
+            child_transactions__drug_order__isnull=False,  # Has drug orders
+        ).filter(
+            # At least one drug order not fully dispensed
+            Q(child_transactions__drug_order__status='paid') |
+            Q(child_transactions__drug_order__status='partially_dispensed')
+        ).annotate(
+            drug_count=Count('child_transactions__drug_order', distinct=True)
+        ).filter(
+            drug_count__gt=0
+        ).distinct().select_related('received_by').order_by('-created_at')
+
+        transactions_data = []
+
+        for parent_txn in parent_transactions:
+            # Get all drug orders in this transaction that need dispensing
+            drug_orders = DrugOrderModel.objects.filter(
+                transactions__parent_transaction=parent_txn,
+                status__in=['paid', 'partially_dispensed']
+            ).exclude(
+                quantity_dispensed__gte=F('quantity_ordered')
+            ).select_related('drug')
+
+            # Skip if no pending drugs (all fully dispensed)
+            if not drug_orders.exists():
+                continue
+
+            # Calculate total amount and build drug summary
+            total_amount = Decimal('0.00')
+            drug_items = []
+
+            for order in drug_orders:
+                total_amount += order.total_amount
+                drug_items.append({
+                    'id': order.id,
+                    'name': f"{order.drug.__str__()}",
+                    'quantity_ordered': float(order.quantity_ordered),
+                    'quantity_dispensed': float(order.quantity_dispensed),
+                    'remaining': float(order.remaining_to_dispense),
+                    'quantity_left_in_stock': float(order.drug.pharmacy_quantity),
+                })
+
+            # Build drug summary string for display
+            if len(drug_items) == 1:
+                drug_summary = f"{drug_items[0]['name']} (Qty: {drug_items[0]['quantity_ordered']})"
+            else:
+                drug_summary = f"{len(drug_items)} items: " + ", ".join([
+                    f"{item['name']} ({item['quantity_ordered']})"
+                    for item in drug_items[:2]
+                ])
+                if len(drug_items) > 2:
+                    drug_summary += f", +{len(drug_items) - 2} more"
+
+            # Get customer name from parent transaction or first order
+            customer_name = parent_txn.customer_name or drug_orders.first().customer_display
+
+            transactions_data.append({
+                'transaction_id': parent_txn.transaction_id,
+                'customer_name': customer_name,
+                'date': parent_txn.created_at.strftime('%Y-%m-%d %H:%M'),
+                'total_amount': float(total_amount),
+                'formatted_amount': f'₦{total_amount:,.2f}',
+                'drug_count': len(drug_items),
+                'drug_summary': drug_summary,
+                'drug_items': drug_items,
+                'status': 'partially_dispensed' if any(
+                    item['quantity_dispensed'] > 0 for item in drug_items
+                ) else 'paid'
+            })
+
+        return JsonResponse({
+            'success': True,
+            'transactions': transactions_data,
+            'total_count': len(transactions_data)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Error fetching walk-in orders: {str(e)}'
+        }, status=500)
+
+
+@login_required
+def walkin_order_detail_ajax(request):
+    """
+    Get details of a specific walk-in transaction for dispensing.
+    Shows all drug orders within that transaction.
+    """
+    transaction_id = request.GET.get('transaction_id', '').strip()
+
+    if not transaction_id:
+        return JsonResponse({'error': 'Transaction ID required'}, status=400)
+
+    try:
+        # Get parent transaction
+        parent_txn = PatientTransactionModel.objects.get(
+            transaction_id=transaction_id,
+            transaction_type='direct_payment',
+            source='walkin',
+            parent_transaction__isnull=True
+        )
+
+        # Get all drug orders in this transaction that need dispensing
+        drug_orders = DrugOrderModel.objects.filter(
+            transactions__parent_transaction=parent_txn,
+            status__in=['paid', 'partially_dispensed', 'dispensed']  # Include dispensed for history
+        ).select_related('drug', 'ordered_by', 'dispensed_by').order_by('id')
+
+        if not drug_orders.exists():
+            return JsonResponse({
+                'error': 'No drug orders found for this transaction'
+            }, status=404)
+
+        # Get customer name
+        customer_name = parent_txn.customer_name or drug_orders.first().customer_display
+
+        # Build drug orders data
+        orders_data = []
+        total_amount = Decimal('0.00')
+
+        for order in drug_orders:
+            # Get dispense history for this order
+            dispense_history = DispenseRecord.objects.filter(
+                order=order
+            ).select_related('dispensed_by').order_by('-created_at')
+
+            history_data = []
+            for record in dispense_history:
+                history_data.append({
+                    'dispensed_qty': float(record.dispensed_qty),
+                    'dispensed_by': str(record.dispensed_by) if record.dispensed_by else 'N/A',
+                    'dispensed_at': record.created_at.strftime('%Y-%m-%d %H:%M'),
+                    'notes': record.notes or ''
+                })
+
+            orders_data.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'drug_name': f"{order.drug.__str__()}",
+                'quantity_left': float(order.drug.pharmacy_quantity),
+                'quantity_ordered': float(order.quantity_ordered),
+                'quantity_dispensed': float(order.quantity_dispensed),
+                'remaining_quantity': float(order.remaining_to_dispense),
+                'dosage_instructions': order.dosage_instructions,
+                'duration': order.duration,
+                'status': order.status,
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d %H:%M'),
+                'notes': order.notes or '',
+                'dispense_history': history_data,
+                'is_fully_dispensed': order.quantity_dispensed >= order.quantity_ordered
+            })
+
+            total_amount += order.total_amount
+
+        transaction_data = {
+            'transaction_id': parent_txn.transaction_id,
+            'customer_name': customer_name,
+            'date': parent_txn.created_at.strftime('%Y-%m-%d %H:%M'),
+            'ordered_by': str(parent_txn.received_by) if parent_txn.received_by else 'N/A',
+            'payment_method': parent_txn.payment_method,
+            'total_amount': float(total_amount),
+            'formatted_amount': f'₦{total_amount:,.2f}',
+            'drug_orders': orders_data
+        }
+
+        return JsonResponse({
+            'success': True,
+            'transaction': transaction_data
+        })
+
+    except PatientTransactionModel.DoesNotExist:
+        return JsonResponse({
+            'error': 'Transaction not found'
+        }, status=404)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Error fetching transaction details: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@permission_required('pharmacy.change_drugordermodel', raise_exception=True)
+@transaction.atomic
+def process_walkin_dispense_ajax(request):
+    """
+    Process dispensing for walk-in drug orders.
+    Can dispense one or multiple items from the same transaction.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        dispense_items = json.loads(request.POST.get('dispense_items', '[]'))
+
+        if not dispense_items:
+            return JsonResponse({'error': 'No items to dispense'}, status=400)
+
+        dispensed_count = 0
+
+        for item in dispense_items:
+            order_id = item.get('order_id')
+            dispense_quantity = Decimal(str(item.get('quantity', 0)))
+
+            try:
+                # Get the order (no patient check needed for walk-ins)
+                order = DrugOrderModel.objects.get(
+                    id=order_id,
+                    source='walkin',
+                    status__in=['paid', 'partially_dispensed']
+                )
+
+                remaining_quantity = order.remaining_to_dispense
+
+                if dispense_quantity <= 0:
+                    continue
+
+                if dispense_quantity > remaining_quantity:
+                    return JsonResponse({
+                        'error': f'Cannot dispense {dispense_quantity} of {order.drug.brand_name or order.drug.generic_name}. Only {remaining_quantity} remaining.'
+                    }, status=400)
+
+                # Check if sufficient quantity in pharmacy
+                if order.drug.pharmacy_quantity < float(dispense_quantity):
+                    return JsonResponse({
+                        'error': f'Insufficient stock in pharmacy for {order.drug.brand_name or order.drug.generic_name}. '
+                                 f'Requested: {dispense_quantity}, Available: {order.drug.pharmacy_quantity}'
+                    }, status=400)
+
+                # Process FIFO stock reduction
+                try:
+                    from pharmacy.views import process_fifo_stock_reduction  # Import from your existing code
+
+                    customer_name = order.customer_display
+
+                    stock_outs_created = process_fifo_stock_reduction(
+                        drug=order.drug,
+                        quantity_to_reduce=float(dispense_quantity),
+                        location='pharmacy',
+                        reason='sale',
+                        remark=f'Dispensed to walk-in customer: {customer_name}',
+                        user=request.user
+                    )
+                except ValueError as e:
+                    return JsonResponse({
+                        'error': f'Stock allocation error for {order.drug.brand_name or order.drug.generic_name}: {str(e)}'
+                    }, status=400)
+
+                # Create dispense record
+                dispense_record = DispenseRecord.objects.create(
+                    order=order,
+                    dispensed_by=request.user,
+                    dispensed_qty=dispense_quantity,
+                    notes=f'Walk-in dispense by {request.user.__str__() or request.user.username}. '
+                          f'Stock reduced from {len(stock_outs_created)} stock entries.'
+                )
+
+                # Update order quantities
+                order.quantity_dispensed += float(dispense_quantity)
+
+                # Update dispensed_at timestamp
+                order.dispensed_at = timezone.now()
+                order.dispensed_by = request.user
+
+                # Update status based on dispensing completion
+                if order.quantity_dispensed >= order.quantity_ordered:
+                    order.status = 'dispensed'
+                else:
+                    order.status = 'partially_dispensed'
+
+                order.save()
+                dispensed_count += 1
+
+            except DrugOrderModel.DoesNotExist:
+                return JsonResponse({
+                    'error': f'Drug order {order_id} not found or not eligible for dispensing'
+                }, status=404)
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Successfully dispensed {dispensed_count} drug order(s)',
+            'dispensed_count': dispensed_count
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Error processing dispense: {str(e)}'
+        }, status=500)

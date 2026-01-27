@@ -2254,13 +2254,13 @@ class PatientTransactionListView(LoginRequiredMixin, PermissionRequiredMixin, Li
         """
         # Eager load related models to prevent N+1 query issues
         qs = PatientTransactionModel.objects.select_related('patient', 'received_by')
+        qs = qs.filter(parent_transaction__isnull=True)
 
         # Get filter parameters from the request
         start_date = self.request.GET.get("start_date")
         end_date = self.request.GET.get("end_date")
         search = self.request.GET.get("search")
         transaction_type = self.request.GET.get("transaction_type")
-        transaction_direction = self.request.GET.get("transaction_direction")
 
         # Default to today's transactions if no date range is provided
         if not start_date and not end_date:
@@ -2272,15 +2272,17 @@ class PatientTransactionListView(LoginRequiredMixin, PermissionRequiredMixin, Li
         # Apply search filter for patient name or transaction ID
         if search:
             qs = qs.filter(
-                Q(patient__full_name__icontains=search) |
+                Q(patient__first_name__icontains=search) |
+                Q(patient__last_name__icontains=search) |
+                Q(patient__card_number__icontains=search) |
+                Q(customer_name__icontains=search) |  # For walk-ins
                 Q(transaction_id__icontains=search)
             )
 
         # Apply choice filters
         if transaction_type:
             qs = qs.filter(transaction_type=transaction_type)
-        if transaction_direction:
-            qs = qs.filter(transaction_direction=transaction_direction)
+
 
         return qs.order_by("-created_at")
 
@@ -2303,10 +2305,8 @@ class PatientTransactionListView(LoginRequiredMixin, PermissionRequiredMixin, Li
         # Calculate total inflow and outflow using database aggregation for efficiency
         totals = queryset.aggregate(
             total_inflow=Sum('amount', filter=Q(transaction_direction='in')),
-            total_outflow=Sum('amount', filter=Q(transaction_direction='out'))
         )
         context['total_inflow'] = totals['total_inflow'] or Decimal('0.00')
-        context['total_outflow'] = totals['total_outflow'] or Decimal('0.00')
 
         # Pass transaction type choices to the template for the filter dropdown
         context['transaction_types'] = PatientTransactionModel.TRANSACTION_TYPE

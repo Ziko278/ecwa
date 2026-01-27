@@ -358,6 +358,11 @@
               <i class="bi bi-circle"></i><span>Registration Payments</span>
             </a>
           </li>
+            <li>
+            <a href="{% url 'reports_hub' %}">
+              <i class="bi bi-circle"></i><span>Reports</span>
+            </a>
+          </li>
           {% endif %}
             {% if perms.patient.view_patientmodel %}
           <li>
@@ -502,6 +507,11 @@
               <i class="bi bi-circle"></i><span>Dispense Drug</span>
             </a>
           </li>
+            <li>
+            <a href="{% url 'pharmacy_walkin_dispense_page' %}">
+              <i class="bi bi-circle"></i><span>Walkin Dispense Drug</span>
+            </a>
+          </li>
           {% endif %}
           {% if perms.pharmacy.view_dispenserecord %}
           <li>
@@ -588,6 +598,11 @@
               <i class="bi bi-circle"></i><span>View Lab Orders</span>
             </a>
           </li>
+            <li>
+            <a href="{% url 'walkin_lab_page' %}">
+              <i class="bi bi-circle"></i><span>Walkin Lab Orders</span>
+            </a>
+          </li>
           {% endif %}
           {% if perms.laboratory.view_labtestresultmodel %}
           <li>
@@ -653,6 +668,11 @@
           <li>
             <a href="{% url 'scan_order_index' %}">
               <i class="bi bi-circle"></i><span>View Scan Orders</span>
+            </a>
+          </li>
+            <li>
+            <a href="{% url 'walkin_scan_page' %}">
+              <i class="bi bi-circle"></i><span>Walkin Scan Orders</span>
             </a>
           </li>
           {% endif %}

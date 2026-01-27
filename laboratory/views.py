@@ -33,6 +33,7 @@ from django.views.generic import (
 from openpyxl.styles import Font, Alignment
 
 from admin_site.models import SiteInfoModel
+from finance.models import PatientTransactionModel
 from insurance.models import InsuranceClaimModel
 from patient.models import PatientModel, PatientWalletModel
 from .models import *
@@ -773,29 +774,30 @@ class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
     context_object_name = "order_list"
     paginate_by = 20
 
+    # In your existing LabTestOrderListView.get_queryset() method
+    # REPLACE the existing queryset line with:
+
     def get_queryset(self):
         queryset = LabTestOrderModel.objects.select_related(
             'patient', 'template', 'ordered_by'
         ).exclude(
+            source='walkin'  # ADD THIS LINE - Exclude walk-in orders
+        ).exclude(
             status__in=['pending', 'cancelled']
         ).order_by('-ordered_at')
 
-        # Get filter values from the request
+        # Rest of your existing filter logic remains the same...
         status = self.request.GET.get('status')
         template_id = self.request.GET.get('template')
         search_query = self.request.GET.get('search', '').strip()
 
-        # Filter by status if provided
         if status:
             queryset = queryset.filter(status=status)
 
-        # Filter by template if provided
         if template_id:
             queryset = queryset.filter(template__id=template_id)
 
-        # Apply search query filter across multiple fields
         if search_query:
-            # Annotate queryset to create a searchable full_name field
             queryset = queryset.annotate(
                 patient_full_name=Concat(
                     'patient__first_name', Value(' '), 'patient__last_name'
@@ -804,14 +806,11 @@ class LabTestOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView
                 Q(patient_full_name__icontains=search_query) |
                 Q(patient__card_number__icontains=search_query) |
                 Q(order_number__icontains=search_query) |
-                Q(sample_label__icontains=search_query)  # Search by sample number/label
+                Q(sample_label__icontains=search_query)
             )
 
-        # Note: The original exclude(status='pending') is removed to allow searching all orders.
-        # If you still want to exclude them by default, you can add it back:
-        # queryset = queryset.exclude(status='pending')
-
         return queryset
+
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -3246,3 +3245,209 @@ def complete_test(request, pk):
     return redirect(reverse('lab_order_detail', kwargs={'pk': pk}))
 
 
+@login_required
+@permission_required('laboratory.add_labtestordermodel', raise_exception=True)
+def walkin_lab_page(request):
+    """Main walk-in lab page"""
+    return render(request, 'laboratory/order/walkin_index.html')
+
+
+@login_required
+def walkin_lab_list_ajax(request):
+    """Get all walk-in transactions with lab orders"""
+    try:
+        from django.db.models import Q, Count, Sum, F
+        from datetime import timedelta
+        from django.utils import timezone
+
+        # Get date filters from request
+        start_date = request.GET.get('start_date')
+        end_date = request.GET.get('end_date')
+
+        # Get parent transactions with walk-in lab orders
+        parent_transactions = PatientTransactionModel.objects.filter(
+            transaction_type='direct_payment',
+            source='walkin',
+            parent_transaction__isnull=True,
+            child_transactions__lab_structure__isnull=False,
+        ).filter(
+            Q(child_transactions__lab_structure__status='paid') |
+            Q(child_transactions__lab_structure__status='collected') |
+            Q(child_transactions__lab_structure__status='processing') |
+            Q(child_transactions__lab_structure__status='completed')
+        )
+
+        # Apply date filtering
+        if start_date and end_date:
+            parent_transactions = parent_transactions.filter(created_at__date__range=[start_date, end_date])
+        else:
+            # Default to last 7 days
+            parent_transactions = parent_transactions.filter(created_at__gte=timezone.now() - timedelta(days=7))
+
+        parent_transactions = parent_transactions.annotate(
+            lab_count=Count('child_transactions__lab_structure', distinct=True)
+        ).filter(
+            lab_count__gt=0
+        ).distinct().select_related('received_by').order_by('-created_at')
+
+        transactions_data = []
+
+        for parent_txn in parent_transactions:
+            # Get all lab orders in this transaction
+            lab_orders = LabTestOrderModel.objects.filter(
+                transactions__parent_transaction=parent_txn,
+                source='walkin',
+                status__in=['paid', 'collected', 'processing', 'completed']
+            ).select_related('template')
+
+            if not lab_orders.exists():
+                continue
+
+            # Calculate total and build summary
+            total_amount = Decimal('0.00')
+            lab_items = []
+
+            for order in lab_orders:
+                total_amount += order.total_amount
+                lab_items.append({
+                    'id': order.id,
+                    'name': order.template.name,
+                    'status': order.status,
+                    'status_display': order.get_status_display(),
+                })
+
+            # Build summary string
+            if len(lab_items) == 1:
+                lab_summary = f"{lab_items[0]['name']}"
+            else:
+                lab_summary = f"{len(lab_items)} tests: " + ", ".join([
+                    item['name'] for item in lab_items[:2]
+                ])
+                if len(lab_items) > 2:
+                    lab_summary += f", +{len(lab_items) - 2} more"
+
+            # Overall status
+            statuses = [item['status'] for item in lab_items]
+            if 'paid' in statuses:
+                overall_status = 'paid'
+            elif 'collected' in statuses:
+                overall_status = 'collected'
+            elif 'processing' in statuses:
+                overall_status = 'processing'
+            else:
+                overall_status = 'completed'
+
+            customer_name = parent_txn.customer_name or lab_orders.first().customer_display
+
+            transactions_data.append({
+                'transaction_id': parent_txn.transaction_id,
+                'customer_name': customer_name,
+                'date': parent_txn.created_at.strftime('%Y-%m-%d %H:%M'),
+                'total_amount': float(total_amount),
+                'formatted_amount': f'₦{total_amount:,.2f}',
+                'lab_count': len(lab_items),
+                'lab_summary': lab_summary,
+                'lab_items': lab_items,
+                'status': overall_status,
+                'status_display': dict(LabTestOrderModel.STATUS_CHOICES).get(overall_status, 'Unknown')
+            })
+
+        return JsonResponse({
+            'success': True,
+            'transactions': transactions_data,
+            'total_count': len(transactions_data)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Error fetching walk-in lab orders: {str(e)}'
+        }, status=500)
+
+
+@login_required
+def walkin_lab_detail_ajax(request):
+    """Get details of walk-in transaction lab orders"""
+    transaction_id = request.GET.get('transaction_id', '').strip()
+
+    if not transaction_id:
+        return JsonResponse({'error': 'Transaction ID required'}, status=400)
+
+    try:
+        # Get parent transaction
+        parent_txn = PatientTransactionModel.objects.get(
+            transaction_id=transaction_id,
+            transaction_type='direct_payment',
+            source='walkin',
+            parent_transaction__isnull=True
+        )
+
+        # Get all lab orders
+        lab_orders = LabTestOrderModel.objects.filter(
+            transactions__parent_transaction=parent_txn,
+            source='walkin'
+        ).select_related('template', 'ordered_by', 'sample_collected_by').order_by('id')
+
+        if not lab_orders.exists():
+            return JsonResponse({
+                'error': 'No lab orders found for this transaction'
+            }, status=404)
+
+        customer_name = parent_txn.customer_name or lab_orders.first().customer_display
+
+        # Build orders data
+        orders_data = []
+        total_amount = Decimal('0.00')
+
+        for order in lab_orders:
+            # Check if result exists
+            has_result = hasattr(order, 'result')
+            is_verified = has_result and order.result.is_verified if has_result else False
+
+            orders_data.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'test_name': order.template.name,
+                'sample_type': order.template.sample_type,
+                'amount': float(order.amount_charged or order.template.price),
+                'status': order.status,
+                'status_display': order.get_status_display(),
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d %H:%M'),
+                'ordered_by': str(order.ordered_by) if order.ordered_by else 'N/A',
+                'sample_label': order.sample_label or '',
+                'sample_collected_at': order.sample_collected_at.strftime('%Y-%m-%d %H:%M') if order.sample_collected_at else '',
+                'sample_collected_by': str(order.sample_collected_by) if order.sample_collected_by else '',
+                'special_instructions': order.special_instructions or '',
+                'has_result': has_result,
+                'is_verified': is_verified,
+                'result_id': order.result.id if has_result else None,
+            })
+
+            total_amount += order.amount_charged or order.template.price
+
+        transaction_data = {
+            'transaction_id': parent_txn.transaction_id,
+            'customer_name': customer_name,
+            'date': parent_txn.created_at.strftime('%Y-%m-%d %H:%M'),
+            'payment_method': parent_txn.payment_method,
+            'total_amount': float(total_amount),
+            'formatted_amount': f'₦{total_amount:,.2f}',
+            'lab_orders': orders_data
+        }
+
+        return JsonResponse({
+            'success': True,
+            'transaction': transaction_data
+        })
+
+    except PatientTransactionModel.DoesNotExist:
+        return JsonResponse({
+            'error': 'Transaction not found'
+        }, status=404)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Error fetching transaction details: {str(e)}'
+        }, status=500)

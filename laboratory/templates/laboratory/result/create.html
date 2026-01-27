@@ -244,9 +244,11 @@
                 <div class="card-body">
                     <h5 class="card-title">Quick Actions</h5>
                     <div class="d-grid gap-2">
-                        <a href="{ url 'lab_patient_tests' patient_id=patient.id %}" class="btn btn-outline-primary">
+                        {% if patient %}
+                        <a href="{% url 'patient_lab_tests' patient_id=patient.id %}" class="btn btn-outline-primary">
                             <i class="mdi mdi-account"></i> View Patient Tests
                         </a>
+                        {% endif %}
                         <button class="btn btn-outline-info" onclick="previewReport()">
                             <i class="mdi mdi-printer"></i> Preview Report
                         </button>

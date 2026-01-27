@@ -95,6 +95,12 @@ urlpatterns = [
     path('create-pharmacy-order/', create_pharmacy_order_ajax, name='pharmacy_create_order_ajax'),
     path("dispense/general/", general_dispense_view, name="general_dispense_index"),
     path("dispense/patient/<int:patient_id>/", patient_dispense_view, name="patient_dispense_index"),
+    
+    # Walk-in dispense URLs
+    path('dispense/walkin/', walkin_dispense_page, name='pharmacy_walkin_dispense_page'),
+    path('ajax/walkin-orders-list/', walkin_orders_list_ajax, name='pharmacy_walkin_orders_list'),
+    path('ajax/walkin-order-detail/', walkin_order_detail_ajax, name='pharmacy_walkin_order_detail'),
+    path('ajax/process-walkin-dispense/', process_walkin_dispense_ajax, name='pharmacy_process_walkin_dispense'),
 
 
 ]

@@ -332,6 +332,13 @@ class ScanOrderModel(models.Model):
             return str(self.patient)
         return self.customer_name or "Walk-in Customer"
 
+    @property
+    def result_id(self):
+        """Returns ID of associated ScanResultModel, or None"""
+        if hasattr(self, 'result') and self.result:
+            return self.result.id
+        return None
+
     def __str__(self):
         customer = str(self.patient) if self.patient else self.customer_name or "Walk-in"  # MODIFY
         return f"{self.template.name} - {customer} ({self.order_number})"

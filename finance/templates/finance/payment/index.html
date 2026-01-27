@@ -23,23 +23,12 @@
 <!--                            <input type="text" name="search" value="{{ request.GET.search }}"-->
 <!--                                   placeholder="Patient Name, or Transaction ID" class="form-control">-->
 <!--                        </div>-->
-                        <div class="col-md-3">
-                            <label class="form-label small">Type</label>
-                            <select name="transaction_type" class="form-select">
-                                <option value="">All Types</option>
-                                {% for value, display in transaction_types %}
-                                <option value="{{ value }}" {% if request.GET.transaction_type == value %}selected{% endif %}>{{ display }}</option>
-                                {% endfor %}
-                            </select>
+                        <div class="col-md-6">
+                            <label class="form-label small">Search</label>
+                            <input type="text" name="search" class="form-control" value="{{ request.GET.search }}"
+                            placeholder="Search by Patient Name, Card Number, or Transaction ID">
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label small">Direction</label>
-                            <select name="transaction_direction" class="form-select">
-                                <option value="">All</option>
-                                <option value="in" {% if request.GET.transaction_direction == 'in' %}selected{% endif %}>In (Credit)</option>
-                                <option value="out" {% if request.GET.transaction_direction == 'out' %}selected{% endif %}>Out (Debit)</option>
-                            </select>
-                        </div>
+
                         <div class="col-md-2">
                             <label class="form-label small">Start Date</label>
                             <input type="date" name="start_date" value="{{ request.GET.start_date }}" class="form-control">
@@ -73,7 +62,7 @@
                     </thead>
                     <tbody>
                         {% for t in transactions %}
-                        {% if not t.is_child_transaction %}
+
                         <tr>
 
                             <td>
@@ -122,7 +111,7 @@
                                 </a>
                             </td>
                         </tr>
-                        {% endif %}
+
                         {% empty %}
                         <tr>
                             <td colspan="8" class="text-center py-5">
@@ -193,42 +182,42 @@
 {% endif %}
 
 
-            {% if transactions %}
-            <div class="row mt-4">
-                <div class="col-md-3">
-                    <div class="card bg-light">
-                        <div class="card-body text-center">
-                            <h6>Total Transactions</h6>
-                            <h4 class="text-primary">{{ transactions|length }}</h4>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card bg-light">
-                        <div class="card-body text-center">
-                            <h6>Total Inflow (Credit)</h6>
-                            <h4 class="text-success">₦{{ total_inflow|floatformat:2|intcomma }}</h4>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card bg-light">
-                        <div class="card-body text-center">
-                            <h6>Total Outflow (Debit)</h6>
-                            <h4 class="text-danger">₦{{ total_outflow|floatformat:2|intcomma }}</h4>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card bg-light">
-                        <div class="card-body text-center">
-                            <h6>Period</h6>
-                            <h4 class="text-info">{{ timeframe|slice:"4:" }}</h4>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
+<!--            {% if transactions %}-->
+<!--            <div class="row mt-4">-->
+<!--                <div class="col-md-3">-->
+<!--                    <div class="card bg-light">-->
+<!--                        <div class="card-body text-center">-->
+<!--                            <h6>Total Transactions</h6>-->
+<!--                            <h4 class="text-primary">{{ transactions|length }}</h4>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--                <div class="col-md-3">-->
+<!--                    <div class="card bg-light">-->
+<!--                        <div class="card-body text-center">-->
+<!--                            <h6>Total Inflow (Credit)</h6>-->
+<!--                            <h4 class="text-success">₦{{ total_inflow|floatformat:2|intcomma }}</h4>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--                <div class="col-md-3">-->
+<!--                    <div class="card bg-light">-->
+<!--                        <div class="card-body text-center">-->
+<!--                            <h6>Total Outflow (Debit)</h6>-->
+<!--                            <h4 class="text-danger">₦{{ total_outflow|floatformat:2|intcomma }}</h4>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--                <div class="col-md-3">-->
+<!--                    <div class="card bg-light">-->
+<!--                        <div class="card-body text-center">-->
+<!--                            <h6>Period</h6>-->
+<!--                            <h4 class="text-info">{{ timeframe|slice:"4:" }}</h4>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--            {% endif %}-->
         </div>
     </div>
 </div>

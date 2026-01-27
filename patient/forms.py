@@ -457,3 +457,76 @@ class ConsultationDocumentForm(forms.ModelForm):
                 'placeholder': 'Document description (optional)'
             })
         }
+
+
+class RegistrationReportTemplateForm(forms.ModelForm):
+    class Meta:
+        model = RegistrationReportTemplate
+        fields = ['title', 'age_min', 'age_max', 'gender', 'marital_status']
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Young Males'}),
+            'age_min': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Min age'}),
+            'age_max': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Max age'}),
+            'gender': forms.Select(attrs={'class': 'form-control'}),
+            'marital_status': forms.Select(attrs={'class': 'form-control'}),
+        }
+
+
+class ConsultationReportTemplateForm(forms.ModelForm):
+    class Meta:
+        model = ConsultationReportTemplate
+        fields = ['title', 'age_min', 'age_max', 'diagnosis']
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Children with Malaria'}),
+            'age_min': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Min age'}),
+            'age_max': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Max age'}),
+            'diagnosis': forms.Select(attrs={'class': 'form-control'}),
+        }
+
+
+class BiodataReportFilterForm(forms.Form):
+    """Form for bio-data report filters"""
+    name_search = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Search by name'})
+    )
+    state = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'State'})
+    )
+    lga = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'LGA'})
+    )
+    age_min = forms.IntegerField(
+        required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Min age'})
+    )
+    age_max = forms.IntegerField(
+        required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Max age'})
+    )
+    address_search = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Search address'})
+    )
+    gender = forms.ChoiceField(
+        required=False,
+        choices=[('', 'All')] + list(GENDER),
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    marital_status = forms.ChoiceField(
+        required=False,
+        choices=[('', 'All')] + list(MARITAL_STATUS),
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    religion = forms.ChoiceField(
+        required=False,
+        choices=[('', 'All')] + list(RELIGION),
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    per_page = forms.IntegerField(
+        required=False,
+        initial=100,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'value': '100', 'min': '10', 'max': '500'})
+    )

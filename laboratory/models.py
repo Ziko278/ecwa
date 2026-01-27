@@ -230,12 +230,22 @@ class LabTestOrderModel(models.Model):
         """Returns patient name or walk-in customer name"""
         if self.patient:
             return str(self.patient)
-        return self.customer_name or "Walk-in Customer"
+        return self.customer_name.title() or "Walk-in Customer"
 
     # MODIFY existing __str__ method
     def __str__(self):
         customer = str(self.patient) if self.patient else self.customer_name or "Walk-in"  # MODIFY
         return f"{self.template.name} - {customer} ({self.order_number})"
+
+    @property
+    def result_id(self):
+        """
+        Returns the ID of the associated LabTestResultModel, or None if it doesn't exist.
+        """
+        # The 'result' attribute comes from the OneToOneField's related_name
+        if hasattr(self, 'result') and self.result:
+            return self.result.id
+        return None
 
     def save(self, *args, **kwargs):
         if not self.order_number:

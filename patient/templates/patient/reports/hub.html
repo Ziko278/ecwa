@@ -1,0 +1,110 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<style>
+    .reports-hub {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px 20px;
+    }
+    .hub-header {
+        text-align: center;
+        margin-bottom: 50px;
+    }
+    .hub-header h1 {
+        font-size: 2.5rem;
+        color: #1a1a1a;
+        margin-bottom: 10px;
+    }
+    .hub-header p {
+        color: #666;
+        font-size: 1.1rem;
+    }
+    .reports-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 40px;
+    }
+    .report-card {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+    .report-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    }
+    .report-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        margin-bottom: 20px;
+    }
+    .report-card.biodata .report-icon {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    .report-card.registration .report-icon {
+        background: #f3e5f5;
+        color: #7b1fa2;
+    }
+    .report-card.consultation .report-icon {
+        background: #e8f5e9;
+        color: #388e3c;
+    }
+    .report-card h3 {
+        font-size: 1.5rem;
+        margin-bottom: 10px;
+        color: #1a1a1a;
+    }
+    .report-card p {
+        color: #666;
+        line-height: 1.6;
+        margin-bottom: 0;
+    }
+</style>
+
+<div class="reports-hub">
+    <div class="hub-header">
+        <h1>Patient Reports</h1>
+        <p>Access comprehensive patient data and analytics</p>
+    </div>
+
+    <div class="reports-grid">
+        <a href="{% url 'biodata_report' %}" class="report-card biodata">
+            <div class="report-icon">
+                <i class="bi bi-person-vcard"></i>
+            </div>
+            <h3>Bio Data Report</h3>
+            <p>View and export patient demographic information with advanced filtering options</p>
+        </a>
+
+        <a href="{% url 'registration_report' %}" class="report-card registration">
+            <div class="report-icon">
+                <i class="bi bi-clipboard-data"></i>
+            </div>
+            <h3>Registration Report</h3>
+            <p>Track patient registrations by demographics with customizable templates</p>
+        </a>
+
+        <a href="{% url 'consultation_templates' %}" class="report-card consultation">
+            <div class="report-icon">
+                <i class="bi bi-heart-pulse"></i>
+            </div>
+            <h3>Consultation Diagnosis</h3>
+            <p>Monitor consultation patterns and diagnosis trends by age groups</p>
+        </a>
+    </div>
+</div>
+{% endblock %}

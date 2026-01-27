@@ -31,6 +31,7 @@ from django.views.generic import (
 )
 
 from admin_site.models import SiteInfoModel
+from finance.models import PatientTransactionModel
 from insurance.models import InsuranceClaimModel
 from patient.models import PatientModel, PatientWalletModel
 from .models import *
@@ -355,6 +356,7 @@ class UploadExternalScanResultView(LoginRequiredMixin, PermissionRequiredMixin, 
         messages.success(request, f"Result for scan order {order.order_number} was uploaded successfully.")
         return redirect(reverse('patient_external_scan_list', kwargs={'patient_id': order.patient.id}))
 
+
 class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = ScanOrderModel
     permission_required = 'scan.view_scanordermodel'
@@ -364,7 +366,8 @@ class ScanOrderListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
     def get_queryset(self):
         # Exclude pending orders to create a list of active scans
-        queryset = ScanOrderModel.objects.exclude(status='pending').select_related(
+        queryset = ScanOrderModel.objects.exclude(status='pending').exclude(
+        source='walkin').select_related(
             'patient', 'template', 'ordered_by'
         ).order_by('-ordered_at')
 
@@ -3805,3 +3808,211 @@ class ScanLogExportPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
         filename = f"scan_log_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+
+@login_required
+@permission_required('scan.add_scanordermodel', raise_exception=True)
+def walkin_scan_page(request):
+    """Main walk-in scan page"""
+    return render(request, 'scan/order/walkin_index.html')
+
+
+@login_required
+def walkin_scan_list_ajax(request):
+    """Get all walk-in transactions with scan orders"""
+    try:
+        from django.db.models import Q, Count, Sum, F
+
+        # Get date filters from request
+        start_date = request.GET.get('start_date')
+        end_date = request.GET.get('end_date')
+
+        # Get parent transactions with walk-in scan orders
+        parent_transactions = PatientTransactionModel.objects.filter(
+            transaction_type='direct_payment',
+            source='walkin',
+            parent_transaction__isnull=True,
+            child_transactions__scan_order__isnull=False,
+        ).filter(
+            Q(child_transactions__scan_order__status='paid') |
+            Q(child_transactions__scan_order__status='scheduled') |
+            Q(child_transactions__scan_order__status='in_progress') |
+            Q(child_transactions__scan_order__status='completed')
+        )
+
+        # Apply date filtering
+        if start_date and end_date:
+            parent_transactions = parent_transactions.filter(created_at__date__range=[start_date, end_date])
+        else:
+            # Default to last 7 days
+            parent_transactions = parent_transactions.filter(created_at__gte=timezone.now() - timedelta(days=7))
+
+        parent_transactions = parent_transactions.annotate(
+            scan_count=Count('child_transactions__scan_order', distinct=True)
+        ).filter(
+            scan_count__gt=0
+        ).distinct().select_related('received_by').order_by('-created_at')
+
+        transactions_data = []
+
+        for parent_txn in parent_transactions:
+            # Get all scan orders in this transaction
+            scan_orders = ScanOrderModel.objects.filter(
+                transactions__parent_transaction=parent_txn,
+                source='walkin',
+                status__in=['paid', 'scheduled', 'in_progress', 'completed']
+            ).select_related('template')
+
+            if not scan_orders.exists():
+                continue
+
+            # Calculate total and build summary
+            total_amount = Decimal('0.00')
+            scan_items = []
+
+            for order in scan_orders:
+                total_amount += order.total_amount
+                scan_items.append({
+                    'id': order.id,
+                    'name': order.template.name,
+                    'status': order.status,
+                    'status_display': order.get_status_display(),
+                })
+
+            # Build summary string
+            if len(scan_items) == 1:
+                scan_summary = f"{scan_items[0]['name']}"
+            else:
+                scan_summary = f"{len(scan_items)} scans: " + ", ".join([
+                    item['name'] for item in scan_items[:2]
+                ])
+                if len(scan_items) > 2:
+                    scan_summary += f", +{len(scan_items) - 2} more"
+
+            # Overall status
+            statuses = [item['status'] for item in scan_items]
+            if 'paid' in statuses:
+                overall_status = 'paid'
+            elif 'scheduled' in statuses:
+                overall_status = 'scheduled'
+            elif 'in_progress' in statuses:
+                overall_status = 'in_progress'
+            else:
+                overall_status = 'completed'
+
+            customer_name = parent_txn.customer_name or scan_orders.first().customer_display
+
+            transactions_data.append({
+                'transaction_id': parent_txn.transaction_id,
+                'customer_name': customer_name,
+                'date': parent_txn.created_at.strftime('%Y-%m-%d %H:%M'),
+                'total_amount': float(total_amount),
+                'formatted_amount': f'₦{total_amount:,.2f}',
+                'scan_count': len(scan_items),
+                'scan_summary': scan_summary,
+                'scan_items': scan_items,
+                'status': overall_status,
+                'status_display': dict(ScanOrderModel.STATUS_CHOICES).get(overall_status, 'Unknown')
+            })
+
+        return JsonResponse({
+            'success': True,
+            'transactions': transactions_data,
+            'total_count': len(transactions_data)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Error fetching walk-in scan orders: {str(e)}'
+        }, status=500)
+
+
+@login_required
+def walkin_scan_detail_ajax(request):
+    """Get details of walk-in transaction scan orders"""
+    transaction_id = request.GET.get('transaction_id', '').strip()
+
+    if not transaction_id:
+        return JsonResponse({'error': 'Transaction ID required'}, status=400)
+
+    try:
+        # Get parent transaction
+        parent_txn = PatientTransactionModel.objects.get(
+            transaction_id=transaction_id,
+            transaction_type='direct_payment',
+            source='walkin',
+            parent_transaction__isnull=True
+        )
+
+        # Get all scan orders
+        scan_orders = ScanOrderModel.objects.filter(
+            transactions__parent_transaction=parent_txn,
+            source='walkin'
+        ).select_related('template', 'ordered_by', 'scheduled_by', 'performed_by').order_by('id')
+
+        if not scan_orders.exists():
+            return JsonResponse({
+                'error': 'No scan orders found for this transaction'
+            }, status=404)
+
+        customer_name = parent_txn.customer_name or scan_orders.first().customer_display
+
+        # Build orders data
+        orders_data = []
+        total_amount = Decimal('0.00')
+
+        for order in scan_orders:
+            # Check if result exists
+            has_result = hasattr(order, 'result')
+            is_verified = has_result and order.result.is_verified if has_result else False
+
+            orders_data.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'scan_name': order.template.name,
+                'scan_type': order.template.category.name,
+                'amount': float(order.amount_charged or order.template.price),
+                'status': order.status,
+                'status_display': order.get_status_display(),
+                'ordered_date': order.ordered_at.strftime('%Y-%m-%d %H:%M'),
+                'ordered_by': str(order.ordered_by) if order.ordered_by else 'N/A',
+                'scheduled_date': order.scheduled_date.strftime('%Y-%m-%d %H:%M') if order.scheduled_date else '',
+                'scheduled_by': str(order.scheduled_by) if order.scheduled_by else '',
+                'scan_started_at': order.scan_started_at.strftime('%Y-%m-%d %H:%M') if order.scan_started_at else '',
+                'performed_by': str(order.performed_by) if order.performed_by else '',
+                'clinical_indication': order.clinical_indication or '',
+                'special_instructions': order.special_instructions or '',
+                'has_result': has_result,
+                'is_verified': is_verified,
+                'result_id': order.result_id if has_result else None,
+            })
+
+            total_amount += order.amount_charged or order.template.price
+
+        transaction_data = {
+            'transaction_id': parent_txn.transaction_id,
+            'customer_name': customer_name,
+            'date': parent_txn.created_at.strftime('%Y-%m-%d %H:%M'),
+            'payment_method': parent_txn.payment_method,
+            'total_amount': float(total_amount),
+            'formatted_amount': f'₦{total_amount:,.2f}',
+            'scan_orders': orders_data
+        }
+
+        return JsonResponse({
+            'success': True,
+            'transaction': transaction_data
+        })
+
+    except PatientTransactionModel.DoesNotExist:
+        return JsonResponse({
+            'error': 'Transaction not found'
+        }, status=404)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Error fetching transaction details: {str(e)}'
+        }, status=500)

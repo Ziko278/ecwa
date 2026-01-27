@@ -1,0 +1,566 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<style>
+    .card-header {
+        background: linear-gradient(135deg, #2196F3 0%, #03A9F4 100%);
+        color: white;
+    }
+    .transaction-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    .transaction-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
+    }
+    .transaction-header {
+        padding: 15px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .transaction-body {
+        padding: 15px;
+    }
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 4px 8px;
+    }
+    .search-box {
+        border-radius: 25px;
+        padding: 10px 20px;
+    }
+    .detail-card {
+        border-left: 4px solid #2196F3;
+    }
+    .order-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        transition: all 0.3s ease;
+    }
+    .order-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .order-header {
+        padding: 12px 15px;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #f8f9fa;
+    }
+    .order-body {
+        padding: 15px;
+    }
+    .action-btn {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+</style>
+
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">
+                            <i class="fas fa-flask"></i> Walk-in Lab Management
+                        </h4>
+                        <a href="{% url 'lab_entry' %}" class="btn btn-light">
+                            <i class="fas fa-user"></i> Patient Lab
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions List -->
+    <div id="transactions-list-section">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <input type="text" id="search-transactions" class="form-control search-box"
+                       placeholder="🔍 Search by Transaction ID, Customer Name...">
+            </div>
+            <div class="col-md-3">
+                <input type="date" id="start-date" class="form-control" placeholder="Start Date">
+            </div>
+            <div class="col-md-3">
+                <input type="date" id="end-date" class="form-control" placeholder="End Date">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary" onclick="filterByDate()">Filter</button>
+            </div>
+
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div id="transactions-count" class="mb-3 text-muted">
+                            Loading transactions...
+                        </div>
+                        <div id="transactions-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaction Detail -->
+    <div id="detail-section" style="display: none;">
+        <div class="row mb-3">
+            <div class="col-12">
+                <button class="btn btn-secondary" onclick="backToList()">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card detail-card mb-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-receipt"></i> Transaction Info</h5>
+                    </div>
+                    <div class="card-body" id="transaction-info"></div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-flask"></i> Lab Orders
+                        </h5>
+                    </div>
+                    <div class="card-body" id="orders-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sample Collection Modal -->
+<div class="modal fade" id="sampleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Collect Sample</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="sample-form">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Test Name</label>
+                        <input type="text" id="sample-test-name" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sample-label">Sample Label <span class="text-danger">*</span></label>
+                        <input type="text" id="sample-label" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="expected-completion">Expected Completion</label>
+                        <input type="datetime-local" id="expected-completion" class="form-control">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Collect Sample</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Notification Modal -->
+<div class="modal fade" id="notificationModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="notificationModalTitle">Notification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="notificationModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    let allTransactions = [];
+    let currentTransaction = null;
+    let notificationModal;
+    let sampleModal;
+
+    $(document).ready(function() {
+        notificationModal = new bootstrap.Modal(document.getElementById('notificationModal'));
+        sampleModal = new bootstrap.Modal(document.getElementById('sampleModal'));
+
+        // Set default to last 7 days
+        const today = new Date().toISOString().split('T')[0];
+        const weekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
+        $('#start-date').val(weekAgo);
+        $('#end-date').val(today);
+
+        loadTransactions();
+
+
+
+        $('#search-transactions').on('keyup', function() {
+            const query = $(this).val().toLowerCase();
+            filterTransactions(query);
+        });
+
+        $('#sample-form').on('submit', function(e) {
+            e.preventDefault();
+            collectSample();
+        });
+    });
+
+    function loadTransactions() {
+        $.ajax({
+            url: "{% url 'walkin_lab_list' %}",
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    allTransactions = response.transactions;
+                    displayTransactions(allTransactions);
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Error loading transactions';
+                showNotificationModal(error, 'Error', true);
+            }
+        });
+    }
+
+    function filterByDate() {
+        const startDate = $('#start-date').val();
+        const endDate = $('#end-date').val();
+
+        if (startDate && endDate) {
+            $.ajax({
+                url: "{% url 'walkin_lab_list' %}",
+                method: 'GET',
+                data: { start_date: startDate, end_date: endDate },
+                success: function(response) {
+                    if (response.success) {
+                        allTransactions = response.transactions;
+                        displayTransactions(allTransactions);
+                    }
+                }
+            });
+        } else {
+            loadTransactions();
+        }
+    }
+
+
+    function displayTransactions(transactions) {
+        const container = $('#transactions-container');
+        const countDiv = $('#transactions-count');
+
+        if (transactions.length === 0) {
+            countDiv.html('<i class="fas fa-info-circle"></i> No walk-in lab transactions found');
+            container.html(`
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-flask fa-3x mb-3"></i>
+                    <h5>No Walk-in Lab Orders</h5>
+                    <p>No pending walk-in lab orders at the moment.</p>
+                </div>
+            `);
+            return;
+        }
+
+        countDiv.html(`<i class="fas fa-check-circle text-success"></i> Found ${transactions.length} transaction(s)`);
+
+        let html = '';
+        transactions.forEach(txn => {
+            const statusClass = {
+                'paid': 'bg-info text-dark',
+                'collected': 'bg-secondary',
+                'processing': 'bg-dark',
+                'completed': 'bg-success'
+            }[txn.status] || 'bg-light text-dark';
+
+            html += `
+                <div class="transaction-card" onclick="viewDetail('${txn.transaction_id}')">
+                    <div class="transaction-header">
+                        <div>
+                            <h6 class="mb-1">
+                                <strong>${txn.customer_name}</strong>
+                                <span class="badge ${statusClass} status-badge">${txn.status_display}</span>
+                            </h6>
+                            <small class="text-muted">
+                                <i class="fas fa-receipt"></i> Transaction: <strong>${txn.transaction_id}</strong>
+                            </small>
+                        </div>
+                        <div class="text-end">
+                            <h5 class="mb-0 text-success">${txn.formatted_amount}</h5>
+                            <small class="text-muted">${txn.date}</small>
+                        </div>
+                    </div>
+                    <div class="transaction-body">
+                        <p class="mb-1">
+                            <i class="fas fa-flask"></i> <strong>${txn.lab_summary}</strong>
+                        </p>
+                        <small class="text-muted">
+                            <i class="fas fa-box"></i> ${txn.lab_count} lab test(s)
+                        </small>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.html(html);
+    }
+
+    function filterTransactions(query) {
+        if (!query) {
+            displayTransactions(allTransactions);
+            return;
+        }
+
+        const filtered = allTransactions.filter(txn => {
+            return txn.transaction_id.toLowerCase().includes(query) ||
+                   txn.customer_name.toLowerCase().includes(query);
+        });
+
+        displayTransactions(filtered);
+    }
+
+    function viewDetail(transactionId) {
+        $.ajax({
+            url: "{% url 'walkin_lab_detail' %}",
+            method: 'GET',
+            data: { transaction_id: transactionId },
+            success: function(response) {
+                if (response.success) {
+                    currentTransaction = response.transaction;
+                    displayDetail(response.transaction);
+                    $('#transactions-list-section').hide();
+                    $('#detail-section').show();
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Error loading details';
+                showNotificationModal(error, 'Error', true);
+            }
+        });
+    }
+
+    function displayDetail(txn) {
+        $('#transaction-info').html(`
+            <h6><strong>${txn.customer_name}</strong></h6>
+            <hr>
+            <p class="mb-1"><strong>Transaction ID:</strong> ${txn.transaction_id}</p>
+            <p class="mb-1"><strong>Date:</strong> ${txn.date}</p>
+            <p class="mb-1"><strong>Payment Method:</strong> ${txn.payment_method}</p>
+            <p class="mb-1"><strong>Total Amount:</strong> ${txn.formatted_amount}</p>
+        `);
+
+        let ordersHtml = '';
+        txn.lab_orders.forEach(order => {
+            const statusClass = {
+                'paid': 'bg-info text-dark',
+                'collected': 'bg-secondary',
+                'processing': 'bg-dark',
+                'completed': 'bg-success'
+            }[order.status] || 'bg-light text-dark';
+
+            let actionsHtml = '';
+            if (order.status === 'paid') {
+                actionsHtml = `<button class="btn btn-sm btn-primary action-btn" onclick="openSampleModal(${order.id}, '${order.test_name}', '${order.order_number}')">
+                    <i class="fas fa-vial"></i> Collect Sample
+                </button>`;
+            } else if (order.status === 'collected') {
+                actionsHtml = `<a href="{% url 'lab_result_create' %}?order_id=${order.id}" class="btn btn-sm btn-secondary action-btn">
+                    <i class="fas fa-keyboard"></i> Input Result
+                </a>`;
+            } else if (order.status === 'processing') {
+                actionsHtml = `<a href="{% url 'lab_result_create' %}?order_id=${order.id}" class="btn btn-sm btn-secondary action-btn">
+                    <i class="fas fa-keyboard"></i> Input Result
+                </a>`;
+            } else if (order.status === 'completed') {
+                if (order.result_id) {
+                    // Let's build the URL step-by-step and see what we get
+                    const baseUrl = "{% url 'lab_result_detail' 0 %}";
+
+                    const finalUrl = baseUrl.replace('/0/', '/' + order.result_id + '/');
+
+                    actionsHtml = `<a href="${finalUrl}" class="btn btn-sm btn-success action-btn">View Result</a>`;
+                } else {
+                    actionsHtml = `<span class="text-muted">Result record not found</span>`;
+                }
+            }
+
+            ordersHtml += `
+                <div class="order-card">
+                    <div class="order-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-0">${order.test_name}</h6>
+                                <small class="text-muted">Order: ${order.order_number}</small>
+                            </div>
+                            <span class="badge ${statusClass}">${order.status_display}</span>
+                        </div>
+                    </div>
+                    <div class="order-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>Sample Type:</strong> ${order.sample_type}</p>
+                                <p class="mb-1"><strong>Amount:</strong> ₦${order.amount.toLocaleString()}</p>
+                                ${order.sample_label ? `<p class="mb-1"><strong>Sample Label:</strong> ${order.sample_label}</p>` : ''}
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>Ordered:</strong> ${order.ordered_date}</p>
+                                <p class="mb-1"><strong>By:</strong> ${order.ordered_by}</p>
+                                ${order.sample_collected_at ? `<p class="mb-1"><strong>Collected:</strong> ${order.sample_collected_at}</p>` : ''}
+                            </div>
+                        </div>
+                        ${order.special_instructions ? `<p class="mb-1 mt-2"><strong>Instructions:</strong> ${order.special_instructions}</p>` : ''}
+                        <hr>
+                        <div class="mt-2">
+                            ${actionsHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        $('#orders-container').html(ordersHtml);
+    }
+
+    let currentOrderId = null;
+
+    function openSampleModal(orderId, testName, orderNumber) {
+        currentOrderId = orderId;
+        $('#sample-test-name').val(testName);
+        $('#sample-label').val(orderNumber);
+        $('#expected-completion').val('');
+        sampleModal.show();
+    }
+
+    function collectSample() {
+        const sampleLabel = $('#sample-label').val().trim();
+        const expectedCompletion = $('#expected-completion').val();
+
+        if (!sampleLabel) {
+            showNotificationModal('Sample label is required', 'Validation Error', true);
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('sample_label', sampleLabel);
+        if (expectedCompletion) formData.append('expected_completion', expectedCompletion);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        $.ajax({
+            url: `{% url "collect_sample" 0 %}`.replace('/0/', `/${currentOrderId}/`),
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    sampleModal.hide();
+                    showNotificationModal(response.message, 'Success');
+                    setTimeout(() => viewDetail(currentTransaction.transaction_id), 1500);
+                } else {
+                    showNotificationModal(response.error, 'Error', true);
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Error collecting sample';
+                showNotificationModal(error, 'Error', true);
+            }
+        });
+    }
+
+    function verifyResult(resultId) {
+        if (!confirm('Verify this lab result?')) return;
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        $.ajax({
+            url: `{% url "verify_result" 0 %}`.replace('/0/', `/${resultId}/`),
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    showNotificationModal(response.message, 'Success');
+                    setTimeout(() => viewDetail(currentTransaction.transaction_id), 1500);
+                } else {
+                    showNotificationModal(response.error, 'Error', true);
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Error verifying result';
+                showNotificationModal(error, 'Error', true);
+            }
+        });
+    }
+
+    function unverifyResult(resultId) {
+        if (!confirm('Unverify this lab result?')) return;
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        $.ajax({
+            url: `{% url "unverify_result" 0 %}`.replace('/0/', `/${resultId}/`),
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    showNotificationModal(response.message, 'Success');
+                    setTimeout(() => viewDetail(currentTransaction.transaction_id), 1500);
+                } else {
+                    showNotificationModal(response.error, 'Error', true);
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Error unverifying result';
+                showNotificationModal(error, 'Error', true);
+            }
+        });
+    }
+
+    function backToList() {
+        $('#detail-section').hide();
+        $('#transactions-list-section').show();
+        currentTransaction = null;
+        loadTransactions();
+    }
+
+    function showNotificationModal(message, title = 'Notification', isError = false) {
+        const titleElement = document.getElementById('notificationModalTitle');
+        document.getElementById('notificationModalBody').innerHTML = message;
+        titleElement.textContent = title;
+        if (isError) {
+            titleElement.classList.remove('text-success');
+            titleElement.classList.add('text-danger');
+        } else {
+            titleElement.classList.remove('text-danger');
+            titleElement.classList.add('text-success');
+        }
+        notificationModal.show();
+    }
+</script>
+
+{% endblock %}

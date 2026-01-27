@@ -1,0 +1,110 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<style>
+    .report-container {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 24px;
+        margin-bottom: 20px;
+    }
+    .report-header {
+        border-bottom: 2px solid #4472C4;
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .date-filters {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 6px;
+        margin-bottom: 24px;
+    }
+    .controls-bar {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        gap: 12px;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+    }
+    .btn-sm {
+        padding: 6px 12px;
+        font-size: 14px;
+    }
+    .btn-primary { background: #4472C4; color: white; }
+    .btn-success { background: #28a745; color: white; }
+    .btn-warning { background: #ffc107; color: #000; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-info { background: #17a2b8; color: white; }
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 16px;
+    }
+    .data-table th {
+        background: #4472C4;
+        color: white;
+        padding: 12px;
+        text-align: left;
+    }
+    .data-table td {
+        padding: 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    .data-table tbody tr:hover {
+        background: #f8f9fa;
+    }
+    .data-table tfoot td {
+        font-weight: 700;
+        font-size: 1.1em;
+        background: #f8f9fa;
+        border-top: 2px solid #4472C4;
+    }
+    .data-table th.right, .data-table td.right {
+        text-align: right;
+    }
+    .form-control {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .quick-filters {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+    }
+</style>
+
+<div class="report-container">
+    <div class="report-header">
+        <div>
+            <h2>Registration Report</h2>
+            <p style="color: #666; margin: 0;">Patient registration statistics by demographic templates</p>
+        </div>
+        <a href="{% url 'reports_hub' %}" class="btn btn-primary">
+            <i class="bi bi-arrow-left"></i> Back to Reports
+        </a>
+    </div>
+
+    <!-- Date Range Filters -->
+    <div class="date-filters">
+        <h1>REPORT IN PROGRESS</h1>
+
+    </div>
+</div>
+
+
+{% endblock %}

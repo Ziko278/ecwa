@@ -144,7 +144,6 @@ class PatientTransactionModel(models.Model):
         help_text="Source of this transaction"
     )
 
-
     registration_payment = models.ForeignKey(
         'patient.RegistrationPaymentModel',
         on_delete=models.SET_NULL,
@@ -184,7 +183,7 @@ class PatientTransactionModel(models.Model):
     fee_structure = models.ForeignKey('consultation.ConsultationFeeModel', on_delete=models.SET_NULL, null=True,
                                       blank=True)
     lab_structure = models.ForeignKey('laboratory.LabTestOrderModel', on_delete=models.SET_NULL, null=True,
-                                      blank=True)
+                                      blank=True, related_name='transactions')
     admission = models.ForeignKey('inpatient.Admission', on_delete=models.SET_NULL, null=True, blank=True)
     surgery = models.ForeignKey('inpatient.Surgery', on_delete=models.SET_NULL, null=True, blank=True)
     service = models.ForeignKey('service.PatientServiceTransaction', on_delete=models.SET_NULL, null=True,

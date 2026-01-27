@@ -100,8 +100,10 @@
                             {% for result in results %}
                             <tr>
                                 <td>
-                                    <strong>{{ result.order.patient|title }}</strong>
-                                    <br><small class="text-muted">{{ result.order.patient.card_number }}</small>
+                                    <strong>{{ result.order.customer_display|title }}</strong>
+                                    <br><small class="text-muted">
+                                    {% if result.order.patient %}{{ result.order.patient.card_number }}{% else %} Walk In {% endif %}
+                                </small>
                                 </td>
                                 <td>
                                     <strong>{{ result.order.template.name }}</strong>

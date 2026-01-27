@@ -1,6 +1,5 @@
 {% extends 'admin_site/layout.html' %}
 {% load static %}
-
 {% block 'main' %}
 <div class="row">
     <div class="col-lg-12">
@@ -9,7 +8,7 @@
                 <div>
                     <h4 class="card-title mb-0">Lab Result - {{ template.name }}</h4>
                     <p class="card-description mb-0">
-                        Patient: {{ patient|title }} | Order: {{ order.order_number }}
+                        Patient: {{ order.customer_display|title }} | Order: {{ order.order_number }}
                         {% if result.is_verified %}
                             <span class="badge badge-success ms-2">
                                 <i class="mdi mdi-check-circle me-1"></i>Verified
@@ -80,11 +79,12 @@
                             <table class="table table-borderless table-sm">
                                 <tr>
                                     <td><strong>Patient Name:</strong></td>
-                                    <td>{{ patient|title }}</td>
+                                    <td>{{ order.customer_display|title }}</td>
                                 </tr>
                                 <tr>
                                     <td><strong>Patient ID:</strong></td>
-                                    <td>{{ patient.card_number|upper }}</td>
+                                    <td>
+                                    {% if order.patient %}{{ order.patient.card_number }}{% else %} Walk In {% endif %}</td>
                                 </tr>
                                 <tr>
                                     <td><strong>Age/Sex:</strong></td>

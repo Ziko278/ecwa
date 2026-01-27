@@ -1,0 +1,686 @@
+{% extends 'admin_site/layout.html' %}
+{% block 'main' %}
+{% load static %}
+<style>
+    .card-header {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+    }
+    .transaction-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    .transaction-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
+    }
+    .transaction-header {
+        padding: 15px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .transaction-body {
+        padding: 15px;
+    }
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 4px 8px;
+    }
+    .search-box {
+        border-radius: 25px;
+        padding: 10px 20px;
+    }
+    .quantity-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .quantity-input {
+        width: 80px;
+        text-align: center;
+    }
+    .dispense-detail-card {
+        border-left: 4px solid #28a745;
+    }
+    .history-item {
+        padding: 10px;
+        border-left: 3px solid #007bff;
+        margin-bottom: 10px;
+        background-color: #f8f9fa;
+    }
+    .service-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        transition: all 0.3s ease;
+    }
+    .service-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .service-header {
+        padding: 10px 15px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .ready-to-dispense {
+        background-color: #d4edda;
+    }
+    .fully-dispensed-section {
+        background-color: #e9ecef;
+    }
+    .item-row {
+        padding: 12px 15px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .item-row:last-child {
+        border-bottom: none;
+    }
+    .item-row.fully-dispensed {
+        opacity: 0.7;
+        background-color: #f8f9fa;
+    }
+    .action-section {
+        background: linear-gradient(135deg, #007bff 0%, #6f42c1 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px 0;
+    }
+</style>
+
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">
+                            <i class="fas fa-pills"></i> Walk-in Drug Dispensing
+                        </h4>
+                        <a href="{% url 'drug_dispense_page' %}" class="btn btn-light">
+                            <i class="fas fa-user"></i> Patient Dispense
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions List View -->
+    <div id="transactions-list-section">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <input type="text" id="search-transactions" class="form-control search-box"
+                       placeholder="🔍 Search by Transaction ID, Customer Name...">
+            </div>
+            <div class="col-md-6 text-end">
+                <button class="btn btn-success" onclick="loadTransactions()">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div id="transactions-count" class="mb-3 text-muted">
+                            Loading transactions...
+                        </div>
+                        <div id="transactions-container">
+                            <!-- Transactions will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaction Detail & Dispense View -->
+    <div id="dispense-detail-section" style="display: none;">
+        <div class="row mb-3">
+            <div class="col-12">
+                <button class="btn btn-secondary" onclick="backToList()">
+                    <i class="fas fa-arrow-left"></i> Back to Transactions List
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Left Sidebar: Transaction Info -->
+            <div class="col-md-4">
+                <div class="card dispense-detail-card mb-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-receipt"></i> Transaction Information</h5>
+                    </div>
+                    <div class="card-body" id="transaction-info">
+                        <!-- Transaction info will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Drug Orders -->
+            <div class="col-md-8">
+                <!-- Ready to Dispense Section -->
+                <div id="ready-to-dispense-section"></div>
+
+                <!-- Fully Dispensed Section -->
+                <div id="fully-dispensed-section"></div>
+
+                <!-- Action Section -->
+                <div class="action-section" id="action-section" style="display: none;">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h5 id="action-summary">No actions selected</h5>
+                            <small id="action-details"></small>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-light btn-lg" id="process-action-btn" onclick="processDispense()">
+                                <i class="fas fa-check"></i> Process
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Notification Modal -->
+<div class="modal fade" id="notificationModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="notificationModalTitle">Notification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="notificationModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    let allTransactions = [];
+    let currentTransaction = null;
+    let notificationModal;
+
+    $(document).ready(function() {
+        notificationModal = new bootstrap.Modal(document.getElementById('notificationModal'));
+        loadTransactions();
+
+        // Frontend search
+        $('#search-transactions').on('keyup', function() {
+            const query = $(this).val().toLowerCase();
+            filterTransactions(query);
+        });
+
+        // Delegated event handlers for checkboxes
+        $(document).on('change', '.dispense-checkbox', function() {
+            const orderId = $(this).val();
+            if ($(this).is(':checked')) {
+                const ok = validateDispenseSelection(orderId, $(this));
+                if (!ok) {
+                    $(this).prop('checked', false);
+                }
+            }
+            updateActionSummary();
+        });
+
+        $(document).on('change', '.dispense-qty', function() {
+            const orderId = $(this).data('order-id');
+            const checkbox = $(`.dispense-checkbox[value="${orderId}"]`);
+            if (checkbox.is(':checked')) {
+                validateDispenseSelection(orderId, checkbox);
+            }
+            updateActionSummary();
+        });
+    });
+
+    function loadTransactions() {
+        $.ajax({
+            url: "{% url 'pharmacy_walkin_orders_list' %}",
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    allTransactions = response.transactions;
+                    displayTransactions(allTransactions);
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Error loading transactions';
+                showNotificationModal(error, 'Error', true);
+            }
+        });
+    }
+
+    function displayTransactions(transactions) {
+        const container = $('#transactions-container');
+        const countDiv = $('#transactions-count');
+
+        if (transactions.length === 0) {
+            countDiv.html('<i class="fas fa-info-circle"></i> No pending walk-in transactions found');
+            container.html(`
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-pills fa-3x mb-3"></i>
+                    <h5>No Walk-in Transactions</h5>
+                    <p>There are no pending walk-in transactions for dispensing at the moment.</p>
+                </div>
+            `);
+            return;
+        }
+
+        countDiv.html(`<i class="fas fa-check-circle text-success"></i> Found ${transactions.length} pending transaction(s)`);
+
+        let html = '';
+        transactions.forEach(txn => {
+            const statusClass = txn.status === 'paid' ? 'bg-success' : 'bg-warning text-dark';
+            const statusText = txn.status === 'paid' ? 'Paid' : 'Partially Dispensed';
+
+            html += `
+                <div class="transaction-card" onclick="viewTransactionDetail('${txn.transaction_id}')">
+                    <div class="transaction-header">
+                        <div>
+                            <h6 class="mb-1">
+                                <strong>${txn.customer_name}</strong>
+                                <span class="badge ${statusClass} status-badge">${statusText}</span>
+                            </h6>
+                            <small class="text-muted">
+                                <i class="fas fa-receipt"></i> Transaction: <strong>${txn.transaction_id}</strong>
+                            </small>
+                        </div>
+                        <div class="text-end">
+                            <h5 class="mb-0 text-success">${txn.formatted_amount}</h5>
+                            <small class="text-muted">${txn.date}</small>
+                        </div>
+                    </div>
+                    <div class="transaction-body">
+                        <p class="mb-1">
+                            <i class="fas fa-pills"></i> <strong>${txn.drug_summary}</strong>
+                        </p>
+                        <small class="text-muted">
+                            <i class="fas fa-box"></i> ${txn.drug_count} drug order(s) in this transaction
+                        </small>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.html(html);
+    }
+
+    function filterTransactions(query) {
+        if (!query) {
+            displayTransactions(allTransactions);
+            return;
+        }
+
+        const filtered = allTransactions.filter(txn => {
+            return txn.transaction_id.toLowerCase().includes(query) ||
+                   txn.customer_name.toLowerCase().includes(query);
+        });
+
+        displayTransactions(filtered);
+    }
+
+    function viewTransactionDetail(transactionId) {
+        $.ajax({
+            url: "{% url 'pharmacy_walkin_order_detail' %}",
+            method: 'GET',
+            data: { transaction_id: transactionId },
+            success: function(response) {
+                if (response.success) {
+                    currentTransaction = response.transaction;
+                    displayTransactionDetail(response.transaction);
+                    $('#transactions-list-section').hide();
+                    $('#dispense-detail-section').show();
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Error loading transaction details';
+                showNotificationModal(error, 'Error', true);
+            }
+        });
+    }
+
+    function displayTransactionDetail(txn) {
+        // Transaction Information (Left Sidebar)
+        $('#transaction-info').html(`
+            <h6><strong>${txn.customer_name}</strong></h6>
+            <hr>
+            <p class="mb-1"><strong>Transaction ID:</strong> ${txn.transaction_id}</p>
+            <p class="mb-1"><strong>Date:</strong> ${txn.date}</p>
+            <p class="mb-1"><strong>Ordered By:</strong> ${txn.ordered_by}</p>
+            <p class="mb-1"><strong>Payment Method:</strong> ${txn.payment_method}</p>
+            <p class="mb-1"><strong>Total Amount:</strong> ${txn.formatted_amount}</p>
+        `);
+
+        // Separate orders into pending and fully dispensed
+        const pendingOrders = txn.drug_orders.filter(order => !order.is_fully_dispensed);
+        const fullyDispensedOrders = txn.drug_orders.filter(order => order.is_fully_dispensed);
+
+        // Display Ready to Dispense Section
+        if (pendingOrders.length > 0) {
+            $('#ready-to-dispense-section').html(createDispenseSection(pendingOrders));
+        } else {
+            $('#ready-to-dispense-section').empty();
+        }
+
+        // Display Fully Dispensed Section
+        if (fullyDispensedOrders.length > 0) {
+            $('#fully-dispensed-section').html(createFullyDispensedSection(fullyDispensedOrders));
+        } else {
+            $('#fully-dispensed-section').empty();
+        }
+
+        // Show message if no orders
+        if (txn.drug_orders.length === 0) {
+            $('#ready-to-dispense-section').html(`
+                <div class="card">
+                    <div class="card-body text-center text-muted py-4">
+                        <i class="fas fa-pills fa-3x mb-3"></i>
+                        <h5>No Drug Orders Found</h5>
+                        <p>This transaction has no drug orders.</p>
+                    </div>
+                </div>
+            `);
+        }
+
+        updateActionSummary();
+    }
+
+    function createDispenseSection(orders) {
+        let html = `
+            <div class="card service-card">
+                <div class="service-header ready-to-dispense">
+                    <div>
+                        <h6 class="mb-0">
+                            <i class="fas fa-check-circle text-success"></i> Ready to Dispense
+                        </h6>
+                        <small>Paid orders ready for dispensing</small>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-success" onclick="selectAllDispense()">
+                            Select All
+                        </button>
+                    </div>
+                </div>
+        `;
+
+        orders.forEach(order => {
+            const statusBadge = order.status === 'paid' ?
+                '<span class="badge bg-success status-badge">Paid</span>' :
+                '<span class="badge bg-warning text-dark status-badge">Partially Dispensed</span>';
+
+            const maxQuantity = order.remaining_quantity;
+            const storeQty = parseFloat(order.quantity_left) || 0;
+
+            const stockWarning = storeQty < maxQuantity ?
+                `<br><small class="text-danger">Only ${storeQty} unit(s) in stock. You must reduce the qty or restock.</small>` : '';
+
+            // Dispense History
+            let historyHtml = '';
+            if (order.dispense_history && order.dispense_history.length > 0) {
+                historyHtml = '<br><small class="text-muted"><strong>History:</strong> ';
+                order.dispense_history.forEach((record, idx) => {
+                    if (idx > 0) historyHtml += ', ';
+                    historyHtml += `${record.dispensed_qty} by ${record.dispensed_by}`;
+                });
+                historyHtml += '</small>';
+            }
+
+            html += `
+                <div class="item-row">
+                    <div class="form-check">
+                        <input class="form-check-input dispense-checkbox" type="checkbox"
+                               value="${order.id}"
+                               data-type="dispense"
+                               data-store-qty="${storeQty}">
+                        <label class="form-check-label">
+                            <strong>${order.drug_name}</strong>
+                            ${statusBadge}
+                            <br>
+                            <small class="text-muted">
+                                Order: ${order.order_number}
+                            </small>
+                            <br>
+                            <small class="text-muted">
+                                Ordered: ${order.quantity_ordered} |
+                                Dispensed: ${order.quantity_dispensed} |
+                                Remaining: ${order.remaining_quantity}
+                            </small>
+                            ${order.dosage_instructions ? `<br><small class="text-muted">Dosage: ${order.dosage_instructions}${order.duration ? ' for ' + order.duration : ''}</small>` : ''}
+                            ${order.notes ? `<br><small class="text-muted">Note: ${order.notes}</small>` : ''}
+                            ${historyHtml}
+                            ${stockWarning}
+                        </label>
+                    </div>
+                    <div class="quantity-controls">
+                        <label class="form-label small mb-0">Qty:</label>
+                        <input type="number" class="form-control form-control-sm quantity-input dispense-qty"
+                               data-order-id="${order.id}"
+                               min="1" max="${maxQuantity}"
+                               value="${Math.min(maxQuantity, storeQty) > 0 ? Math.min(maxQuantity, storeQty) : 1}">
+                        <small class="text-muted">/ ${maxQuantity}</small>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        return html;
+    }
+
+    function createFullyDispensedSection(orders) {
+        let html = `
+            <div class="card service-card mt-3">
+                <div class="service-header fully-dispensed-section">
+                    <div>
+                        <h6 class="mb-0">
+                            <i class="fas fa-check-double text-secondary"></i> Fully Dispensed
+                        </h6>
+                        <small>Orders that have been completely dispensed</small>
+                    </div>
+                </div>
+        `;
+
+        orders.forEach(order => {
+            // Dispense History
+            let historyHtml = '';
+            if (order.dispense_history && order.dispense_history.length > 0) {
+                historyHtml = '<br><small class="text-muted"><strong>History:</strong> ';
+                order.dispense_history.forEach((record, idx) => {
+                    if (idx > 0) historyHtml += ', ';
+                    historyHtml += `${record.dispensed_qty} by ${record.dispensed_by}`;
+                });
+                historyHtml += '</small>';
+            }
+
+            html += `
+                <div class="item-row fully-dispensed">
+                    <div>
+                        <strong>${order.drug_name}</strong>
+                        <span class="badge bg-secondary status-badge ms-2">Fully Dispensed</span>
+                        <br>
+                        <small class="text-muted">
+                            Order: ${order.order_number} | Qty: ${order.quantity_ordered}
+                        </small>
+                        ${order.dosage_instructions ? `<br><small class="text-muted">Dosage: ${order.dosage_instructions}${order.duration ? ' for ' + order.duration : ''}</small>` : ''}
+                        ${historyHtml}
+                    </div>
+                    <div class="text-success">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        return html;
+    }
+
+    function selectAllDispense() {
+        const checkboxes = $('.dispense-checkbox');
+        const allChecked = checkboxes.length > 0 && checkboxes.filter(':checked').length === checkboxes.length;
+
+        checkboxes.each(function() {
+            const $cb = $(this);
+            const orderId = $cb.val();
+            if (!allChecked) {
+                const ok = validateDispenseSelection(orderId, $cb);
+                if (ok) $cb.prop('checked', true);
+                else $cb.prop('checked', false);
+            } else {
+                $cb.prop('checked', false);
+            }
+        });
+
+        updateActionSummary();
+    }
+
+    function validateDispenseSelection(orderId, $checkbox) {
+        if (!$checkbox) $checkbox = $(`.dispense-checkbox[value="${orderId}"]`);
+        const $qtyInput = $(`.dispense-qty[data-order-id="${orderId}"]`);
+        if ($checkbox.length === 0 || $qtyInput.length === 0) return true;
+
+        const storeQty = parseFloat($checkbox.data('store-qty')) || 0;
+        let requestedQty = parseFloat($qtyInput.val()) || 0;
+
+        if (!requestedQty || requestedQty < 1) {
+            requestedQty = 1;
+            $qtyInput.val('1');
+        }
+
+        const maxAllowed = parseFloat($qtyInput.attr('max')) || requestedQty;
+        if (requestedQty > maxAllowed) {
+            requestedQty = maxAllowed;
+            $qtyInput.val(maxAllowed);
+        }
+
+        if (requestedQty > storeQty) {
+            const drugLabel = $checkbox.closest('.item-row').find('strong').first().text().trim();
+            const message = `
+                <div>
+                    <p><strong>${drugLabel}</strong> has insufficient stock.</p>
+                    <p>Requested: <strong>${requestedQty}</strong> unit(s)</p>
+                    <p>Available in store: <strong>${storeQty}</strong> unit(s)</p>
+                    <hr>
+                    <p>Please either:</p>
+                    <ul style="text-align:left;">
+                        <li>Uncheck this item to skip dispensing it now, or</li>
+                        <li>Stock the drug in inventory and try again.</li>
+                    </ul>
+                </div>
+            `;
+            showNotificationModal(message, "Insufficient Stock", true);
+
+            $checkbox.prop('checked', false);
+            if (storeQty >= 1) $qtyInput.val(Math.min(maxAllowed, storeQty));
+            return false;
+        }
+
+        return true;
+    }
+
+    function updateActionSummary() {
+        const dispenseItems = $('.dispense-checkbox:checked');
+        let summary = '';
+        let showActions = false;
+
+        if (dispenseItems.length > 0) {
+            summary = `Dispense ${dispenseItems.length} item(s)`;
+            showActions = true;
+            $('#process-action-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Dispense ${dispenseItems.length} Item(s)`);
+        }
+
+        if (!showActions) {
+            summary = 'No actions selected';
+            $('#action-section').slideUp();
+        } else {
+            $('#action-summary').text(summary);
+            $('#action-details').html('');
+            $('#action-section').slideDown();
+        }
+    }
+
+    function processDispense() {
+        if (!currentTransaction) return;
+
+        const selectedOrders = [];
+
+        $('.dispense-checkbox:checked').each(function() {
+            const orderId = $(this).val();
+            const quantity = parseFloat($(`.dispense-qty[data-order-id="${orderId}"]`).val());
+
+            if (quantity > 0) {
+                selectedOrders.push({
+                    order_id: orderId,
+                    quantity: quantity
+                });
+            }
+        });
+
+        if (selectedOrders.length === 0) {
+            showNotificationModal('Please select at least one item to dispense', 'Validation Error', true);
+            return;
+        }
+
+        $.ajax({
+            url: "{% url 'pharmacy_process_walkin_dispense' %}",
+            method: 'POST',
+            data: {
+                dispense_items: JSON.stringify(selectedOrders),
+                csrfmiddlewaretoken: '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    showNotificationModal(response.message, 'Success');
+                    setTimeout(() => {
+                        viewTransactionDetail(currentTransaction.transaction_id);
+                    }, 1500);
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Error processing dispense';
+                showNotificationModal(error, 'Error', true);
+            }
+        });
+    }
+
+    function backToList() {
+        $('#dispense-detail-section').hide();
+        $('#transactions-list-section').show();
+        currentTransaction = null;
+        loadTransactions();
+    }
+
+    function showNotificationModal(message, title = 'Notification', isError = false) {
+        const titleElement = document.getElementById('notificationModalTitle');
+        document.getElementById('notificationModalBody').innerHTML = message;
+        titleElement.textContent = title;
+        if (isError) {
+            titleElement.classList.remove('text-success');
+            titleElement.classList.add('text-danger');
+        } else {
+            titleElement.classList.remove('text-danger');
+            titleElement.classList.add('text-success');
+        }
+        notificationModal.show();
+    }
+</script>
+
+{% endblock %}

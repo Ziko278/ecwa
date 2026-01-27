@@ -1,7 +1,18 @@
 import json
 import logging
 from datetime import datetime, date, timedelta
-
+import openpyxl
+from django.views import View
+from openpyxl.styles import Font, Alignment, PatternFill
+from io import BytesIO
+from django.http import HttpResponse
+from datetime import date, timedelta
+from django.db.models import Q
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.lib.units import inch
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -17,10 +28,13 @@ from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django.views.generic import TemplateView, CreateView, UpdateView, DeleteView, ListView, DetailView
+
+from admin_site.models import SiteInfoModel
 from patient.models import PatientModel, PatientSettingModel, PatientWalletModel, RegistrationFeeModel, \
-    RegistrationPaymentModel, ConsultationDocument
+    RegistrationPaymentModel, ConsultationDocument, RegistrationReportTemplate, ConsultationReportTemplate
 from patient.forms import PatientForm, PatientEditForm, PatientSettingForm, PatientSearchForm, PatientWalletTopUpForm, \
-    RegistrationFeeForm, ConsultationDocumentForm
+    RegistrationFeeForm, ConsultationDocumentForm, BiodataReportFilterForm, RegistrationReportTemplateForm, \
+    ConsultationReportTemplateForm
 from admin_site.utility import state_list
 
 # Set up logging
@@ -1075,3 +1089,630 @@ def delete_consultation_document(request, document_id):
             messages.success(request, 'Document deleted successfully')
 
     return redirect('patient_detail', patient_id=patient_id)
+
+
+# ========================= REPORTS HUB =========================
+class ReportsHubView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+    """Central hub for all patient reports"""
+    template_name = 'patient/reports/hub.html'
+    permission_required = 'patient.view_patientmodel'
+
+
+# ========================= BIO DATA REPORT =========================
+class BiodataReportView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """Bio-data report with advanced filtering"""
+    model = PatientModel
+    template_name = 'patient/reports/biodata.html'
+    context_object_name = 'patients'
+    permission_required = 'patient.view_patientmodel'
+
+    def get_paginate_by(self, queryset):
+        return int(self.request.GET.get('per_page', 100))
+
+    def get_queryset(self):
+        queryset = PatientModel.objects.filter(status='active').order_by('-created_at')
+
+        # Name search
+        name_search = self.request.GET.get('name_search', '').strip()
+        if name_search:
+            queryset = queryset.filter(
+                Q(first_name__icontains=name_search) |
+                Q(middle_name__icontains=name_search) |
+                Q(last_name__icontains=name_search)
+            )
+
+        # State filter
+        state = self.request.GET.get('state', '').strip()
+        if state:
+            queryset = queryset.filter(state__icontains=state)
+
+        # LGA filter
+        lga = self.request.GET.get('lga', '').strip()
+        if lga:
+            queryset = queryset.filter(lga__icontains=lga)
+
+        # Age range filter
+        age_min = self.request.GET.get('age_min')
+        age_max = self.request.GET.get('age_max')
+
+        if age_min or age_max:
+            today = date.today()
+
+            if age_max:
+                max_birth_date = date(today.year - int(age_max), today.month, today.day)
+                queryset = queryset.filter(date_of_birth__gte=max_birth_date)
+
+            if age_min:
+                min_birth_date = date(today.year - int(age_min) - 1, today.month, today.day)
+                queryset = queryset.filter(date_of_birth__lte=min_birth_date)
+
+        # Address search
+        address_search = self.request.GET.get('address_search', '').strip()
+        if address_search:
+            queryset = queryset.filter(address__icontains=address_search)
+
+        # Gender filter
+        gender = self.request.GET.get('gender', '').strip()
+        if gender:
+            queryset = queryset.filter(gender=gender)
+
+        # Marital status filter
+        marital_status = self.request.GET.get('marital_status', '').strip()
+        if marital_status:
+            queryset = queryset.filter(marital_status=marital_status)
+
+        # Religion filter
+        religion = self.request.GET.get('religion', '').strip()
+        if religion:
+            queryset = queryset.filter(religion=religion)
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['form'] = BiodataReportFilterForm(self.request.GET)
+        context['total_count'] = self.get_queryset().count()
+        return context
+
+
+class BiodataReportExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Export bio-data report to Excel"""
+    permission_required = 'patient.view_patientmodel'
+
+    def get(self, request, *args, **kwargs):
+        # Get filtered queryset (reuse same logic as BiodataReportView)
+        queryset = PatientModel.objects.filter(status='active').order_by('-created_at')
+
+        # Apply all filters (same as BiodataReportView)
+        name_search = request.GET.get('name_search', '').strip()
+        if name_search:
+            queryset = queryset.filter(
+                Q(first_name__icontains=name_search) |
+                Q(middle_name__icontains=name_search) |
+                Q(last_name__icontains=name_search)
+            )
+
+        state = request.GET.get('state', '').strip()
+        if state:
+            queryset = queryset.filter(state__icontains=state)
+
+        lga = request.GET.get('lga', '').strip()
+        if lga:
+            queryset = queryset.filter(lga__icontains=lga)
+
+        age_min = request.GET.get('age_min')
+        age_max = request.GET.get('age_max')
+        if age_min or age_max:
+            today = date.today()
+            if age_max:
+                max_birth_date = date(today.year - int(age_max), today.month, today.day)
+                queryset = queryset.filter(date_of_birth__gte=max_birth_date)
+            if age_min:
+                min_birth_date = date(today.year - int(age_min) - 1, today.month, today.day)
+                queryset = queryset.filter(date_of_birth__lte=min_birth_date)
+
+        address_search = request.GET.get('address_search', '').strip()
+        if address_search:
+            queryset = queryset.filter(address__icontains=address_search)
+
+        gender = request.GET.get('gender', '').strip()
+        if gender:
+            queryset = queryset.filter(gender=gender)
+
+        marital_status = request.GET.get('marital_status', '').strip()
+        if marital_status:
+            queryset = queryset.filter(marital_status=marital_status)
+
+        religion = request.GET.get('religion', '').strip()
+        if religion:
+            queryset = queryset.filter(religion=religion)
+
+        # Get selected fields (default fields always included)
+        export_fields = request.GET.getlist('export_fields')
+        if not export_fields:
+            export_fields = ['full_name', 'card_number', 'mobile', 'address']
+
+        # Create workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Patient Bio Data"
+
+        # Styles
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+
+        # Build headers
+        headers = []
+        if 'full_name' in export_fields:
+            headers.append('Full Name')
+        if 'card_number' in export_fields:
+            headers.append('Card Number')
+        if 'mobile' in export_fields:
+            headers.append('Phone')
+        if 'email' in export_fields:
+            headers.append('Email')
+        if 'address' in export_fields:
+            headers.append('Address')
+        if 'gender' in export_fields:
+            headers.append('Gender')
+        if 'age' in export_fields:
+            headers.append('Age')
+        if 'marital_status' in export_fields:
+            headers.append('Marital Status')
+        if 'religion' in export_fields:
+            headers.append('Religion')
+        if 'state' in export_fields:
+            headers.append('State')
+        if 'lga' in export_fields:
+            headers.append('LGA')
+
+        # Write headers
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+
+        # Write data
+        row = 2
+        for patient in queryset:
+            col = 1
+
+            if 'full_name' in export_fields:
+                ws.cell(row=row, column=col, value=str(patient))
+                col += 1
+            if 'card_number' in export_fields:
+                ws.cell(row=row, column=col, value=patient.card_number)
+                col += 1
+            if 'mobile' in export_fields:
+                ws.cell(row=row, column=col, value=patient.mobile or '')
+                col += 1
+            if 'email' in export_fields:
+                ws.cell(row=row, column=col, value=patient.email or '')
+                col += 1
+            if 'address' in export_fields:
+                ws.cell(row=row, column=col, value=patient.address or '')
+                col += 1
+            if 'gender' in export_fields:
+                ws.cell(row=row, column=col, value=patient.get_gender_display() if patient.gender else '')
+                col += 1
+            if 'age' in export_fields:
+                ws.cell(row=row, column=col, value=patient.age() or '')
+                col += 1
+            if 'marital_status' in export_fields:
+                ws.cell(row=row, column=col,
+                        value=patient.get_marital_status_display() if patient.marital_status else '')
+                col += 1
+            if 'religion' in export_fields:
+                ws.cell(row=row, column=col, value=patient.get_religion_display() if patient.religion else '')
+                col += 1
+            if 'state' in export_fields:
+                ws.cell(row=row, column=col, value=patient.state or '')
+                col += 1
+            if 'lga' in export_fields:
+                ws.cell(row=row, column=col, value=patient.lga or '')
+                col += 1
+
+            row += 1
+
+        # Adjust column widths
+        for col in range(1, len(headers) + 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 20
+
+        # Prepare response
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"patient_biodata_{date.today().strftime('%Y%m%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        wb.save(response)
+        return response
+
+
+# ========================= REGISTRATION REPORT =========================
+class RegistrationReportView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """Registration report with templates"""
+    model = RegistrationReportTemplate
+    template_name = 'patient/reports/registration.html'
+    context_object_name = 'templates'
+    permission_required = 'patient.view_patientmodel'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Get date range
+        from_date = self.request.GET.get('from_date')
+        to_date = self.request.GET.get('to_date')
+
+        # Default to current month
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = date.fromisoformat(from_date)
+
+        if not to_date:
+            # Last day of current month
+            today = date.today()
+            if today.month == 12:
+                to_date = today.replace(day=31)
+            else:
+                to_date = (today.replace(month=today.month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = date.fromisoformat(to_date)
+
+        context['from_date'] = from_date
+        context['to_date'] = to_date
+
+        # Calculate counts for each template
+        template_data = []
+        total_patients = 0
+
+        for template in self.get_queryset():
+            count = template.get_patient_count(from_date, to_date)
+            template_data.append({
+                'template': template,
+                'count': count
+            })
+            total_patients += count
+
+        context['template_data'] = template_data
+        context['total_patients'] = total_patients
+
+        return context
+
+
+class RegistrationTemplateCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    """Create registration report template"""
+    model = RegistrationReportTemplate
+    form_class = RegistrationReportTemplateForm
+    template_name = 'patient/reports/registration_template_form.html'
+    permission_required = 'patient.add_patientmodel'
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user
+        messages.success(self.request, f'Template "{form.instance.title}" created successfully.')
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('registration_report')
+
+
+class RegistrationTemplateUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    """Update registration report template"""
+    model = RegistrationReportTemplate
+    form_class = RegistrationReportTemplateForm
+    template_name = 'patient/reports/registration_template_form.html'
+    permission_required = 'patient.add_patientmodel'
+
+    def form_valid(self, form):
+        messages.success(self.request, f'Template "{form.instance.title}" updated successfully.')
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('registration_report')
+
+
+class RegistrationTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+    """Delete registration report template"""
+    model = RegistrationReportTemplate
+    template_name = 'patient/reports/registration_template_delete.html'
+    permission_required = 'patient.add_patientmodel'
+
+    def get_success_url(self):
+        messages.success(self.request, 'Template deleted successfully.')
+        return reverse('registration_report')
+
+
+class RegistrationReportExportPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Export registration report to PDF"""
+    permission_required = 'patient.view_patientmodel'
+
+    def get(self, request, *args, **kwargs):
+        # Get date range
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = date.fromisoformat(from_date)
+
+        if not to_date:
+            today = date.today()
+            if today.month == 12:
+                to_date = today.replace(day=31)
+            else:
+                to_date = (today.replace(month=today.month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = date.fromisoformat(to_date)
+
+        # Get templates and counts
+        templates = RegistrationReportTemplate.objects.all()
+        template_data = []
+        total_patients = 0
+
+        for template in templates:
+            count = template.get_patient_count(from_date, to_date)
+            template_data.append({
+                'title': template.title,
+                'count': count
+            })
+            total_patients += count
+
+        # Get hospital info
+        site_info = SiteInfoModel.objects.first()
+
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30,
+                                topMargin=30, bottomMargin=30)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = styles['Heading1']
+        title_style.alignment = 1  # Center
+
+        # Header
+        if site_info:
+            elements.append(Paragraph(site_info.name, title_style))
+
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph("REGISTRATION REPORT", title_style))
+        elements.append(Paragraph(
+            f"Period: {from_date.strftime('%B %d, %Y')} - {to_date.strftime('%B %d, %Y')}",
+            styles['Normal']
+        ))
+        elements.append(Spacer(1, 0.4 * inch))
+
+        # Build table
+        table_data = [['S/N', 'Template Title', 'Total Patients']]
+
+        for idx, data in enumerate(template_data, 1):
+            table_data.append([
+                str(idx),
+                data['title'],
+                str(data['count'])
+            ])
+
+        # Total row
+        table_data.append(['', 'TOTAL REGISTRATIONS', str(total_patients)])
+
+        # Create table
+        table = Table(table_data, colWidths=[0.6 * inch, 4 * inch, 1.5 * inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f0f0f0')]),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f0f0')),
+            ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor('#4472C4')),
+        ]))
+
+        elements.append(table)
+        doc.build(elements)
+        buffer.seek(0)
+
+        # Response
+        response = HttpResponse(buffer, content_type='application/pdf')
+        filename = f"registration_report_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+
+# ========================= CONSULTATION REPORT TEMPLATES =========================
+class ConsultationTemplateListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    """List consultation report templates with counts"""
+    model = ConsultationReportTemplate
+    template_name = 'patient/reports/consultation_templates.html'
+    context_object_name = 'templates'
+    permission_required = 'patient.view_patientmodel'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Get date range
+        from_date = self.request.GET.get('from_date')
+        to_date = self.request.GET.get('to_date')
+
+        # Default to current month
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = date.fromisoformat(from_date)
+
+        if not to_date:
+            today = date.today()
+            if today.month == 12:
+                to_date = today.replace(day=31)
+            else:
+                to_date = (today.replace(month=today.month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = date.fromisoformat(to_date)
+
+        context['from_date'] = from_date
+        context['to_date'] = to_date
+
+        # Calculate counts for each template
+        template_data = []
+        total_cases = 0
+
+        for template in self.get_queryset():
+            count = template.get_consultation_count(from_date, to_date)
+            template_data.append({
+                'template': template,
+                'count': count
+            })
+            total_cases += count
+
+        context['template_data'] = template_data
+        context['total_cases'] = total_cases
+
+        return context
+
+
+class ConsultationTemplateCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    """Create consultation report template"""
+    model = ConsultationReportTemplate
+    form_class = ConsultationReportTemplateForm
+    template_name = 'patient/reports/consultation_template_form.html'
+    permission_required = 'patient.add_patientmodel'
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user
+        messages.success(self.request, f'Template "{form.instance.title}" created successfully.')
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('consultation_templates')
+
+
+class ConsultationTemplateUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+    """Update consultation report template"""
+    model = ConsultationReportTemplate
+    form_class = ConsultationReportTemplateForm
+    template_name = 'patient/reports/consultation_template_form.html'
+    permission_required = 'patient.add_patientmodel'
+
+    def form_valid(self, form):
+        messages.success(self.request, f'Template "{form.instance.title}" updated successfully.')
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('consultation_templates')
+
+
+class ConsultationTemplateDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+    """Delete consultation report template"""
+    model = ConsultationReportTemplate
+    template_name = 'patient/reports/consultation_template_delete.html'
+    permission_required = 'patient.add_patientmodel'
+
+    def get_success_url(self):
+        messages.success(self.request, 'Template deleted successfully.')
+        return reverse('consultation_templates')
+
+
+class ConsultationTemplateExportPDFView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Export consultation template report to PDF"""
+    permission_required = 'patient.view_patientmodel'
+
+    def get(self, request, *args, **kwargs):
+        # Get date range
+        from_date = request.GET.get('from_date')
+        to_date = request.GET.get('to_date')
+
+        if not from_date:
+            from_date = date.today().replace(day=1)
+        else:
+            from_date = date.fromisoformat(from_date)
+
+        if not to_date:
+            today = date.today()
+            if today.month == 12:
+                to_date = today.replace(day=31)
+            else:
+                to_date = (today.replace(month=today.month + 1, day=1) - timedelta(days=1))
+        else:
+            to_date = date.fromisoformat(to_date)
+
+        # Get templates and counts
+        templates = ConsultationReportTemplate.objects.all()
+        template_data = []
+        total_cases = 0
+
+        for template in templates:
+            count = template.get_consultation_count(from_date, to_date)
+            template_data.append({
+                'title': template.title,
+                'count': count
+            })
+            total_cases += count
+
+        # Get hospital info
+        site_info = SiteInfoModel.objects.first()
+
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30,
+                                topMargin=30, bottomMargin=30)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = styles['Heading1']
+        title_style.alignment = 1  # Center
+
+        # Header
+        if site_info:
+            elements.append(Paragraph(site_info.name, title_style))
+
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph("CONSULTATION DIAGNOSIS REPORT", title_style))
+        elements.append(Paragraph(
+            f"Period: {from_date.strftime('%B %d, %Y')} - {to_date.strftime('%B %d, %Y')}",
+            styles['Normal']
+        ))
+        elements.append(Spacer(1, 0.4 * inch))
+
+        # Build table
+        table_data = [['S/N', 'Template Title', 'Total Cases']]
+
+        for idx, data in enumerate(template_data, 1):
+            table_data.append([
+                str(idx),
+                data['title'],
+                str(data['count'])
+            ])
+
+        # Total row
+        table_data.append(['', 'TOTAL CASES', str(total_cases)])
+
+        # Create table
+        table = Table(table_data, colWidths=[0.6 * inch, 4 * inch, 1.5 * inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f0f0f0')]),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f0f0')),
+            ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor('#4472C4')),
+        ]))
+
+        elements.append(table)
+        doc.build(elements)
+        buffer.seek(0)
+
+        # Response
+        response = HttpResponse(buffer, content_type='application/pdf')
+        filename = f"consultation_diagnosis_report_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response

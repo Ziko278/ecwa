@@ -10,7 +10,7 @@
                 <div>
                     <h4 class="card-title mb-0">Scan Report - {{ template.name }}</h4>
                     <p class="card-description mb-0">
-                        Patient: {{ patient|title }} | Order: {{ order.order_number }}
+                        Patient: {{ order.customer_display|title }} | Order: {{ order.order_number }}
                         {% if result.is_verified %}
                             <span class="badge badge-success ms-2">
                                 <i class="mdi mdi-check-circle me-1"></i>Verified
@@ -75,11 +75,11 @@
                             <table class="table table-borderless table-sm">
                                 <tr>
                                     <td><strong>Patient Name:</strong></td>
-                                    <td>{{ patient|title }}</td>
+                                    <td>{{ order.customer_display|title }}</td>
                                 </tr>
                                 <tr>
                                     <td><strong>Patient ID:</strong></td>
-                                    <td>{{ patient.card_number|upper }}</td>
+                                    <td>{% if patient %}{{ patient.card_number|upper }}{% else %}Walkin{% endif %}</td>
                                 </tr>
                                 <tr>
                                     <td><strong>Age/Sex:</strong></td>
@@ -325,9 +325,11 @@
             <div class="card-body">
                 <h5 class="card-title">Quick Actions</h5>
                 <div class="d-grid gap-2">
+                    {% if patient %}
                     <a href="{% url 'patient_scan_orders' patient.id %}" class="btn btn-outline-primary">
                         <i class="mdi mdi-account"></i> View Patient Scans
                     </a>
+                    {% endif %}
                     <button class="btn btn-outline-info" onclick="printResult()">
                         <i class="mdi mdi-printer"></i> Preview / Print
                     </button>

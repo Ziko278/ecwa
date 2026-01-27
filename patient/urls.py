@@ -28,7 +28,32 @@ urlpatterns = [
     path('<int:patient_id>/upload-document/', upload_consultation_document, name='upload_consultation_document'),
     path('document/<int:document_id>/delete/', delete_consultation_document, name='delete_consultation_document'),
 
+    path('reports/', ReportsHubView.as_view(), name='reports_hub'),
 
+    # Bio Data Report
+    path('reports/bio-data/', BiodataReportView.as_view(), name='biodata_report'),
+    path('reports/bio-data/export/', BiodataReportExportView.as_view(), name='biodata_report_export'),
+
+    # Registration Report
+    path('reports/registration/', RegistrationReportView.as_view(), name='registration_report'),
+    path('reports/registration/template/create/', RegistrationTemplateCreateView.as_view(),
+         name='registration_template_create'),
+    path('reports/registration/template/<int:pk>/edit/', RegistrationTemplateUpdateView.as_view(),
+         name='registration_template_edit'),
+    path('reports/registration/template/<int:pk>/delete/', RegistrationTemplateDeleteView.as_view(),
+         name='registration_template_delete'),
+    path('reports/registration/export-pdf/', RegistrationReportExportPDFView.as_view(), name='registration_report_pdf'),
+
+    # Consultation Templates Report
+    path('reports/consultation-templates/', ConsultationTemplateListView.as_view(), name='consultation_templates'),
+    path('reports/consultation-templates/create/', ConsultationTemplateCreateView.as_view(),
+         name='consultation_template_create'),
+    path('reports/consultation-templates/<int:pk>/edit/', ConsultationTemplateUpdateView.as_view(),
+         name='consultation_template_edit'),
+    path('reports/consultation-templates/<int:pk>/delete/', ConsultationTemplateDeleteView.as_view(),
+         name='consultation_template_delete'),
+    path('reports/consultation-templates/export-pdf/', ConsultationTemplateExportPDFView.as_view(),
+         name='consultation_template_pdf'),
 
 ]
 

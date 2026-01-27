@@ -67,6 +67,10 @@ urlpatterns = [
     path('results/<int:pk>/unverify/', unverify_result, name='unverify_result'),
     path('orders/<int:order_id>/process-for-results/', process_to_result_entry, name='process_to_result_entry'),
 
+    path('walkin/', walkin_lab_page, name='walkin_lab_page'),
+    path('walkin/list/', walkin_lab_list_ajax, name='walkin_lab_list'),
+    path('walkin/detail/', walkin_lab_detail_ajax, name='walkin_lab_detail'),
+
     # Equipment
     path('equipment/create', LabEquipmentCreateView.as_view(), name='lab_equipment_create'),
     path('equipment/index', LabEquipmentListView.as_view(), name='lab_equipment_index'),

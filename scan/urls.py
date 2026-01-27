@@ -135,5 +135,9 @@ urlpatterns = [
     path('ajax/template-details', get_template_details, name='get_template_details'),
     path('ajax/patient-orders', get_patient_orders, name='get_patient_orders'),
     path('ajax/dashboard-data', scan_dashboard_data, name='scan_dashboard_data'),
+
+    path('walkin/', walkin_scan_page, name='walkin_scan_page'),
+    path('walkin/list/', walkin_scan_list_ajax, name='walkin_scan_list'),
+    path('walkin/detail/', walkin_scan_detail_ajax, name='walkin_scan_detail'),
 ]
 

@@ -457,7 +457,6 @@ class DrugOrderModel(models.Model):
         ('returned', 'Returned'),
     ]
 
-
     # MODIFIED: Allow null patient
     patient = models.ForeignKey(
         'patient.PatientModel',
