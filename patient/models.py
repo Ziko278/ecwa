@@ -389,15 +389,15 @@ class RegistrationReportTemplate(models.Model):
         if self.age_min is not None or self.age_max is not None:
             today = date.today()
 
-            if self.age_max is not None:
-                # Calculate birth date for max age
-                max_birth_date = date(today.year - self.age_max, today.month, today.day)
-                queryset = queryset.filter(date_of_birth__gte=max_birth_date)
-
             if self.age_min is not None:
-                # Calculate birth date for min age
-                min_birth_date = date(today.year - self.age_min - 1, today.month, today.day)
-                queryset = queryset.filter(date_of_birth__lte=min_birth_date)
+                # Max birth date for minimum age (older patients born earlier)
+                max_birth_date = date(today.year - self.age_min, today.month, today.day)
+                queryset = queryset.filter(date_of_birth__lte=max_birth_date)
+
+            if self.age_max is not None:
+                # Min birth date for maximum age (younger patients born later)
+                min_birth_date = date(today.year - self.age_max - 1, today.month, today.day)
+                queryset = queryset.filter(date_of_birth__gte=min_birth_date)
 
         # Apply gender filter
         if self.gender:

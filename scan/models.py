@@ -202,7 +202,7 @@ class ScanOrderModel(models.Model):
     source = models.CharField(
         max_length=20,
         choices=SOURCE_CHOICES,
-        default='walkin',
+        default='consultation',
         help_text="Source of this scan order"
     )
 

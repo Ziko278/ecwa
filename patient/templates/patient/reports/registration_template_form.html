@@ -1,0 +1,91 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<style>
+    .form-container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 24px;
+    }
+    .form-header {
+        border-bottom: 2px solid #4472C4;
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+    }
+    .btn-primary { background: #4472C4; color: white; }
+    .btn-secondary { background: #6c757d; color: white; }
+</style>
+
+<div class="form-container">
+    <div class="form-header">
+        <h2>{% if object %}Edit{% else %}Create{% endif %} Registration Template</h2>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="mb-3">
+            <label for="{{ form.title.id_for_label }}" class="form-label">Template Title *</label>
+            {{ form.title }}
+            {% if form.title.errors %}
+                <div class="text-danger">{{ form.title.errors }}</div>
+            {% endif %}
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="{{ form.age_min.id_for_label }}" class="form-label">Minimum Age</label>
+                {{ form.age_min }}
+                {% if form.age_min.errors %}
+                    <div class="text-danger">{{ form.age_min.errors }}</div>
+                {% endif %}
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="{{ form.age_max.id_for_label }}" class="form-label">Maximum Age</label>
+                {{ form.age_max }}
+                {% if form.age_max.errors %}
+                    <div class="text-danger">{{ form.age_max.errors }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label for="{{ form.gender.id_for_label }}" class="form-label">Gender</label>
+            {{ form.gender }}
+            {% if form.gender.errors %}
+                <div class="text-danger">{{ form.gender.errors }}</div>
+            {% endif %}
+        </div>
+
+        <div class="mb-3">
+            <label for="{{ form.marital_status.id_for_label }}" class="form-label">Marital Status</label>
+            {{ form.marital_status }}
+            {% if form.marital_status.errors %}
+                <div class="text-danger">{{ form.marital_status.errors }}</div>
+            {% endif %}
+        </div>
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="d-flex justify-content-between mt-4">
+            <a href="{% url 'registration_report' %}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save Template</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

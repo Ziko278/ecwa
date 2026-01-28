@@ -1353,7 +1353,6 @@ class RegistrationReportView(LoginRequiredMixin, PermissionRequiredMixin, ListVi
             from_date = date.fromisoformat(from_date)
 
         if not to_date:
-            # Last day of current month
             today = date.today()
             if today.month == 12:
                 to_date = today.replace(day=31)
@@ -1367,21 +1366,22 @@ class RegistrationReportView(LoginRequiredMixin, PermissionRequiredMixin, ListVi
 
         # Calculate counts for each template
         template_data = []
-        total_patients = 0
-
         for template in self.get_queryset():
             count = template.get_patient_count(from_date, to_date)
             template_data.append({
                 'template': template,
                 'count': count
             })
-            total_patients += count
 
         context['template_data'] = template_data
-        context['total_patients'] = total_patients
+
+        # Total = all unique patients in date range (unfiltered)
+        context['total_patients'] = PatientModel.objects.filter(
+            created_at__date__range=[from_date, to_date],
+            status='active'
+        ).count()
 
         return context
-
 
 class RegistrationTemplateCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """Create registration report template"""

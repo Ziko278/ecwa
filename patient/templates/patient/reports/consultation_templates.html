@@ -1,5 +1,5 @@
 {% extends 'admin_site/layout.html' %}
-{% load static %}
+{% load static humanize %}
 
 {% block 'main' %}
 <style>
@@ -14,21 +14,12 @@
         border-bottom: 2px solid #4472C4;
         padding-bottom: 16px;
         margin-bottom: 24px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
     }
-    .date-filters {
+    .date-selector {
         background: #f8f9fa;
         padding: 20px;
         border-radius: 6px;
         margin-bottom: 24px;
-    }
-    .controls-bar {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 20px;
-        gap: 12px;
     }
     .btn {
         padding: 10px 20px;
@@ -39,14 +30,8 @@
         text-decoration: none;
         display: inline-block;
     }
-    .btn-sm {
-        padding: 6px 12px;
-        font-size: 14px;
-    }
     .btn-primary { background: #4472C4; color: white; }
     .btn-success { background: #28a745; color: white; }
-    .btn-warning { background: #ffc107; color: #000; }
-    .btn-danger { background: #dc3545; color: white; }
     .btn-info { background: #17a2b8; color: white; }
     .data-table {
         width: 100%;
@@ -63,48 +48,101 @@
         padding: 12px;
         border-bottom: 1px solid #e0e0e0;
     }
-    .data-table tbody tr:hover {
-        background: #f8f9fa;
-    }
     .data-table tfoot td {
         font-weight: 700;
-        font-size: 1.1em;
         background: #f8f9fa;
         border-top: 2px solid #4472C4;
-    }
-    .data-table th.right, .data-table td.right {
-        text-align: right;
-    }
-    .form-control {
-        width: 100%;
-        padding: 8px 12px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-    }
-    .quick-filters {
-        display: flex;
-        gap: 10px;
-        margin-top: 10px;
     }
 </style>
 
 <div class="report-container">
     <div class="report-header">
-        <div>
-            <h2>Registration Report</h2>
-            <p style="color: #666; margin: 0;">Patient registration statistics by demographic templates</p>
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2>Consultation Diagnosis Report</h2>
+                <p style="color: #666; margin: 0;">Track consultation patterns by diagnosis and age groups</p>
+            </div>
+            <a href="{% url 'reports_hub' %}" class="btn btn-primary">
+                <i class="bi bi-arrow-left"></i> Back to Reports
+            </a>
         </div>
-        <a href="{% url 'reports_hub' %}" class="btn btn-primary">
-            <i class="bi bi-arrow-left"></i> Back to Reports
-        </a>
     </div>
 
-    <!-- Date Range Filters -->
-    <div class="date-filters">
-        <h1>REPORT IN PROGRESS</h1>
+    <div class="date-selector">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">From Date</label>
+                <input type="date" name="from_date" class="form-control" value="{{ from_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">To Date</label>
+                <input type="date" name="to_date" class="form-control" value="{{ to_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary">Update</button>
+            </div>
+            <div class="col-md-3 d-flex align-items-end justify-content-end gap-2">
+                <a href="{% url 'consultation_template_create' %}" class="btn btn-success">
+                    <i class="bi bi-plus"></i> New Template
+                </a>
+                <button type="button" class="btn btn-info" onclick="exportToPDF()">
+                    <i class="bi bi-file-pdf"></i> Export PDF
+                </button>
+            </div>
+        </form>
+    </div>
 
+    <h5>Period: {{ from_date|date:"F d, Y" }} - {{ to_date|date:"F d, Y" }}</h5>
+
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>S/N</th>
+                    <th>Template Title</th>
+                    <th>Total Cases</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in template_data %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ item.template.title }}</td>
+                    <td>{{ item.count|intcomma }}</td>
+                    <td>
+                        <a href="{% url 'consultation_template_edit' item.template.pk %}" class="btn btn-sm btn-primary">
+                            <i class="bi bi-pencil"></i> Edit
+                        </a>
+                        <a href="{% url 'consultation_template_delete' item.template.pk %}" class="btn btn-sm btn-danger">
+                            <i class="bi bi-trash"></i> Delete
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 40px;">
+                        No templates created yet. <a href="{% url 'consultation_template_create' %}">Create your first template</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="2" style="text-align: right;">TOTAL CASES</td>
+                    <td>{{ total_cases|intcomma }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
     </div>
 </div>
 
-
+<script>
+function exportToPDF() {
+    const fromDate = document.querySelector('[name="from_date"]').value;
+    const toDate = document.querySelector('[name="to_date"]').value;
+    window.location.href = `{% url 'consultation_template_pdf' %}?from_date=${fromDate}&to_date=${toDate}`;
+}
+</script>
 {% endblock %}
