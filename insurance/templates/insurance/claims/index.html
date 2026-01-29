@@ -217,4 +217,33 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Verify button handler
+    document.querySelectorAll('.verify-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const pk = this.dataset.policyPk;
+            document.getElementById('verifyPolicyForm').action = `/patient-insurance/${pk}/verify/`;
+        });
+    });
+
+    // Deactivate button handler
+    document.querySelectorAll('.deactivate-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const pk = this.dataset.policyPk;
+            document.getElementById('deactivatePolicyForm').action = `/patient-insurance/${pk}/deactivate/`;
+        });
+    });
+
+    // Activate button handler
+    document.querySelectorAll('.activate-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const pk = this.dataset.policyPk;
+            document.getElementById('activatePolicyForm').action = `/patient-insurance/${pk}/reactivate/`;
+        });
+    });
+});
+</script>
+
 {% endblock %}

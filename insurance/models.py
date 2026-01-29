@@ -236,6 +236,14 @@ class InsuranceClaimModel(models.Model):
     ]
 
     claim_number = models.CharField(max_length=50, unique=True)
+    claim_summary = models.ForeignKey(
+        'InsuranceClaimSummary',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='claims',
+        help_text="Groups related claims together"
+    )
     patient_insurance = models.ForeignKey(PatientInsuranceModel, on_delete=models.CASCADE, related_name='claims')
     claim_type = models.CharField(max_length=20, choices=CLAIM_TYPE_CHOICES)
 
@@ -292,22 +300,34 @@ class InsuranceClaimModel(models.Model):
         self.save()
 
     def process_approval(self, approved_amount, processed_by_user):
-        """
+        '''
         Process claim approval - updates covered and patient amounts
         approved_amount: The amount HMO actually approved
-        """
+        '''
         self.approved_amount = Decimal(str(approved_amount))
+
+        # MODIFIED LOGIC: Check if approved amount equals expected covered amount
+        if self.approved_amount == self.covered_amount:
+            self.status = 'approved'  # Full approval
+        elif self.approved_amount > 0:
+            self.status = 'partially_approved'  # Partial approval
+        else:
+            self.status = 'rejected'  # Nothing approved
+
         self.covered_amount = self.approved_amount  # Insurance pays the approved amount
         self.patient_amount = self.total_amount - self.approved_amount  # Patient pays the difference
-        self.status = 'approved'
         self.processed_date = timezone.now()
         self.processed_by = processed_by_user
         self.save()
 
+        # Update summary if exists
+        if self.claim_summary:
+            self.claim_summary.recalculate_totals()
+
     def process_partial_approval(self, approved_amount, processed_by_user, reason=None):
-        """
+        '''
         Process partial approval
-        """
+        '''
         self.approved_amount = Decimal(str(approved_amount))
         self.covered_amount = self.approved_amount
         self.patient_amount = self.total_amount - self.approved_amount
@@ -318,10 +338,14 @@ class InsuranceClaimModel(models.Model):
             self.rejection_reason = reason
         self.save()
 
+        # Update summary if exists
+        if self.claim_summary:
+            self.claim_summary.recalculate_totals()
+
     def process_rejection(self, processed_by_user, reason):
-        """
+        '''
         Process claim rejection - patient pays everything
-        """
+        '''
         self.approved_amount = Decimal('0.00')
         self.covered_amount = Decimal('0.00')
         self.patient_amount = self.total_amount  # Patient pays full amount
@@ -330,6 +354,10 @@ class InsuranceClaimModel(models.Model):
         self.processed_by = processed_by_user
         self.rejection_reason = reason
         self.save()
+
+        # Update summary if exists
+        if self.claim_summary:
+            self.claim_summary.recalculate_totals()
 
     def mark_as_paid(self):
         """
@@ -359,3 +387,220 @@ class InsuranceClaimModel(models.Model):
         if self.approved_amount is not None and self.total_amount > 0:
             return (self.approved_amount / self.total_amount) * 100
         return Decimal('0.00')
+
+
+
+# -------------------------------
+# Insurance Claim Summary
+# -------------------------------
+class InsuranceClaimSummary(models.Model):
+    """
+    Groups related insurance claims together for easier processing.
+    One summary per consultation/admission/surgery session.
+    """
+    summary_number = models.CharField(max_length=50, unique=True, blank=True)
+
+    # Link to source (one of these will be filled)
+    consultation = models.ForeignKey(
+        'consultation.ConsultationSessionModel',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='claim_summaries'
+    )
+    admission = models.ForeignKey(
+        'inpatient.Admission',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='claim_summaries'
+    )
+    surgery = models.ForeignKey(
+        'inpatient.Surgery',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='claim_summaries'
+    )
+
+    patient_insurance = models.ForeignKey(
+        'PatientInsuranceModel',
+        on_delete=models.CASCADE,
+        related_name='claim_summaries'
+    )
+
+    # Aggregated amounts (calculated from child claims)
+    total_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00')
+    )
+    total_covered_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00')
+    )
+    total_patient_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00')
+    )
+    total_approved_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        null=True,
+        blank=True
+    )
+
+    # Status (calculated from children)
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('partially_approved', 'Partially Approved'),
+    ]
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+
+    # Claim type (calculated from children)
+    claim_type = models.CharField(
+        max_length=50,
+        default='mixed',
+        help_text="Type of claims: drug, lab, scan, surgery, or mixed"
+    )
+
+    # Tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_claim_summaries'
+    )
+
+    class Meta:
+        ordering = ['-last_updated_at']
+        verbose_name_plural = "Insurance Claim Summaries"
+
+    def save(self, *args, **kwargs):
+        if not self.summary_number:
+            import uuid
+            self.summary_number = f"SUM-{uuid.uuid4().hex[:10].upper()}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        source = self.consultation or self.admission or self.surgery
+        return f"Claim Summary {self.summary_number} - {source}"
+
+    def recalculate_totals(self):
+        """Recalculate all totals and status from child claims"""
+        claims = self.claims.all()
+
+        if not claims.exists():
+            self.total_amount = Decimal('0.00')
+            self.total_covered_amount = Decimal('0.00')
+            self.total_patient_amount = Decimal('0.00')
+            self.total_approved_amount = Decimal('0.00')
+            self.status = 'pending'
+            self.claim_type = 'mixed'
+            self.save()
+            return
+
+        # Calculate totals
+        self.total_amount = sum(claim.total_amount for claim in claims)
+        self.total_covered_amount = sum(claim.covered_amount for claim in claims)
+        self.total_patient_amount = sum(claim.patient_amount for claim in claims)
+
+        # Calculate approved amount (only for approved/partially approved claims)
+        approved_claims = claims.filter(status__in=['approved', 'partially_approved', 'paid'])
+        self.total_approved_amount = sum(
+            claim.approved_amount for claim in approved_claims
+            if claim.approved_amount is not None
+        ) or Decimal('0.00')
+
+        # Calculate status
+        statuses = set(claims.values_list('status', flat=True))
+
+        if len(statuses) == 1:
+            # All claims have same status
+            self.status = statuses.pop()
+        elif 'rejected' in statuses and len(statuses) == 2 and 'pending' in statuses:
+            # Some rejected, rest pending
+            self.status = 'partially_approved'
+        elif all(s in ['approved', 'paid'] for s in statuses):
+            # All approved or paid
+            self.status = 'approved'
+        elif 'rejected' in statuses and any(s in ['approved', 'partially_approved', 'paid'] for s in statuses):
+            # Mix of approved and rejected
+            self.status = 'partially_approved'
+        elif any(s in ['approved', 'partially_approved', 'paid'] for s in statuses):
+            # At least one approved
+            self.status = 'partially_approved'
+        elif all(s == 'rejected' for s in statuses):
+            # All rejected
+            self.status = 'rejected'
+        else:
+            # Default to pending
+            self.status = 'pending'
+
+        # Calculate claim type
+        claim_types = set(claims.values_list('claim_type', flat=True))
+
+        if len(claim_types) == 1:
+            # All claims are same type
+            self.claim_type = claim_types.pop()
+        else:
+            # Mixed types
+            self.claim_type = 'mixed'
+
+        self.save()
+
+    @property
+    def patient(self):
+        """Get patient from the source"""
+        if self.consultation:
+            return self.consultation.patient
+        elif self.admission:
+            return self.admission.patient
+        elif self.surgery:
+            return self.surgery.patient
+        return None
+
+    @property
+    def source_display(self):
+        """Display the source of claims"""
+        if self.consultation:
+            return f"Consultation - {self.consultation.created_at.strftime('%Y-%m-%d')}"
+        elif self.admission:
+            return f"Admission - {self.admission.admission_number}"
+        elif self.surgery:
+            return f"Surgery - {self.surgery.surgery_number}"
+        return "Unknown"
+
+    @property
+    def claims_count(self):
+        """Count of child claims"""
+        return self.claims.count()
+
+    @property
+    def get_claim_type_display(self):
+        """Display claim type in proper format"""
+        type_map = {
+            'consultation': 'Consultation',
+            'drug': 'Drug/Medication',
+            'laboratory': 'Laboratory',
+            'scan': 'Radiology/Scan',
+            'surgery': 'Surgery',
+            'admission': 'Admission',
+            'services': 'Services',
+            'ward_round': 'Ward Round',
+            'mixed': 'Mixed'
+        }
+        return type_map.get(self.claim_type, self.claim_type.title())
+

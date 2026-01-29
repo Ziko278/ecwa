@@ -13,11 +13,100 @@ from django.apps import apps as django_apps
 from django.db.models.signals import post_save
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
-
-# Assuming these are your actual model paths
-from .models import InsuranceClaimModel, PatientInsuranceModel
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver# Assuming these are your actual model paths
+from .models import InsuranceClaimModel, PatientInsuranceModel, InsuranceClaimSummary
 
 logger = logging.getLogger(__name__)
+
+# insurance/signals.py
+
+
+
+@receiver(post_save, sender=InsuranceClaimModel)
+def create_or_update_claim_summary(sender, instance, created, **kwargs):
+    """
+    Automatically create or update claim summary when a claim is saved.
+    Groups claims by consultation, admission, or surgery.
+    """
+    # Skip if claim already has a summary
+    if instance.claim_summary:
+        # Just recalculate the existing summary
+        instance.claim_summary.recalculate_totals()
+        return
+
+    # Determine the source (consultation, admission, or surgery)
+    # This is based on the related order's source
+    consultation = None
+    admission = None
+    surgery = None
+
+    # Try to get consultation from the related order
+    if instance.content_object:
+        # Check if the order has consultation, admission, or surgery
+        if hasattr(instance.content_object, 'consultation') and instance.content_object.consultation:
+            consultation = instance.content_object.consultation
+        elif hasattr(instance.content_object, 'admission') and instance.content_object.admission:
+            admission = instance.content_object.admission
+        elif hasattr(instance.content_object, 'surgery') and instance.content_object.surgery:
+            surgery = instance.content_object.surgery
+
+    # If no source found, we can't create a summary
+    if not (consultation or admission or surgery):
+        return
+
+    # Try to find existing summary for this source
+    summary = None
+
+    if consultation:
+        summary = InsuranceClaimSummary.objects.filter(
+            consultation=consultation,
+            patient_insurance=instance.patient_insurance
+        ).first()
+    elif admission:
+        summary = InsuranceClaimSummary.objects.filter(
+            admission=admission,
+            patient_insurance=instance.patient_insurance
+        ).first()
+    elif surgery:
+        summary = InsuranceClaimSummary.objects.filter(
+            surgery=surgery,
+            patient_insurance=instance.patient_insurance
+        ).first()
+
+    # Create new summary if doesn't exist
+    if not summary:
+        summary = InsuranceClaimSummary.objects.create(
+            consultation=consultation,
+            admission=admission,
+            surgery=surgery,
+            patient_insurance=instance.patient_insurance,
+            created_by=instance.created_by
+        )
+
+    # Link claim to summary
+    instance.claim_summary = summary
+    # Use update to avoid triggering signal again
+    InsuranceClaimModel.objects.filter(pk=instance.pk).update(claim_summary=summary)
+
+    # Recalculate totals
+    summary.recalculate_totals()
+
+
+@receiver(post_delete, sender=InsuranceClaimModel)
+def update_summary_on_claim_delete(sender, instance, **kwargs):
+    """
+    Update claim summary when a claim is deleted.
+    """
+    if instance.claim_summary:
+        summary = instance.claim_summary
+        # Check if summary still has claims
+        if summary.claims.count() == 0:
+            # Delete empty summary
+            summary.delete()
+        else:
+            # Recalculate totals
+            summary.recalculate_totals()
 
 
 # -------------------------

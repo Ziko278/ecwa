@@ -98,6 +98,10 @@ class HMOCoveragePlanForm(forms.ModelForm):
             'selected_surgeries': forms.SelectMultiple(attrs={'class': 'form-control'}),
             'surgery_coverage_percentage': forms.NumberInput(attrs={'class': 'form-control', 'min': '0', 'max': '100'}),
             'surgery_annual_limit': forms.NumberInput(attrs={'class': 'form-control'}),
+            'admission_coverage': forms.Select(attrs={'class': 'form-control'}),
+            'admission_coverage_percentage': forms.NumberInput(
+                attrs={'class': 'form-control', 'min': '0', 'max': '100'}),
+            'admission_annual_limit': forms.NumberInput(attrs={'class': 'form-control'}),
             'require_verification': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'require_referral': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'annual_limit': forms.NumberInput(attrs={'class': 'form-control'}),

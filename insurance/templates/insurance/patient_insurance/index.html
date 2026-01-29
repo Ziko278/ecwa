@@ -63,9 +63,10 @@
                         {% for policy in page_obj %}
                         <tr id="policy-row-{{ policy.pk }}">
                             <td>{{ forloop.counter|add:page_obj.start_index|add:"-1" }}</td> {# Corrected line here #}
-                            <td>
+                            <td><a href="{% url 'patient_detail' policy.patient.id %}">
                                 {{ policy.patient.first_name }} {{ policy.patient.last_name }}<br>
-                                <small class="text-muted">{{ policy.patient.patient_id }}</small>
+                                <small class="text-muted">{{ policy.patient.card_number }}</small>
+                                </a>
                             </td>
                             <td>{{ policy.hmo.name }}</td>
                             <td>{{ policy.coverage_plan.name }}</td>
@@ -186,7 +187,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form id="verifyPolicyForm" method="post" style="display: inline;">
+                <form id="verifyPolicyForm" action="" method="post" style="display: inline;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-success">Confirm Verify</button>
                 </form>
@@ -208,7 +209,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form id="deactivatePolicyForm" method="post" style="display: inline;">
+                <form id="deactivatePolicyForm" action="" method="post" style="display: inline;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-warning">Confirm Deactivate</button>
                 </form>
@@ -230,7 +231,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form id="activatePolicyForm" method="post" style="display: inline;">
+                <form id="activatePolicyForm" action="" method="post" style="display: inline;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-success">Confirm Activate</button>
                 </form>
@@ -239,6 +240,32 @@
     </div>
 </div>
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Verify button handler
+    document.querySelectorAll('.verify-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const pk = this.dataset.policyPk;
+            document.getElementById('verifyPolicyForm').action = `/portal/insurance/patient-insurance/${pk}/verify/`;
+        });
+    });
 
+    // Deactivate button handler
+    document.querySelectorAll('.deactivate-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const pk = this.dataset.policyPk;
+            document.getElementById('deactivatePolicyForm').action = `/portal/insurance/patient-insurance/${pk}/deactivate/`;
+        });
+    });
+
+    // Activate button handler
+    document.querySelectorAll('.activate-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const pk = this.dataset.policyPk;
+            document.getElementById('activatePolicyForm').action = `/portal/insurance/patient-insurance/${pk}/reactivate/`;
+        });
+    });
+});
+</script>
 
 {% endblock %}

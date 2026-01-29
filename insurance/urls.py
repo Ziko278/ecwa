@@ -90,6 +90,14 @@ urlpatterns = [
     path("claims/<int:pk>/reject/", reject_claim, name="insurance_claim_decline"),  # Use this name consistently
     path("claims/<int:pk>/process/", process_claim, name="insurance_claim_process"),
 
+    # Claim Processing
+    path("claim/<int:claim_id>/process-single/", process_single_claim, name="process_single_claim"),
+    path("claims/<int:summary_id>/process-group/", process_claim_group, name="process_claim_group"),
+    path("claims/<int:summary_id>/process-all/", process_all_claims, name="process_all_claims"),
+
+    # PDF Download
+    path("claims/<int:pk>/download-pdf/", download_claim_pdf, name="download_claim_pdf"),
+
     # -----------------------
     # AJAX / API ENDPOINTS
     # -----------------------

@@ -19,11 +19,20 @@ from django.views.generic import (
     CreateView, ListView, UpdateView, DeleteView, DetailView, TemplateView
 )
 
+from admin_site.models import SiteInfoModel
 from human_resource.views import FlashFormErrorsMixin
 from inpatient.models import SurgeryType
 from insurance.forms import *
 from insurance.models import *
-
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.pdfgen import canvas
+from io import BytesIO
+from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
@@ -1517,84 +1526,618 @@ def verify_patient_insurance(request, pk):
 # -------------------------
 # Patient Claims Views
 # -------------------------
-class InsuranceClaimListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
-    model = InsuranceClaimModel
-    permission_required = "insurance.view_insuranceclaimmodel"
-    template_name = "insurance/claims/index.html"
-    context_object_name = "claim_list"
-    paginate_by = 50
+class InsuranceClaimListView(LoginRequiredMixin, ListView):
+    """Display insurance claim summaries (not individual claims)"""
+    model = InsuranceClaimSummary
+    template_name = "insurance/claims/claim_summary_list.html"
+    context_object_name = "summaries"
+    paginate_by = 20
 
     def get_queryset(self):
-        queryset = InsuranceClaimModel.objects.select_related(
-            "patient_insurance__patient",
-            "patient_insurance__hmo",
-            "patient_insurance__coverage_plan"
-            # NOTE: I noticed you were ordering by 'claim_date'. If your model field is
-            # 'created_at' or something else, please adjust this.
-        ).order_by("-created_at")
+        queryset = InsuranceClaimSummary.objects.select_related(
+            'patient_insurance__patient',
+            'patient_insurance__hmo',
+            'consultation',
+            'admission',
+            'surgery'
+        ).prefetch_related('claims')
 
-        # Filtering
-        status = self.request.GET.get("status")
-        claim_type = self.request.GET.get("claim_type")
-        hmo = self.request.GET.get("hmo")
-        search = self.request.GET.get("q")  # Your template uses 'q', not 'search'
-
-        if status:
-            # Added 'all' check to prevent filtering when user clicks 'All'
-            if status != 'all':
-                queryset = queryset.filter(status=status)
-        if claim_type:
-            queryset = queryset.filter(claim_type=claim_type)
-        if hmo:
-            queryset = queryset.filter(patient_insurance__hmo__id=hmo)
-
-        if search:
-            # ===================================================
-            # FIX: Search against the correct patient fields
-            # ===================================================
+        # Search filter
+        search_query = self.request.GET.get('q')
+        if search_query:
             queryset = queryset.filter(
-                Q(claim_number__icontains=search) |
-                Q(patient_insurance__patient__first_name__icontains=search) |
-                Q(patient_insurance__patient__last_name__icontains=search) |
-                Q(patient_insurance__patient__card_number__icontains=search)
+                Q(summary_number__icontains=search_query) |
+                Q(patient_insurance__patient__first_name__icontains=search_query) |
+                Q(patient_insurance__patient__last_name__icontains=search_query) |
+                Q(patient_insurance__policy_number__icontains=search_query) |
+                Q(patient_insurance__hmo__name__icontains=search_query)
             )
-            # ===================================================
 
-        return queryset
+        # Status filter
+        status_filter = self.request.GET.get('status')
+        if status_filter and status_filter != 'all':
+            queryset = queryset.filter(status=status_filter)
+
+        return queryset.order_by('-last_updated_at')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context['search_query'] = self.request.GET.get('q', '')
+        context['current_status_filter'] = self.request.GET.get('status', 'all')
+        return context
 
-        stats = InsuranceClaimModel.objects.aggregate(
-            total_claims=Count("id"),
-            pending_claims=Count("id", filter=Q(status="pending")),
-            approved_claims=Count("id", filter=Q(status="approved")),
-            rejected_claims=Count("id", filter=Q(status="rejected")),
-            total_amount=Sum("total_amount") or Decimal("0.00"),
-            covered_amount=Sum("covered_amount") or Decimal("0.00"),
+
+class InsuranceClaimDetailView(LoginRequiredMixin, DetailView):
+    """Display detailed view of a claim summary with all child claims"""
+    model = InsuranceClaimSummary
+    template_name = "insurance/claims/claim_detail.html"
+    context_object_name = "summary"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        summary = self.get_object()
+
+        # Get all claims grouped by type
+        all_claims = summary.claims.select_related(
+            'content_type',
+            'processed_by'
+        ).prefetch_related('content_object')
+
+        context['drug_claims'] = all_claims.filter(claim_type='drug')
+        context['lab_claims'] = all_claims.filter(claim_type='laboratory')
+        context['scan_claims'] = all_claims.filter(claim_type='scan')
+        context['surgery_claims'] = all_claims.filter(claim_type='surgery')
+        context['other_claims'] = all_claims.exclude(
+            claim_type__in=['drug', 'laboratory', 'scan', 'surgery']
         )
 
-        context["summary_stats"] = stats
+        # Get consultation/admission data for diagnosis
+        if summary.consultation:
+            context['consultation'] = summary.consultation
+            context['diagnosis_source'] = 'consultation'
+        elif summary.admission:
+            context['admission'] = summary.admission
+            # Try to get last consultation for this admission
+            last_consultation = summary.admission.consultations.order_by('-created_at').first()
+            context['consultation'] = last_consultation
+            context['diagnosis_source'] = 'admission'
+        elif summary.surgery:
+            context['surgery'] = summary.surgery
+            context['diagnosis_source'] = 'surgery'
+
         return context
 
 
-class InsuranceClaimDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
-    model = InsuranceClaimModel
-    permission_required = "insurance.view_insuranceclaimmodel"
-    template_name = "insurance/claims/detail.html"
-    context_object_name = "claim"
+# -------------------------------
+# PROCESS INDIVIDUAL CLAIM
+# -------------------------------
+@login_required
+def process_single_claim(request, claim_id):
+    """Process a single claim (approve/decline/pending)"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        claim = self.object
+    claim = get_object_or_404(InsuranceClaimModel, id=claim_id)
 
-        if claim.total_amount > 0:
-            coverage_percentage = (claim.covered_amount / claim.total_amount) * 100
+    # Check if claim is already processed
+    if claim.status in ['approved', 'paid', 'rejected']:
+        return JsonResponse({
+            'success': False,
+            'error': 'Claim is already processed'
+        })
+
+    action = request.POST.get('action')  # 'approve', 'decline', 'pending'
+    approved_amount = request.POST.get('approved_amount')
+    rejection_reason = request.POST.get('rejection_reason', '')
+
+    try:
+        if action == 'approve':
+            # Validate approved amount
+            if not approved_amount:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Approved amount is required'
+                })
+
+            approved_amount = Decimal(approved_amount)
+
+            # Process approval
+            claim.process_approval(approved_amount, request.user)
+
+            message = f'Claim {claim.claim_number} approved successfully'
+
+        elif action == 'decline':
+            # Validate rejection reason
+            if not rejection_reason:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Rejection reason is required'
+                })
+
+            # Process rejection
+            claim.process_rejection(request.user, rejection_reason)
+
+            message = f'Claim {claim.claim_number} declined successfully'
+
+        elif action == 'pending':
+            # Set back to pending
+            claim.status = 'pending'
+            claim.approved_amount = None
+            claim.processed_by = None
+            claim.processed_date = None
+            claim.rejection_reason = ''
+            claim.save()
+
+            # Update summary
+            if claim.claim_summary:
+                claim.claim_summary.recalculate_totals()
+
+            message = f'Claim {claim.claim_number} set to pending'
+
         else:
-            coverage_percentage = 0
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid action'
+            })
 
-        context["coverage_percentage"] = round(coverage_percentage, 2)
-        return context
+        return JsonResponse({
+            'success': True,
+            'message': message,
+            'claim_id': claim.id,
+            'new_status': claim.status
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+# -------------------------------
+# PROCESS CLAIM GROUP (e.g., all drugs)
+# -------------------------------
+@login_required
+def process_claim_group(request, summary_id):
+    """Process a group of claims (e.g., all drug claims)"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    summary = get_object_or_404(InsuranceClaimSummary, id=summary_id)
+    claim_type = request.POST.get('claim_type')  # 'drug', 'laboratory', 'scan', 'surgery'
+
+    # Get claims of this type that are still pending/processing
+    claims = summary.claims.filter(
+        claim_type=claim_type,
+        status__in=['pending', 'processing']
+    )
+
+    if not claims.exists():
+        return JsonResponse({
+            'success': False,
+            'error': f'No pending {claim_type} claims found'
+        })
+
+    # Process each claim based on posted data
+    processed_count = 0
+    errors = []
+
+    for claim in claims:
+        action = request.POST.get(f'action_{claim.id}')
+        approved_amount = request.POST.get(f'approved_amount_{claim.id}')
+        rejection_reason = request.POST.get(f'rejection_reason_{claim.id}', '')
+
+        if not action:
+            continue
+
+        try:
+            if action == 'approve' and approved_amount:
+                claim.process_approval(Decimal(approved_amount), request.user)
+                processed_count += 1
+            elif action == 'decline' and rejection_reason:
+                claim.process_rejection(request.user, rejection_reason)
+                processed_count += 1
+        except Exception as e:
+            errors.append(f'Error processing claim {claim.claim_number}: {str(e)}')
+
+    if errors:
+        return JsonResponse({
+            'success': False,
+            'errors': errors,
+            'processed_count': processed_count
+        })
+
+    return JsonResponse({
+        'success': True,
+        'message': f'Processed {processed_count} {claim_type} claims',
+        'processed_count': processed_count
+    })
+
+
+# -------------------------------
+# PROCESS ALL CLAIMS IN SUMMARY
+# -------------------------------
+@login_required
+def process_all_claims(request, summary_id):
+    """Process all pending claims in a summary"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+    summary = get_object_or_404(InsuranceClaimSummary, id=summary_id)
+
+    # Get all pending/processing claims
+    claims = summary.claims.filter(status__in=['pending', 'processing'])
+
+    if not claims.exists():
+        return JsonResponse({
+            'success': False,
+            'error': 'No pending claims found'
+        })
+
+    processed_count = 0
+    errors = []
+
+    for claim in claims:
+        action = request.POST.get(f'action_{claim.id}')
+        approved_amount = request.POST.get(f'approved_amount_{claim.id}')
+        rejection_reason = request.POST.get(f'rejection_reason_{claim.id}', '')
+
+        if not action or action == 'pending':
+            continue
+
+        try:
+            if action == 'approve' and approved_amount:
+                claim.process_approval(Decimal(approved_amount), request.user)
+                processed_count += 1
+            elif action == 'decline' and rejection_reason:
+                claim.process_rejection(request.user, rejection_reason)
+                processed_count += 1
+        except Exception as e:
+            errors.append(f'Error processing claim {claim.claim_number}: {str(e)}')
+
+    if errors:
+        return JsonResponse({
+            'success': False,
+            'errors': errors,
+            'processed_count': processed_count
+        })
+
+    return JsonResponse({
+        'success': True,
+        'message': f'Processed {processed_count} claims',
+        'processed_count': processed_count
+    })
+
+
+@login_required
+def download_claim_pdf(request, pk):
+    """Generate and download PDF for claim summary"""
+    summary = get_object_or_404(InsuranceClaimSummary, pk=pk)
+
+    # Get form data for what to include
+    include_consultation = request.POST.get('include_consultation') == 'on'
+    include_drugs = request.POST.get('include_drugs') == 'on'
+    include_labs = request.POST.get('include_labs') == 'on'
+    include_scans = request.POST.get('include_scans') == 'on'
+    include_surgeries = request.POST.get('include_surgeries') == 'on'
+    show_status = request.POST.get('show_status') == 'on'
+    show_amounts = request.POST.get('show_amounts') == 'on'
+
+    # Create the HttpResponse object with PDF headers
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="claim_{summary.summary_number}.pdf"'
+
+    # Create the PDF object
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            rightMargin=0.5 * inch, leftMargin=0.5 * inch,
+                            topMargin=1 * inch, bottomMargin=0.5 * inch)
+
+    # Container for the 'Flowable' objects
+    elements = []
+
+    # Define styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=colors.HexColor('#1a237e'),
+        spaceAfter=12,
+        alignment=TA_CENTER,
+    )
+
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=12,
+        textColor=colors.HexColor('#1a237e'),
+        spaceAfter=10,
+        spaceBefore=12,
+    )
+
+    normal_style = styles['Normal']
+
+    # Get hospital info
+    try:
+        site_info = SiteInfoModel.objects.first()
+    except:
+        site_info = None
+
+    # Header with hospital info
+    if site_info:
+        header_data = [
+            [Paragraph(f"<b>{site_info.name}</b>", title_style)],
+            [Paragraph(site_info.address or "", normal_style)],
+            [Paragraph(f"Tel: {site_info.mobile_1} | Email: {site_info.email}", normal_style)],
+        ]
+        header_table = Table(header_data, colWidths=[7 * inch])
+        header_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(header_table)
+        elements.append(Spacer(1, 0.3 * inch))
+
+    # Title
+    elements.append(Paragraph(f"<b>Insurance Claim Report</b>", title_style))
+    elements.append(Paragraph(f"Claim Summary: {summary.summary_number}", heading_style))
+    elements.append(Spacer(1, 0.2 * inch))
+
+    # Claim summary information
+    summary_data = [
+        ['Patient:', f"{summary.patient}"],
+        ['Patient ID:', f"{summary.patient.card_number}"],
+        ['HMO:', f"{summary.patient_insurance.hmo.name}"],
+        ['Policy Number:', f"{summary.patient_insurance.policy_number}"],
+        ['Date:', f"{summary.created_at.strftime('%B %d, %Y')}"],
+    ]
+
+    summary_table = Table(summary_data, colWidths=[2 * inch, 5 * inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e3f2fd')),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1a237e')),
+        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # Financial summary
+    financial_data = [
+        ['Description', 'Amount (N)'],
+        ['Total Amount', f"{summary.total_amount:,.2f}"],
+        ['Covered Amount', f"{summary.total_covered_amount:,.2f}"],
+        ['Patient Amount', f"{summary.total_patient_amount:,.2f}"],
+    ]
+
+    if summary.total_approved_amount and show_amounts:
+        financial_data.append(['Approved Amount', f"{summary.total_approved_amount:,.2f}"])
+
+    financial_table = Table(financial_data, colWidths=[4 * inch, 3 * inch])
+    financial_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a237e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(financial_table)
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # Consultation details and diagnosis
+    if include_consultation and summary.consultation:
+        consultation = summary.consultation
+        elements.append(Paragraph("<b>Clinical Information</b>", heading_style))
+        elements.append(Spacer(1, 0.1 * inch))
+
+        # Diagnosis
+        diagnosis_data = []
+
+        if consultation.primary_diagnosis:
+            diagnosis_text = consultation.primary_diagnosis.name
+            if consultation.primary_diagnosis.icd_code:
+                diagnosis_text += f" ({consultation.primary_diagnosis.icd_code})"
+            diagnosis_data.append(['Primary Diagnosis:', diagnosis_text])
+
+        if consultation.secondary_diagnoses.exists():
+            secondary_list = []
+            for diag in consultation.secondary_diagnoses.all():
+                diag_text = diag.name
+                if diag.icd_code:
+                    diag_text += f" ({diag.icd_code})"
+                secondary_list.append(diag_text)
+            diagnosis_data.append(['Secondary Diagnoses:', ', '.join(secondary_list)])
+
+        if consultation.other_diagnosis_text:
+            diagnosis_data.append(['Other Diagnosis:', consultation.other_diagnosis_text])
+
+        if consultation.chief_complaint:
+            diagnosis_data.append(['Chief Complaint:', consultation.chief_complaint])
+
+        if diagnosis_data:
+            diagnosis_table = Table(diagnosis_data, colWidths=[2 * inch, 5 * inch])
+            diagnosis_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f5f5f5')),
+                ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+                ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(diagnosis_table)
+            elements.append(Spacer(1, 0.2 * inch))
+
+        # Assessment (strip HTML tags for PDF)
+        if consultation.assessment:
+            from html.parser import HTMLParser
+
+            class MLStripper(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self.reset()
+                    self.strict = False
+                    self.convert_charrefs = True
+                    self.text = []
+
+                def handle_data(self, d):
+                    self.text.append(d)
+
+                def get_data(self):
+                    return ''.join(self.text)
+
+            def strip_tags(html):
+                s = MLStripper()
+                s.feed(html)
+                return s.get_data()
+
+            assessment_text = strip_tags(consultation.assessment)
+            elements.append(Paragraph("<b>Assessment:</b>", normal_style))
+            elements.append(Paragraph(assessment_text, normal_style))
+            elements.append(Spacer(1, 0.2 * inch))
+
+    # Helper function to create claim table
+    def create_claim_table(claims, claim_type_name):
+        if not claims:
+            return None
+
+        elements.append(PageBreak())
+        elements.append(Paragraph(f"<b>{claim_type_name}</b>", heading_style))
+        elements.append(Spacer(1, 0.1 * inch))
+
+        # Table headers
+        headers = ['Item', 'Total (₦)', 'Covered (₦)', 'Patient (₦)']
+        if show_status:
+            headers.append('Status')
+        if show_amounts:
+            headers.append('Approved (₦)')
+
+        table_data = [headers]
+
+        # Add claim rows
+        for claim in claims:
+            # Get item description
+            if claim.content_object:
+                if claim_type_name == 'Drug Claims':
+                    item = claim.content_object.drug.brand_name or str(claim.content_object.drug.formulation)
+                    item += f" x{claim.content_object.quantity_ordered}"
+                elif claim_type_name == 'Laboratory Claims':
+                    item = claim.content_object.template.name
+                elif claim_type_name == 'Radiology/Scan Claims':
+                    item = claim.content_object.template.name
+                elif claim_type_name == 'Surgery Claims':
+                    item = claim.content_object.surgery_type.name
+                else:
+                    item = str(claim.content_object)
+            else:
+                item = 'N/A'
+
+            row = [
+                item,
+                f"{claim.total_amount:,.2f}",
+                f"{claim.covered_amount:,.2f}",
+                f"{claim.patient_amount:,.2f}"
+            ]
+
+            if show_status:
+                row.append(claim.get_status_display())
+
+            if show_amounts and claim.approved_amount:
+                row.append(f"{claim.approved_amount:,.2f}")
+            elif show_amounts:
+                row.append('-')
+
+            table_data.append(row)
+
+        # Calculate column widths
+        if len(headers) == 4:
+            col_widths = [3 * inch, 1.3 * inch, 1.3 * inch, 1.3 * inch]
+        elif len(headers) == 5:
+            col_widths = [2.5 * inch, 1.1 * inch, 1.1 * inch, 1.1 * inch, 1.1 * inch]
+        else:
+            col_widths = [2 * inch] + [1 * inch] * (len(headers) - 1)
+
+        claims_table = Table(table_data, colWidths=col_widths)
+        claims_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a237e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+
+        elements.append(claims_table)
+        elements.append(Spacer(1, 0.3 * inch))
+
+    # Add claim sections based on user selection
+    if include_drugs:
+        drug_claims = summary.claims.filter(claim_type='drug')
+        if drug_claims.exists():
+            create_claim_table(drug_claims, 'Drug Claims')
+
+    if include_labs:
+        lab_claims = summary.claims.filter(claim_type='laboratory')
+        if lab_claims.exists():
+            create_claim_table(lab_claims, 'Laboratory Claims')
+
+    if include_scans:
+        scan_claims = summary.claims.filter(claim_type='scan')
+        if scan_claims.exists():
+            create_claim_table(scan_claims, 'Radiology/Scan Claims')
+
+    if include_surgeries:
+        surgery_claims = summary.claims.filter(claim_type='surgery')
+        if surgery_claims.exists():
+            create_claim_table(surgery_claims, 'Surgery Claims')
+
+    # Footer
+    elements.append(Spacer(1, 0.5 * inch))
+    footer_data = [
+        [Paragraph(f"<i>Generated on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</i>", normal_style)],
+        [Paragraph(f"<i>Generated by: {request.user.get_full_name() or request.user.username}</i>", normal_style)],
+    ]
+    footer_table = Table(footer_data, colWidths=[7 * inch])
+    footer_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.grey),
+    ]))
+    elements.append(footer_table)
+
+    # Build PDF
+    doc.build(elements)
+
+    # Get the value of the BytesIO buffer and write it to the response
+    pdf = buffer.getvalue()
+    buffer.close()
+    response.write(pdf)
+
+    return response
 
 
 class InsuranceClaimUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
