@@ -665,10 +665,10 @@
     function proceedToPayment() {
         const totalAmount = updateSelectedItems();
 
-        if (totalAmount === 0) {
-            alert('Please select at least one item to pay for');
-            return;
-        }
+        //if (totalAmount === 0) {
+        //    alert('Please select at least one item to pay for');
+        //    return;
+        //}
 
         // Move to step 3
         $('#step-2').removeClass('active').addClass('completed');
