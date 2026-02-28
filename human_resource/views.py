@@ -48,11 +48,15 @@ def _send_credentials_email(staff, username, password):
     """
     try:
         # Prepare the context for rendering the email template
+        site_info = SiteInfoModel.objects.first()
         context = {
             'staff_name': staff.__str__(),
             'username': username,
             'password': password,
-            'login_url': 'https://ecwa.name.ng/portal/sign-in',  # Your actual login URL
+            'login_url': settings.STAFF_LOGIN_URL,  # already in settings.py
+            'hospital_name': site_info.name if site_info else '',
+            'hospital_short_name': site_info.short_name if site_info else '',
+            'support_email': settings.SUPPORT_EMAIL,
         }
 
         # Render the HTML version of the email from the template
