@@ -1,7 +1,7 @@
 import logging
 import random
 import string
-
+from admin_site.models import SiteInfoModel
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
