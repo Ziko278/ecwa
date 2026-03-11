@@ -55,15 +55,16 @@
                                     <th scope="col">Ward & Bed</th>
                                     <th scope="col">Admission Date</th>
                                     <th scope="col">Status</th>
-                                    <th scope="col">Attending Doctor</th>
                                     <th scope="col" class="text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for admission in admission_list %}
                                 <tr>
-                                    <th scope="row"><a href="{% url 'admission_detail' admission.pk %}">{{ admission.admission_number }}</a></th>
-                                    <td>{{ admission.patient|title }}</td>
+                                    <th scope="row"><a href="{% url 'admission_detail' admission.pk %}">{{ admission.admission_number }}</a>
+                                    <br>{{ admission.admission_type|title }}</th>
+                                    <td>{{ admission.patient|title }}
+                                    <br><small>{{admission.patient.card_number}}</small></td>
                                     <td>{{ admission.ward_name|default:'N/A' }} / {{ admission.bed.bed_number|default:'N/A' }}</td>
                                     <td>{{ admission.admission_date|date:"d M, Y P" }}</td>
                                     <td>
@@ -77,7 +78,6 @@
                                             <span class="badge bg-danger">{{ admission.get_status_display }}</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ admission.attending_doctor.user_staff_profile|default:"N/A" }}</td>
                                     <td class="text-center">
                                         <a href="{% url 'admission_detail' admission.pk %}" class="btn btn-info btn-sm" title="View Details"><i class="bi bi-eye"></i></a>
                                         <a href="{% url 'admission_edit' admission.pk %}" class="btn btn-warning btn-sm" title="Update Admission"><i class="bi bi-pencil"></i></a>

@@ -824,109 +824,317 @@
 
 
                             <div class="accordion-item">
-    <h2 class="accordion-header" id="headingFinance">
+                                <h2 class="accordion-header" id="headingFinance">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#collapseFinance" aria-expanded="false" aria-controls="collapseFinance">
+                                        <b>FINANCE PERMISSIONS</b>
+                                    </button>
+                                </h2>
+
+                                <div id="collapseFinance" class="accordion-collapse collapse" aria-labelledby="headingFinance"
+                                    data-bs-parent="#yourAccordionId">
+                                    <div class="accordion-body">
+
+                                        <!-- Expense Management -->
+                                        <div class="card">
+                                            <div class="card-body">
+                                                <h5 class="card-title">Payment Permission</h5>
+                                                <ul class="list-group">
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can receive payments
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="add_patienttransactionmodel"
+                                                                {% if "add_patienttransactionmodel" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can view payments
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="view_patienttransactionmodel"
+                                                                {% if "view_patienttransactionmodel" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can refund patient
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="add_patientrefundmodel"
+                                                                {% if "add_patientrefundmodel" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can view refunds
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="view_patientrefundmodel"
+                                                                {% if "view_patientrefundmodel" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can record payment remittance
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="add_moneyremittance"
+                                                                {% if "add_moneyremittance" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can view payment remittance
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="view_moneyremittance"
+                                                                {% if "view_moneyremittance" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can confirm payment remittance
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="change_moneyremittance"
+                                                                {% if "change_moneyremittance" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can add and update other payment setup
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="add_otherpaymentservice"
+                                                                {% if "add_otherpaymentservice" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                     <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can view other payment setup
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="view_otherpaymentservice"
+                                                                {% if "view_otherpaymentservice" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can view finance setting
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="view_financesettingmodel"
+                                                                {% if "view_financesettingmodel" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        Can update finance setting
+                                                        <span class="badge">
+                                                            <input type="checkbox" name="permissions[]" value="add_financesettingmodel"
+                                                                {% if "add_financesettingmodel" in permission_codenames %} checked {% endif %}>
+                                                        </span>
+                                                    </li>
+
+                                                </ul>
+                                            </div>
+                                        </div>
+
+
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <div class="accordion-item">
+    <h2 class="accordion-header" id="headingInpatient">
         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-            data-bs-target="#collapseFinance" aria-expanded="false" aria-controls="collapseFinance">
-            <b>FINANCE PERMISSIONS</b>
+            data-bs-target="#collapseInpatient" aria-expanded="false" aria-controls="collapseInpatient">
+            <b>INPATIENT PERMISSIONS</b>
         </button>
     </h2>
 
-    <div id="collapseFinance" class="accordion-collapse collapse" aria-labelledby="headingFinance"
+    <div id="collapseInpatient" class="accordion-collapse collapse" aria-labelledby="headingInpatient"
         data-bs-parent="#yourAccordionId">
         <div class="accordion-body">
 
-            <!-- Expense Management -->
+            <!-- Wards & Beds -->
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Payment Permission</h5>
+                    <h5 class="card-title">Wards & Beds</h5>
                     <ul class="list-group">
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can receive payments
+                            Can manage wards
                             <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="add_patienttransactionmodel"
-                                    {% if "add_patienttransactionmodel" in permission_codenames %} checked {% endif %}>
+                                <input type="checkbox" name="permissions[]" value="add_ward"
+                                    {% if "add_ward" in permission_codenames %} checked {% endif %}>
                             </span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can view payments
+                            Can view wards
                             <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="view_patienttransactionmodel"
-                                    {% if "view_patienttransactionmodel" in permission_codenames %} checked {% endif %}>
+                                <input type="checkbox" name="permissions[]" value="view_ward"
+                                    {% if "view_ward" in permission_codenames %} checked {% endif %}>
                             </span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can refund patient
+                            Can delete wards
                             <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="add_patientrefundmodel"
-                                    {% if "add_patientrefundmodel" in permission_codenames %} checked {% endif %}>
+                                <input type="checkbox" name="permissions[]" value="delete_ward"
+                                    {% if "delete_ward" in permission_codenames %} checked {% endif %}>
                             </span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can view refunds
+                            Can manage beds
                             <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="view_patientrefundmodel"
-                                    {% if "view_patientrefundmodel" in permission_codenames %} checked {% endif %}>
+                                <input type="checkbox" name="permissions[]" value="add_bed"
+                                    {% if "add_bed" in permission_codenames %} checked {% endif %}>
                             </span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can record payment remittance
+                            Can view beds
                             <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="add_moneyremittance"
-                                    {% if "add_moneyremittance" in permission_codenames %} checked {% endif %}>
+                                <input type="checkbox" name="permissions[]" value="view_bed"
+                                    {% if "view_bed" in permission_codenames %} checked {% endif %}>
                             </span>
                         </li>
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can view payment remittance
+                            Can delete beds
                             <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="view_moneyremittance"
-                                    {% if "view_moneyremittance" in permission_codenames %} checked {% endif %}>
+                                <input type="checkbox" name="permissions[]" value="delete_bed"
+                                    {% if "delete_bed" in permission_codenames %} checked {% endif %}>
                             </span>
                         </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can confirm payment remittance
-                            <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="change_moneyremittance"
-                                    {% if "change_moneyremittance" in permission_codenames %} checked {% endif %}>
-                            </span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can add and update other payment setup
-                            <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="add_otherpaymentservice"
-                                    {% if "add_otherpaymentservice" in permission_codenames %} checked {% endif %}>
-                            </span>
-                        </li>
-                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can view other payment setup
-                            <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="view_otherpaymentservice"
-                                    {% if "view_otherpaymentservice" in permission_codenames %} checked {% endif %}>
-                            </span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can view finance setting
-                            <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="view_financesettingmodel"
-                                    {% if "view_financesettingmodel" in permission_codenames %} checked {% endif %}>
-                            </span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Can update finance setting
-                            <span class="badge">
-                                <input type="checkbox" name="permissions[]" value="add_financesettingmodel"
-                                    {% if "add_financesettingmodel" in permission_codenames %} checked {% endif %}>
-                            </span>
-                        </li>
-
                     </ul>
                 </div>
             </div>
 
+            <!-- Admissions -->
+            <div class="card mt-2">
+                <div class="card-body">
+                    <h5 class="card-title">Admissions</h5>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can admit patient
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="add_admission"
+                                    {% if "add_admission" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can view admissions
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="view_admission"
+                                    {% if "view_admission" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can update admissions (confirm, assign bed, discharge)
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="change_admission"
+                                    {% if "change_admission" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can manage admission types
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="add_admissiontype"
+                                    {% if "add_admissiontype" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can view admission types
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="view_admissiontype"
+                                    {% if "view_admissiontype" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Tasks -->
+            <div class="card mt-2">
+                <div class="card-body">
+                    <h5 class="card-title">Tasks</h5>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can add admission tasks
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="add_admissiontask"
+                                    {% if "add_admissiontask" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can view admission tasks
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="view_admissiontask"
+                                    {% if "view_admissiontask" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can complete / cancel tasks
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="change_admissiontask"
+                                    {% if "change_admissiontask" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Surgeries -->
+            <div class="card mt-2">
+                <div class="card-body">
+                    <h5 class="card-title">Surgeries</h5>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can schedule surgery
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="add_surgery"
+                                    {% if "add_surgery" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can view surgeries
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="view_surgery"
+                                    {% if "view_surgery" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can update surgeries
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="change_surgery"
+                                    {% if "change_surgery" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can manage surgery types and packages
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="add_surgerytype"
+                                    {% if "add_surgerytype" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can view surgery types
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="view_surgerytype"
+                                    {% if "view_surgerytype" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <div class="card mt-2">
+                <div class="card-body">
+                    <h5 class="card-title">Inpatient Settings</h5>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can update inpatient settings
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="change_inpatientsettings"
+                                    {% if "change_inpatientsettings" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Can view inpatient settings
+                            <span class="badge">
+                                <input type="checkbox" name="permissions[]" value="view_inpatientsettings"
+                                    {% if "view_inpatientsettings" in permission_codenames %} checked {% endif %}>
+                            </span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
 
         </div>
     </div>
 </div>
-
 </div>
                     </div>
                 </div>

@@ -3,3 +3,4 @@ from inpatient.models import *
 
 
 admin.site.register(Admission)
+admin.site.register(AdmissionTask)

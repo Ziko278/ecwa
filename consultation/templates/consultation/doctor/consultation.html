@@ -193,6 +193,9 @@
                         <i class="bi bi-box-seam"></i> Order Item
                     </button>
                     <!-- End New -->
+                    <a href="{% url 'admission_create_for_patient' patient_id=consultation.queue_entry.patient.id %}?consultation_session={{consultation.id}}" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-clock-history"></i> Admit Patient
+                    </a>
                     <a href="{% url 'patient_history_view' patient_id=consultation.queue_entry.patient.id %}" class="btn btn-sm btn-outline-secondary">
                         <i class="bi bi-clock-history"></i> View Patient History
                     </a>

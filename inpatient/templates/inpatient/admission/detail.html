@@ -1,1916 +1,1968 @@
 {% extends 'admin_site/layout.html' %}
 {% block 'main' %}
 {% load static %}
+{% load humanize %}
 
 <style>
-.toast-container {
-    position: fixed;
-    top: 80px;
-    right: 20px;
-    z-index: 9999;
+/* ── ADMISSION DETAIL PAGE ── */
+:root {
+  --primary: #1a56db;
+  --primary-light: #e8f0fe;
+  --success: #057a55;
+  --danger: #e02424;
+  --warning: #c27803;
+  --info: #0e9f6e;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-500: #6b7280;
+  --gray-700: #374151;
+  --gray-900: #111827;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
 }
 
-.mini-toast {
-    min-width: 250px;
-    margin-bottom: 10px;
-    animation: slideIn 0.3s ease-out;
+.adm-header {
+  background: linear-gradient(135deg, #1a56db 0%, #1e429f 100%);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  color: white;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-md);
 }
 
-@keyframes slideIn {
-    from {
-        transform: translateX(400px);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
+.adm-header h4 { margin: 0; font-size: 1.1rem; font-weight: 600; opacity: .85; }
+.adm-header h2 { margin: 4px 0 0; font-size: 1.6rem; font-weight: 700; }
+.adm-header .meta { font-size: .82rem; opacity: .8; margin-top: 6px; }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600;
+}
+.status-badge.pending  { background: #fef3c7; color: #92400e; }
+.status-badge.active   { background: #d1fae5; color: #065f46; }
+.status-badge.discharged { background: #e0e7ff; color: #3730a3; }
+.status-badge.transferred,.status-badge.absconded,.status-badge.deceased { background: #fee2e2; color: #991b1b; }
+
+/* Quick Actions Bar */
+.quick-actions {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 14px 16px;
+  background: white;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+.quick-actions .btn { font-size: .8rem; padding: 6px 12px; border-radius: 6px; font-weight: 500; }
+
+/* Finance strip */
+.finance-strip {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px; margin-bottom: 16px;
+}
+.fin-card {
+  background: white; border-radius: var(--radius);
+  padding: 12px 16px; box-shadow: var(--shadow);
+  border-left: 4px solid var(--gray-300);
+}
+.fin-card.danger  { border-color: var(--danger); }
+.fin-card.success { border-color: var(--success); }
+.fin-card.info    { border-color: var(--primary); }
+.fin-card label { font-size: .72rem; color: var(--gray-500); display: block; margin-bottom: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.fin-card .amount { font-size: 1.15rem; font-weight: 700; }
+.fin-card.danger .amount  { color: var(--danger); }
+.fin-card.success .amount { color: var(--success); }
+.fin-card.info .amount    { color: var(--primary); }
+
+/* Tabs */
+.nav-tabs-custom { border-bottom: 2px solid var(--gray-200); margin-bottom: 0; }
+.nav-tabs-custom .nav-link {
+  border: none; border-bottom: 3px solid transparent;
+  margin-bottom: -2px; padding: 10px 14px;
+  color: var(--gray-500); font-size: .83rem; font-weight: 500;
+  border-radius: 0; transition: all .2s;
+}
+.nav-tabs-custom .nav-link:hover { color: var(--primary); background: var(--primary-light); }
+.nav-tabs-custom .nav-link.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.nav-tabs-custom .badge { font-size: .7rem; }
+
+/* Timeline */
+.timeline { position: relative; padding-left: 28px; }
+.timeline::before {
+  content: ''; position: absolute; left: 10px; top: 0; bottom: 0;
+  width: 2px; background: var(--gray-200);
+}
+.timeline-item { position: relative; margin-bottom: 20px; }
+.timeline-dot {
+  position: absolute; left: -22px; top: 4px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: white; border: 2px solid var(--gray-300);
+  display: flex; align-items: center; justify-content: center;
+}
+.timeline-dot.vitals { border-color: #0e9f6e; }
+.timeline-dot.ward-round { border-color: var(--primary); }
+.timeline-dot.vitals::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #0e9f6e; }
+.timeline-dot.ward-round::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+
+.timeline-card {
+  background: white; border-radius: var(--radius);
+  border: 1px solid var(--gray-200); padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+.timeline-card .tc-head { display: flex; justify-content: space-between; align-items: flex-start; }
+.timeline-card .tc-type { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.timeline-card .tc-type.vitals { color: #0e9f6e; }
+.timeline-card .tc-type.ward-round { color: var(--primary); }
+.timeline-card .tc-time { font-size: .75rem; color: var(--gray-500); }
+.timeline-card .tc-by { font-size: .75rem; color: var(--gray-500); margin-top: 4px; }
+.vitals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
+.vital-chip {
+  background: var(--gray-50); border-radius: 6px; padding: 6px 10px;
+  font-size: .78rem; text-align: center;
+}
+.vital-chip label { display: block; font-size: .68rem; color: var(--gray-500); font-weight: 600; margin-bottom: 2px; }
+.vital-chip span { font-weight: 700; color: var(--gray-900); }
+
+/* Ward round text */
+.ward-text { font-size: .85rem; color: var(--gray-700); line-height: 1.6; margin-top: 8px; }
+.ward-section { margin-top: 8px; }
+.ward-section strong { font-size: .75rem; color: var(--gray-500); text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 2px; }
+
+/* Cost breakdown */
+.cost-section { margin-bottom: 20px; }
+.cost-section h6 { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--gray-500); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--gray-200); }
+.cost-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--gray-100); font-size: .85rem; }
+.cost-row:last-child { border-bottom: none; }
+.cost-row .label { color: var(--gray-700); }
+.cost-row .amount { font-weight: 600; }
+.cost-total { display: flex; justify-content: space-between; padding: 12px 0 0; font-weight: 700; font-size: 1rem; border-top: 2px solid var(--gray-200); margin-top: 8px; }
+
+/* Tasks */
+.task-item {
+  background: white; border-radius: var(--radius);
+  border: 1px solid var(--gray-200); padding: 12px 14px;
+  margin-bottom: 8px; display: flex; align-items: flex-start; gap: 12px;
+}
+.task-item.overdue { border-color: #fca5a5; background: #fff5f5; }
+.task-priority { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+.task-priority.high { background: var(--danger); }
+.task-priority.normal { background: var(--primary); }
+.task-priority.low { background: var(--gray-300); }
+
+/* Tables */
+.adm-table { font-size: .83rem; }
+.adm-table th { background: var(--gray-50); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--gray-500); padding: 10px 12px; border-bottom: 2px solid var(--gray-200); }
+.adm-table td { padding: 10px 12px; vertical-align: middle; border-bottom: 1px solid var(--gray-100); }
+.adm-table tbody tr:hover { background: var(--gray-50); }
+
+/* Info grid in overview */
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.info-row { display: flex; padding: 9px 0; border-bottom: 1px solid var(--gray-100); }
+.info-row:last-child { border-bottom: none; }
+.info-row .info-label { flex: 0 0 160px; font-size: .78rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: .04em; }
+.info-row .info-value { font-size: .85rem; color: var(--gray-900); }
+
+/* Debt warning */
+.debt-warning {
+  background: #fff5f5; border: 1px solid #fca5a5; border-radius: 8px;
+  padding: 10px 14px; font-size: .83rem; color: #991b1b;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
 }
 
-.mini-toast.hiding {
-    animation: slideOut 0.3s ease-out forwards;
+/* Mobile */
+@media (max-width: 576px) {
+  .adm-header h2 { font-size: 1.3rem; }
+  .quick-actions { gap: 6px; }
+  .quick-actions .btn { font-size: .75rem; padding: 5px 9px; }
+  .info-grid { grid-template-columns: 1fr; }
+  .finance-strip { grid-template-columns: 1fr 1fr; }
+  .nav-tabs-custom .nav-link { padding: 8px 10px; font-size: .78rem; }
 }
 
-@keyframes slideOut {
-    from {
-        transform: translateX(0);
-        opacity: 1;
-    }
-    to {
-        transform: translateX(400px);
-        opacity: 0;
-    }
-}
+/* Modal tweaks */
+.modal-header-primary { background: var(--primary); color: white; }
+.modal-header-success { background: var(--success); color: white; }
+.modal-header-info    { background: #0e9f6e; color: white; }
+.form-label-sm { font-size: .78rem; font-weight: 600; color: var(--gray-700); margin-bottom: 4px; }
 </style>
 
-<div class="pagetitle">
-    <h1>Admission Details</h1>
-    <nav>
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}">Home</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'inpatient_dashboard' %}">Inpatient</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'admission_index' %}">Admissions</a></li>
-            <li class="breadcrumb-item active">{{ admission.admission_number }}</li>
-        </ol>
-    </nav>
+<!-- ── PAGE HEADER ── -->
+<div class="adm-header">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <div>
+      <h4>Admission Record</h4>
+      <h2>{{ admission.patient|title }}</h2>
+      <div class="meta">
+        Card: {{ admission.patient.card_number }} &nbsp;|&nbsp;
+        {{ admission.patient.age }} yrs, {{ admission.patient.get_gender_display }} &nbsp;|&nbsp;
+        {{ admission.admission_number }}
+      </div>
+    </div>
+    <div class="d-flex flex-column align-items-end gap-2">
+      <span class="status-badge {{ admission.status }}">
+        <i class="bi bi-circle-fill" style="font-size:.5rem"></i>
+        {{ admission.get_status_display }}
+      </span>
+      {% if admission.is_active %}
+      <small class="text-white-50">Day {{ admission.length_of_stay_days }} of stay</small>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
-<div class="row">
-    <!-- Left Sidebar -->
-    <div class="col-lg-3">
-        <!-- Patient Info Card -->
-        <div class="card">
-            <div class="card-body profile-card pt-4 d-flex flex-column align-items-center">
-                <h2>{{ admission.patient|title }}</h2>
-                <h3>Card No: {{ admission.patient.card_number }}</h3>
-                <p class="text-muted">{{ admission.patient.age }} yrs, {{ admission.patient.get_gender_display }}</p>
-            </div>
+<!-- ── FINANCE STRIP ── -->
+<div class="finance-strip">
+  <div class="fin-card info">
+  <label>Total Charges</label>
+  <div class="amount">₦{{ live_grand_total|floatformat:2|intcomma }}</div>
+</div>
+
+<div class="fin-card info">
+  <label>Total Paid</label>
+  <div class="amount">₦{{ admission.total_paid|floatformat:2|intcomma }}</div>
+</div>
+
+
+{% if live_debt > 0 %}
+<div class="fin-card danger">
+  <label>Amount Owing</label>
+  <div class="amount">₦{{ live_debt|floatformat:2|intcomma }}</div>
+</div>
+{% else %}
+<div class="fin-card success">
+  <label>Excess Balance</label>
+  <div class="amount">₦{{ live_excess|floatformat:2|intcomma }}</div>
+</div>
+{% endif %}
+</div>
+
+<!-- ── DEBT WARNING ── -->
+{% if admission.debt_limit_reached and admission.is_active %}
+<div class="debt-warning">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  Debt limit reached (₦{{ admission.admission_type.max_debt_allowed|floatformat:0|intcomma }}). New service orders are blocked. Patient must make a deposit.
+</div>
+{% endif %}
+
+<!-- ── QUICK ACTIONS ── -->
+{% if admission.is_active %}
+<div class="quick-actions">
+  <button class="btn btn-sm btn-outline-primary" onclick="openVitalsModal()">
+    <i class="bi bi-heart-pulse"></i> Add Vitals
+  </button>
+  <button class="btn btn-sm btn-primary" onclick="startWardRound()">
+    <i class="bi bi-file-medical"></i> Ward Round
+  </button>
+  <button class="btn btn-sm btn-outline-secondary" onclick="prescribeDrug()">
+    <i class="bi bi-prescription2"></i> Prescribe
+  </button>
+  <button class="btn btn-sm btn-outline-info" onclick="orderLabTest()">
+    <i class="bi bi-clipboard2-pulse"></i> Lab Test
+  </button>
+  <button class="btn btn-sm btn-outline-warning" onclick="orderScan()">
+    <i class="bi bi-camera"></i> Scan
+  </button>
+  <button class="btn btn-sm btn-outline-success" onclick="orderService()">
+    <i class="bi bi-journal-check"></i> Service
+  </button>
+  <button class="btn btn-sm btn-outline-dark" onclick="orderItem()">
+    <i class="bi bi-box-seam"></i> Item
+  </button>
+  <button class="btn btn-sm btn-outline-secondary" onclick="addTask()">
+    <i class="bi bi-list-check"></i> Add Task
+  </button>
+  <a href="{% url 'patient_history_view' patient_id=admission.patient.id %}" class="btn btn-sm btn-outline-secondary" target="_blank">
+    <i class="bi bi-clock-history"></i> History
+  </a>
+  <button class="btn btn-sm btn-danger ms-auto" onclick="initiateDischarge()">
+    <i class="bi bi-box-arrow-right"></i> Discharge
+  </button>
+</div>
+{% endif %}
+
+<!-- ── MAIN CARD ── -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+
+    <!-- TABS -->
+    <ul class="nav nav-tabs-custom px-3 pt-2" id="admTabs">
+      <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-overview">
+          <i class="bi bi-grid-1x2"></i> Overview
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-clinical">
+          <i class="bi bi-activity"></i> Vitals & Rounds
+          {% if ward_rounds or vitals_list %}
+          <span class="badge bg-primary ms-1">{{ ward_rounds.count|add:vitals_list.count }}</span>
+          {% endif %}
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-drugs">
+          <i class="bi bi-prescription2"></i> Drugs
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-labs">
+          <i class="bi bi-clipboard2-pulse"></i> Labs
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-scans">
+          <i class="bi bi-camera"></i> Scans
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-services">
+          <i class="bi bi-journal-check"></i> Services
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-tasks">
+          <i class="bi bi-list-check"></i> Tasks
+          {% if pending_tasks.count > 0 %}
+          <span class="badge bg-warning text-dark ms-1">{{ pending_tasks.count }}</span>
+          {% endif %}
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-cost">
+          <i class="bi bi-receipt"></i> Cost Breakdown
+        </button>
+      </li>
+      {% if surgeries %}
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-surgeries">
+          <i class="bi bi-scissors"></i> Surgeries
+        </button>
+      </li>
+      {% endif %}
+    </ul>
+
+    <div class="tab-content p-3">
+
+      <!-- ── OVERVIEW TAB ── -->
+      <div class="tab-pane fade show active" id="tab-overview">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <p class="fw-bold text-muted small text-uppercase mb-2">Admission Details</p>
+            <div class="info-row"><span class="info-label">Admission No.</span><span class="info-value">{{ admission.admission_number }}</span></div>
+            <div class="info-row"><span class="info-label">Type</span><span class="info-value">{{ admission.admission_type.name|default:"N/A" }}</span></div>
+            <div class="info-row"><span class="info-label">Created</span><span class="info-value">{{ admission.admission_date|date:"d M Y, P" }}</span></div>
+            {% if admission.admission_activated_date %}
+            <div class="info-row"><span class="info-label">Activated</span><span class="info-value">{{ admission.admission_activated_date|date:"d M Y, P" }}</span></div>
+            <div class="info-row"><span class="info-label">Length of Stay</span><span class="info-value"><span class="badge bg-primary">{{ admission.length_of_stay_days }} day(s)</span></span></div>
+            {% endif %}
+            <div class="info-row"><span class="info-label">Ward / Bed</span><span class="info-value">{{ admission.ward_name|default:"N/A" }} / {{ admission.bed.bed_number|default:"N/A" }}</span></div>
+            <div class="info-row"><span class="info-label">Admitted By</span><span class="info-value">{{ admission.admitted_by.get_full_name|default:"N/A" }}</span></div>
+          </div>
+          <div class="col-md-6">
+            <p class="fw-bold text-muted small text-uppercase mb-2">Clinical Information</p>
+            <div class="info-row"><span class="info-label">Chief Complaint</span><span class="info-value">{{ admission.chief_complaint|default:"N/A" }}</span></div>
+            <div class="info-row"><span class="info-label">Admission Diagnosis</span><span class="info-value">{{ admission.admission_diagnosis|default:"N/A" }}</span></div>
+            {% if admission.admission_notes %}
+            <div class="info-row"><span class="info-label">Notes</span><span class="info-value">{{ admission.admission_notes }}</span></div>
+            {% endif %}
+            {% if not admission.is_active and not admission.is_pending %}
+            <div class="info-row"><span class="info-label">Discharge Date</span><span class="info-value">{{ admission.actual_discharge_date|date:"d M Y, P"|default:"N/A" }}</span></div>
+            <div class="info-row"><span class="info-label">Discharge Notes</span><span class="info-value">{{ admission.discharge_notes|default:"N/A" }}</span></div>
+            {% endif %}
+          </div>
         </div>
 
-        <!-- Admission Info Card -->
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Admission Info</h5>
-                <ul class="list-group list-group-flush">
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Admission No.</strong>
-                        <span>{{ admission.admission_number }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Type</strong>
-                        <span>{{ admission.admission_type.name }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Created On</strong>
-                        <span>{{ admission.admission_date|date:"d M, Y P" }}</span>
-                    </li>
-                    {% if admission.admission_activated_date %}
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Activated On</strong>
-                        <span>{{ admission.admission_activated_date|date:"d M, Y P" }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Length of Stay</strong>
-                        <span class="badge bg-primary">{{ admission.length_of_stay_days }} day(s)</span>
-                    </li>
-                    {% endif %}
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Ward / Bed</strong>
-                        <span>{{ admission.ward_name|default:'N/A' }} / {{ admission.bed.bed_number|default:'N/A' }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Attending Doctor</strong>
-                        <span>{{ admission.attending_doctor|default:"N/A" }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Status</strong>
-                        <span class="badge {% if admission.is_pending %}bg-warning{% elif admission.is_active %}bg-success{% else %}bg-secondary{% endif %}">
-                            {{ admission.get_status_display }}
-                        </span>
-                    </li>
-                </ul>
+        {% if admission.is_pending %}
+        <hr>
+        <div class="row g-3 mt-1">
+          <div class="col-md-6">
+            <div class="alert alert-warning py-2">
+              <i class="bi bi-info-circle"></i>
+              Minimum deposit required: <strong>₦{{ admission.admission_type.minimum_deposit_amount|floatformat:2|intcomma }}</strong>
+              {% if not admission.can_be_confirmed %}— Not yet met{% endif %}
             </div>
-        </div>
-
-        <!-- Financial Summary Card -->
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Financial Summary</h5>
-                <ul class="list-group list-group-flush">
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Total Charges</strong>
-                        <span class="text-danger">₦{{ admission.total_charges|floatformat:2 }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Total Paid</strong>
-                        <span class="text-success">₦{{ admission.total_paid|floatformat:2 }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Deposit Balance</strong>
-                        <span class="text-info">₦{{ admission.deposit_balance|floatformat:2 }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <strong>Debt Balance</strong>
-                        <span class="{% if admission.debt_balance > 0 %}text-danger{% else %}text-success{% endif %}">
-                            ₦{{ admission.debt_balance|floatformat:2 }}
-                        </span>
-                    </li>
-                </ul>
-
-                {% if admission.is_pending %}
-                <div class="alert alert-warning mt-3">
-                    <small>
-                        <i class="bi bi-info-circle"></i>
-                        Minimum deposit: ₦{{ billing_summary.minimum_deposit_required|floatformat:2 }}
-                    </small>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- Quick Actions Card -->
-        {% if admission.is_active %}
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Quick Actions</h5>
-                <div class="d-grid gap-2">
-                    <button class="btn btn-sm btn-primary" onclick="startWardRound()">
-                        <i class="bi bi-file-medical"></i> Start Ward Round
-                    </button>
-                    <button class="btn btn-sm btn-primary" onclick="prescribeDrug()">
-                        <i class="bi bi-prescription2"></i> Prescribe Drug
-                    </button>
-                    <button class="btn btn-sm btn-info" onclick="orderLabTest()">
-                        <i class="bi bi-clipboard2-pulse"></i> Order Lab Test
-                    </button>
-                    <button class="btn btn-sm btn-warning" onclick="orderScan()">
-                        <i class="bi bi-camera"></i> Order Scan
-                    </button>
-                    <button class="btn btn-sm btn-success" onclick="orderService()">
-                        <i class="bi bi-journal-check"></i> Order Service
-                    </button>
-                    <button class="btn btn-sm btn-dark" onclick="orderItem()">
-                        <i class="bi bi-box-seam"></i> Order Item
-                    </button>
-                    <a href="{% url 'patient_history_view' patient_id=admission.patient.id %}" class="btn btn-sm btn-outline-secondary" target="_blank">
-                        <i class="bi bi-clock-history"></i> View Patient History
-                    </a>
-                    <hr>
-                    <button class="btn btn-sm btn-danger" onclick="window.location.href='{% url 'discharge_patient' admission.pk %}'">
-                        <i class="bi bi-box-arrow-right"></i> Discharge Patient
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% elif admission.is_pending %}
-        <!-- Confirmation Card for Pending Admission -->
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Confirm Admission</h5>
-                <p class="text-muted small">Verify payment has been made before confirming.</p>
-
-                <div class="mb-3">
-                    <label for="bed_select" class="form-label">Assign Bed</label>
-                    <select class="form-select" id="bed_select" name="bed_id">
-                        <option value="">Select Bed</option>
-                        {% for bed in available_beds %}
-                        <option value="{{ bed.id }}" {% if admission.bed and admission.bed.id == bed.id %}selected{% endif %}>
-                            {{ bed.ward.name }} - Bed {{ bed.bed_number }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="d-grid gap-2">
-                    <button class="btn btn-success" onclick="confirmAdmission()" id="confirmAdmissionBtn"
-                            {% if not billing_summary.can_be_confirmed %}disabled{% endif %}>
-                        <i class="bi bi-check-circle"></i> Confirm Admission
-                    </button>
-                    {% if not billing_summary.can_be_confirmed %}
-                    <small class="text-danger">Minimum deposit not met</small>
-                    {% endif %}
-                </div>
-            </div>
+          </div>
+          {% if admission.can_be_confirmed %}
+          <div class="col-md-6">
+            <select class="form-select form-select-sm mb-2" id="bed_select">
+              <option value="">-- Select Bed --</option>
+              {% for bed in available_beds %}
+              <option value="{{ bed.id }}">{{ bed.ward.name }} — Bed {{ bed.bed_number }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-success btn-sm w-100" onclick="confirmAdmission()">
+              <i class="bi bi-check-circle"></i> Confirm Admission & Assign Bed
+            </button>
+          </div>
+          {% endif %}
         </div>
         {% endif %}
-    </div>
+      </div>
 
-    <!-- Main Content -->
-    <div class="col-lg-9">
-        <div class="card">
-            <div class="card-body pt-3">
-                <!-- Tabs -->
-                <ul class="nav nav-tabs nav-tabs-bordered">
-                    <li class="nav-item">
-                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#overview-tab">
-                            Overview
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#ward-rounds-tab">
-                            <i class="bi bi-file-medical"></i> Ward Rounds
-                            {% if ward_rounds %}
-                            <span class="badge bg-primary">{{ ward_rounds.count }}</span>
-                            {% endif %}
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#drugs-tab">
-                            <i class="bi bi-prescription2"></i> Drugs
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#labs-tab">
-                            <i class="bi bi-clipboard2-pulse"></i> Lab Tests
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#scans-tab">
-                            <i class="bi bi-camera"></i> Scans
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#services-tab">
-                            <i class="bi bi-journal-check"></i> Services & Items
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tasks-tab">
-                            <i class="bi bi-list-check"></i> Tasks
-                            {% if pending_tasks %}
-                            <span class="badge bg-warning">{{ pending_tasks.count }}</span>
-                            {% endif %}
-                        </button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#surgeries-tab">
-                            <i class="bi bi-scissors"></i> Surgeries
-                        </button>
-                    </li>
-                </ul>
-
-                <div class="tab-content pt-2">
-                    <!-- Overview Tab -->
-                    <div class="tab-pane fade show active" id="overview-tab">
-                        <h5 class="card-title">Clinical Information</h5>
-
-                        <div class="row mb-3">
-                            <div class="col-lg-4 col-md-5 label"><strong>Chief Complaint</strong></div>
-                            <div class="col-lg-8 col-md-7">{{ admission.chief_complaint|default:"N/A" }}</div>
-                        </div>
-
-                        <div class="row mb-3">
-                            <div class="col-lg-4 col-md-5 label"><strong>Admission Diagnosis</strong></div>
-                            <div class="col-lg-8 col-md-7">{{ admission.admission_diagnosis|default:"N/A" }}</div>
-                        </div>
-
-                        <div class="row mb-3">
-                            <div class="col-lg-4 col-md-5 label"><strong>Admission Notes</strong></div>
-                            <div class="col-lg-8 col-md-7">{{ admission.admission_notes|default:"N/A" }}</div>
-                        </div>
-
-                        {% if not admission.is_active and not admission.is_pending %}
-                        <hr>
-                        <h5 class="card-title">Discharge Information</h5>
-
-                        <div class="row mb-3">
-                            <div class="col-lg-4 col-md-5 label"><strong>Discharge Date</strong></div>
-                            <div class="col-lg-8 col-md-7">{{ admission.actual_discharge_date|date:"d M, Y P"|default:"N/A" }}</div>
-                        </div>
-
-                        <div class="row mb-3">
-                            <div class="col-lg-4 col-md-5 label"><strong>Discharge Notes</strong></div>
-                            <div class="col-lg-8 col-md-7">{{ admission.discharge_notes|default:"N/A" }}</div>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Ward Rounds Tab -->
-                    <div class="tab-pane fade" id="ward-rounds-tab">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="card-title mb-0">Ward Rounds History</h5>
-                            {% if admission.is_active %}
-                            <button class="btn btn-primary btn-sm" onclick="startWardRound()">
-                                <i class="bi bi-plus-circle"></i> New Ward Round
-                            </button>
-                            {% endif %}
-                        </div>
-
-                        <div class="list-group" id="ward-rounds-list">
-                            {% for round in ward_rounds %}
-                            <div class="list-group-item">
-                                <div class="d-flex w-100 justify-content-between align-items-start">
-                                    <div>
-                                        <h6 class="mb-1">
-                                            Ward Round - {{ round.created_at|date:"d M, Y H:i" }}
-                                            <span class="badge {% if round.status == 'completed' %}bg-success{% elif round.status == 'in_progress' %}bg-warning{% else %}bg-secondary{% endif %}">
-                                                {{ round.get_status_display }}
-                                            </span>
-                                        </h6>
-                                        {% if round.vitals %}
-                                        <small class="text-muted">
-                                            <strong>Vitals:</strong>
-                                            BP: {{ round.vitals.bp|default:"N/A" }},
-                                            Temp: {{ round.vitals.temp|default:"N/A" }}°C,
-                                            Pulse: {{ round.vitals.pulse|default:"N/A" }}
-                                        </small>
-                                        {% endif %}
-                                        {% if round.chief_complaint %}
-                                        <p class="mt-2 mb-1"><strong>Complaint:</strong> {{ round.chief_complaint|truncatewords:30 }}</p>
-                                        {% endif %}
-                                        {% if round.primary_diagnosis %}
-                                        <p class="mb-1">
-                                            <strong>Diagnosis:</strong> {{ round.primary_diagnosis.name }}
-                                            {% for sec_diag in round.secondary_diagnoses.all %}
-                                                , {{ sec_diag.name }}
-                                            {% endfor %}
-                                        </p>
-                                        {% endif %}
-                                    </div>
-                                    <div>
-                                        {% if round.status == 'in_progress' %}
-                                        <button class="btn btn-sm btn-warning" onclick="editWardRound({{ round.pk }})">
-                                            <i class="bi bi-play-circle"></i> Resume
-                                        </button>
-                                        {% else %}
-                                        <button class="btn btn-sm btn-info" onclick="viewWardRound({{ round.pk }})">
-                                            <i class="bi bi-eye"></i> View
-                                        </button>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                            {% empty %}
-                            <div class="list-group-item text-center text-muted">
-                                No ward rounds recorded yet.
-                                {% if admission.is_active %}
-                                <br><button class="btn btn-link" onclick="startWardRound()">Start first ward round</button>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-
-                    <!-- Drugs Tab -->
-                    <div class="tab-pane fade" id="drugs-tab">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="card-title mb-0">Prescribed Medications</h5>
-                            {% if admission.is_active %}
-                            <button class="btn btn-sm btn-primary" onclick="prescribeDrug()">
-                                <i class="bi bi-plus"></i> Add Drug
-                            </button>
-                            {% endif %}
-                        </div>
-
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Drug</th>
-                                        <th>Dosage</th>
-                                        <th>Quantity</th>
-                                        <th>Status</th>
-                                        <th>Ordered By</th>
-                                        <th>Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for drug in drug_orders %}
-                                    <tr>
-                                        <td>
-                                            <strong>{{ drug.drug.brand_name|default:drug.drug.generic_name }}</strong>
-                                            <small class="text-muted d-block">{{ drug.drug.formulation }}</small>
-                                        </td>
-                                        <td>{{ drug.dosage_instructions|truncatewords:5 }}</td>
-                                        <td>{{ drug.quantity_ordered }}</td>
-                                        <td>
-                                            <span class="badge bg-{% if drug.status == 'paid' or drug.status == 'dispensed' %}success{% elif drug.status == 'pending' %}warning{% else %}secondary{% endif %}">
-                                                {{ drug.get_status_display }}
-                                            </span>
-                                        </td>
-                                        <td>{{ drug.ordered_by.get_full_name|default:drug.ordered_by.username }}</td>
-                                        <td>{{ drug.ordered_at|date:"d M, Y" }}</td>
-                                    </tr>
-                                    {% empty %}
-                                    <tr>
-                                        <td colspan="6" class="text-center text-muted">No medications prescribed yet</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Labs Tab -->
-                    <div class="tab-pane fade" id="labs-tab">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="card-title mb-0">Lab Tests Ordered</h5>
-                            {% if admission.is_active %}
-                            <button class="btn btn-sm btn-info" onclick="orderLabTest()">
-                                <i class="bi bi-plus"></i> Order Lab Test
-                            </button>
-                            {% endif %}
-                        </div>
-
-                        <div class="list-group">
-                            {% for lab in lab_tests %}
-                            <div class="list-group-item">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div>
-                                        <h6 class="mb-1">{{ lab.template.name }}</h6>
-                                        <small class="text-muted">Order #{{ lab.order_number }}</small><br>
-                                        <small class="text-muted">Ordered by: {{ lab.ordered_by.get_full_name|default:lab.ordered_by.username }}</small><br>
-                                        <small class="text-muted">Date: {{ lab.ordered_at|date:"d M, Y" }}</small>
-                                    </div>
-                                    <div>
-                                        <span class="badge bg-{% if lab.status == 'completed' %}success{% elif lab.status == 'pending' %}warning{% else %}secondary{% endif %}">
-                                            {{ lab.get_status_display }}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                            {% empty %}
-                            <div class="list-group-item text-center text-muted">No lab tests ordered yet</div>
-                            {% endfor %}
-                        </div>
-                    </div>
-
-                    <!-- Scans Tab -->
-                    <div class="tab-pane fade" id="scans-tab">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="card-title mb-0">Scans Ordered</h5>
-                            {% if admission.is_active %}
-                            <button class="btn btn-sm btn-warning" onclick="orderScan()">
-                                <i class="bi bi-plus"></i> Order Scan
-                            </button>
-                            {% endif %}
-                        </div>
-
-                        <div class="list-group">
-                            {% for scan in scans %}
-                            <div class="list-group-item">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div>
-                                        <h6 class="mb-1">{{ scan.template.name }}</h6>
-                                        <small class="text-muted">Order #{{ scan.order_number }}</small><br>
-                                        <small class="text-muted">Ordered by: {{ scan.ordered_by.get_full_name|default:scan.ordered_by.username }}</small><br>
-                                        <small class="text-muted">Date: {{ scan.ordered_at|date:"d M, Y" }}</small>
-                                    </div>
-                                    <div>
-                                        <span class="badge bg-{% if scan.status == 'completed' %}success{% elif scan.status == 'pending' %}warning{% else %}secondary{% endif %}">
-                                            {{ scan.get_status_display }}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                            {% empty %}
-                            <div class="list-group-item text-center text-muted">No scans ordered yet</div>
-                            {% endfor %}
-                        </div>
-                    </div>
-
-                    <!-- Services & Items Tab -->
-                    <div class="tab-pane fade" id="services-tab">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h6>Services Ordered</h6>
-                                    {% if admission.is_active %}
-                                    <button class="btn btn-sm btn-success" onclick="orderService()">
-                                        <i class="bi bi-plus"></i> Order Service
-                                    </button>
-                                    {% endif %}
-                                </div>
-                                <div class="list-group">
-                                    {% for tx in service_transactions %}
-                                    {% if tx.service %}
-                                    <div class="list-group-item">
-                                        <strong>{{ tx.service.name }}</strong> (x{{ tx.quantity }})
-                                        <small class="text-muted d-block">{{ tx.get_status_display }}</small>
-                                    </div>
-                                    {% endif %}
-                                    {% endfor %}
-                                </div>
-                            </div>
-
-                            <div class="col-md-6">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h6>Items Ordered</h6>
-                                    {% if admission.is_active %}
-                                    <button class="btn btn-sm btn-dark" onclick="orderItem()">
-                                        <i class="bi bi-plus"></i> Order Item
-                                    </button>
-                                    {% endif %}
-                                </div>
-                                <div class="list-group">
-                                    {% for tx in service_transactions %}
-                                    {% if tx.service_item %}
-                                    <div class="list-group-item">
-                                        <strong>{{ tx.service_item.name }}</strong> (x{{ tx.quantity }})
-                                        <small class="text-muted d-block">{{ tx.get_status_display }}</small>
-                                    </div>
-                                    {% endif %}
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Tasks Tab -->
-                    <div class="tab-pane fade" id="tasks-tab">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5 class="card-title mb-0">Scheduled Tasks</h5>
-                            <a href="{% url 'admission_task_create' %}?admission={{ admission.pk }}" class="btn btn-primary btn-sm">
-                                <i class="bi bi-plus-circle"></i> Add Task
-                            </a>
-                        </div>
-
-                        <div class="list-group">
-                            {% for task in pending_tasks %}
-                            <div class="list-group-item {% if task.is_overdue %}list-group-item-danger{% elif task.status == 'completed' %}list-group-item-success{% endif %}">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div>
-                                        <h6 class="mb-1">
-                                            {{ task.get_task_type_display }}
-                                            {% if task.is_overdue %}
-                                            <span class="badge bg-danger">Overdue by {{ task.minutes_overdue }} min</span>
-                                            {% endif %}
-                                        </h6>
-                                        <p class="mb-1">{{ task.description|truncatewords:20 }}</p>
-                                        <small class="text-muted">
-                                            Scheduled: {{ task.scheduled_datetime|date:"d M, Y H:i" }}
-                                            {% if task.assigned_to %}| Assigned to: {{ task.assigned_to.get_full_name }}{% endif %}
-                                        </small>
-                                    </div>
-                                    <div>
-                                        <span class="badge bg-{% if task.status == 'completed' %}success{% elif task.status == 'pending' %}warning{% elif task.status == 'missed' %}danger{% else %}secondary{% endif %}">
-                                            {{ task.get_status_display }}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                            {% empty %}
-                            <div class="list-group-item text-center text-muted">No tasks scheduled</div>
-                            {% endfor %}
-                        </div>
-                    </div>
-
-                    <!-- Surgeries Tab -->
-                    <div class="tab-pane fade" id="surgeries-tab">
-                        <h5 class="card-title">Associated Surgeries</h5>
-                        <div class="list-group">
-                            {% for surgery in surgeries %}
-                            <a href="{% url 'surgery_detail' surgery.pk %}" class="list-group-item list-group-item-action">
-                                <div class="d-flex w-100 justify-content-between">
-                                    <h5 class="mb-1">{{ surgery.surgery_type.name }}</h5>
-                                    <small>{{ surgery.scheduled_date|date:"d M, Y" }}</small>
-                                </div>
-                                <p class="mb-1">No: {{ surgery.surgery_number }} | Status: <span class="fw-bold">{{ surgery.get_status_display }}</span></p>
-                                <small>Surgeon: {{ surgery.surgeon_name|default:"N/A" }}</small>
-                            </a>
-                            {% empty %}
-                            <div class="list-group-item text-center text-muted">No surgeries associated with this admission</div>
-                            {% endfor %}
-                        </div>
-                    </div>
-
-                </div>
-            </div>
+      <!-- ── VITALS & WARD ROUNDS TAB ── -->
+      <div class="tab-pane fade" id="tab-clinical">
+        {% if admission.is_active %}
+        <div class="d-flex gap-2 mb-3 flex-wrap">
+          <button class="btn btn-sm btn-outline-success" onclick="openVitalsModal()">
+            <i class="bi bi-plus"></i> Add Vitals
+          </button>
+          <button class="btn btn-sm btn-primary" onclick="startWardRound()">
+            <i class="bi bi-plus"></i> Ward Round
+          </button>
         </div>
-    </div>
+        {% endif %}
+
+        <div class="timeline" id="clinical-timeline">
+          {% for entry in clinical_timeline %}
+            {% if entry.type == 'vitals' %}
+            <div class="timeline-item" id="vitals-{{ entry.obj.id }}">
+              <div class="timeline-dot vitals"></div>
+              <div class="timeline-card">
+                <div class="tc-head">
+                  <div>
+                    <span class="tc-type vitals"><i class="bi bi-heart-pulse"></i> Vitals</span>
+                    <div class="tc-by">{{ entry.obj.recorded_by.get_full_name|default:entry.obj.recorded_by.username }}</div>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="tc-time">{{ entry.obj.recorded_at|date:"d M Y H:i" }}</span>
+                    <button class="btn btn-xs btn-outline-secondary" onclick="editVitals({{ entry.obj.id }})">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="vitals-grid">
+                  {% if entry.obj.blood_pressure %}<div class="vital-chip"><label>BP</label><span>{{ entry.obj.blood_pressure }}</span></div>{% endif %}
+                  {% if entry.obj.temperature %}<div class="vital-chip"><label>Temp °C</label><span>{{ entry.obj.temperature }}</span></div>{% endif %}
+                  {% if entry.obj.pulse_rate %}<div class="vital-chip"><label>Pulse</label><span>{{ entry.obj.pulse_rate }}</span></div>{% endif %}
+                  {% if entry.obj.oxygen_saturation %}<div class="vital-chip"><label>SpO₂ %</label><span>{{ entry.obj.oxygen_saturation }}</span></div>{% endif %}
+                  {% if entry.obj.respiratory_rate %}<div class="vital-chip"><label>Resp/min</label><span>{{ entry.obj.respiratory_rate }}</span></div>{% endif %}
+                  {% if entry.obj.weight %}<div class="vital-chip"><label>Weight kg</label><span>{{ entry.obj.weight }}</span></div>{% endif %}
+                  {% if entry.obj.height %}<div class="vital-chip"><label>Height cm</label><span>{{ entry.obj.height }}</span></div>{% endif %}
+                  {% if entry.obj.bmi %}<div class="vital-chip"><label>BMI</label><span>{{ entry.obj.bmi }}</span></div>{% endif %}
+                </div>
+                {% if entry.obj.notes %}
+                <div class="ward-text mt-2"><em>{{ entry.obj.notes }}</em></div>
+                {% endif %}
+              </div>
+            </div>
+
+            {% elif entry.type == 'ward_round' %}
+            <div class="timeline-item" id="round-{{ entry.obj.id }}">
+              <div class="timeline-dot ward-round"></div>
+              <div class="timeline-card">
+                <div class="tc-head">
+                  <div>
+                    <span class="tc-type ward-round"><i class="bi bi-file-medical"></i> Ward Round</span>
+                    <span class="ms-2 badge {% if entry.obj.status == 'completed' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                      {{ entry.obj.get_status_display }}
+                    </span>
+                    <div class="tc-by">
+                      {% if entry.obj.admission.admitted_by %}{{ entry.obj.admission.admitted_by.get_full_name }}{% else %}Unknown{% endif %}
+                    </div>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="tc-time">{{ entry.obj.created_at|date:"d M Y H:i" }}</span>
+                    {% if entry.obj.status == 'in_progress' or request.user == entry.obj.admission.admitted_by %}
+                    <button class="btn btn-xs btn-outline-primary" onclick="editWardRound({{ entry.obj.id }}, '{{ entry.obj.chief_complaint|escapejs }}', '{{ entry.obj.assessment|escapejs }}', '{{ entry.obj.diagnosis|escapejs }}', '{{ entry.obj.status }}')">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    {% endif %}
+                  </div>
+                </div>
+                {% if entry.obj.chief_complaint %}
+                <div class="ward-section mt-2">
+                  <strong>Chief Complaint</strong>
+                  <div class="ward-text">{{ entry.obj.chief_complaint }}</div>
+                </div>
+                {% endif %}
+                {% if entry.obj.assessment %}
+                <div class="ward-section">
+                  <strong>Assessment</strong>
+                  <div class="ward-text">{{ entry.obj.assessment }}</div>
+                </div>
+                {% endif %}
+                {% if entry.obj.diagnosis %}
+                <div class="ward-section">
+                  <strong>Diagnosis / Plan</strong>
+                  <div class="ward-text">{{ entry.obj.diagnosis }}</div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          {% empty %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-activity" style="font-size:2rem; opacity:.3"></i>
+            <p class="mt-2">No vitals or ward rounds recorded yet.</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- ── DRUGS TAB ── -->
+      <div class="tab-pane fade" id="tab-drugs">
+        {% if admission.is_active %}
+        <div class="mb-3">
+          <button class="btn btn-sm btn-primary" onclick="prescribeDrug()">
+            <i class="bi bi-plus"></i> Prescribe Drug
+          </button>
+        </div>
+        {% endif %}
+        {% if admission.debt_limit_reached %}
+        <div class="debt-warning mb-2">
+          <i class="bi bi-exclamation-triangle-fill"></i> Debt limit reached. Cannot add more drugs until patient deposits.
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table adm-table">
+            <thead><tr>
+              <th>Drug</th><th>Dosage</th><th>Qty</th><th>Dispensed</th><th>Status</th><th>Ordered By</th><th>Date</th>
+            </tr></thead>
+            <tbody>
+              {% for drug in drug_orders %}
+              <tr>
+                <td>
+                  <strong>{{ drug.drug.brand_name|default:drug.drug.generic_name }}</strong>
+                  <small class="text-muted d-block">{{ drug.drug.formulation }}</small>
+                </td>
+                <td>{{ drug.dosage_instructions|truncatewords:6 }}</td>
+                <td>{{ drug.quantity_ordered }}</td>
+                <td>{{ drug.quantity_dispensed }}</td>
+                <td>
+                  <span class="badge bg-{% if drug.status == 'dispensed' %}success{% elif drug.status == 'pending' %}warning text-dark{% elif drug.status == 'cancelled' %}secondary{% else %}info{% endif %}">
+                    {{ drug.get_status_display }}
+                  </span>
+                </td>
+                <td>{{ drug.ordered_by.get_full_name|default:drug.ordered_by.username }}</td>
+                <td>{{ drug.ordered_at|date:"d M Y" }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="7" class="text-center text-muted py-3">No drugs prescribed yet</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── LABS TAB ── -->
+      <div class="tab-pane fade" id="tab-labs">
+        {% if admission.is_active %}
+        <div class="mb-3">
+          <button class="btn btn-sm btn-info text-white" onclick="orderLabTest()">
+            <i class="bi bi-plus"></i> Order Lab Test
+          </button>
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table adm-table">
+            <thead><tr><th>Test</th><th>Order #</th><th>Status</th><th>Ordered By</th><th>Date</th></tr></thead>
+            <tbody>
+              {% for lab in lab_tests %}
+              <tr>
+                <td><strong>{{ lab.template.name }}</strong></td>
+                <td><small class="text-muted">{{ lab.order_number }}</small></td>
+                <td>
+                  <span class="badge bg-{% if lab.status == 'completed' %}success{% elif lab.status == 'pending' %}warning text-dark{% else %}secondary{% endif %}">
+                    {{ lab.get_status_display }}
+                  </span>
+                </td>
+                <td>{{ lab.ordered_by.get_full_name|default:lab.ordered_by.username }}</td>
+                <td>{{ lab.ordered_at|date:"d M Y" }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="5" class="text-center text-muted py-3">No lab tests ordered yet</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── SCANS TAB ── -->
+      <div class="tab-pane fade" id="tab-scans">
+        {% if admission.is_active %}
+        <div class="mb-3">
+          <button class="btn btn-sm btn-warning" onclick="orderScan()">
+            <i class="bi bi-plus"></i> Order Scan
+          </button>
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table adm-table">
+            <thead><tr><th>Scan</th><th>Order #</th><th>Status</th><th>Ordered By</th><th>Date</th></tr></thead>
+            <tbody>
+              {% for scan in scans %}
+              <tr>
+                <td><strong>{{ scan.template.name }}</strong></td>
+                <td><small class="text-muted">{{ scan.order_number }}</small></td>
+                <td>
+                  <span class="badge bg-{% if scan.status == 'completed' %}success{% elif scan.status == 'pending' %}warning text-dark{% else %}secondary{% endif %}">
+                    {{ scan.get_status_display }}
+                  </span>
+                </td>
+                <td>{{ scan.ordered_by.get_full_name|default:scan.ordered_by.username }}</td>
+                <td>{{ scan.ordered_at|date:"d M Y" }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="5" class="text-center text-muted py-3">No scans ordered yet</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── SERVICES TAB ── -->
+      <div class="tab-pane fade" id="tab-services">
+        {% if admission.is_active %}
+        <div class="d-flex gap-2 mb-3">
+          <button class="btn btn-sm btn-success" onclick="orderService()"><i class="bi bi-plus"></i> Service</button>
+          <button class="btn btn-sm btn-dark" onclick="orderItem()"><i class="bi bi-plus"></i> Item</button>
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table adm-table">
+            <thead><tr><th>Item</th><th>Type</th><th>Qty</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody>
+              {% for tx in service_transactions %}
+              <tr>
+                <td><strong>{{ tx.service.name|default:tx.service_item.name|default:"N/A" }}</strong></td>
+                <td><span class="badge bg-secondary">{% if tx.service %}Service{% else %}Item{% endif %}</span></td>
+                <td>{{ tx.quantity }}</td>
+                <td>
+                  <span class="badge bg-{% if tx.status == 'completed' %}success{% elif tx.status == 'pending_payment' %}warning text-dark{% else %}secondary{% endif %}">
+                    {{ tx.get_status_display }}
+                  </span>
+                </td>
+                <td>{{ tx.created_at|date:"d M Y" }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="5" class="text-center text-muted py-3">No services or items ordered yet</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── TASKS TAB ── -->
+      <div class="tab-pane fade" id="tab-tasks">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <span class="text-muted small">{{ pending_tasks.count }} pending task(s)</span>
+          {% if admission.is_active %}
+          <button class="btn btn-sm btn-primary" onclick="addTask()">
+            <i class="bi bi-plus"></i> Add Task
+          </button>
+          {% endif %}
+        </div>
+
+        <div id="tasks-list">
+          {% for task in all_tasks %}
+          <div class="task-item {% if task.overdue %}overdue{% endif %}" id="task-{{ task.id }}">
+            <div class="task-priority {{ task.priority }}"></div>
+            <div class="flex-grow-1">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <strong style="font-size:.85rem">{{ task.get_task_type_display }}</strong>
+                  {% if task.overdue %}<span class="badge bg-danger ms-2" style="font-size:.68rem">Overdue</span>{% endif %}
+                  <div style="font-size:.8rem; color:var(--gray-700); margin-top:2px">{{ task.description }}</div>
+                  {% if task.drug_order %}<div style="font-size:.75rem; color:var(--gray-500)">Drug: {{ task.drug_order.drug.brand_name|default:task.drug_order.drug.generic_name }}</div>{% endif %}
+                </div>
+                <div class="text-end flex-shrink-0 ms-3">
+                  <div style="font-size:.75rem; color:var(--gray-500)">{{ task.scheduled_datetime|date:"d M Y H:i" }}</div>
+                  <span class="badge bg-{% if task.status == 'completed' %}success{% elif task.status == 'pending' %}warning text-dark{% elif task.status == 'missed' %}danger{% else %}secondary{% endif %} mt-1">
+                    {{ task.get_status_display }}
+                  </span>
+                </div>
+              </div>
+              {% if task.assigned_to %}
+              <div style="font-size:.72rem; color:var(--gray-500); margin-top:4px">
+                Assigned: {{ task.assigned_to.get_full_name }}
+              </div>
+              {% endif %}
+              {% if task.status == 'pending' and admission.is_active %}
+              <div class="mt-2 d-flex gap-2">
+                <button class="btn btn-xs btn-outline-success" onclick="completeTask({{ task.id }})">
+                  <i class="bi bi-check"></i> Mark Done
+                </button>
+                <button class="btn btn-xs btn-outline-danger" onclick="cancelTask({{ task.id }})">
+                  <i class="bi bi-x"></i> Cancel
+                </button>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% empty %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-list-check" style="font-size:2rem; opacity:.3"></i>
+            <p class="mt-2">No tasks scheduled.</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- ── COST BREAKDOWN TAB ── -->
+      <div class="tab-pane fade" id="tab-cost">
+        {% if admission.admission_activated_date %}
+
+        <div class="row g-3">
+          <div class="col-md-7">
+
+            <!-- Admission fee -->
+            {% if admission.admission_fee_charged > 0 %}
+            <div class="cost-section">
+              <h6><i class="bi bi-door-open"></i> Admission Fee</h6>
+              <div class="cost-row">
+                <span class="label">One-time admission fee</span>
+                <span class="amount">₦{{ admission.admission_fee_charged|floatformat:2|intcomma }}</span>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Bed charges -->
+            {% if admission.bed_rate_used > 0 %}
+            <div class="cost-section">
+              <h6><i class="bi bi-hospital"></i> Bed Charges</h6>
+              <div class="cost-row">
+                <span class="label">Bed rate</span>
+                <span class="amount">₦{{ admission.bed_rate_used|floatformat:2|intcomma }}/day</span>
+              </div>
+              <div class="cost-row">
+                <span class="label">Length of stay</span>
+                <span class="amount">{{ admission.length_of_stay_days }} day(s)</span>
+              </div>
+              <div class="cost-row">
+                <span class="label"><strong>Bed subtotal</strong></span>
+                <span class="amount"><strong>₦{{ billing_summary.bed_total|floatformat:2|intcomma }}</strong></span>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Consultation/Ward round charges -->
+            {% if admission.consultation_fee_used > 0 %}
+            <div class="cost-section">
+              <h6><i class="bi bi-file-medical"></i> Consultation Charges</h6>
+              <div class="cost-row">
+                <span class="label">Consultation fee</span>
+                <span class="amount">₦{{ admission.consultation_fee_used|floatformat:2|intcomma }}</span>
+              </div>
+              <div class="cost-row">
+                <span class="label">Fee covers (days)</span>
+                <span class="amount">{{ admission.admission_type.consultation_fee_duration_days }} day(s)</span>
+              </div>
+              <div class="cost-row">
+                <span class="label">Billable periods</span>
+                <span class="amount">{{ billing_summary.billable_consultation_periods }}</span>
+              </div>
+              <div class="cost-row">
+                <span class="label"><strong>Consultation subtotal</strong></span>
+                <span class="amount"><strong>₦{{ billing_summary.consultation_total|floatformat:2|intcomma }}</strong></span>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Drugs -->
+            <div class="cost-section">
+              <h6><i class="bi bi-prescription2"></i> Drugs</h6>
+              {% for drug in drug_orders %}
+              <div class="cost-row">
+                <span class="label">{{ drug.drug.brand_name|default:drug.drug.generic_name }} × {{ drug.quantity_ordered }}</span>
+                <span class="amount">₦{{ drug.total_amount|floatformat:2|intcomma }}</span>
+              </div>
+              {% empty %}
+              <div class="cost-row"><span class="label text-muted">No drugs prescribed</span><span class="amount">₦0.00</span></div>
+              {% endfor %}
+              <div class="cost-row">
+                <span class="label"><strong>Drugs subtotal</strong></span>
+                <span class="amount"><strong>₦{{ billing_summary.drug_total|floatformat:2|intcomma }}</strong></span>
+              </div>
+            </div>
+
+            <!-- Labs -->
+            <div class="cost-section">
+              <h6><i class="bi bi-clipboard2-pulse"></i> Lab Tests</h6>
+              {% for lab in lab_tests %}
+              <div class="cost-row">
+                <span class="label">{{ lab.template.name }}</span>
+                <span class="amount">₦{{ lab.template.price|floatformat:2|intcomma }}</span>
+              </div>
+              {% empty %}
+              <div class="cost-row"><span class="label text-muted">No lab tests ordered</span><span class="amount">₦0.00</span></div>
+              {% endfor %}
+              <div class="cost-row">
+                <span class="label"><strong>Labs subtotal</strong></span>
+                <span class="amount"><strong>₦{{ billing_summary.lab_total|floatformat:2|intcomma }}</strong></span>
+              </div>
+            </div>
+
+            <!-- Scans -->
+            <div class="cost-section">
+              <h6><i class="bi bi-camera"></i> Scans</h6>
+              {% for scan in scans %}
+              <div class="cost-row">
+                <span class="label">{{ scan.template.name }}</span>
+                <span class="amount">₦{{ scan.template.price|floatformat:2|intcomma }}</span>
+              </div>
+              {% empty %}
+              <div class="cost-row"><span class="label text-muted">No scans ordered</span><span class="amount">₦0.00</span></div>
+              {% endfor %}
+              <div class="cost-row">
+                <span class="label"><strong>Scans subtotal</strong></span>
+                <span class="amount"><strong>₦{{ billing_summary.scan_total|floatformat:2|intcomma }}</strong></span>
+              </div>
+            </div>
+
+            <!-- Services -->
+            {% if service_transactions %}
+            <div class="cost-section">
+              <h6><i class="bi bi-journal-check"></i> Services & Items</h6>
+              {% for tx in service_transactions %}
+              <div class="cost-row">
+                <span class="label">{{ tx.service.name|default:tx.service_item.name }} × {{ tx.quantity }}</span>
+                <span class="amount">₦{{ tx.total_amount|floatformat:2|intcomma }}</span>
+              </div>
+              {% endfor %}
+              <div class="cost-row">
+                <span class="label"><strong>Services subtotal</strong></span>
+                <span class="amount"><strong>₦{{ billing_summary.service_total|floatformat:2|intcomma }}</strong></span>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Grand total -->
+            <div class="cost-total">
+              <span>Grand Total</span>
+              <span>₦{{ billing_summary.grand_total|floatformat:2|intcomma }}</span>
+            </div>
+            <div class="cost-total" style="border-top:none; padding-top:4px; font-size:.9rem; color:var(--success)">
+              <span>Total Paid</span>
+              <span>₦{{ admission.total_paid|floatformat:2|intcomma }}</span>
+            </div>
+            {% if admission.debt_balance > 0 %}
+            <div class="cost-total" style="border-top:none; padding-top:4px; font-size:.9rem; color:var(--danger)">
+              <span>Outstanding</span>
+              <span>₦{{ admission.debt_balance|floatformat:2|intcomma }}</span>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-5">
+            <div class="card border-0 bg-light">
+              <div class="card-body">
+                <p class="fw-bold small text-muted text-uppercase mb-3">Summary</p>
+                <div class="cost-row"><span class="label">Admission Fee</span><span class="amount">₦{{ admission.admission_fee_charged|floatformat:2|intcomma }}</span></div>
+                <div class="cost-row"><span class="label">Bed ({{ admission.length_of_stay_days }} days)</span><span class="amount">₦{{ billing_summary.bed_total|floatformat:2|intcomma }}</span></div>
+                <div class="cost-row"><span class="label">Consultations</span><span class="amount">₦{{ billing_summary.consultation_total|floatformat:2|intcomma }}</span></div>
+                <div class="cost-row"><span class="label">Drugs</span><span class="amount">₦{{ billing_summary.drug_total|floatformat:2|intcomma }}</span></div>
+                <div class="cost-row"><span class="label">Labs</span><span class="amount">₦{{ billing_summary.lab_total|floatformat:2|intcomma }}</span></div>
+                <div class="cost-row"><span class="label">Scans</span><span class="amount">₦{{ billing_summary.scan_total|floatformat:2|intcomma }}</span></div>
+                <div class="cost-row"><span class="label">Services</span><span class="amount">₦{{ billing_summary.service_total|floatformat:2|intcomma }}</span></div>
+                <div class="cost-total">
+                  <span>Total</span><span>₦{{ billing_summary.grand_total|floatformat:2|intcomma }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {% else %}
+        <div class="text-center text-muted py-4">
+          <i class="bi bi-receipt" style="font-size:2rem; opacity:.3"></i>
+          <p class="mt-2">Cost breakdown available after admission is confirmed.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- ── SURGERIES TAB ── -->
+      {% if surgeries %}
+      <div class="tab-pane fade" id="tab-surgeries">
+        <div class="list-group">
+          {% for surgery in surgeries %}
+          <a href="{% url 'surgery_detail' surgery.pk %}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <strong>{{ surgery.surgery_type.name }}</strong>
+                <small class="text-muted d-block">{{ surgery.surgery_number }} | {{ surgery.scheduled_date|date:"d M Y" }}</small>
+              </div>
+              <span class="badge bg-secondary">{{ surgery.get_status_display }}</span>
+            </div>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div><!-- end tab-content -->
+  </div>
 </div>
 
+
+<!-- ══════════════════════════════════════════════════════ -->
 <!-- MODALS -->
+<!-- ══════════════════════════════════════════════════════ -->
+
+<!-- Vitals Modal -->
+<div class="modal fade" id="vitalsModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header modal-header-info">
+        <h5 class="modal-title text-white"><i class="bi bi-heart-pulse"></i> Record Vitals</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="vitals-edit-id">
+        <div class="row g-3">
+          <div class="col-6 col-md-4">
+            <label class="form-label-sm">Systolic BP</label>
+            <input type="number" class="form-control form-control-sm" id="v-bp-sys" placeholder="e.g. 120">
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label-sm">Diastolic BP</label>
+            <input type="number" class="form-control form-control-sm" id="v-bp-dia" placeholder="e.g. 80">
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label-sm">Temperature (°C)</label>
+            <input type="number" class="form-control form-control-sm" id="v-temp" step="0.1" placeholder="e.g. 37.2">
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label-sm">Pulse Rate (BPM)</label>
+            <input type="number" class="form-control form-control-sm" id="v-pulse" placeholder="e.g. 72">
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label-sm">SpO₂ (%)</label>
+            <input type="number" class="form-control form-control-sm" id="v-spo2" placeholder="e.g. 98">
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label-sm">Respiratory Rate</label>
+            <input type="number" class="form-control form-control-sm" id="v-resp" placeholder="per min">
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label-sm">Weight (kg)</label>
+            <input type="number" class="form-control form-control-sm" id="v-weight" step="0.1" placeholder="e.g. 70">
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label-sm">Height (cm)</label>
+            <input type="number" class="form-control form-control-sm" id="v-height" step="0.1" placeholder="e.g. 170">
+          </div>
+          <div class="col-12">
+            <label class="form-label-sm">Notes</label>
+            <textarea class="form-control form-control-sm" id="v-notes" rows="2" placeholder="Optional observations..."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success btn-sm" onclick="saveVitals()">
+          <i class="bi bi-check"></i> Save Vitals
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Ward Round Modal -->
-<div class="modal fade" id="wardRoundModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Ward Round</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="ward-round-id">
-
-                <!-- Vitals Section -->
-                <div class="row g-2 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Blood Pressure</label>
-                        <input type="text" class="form-control" id="vital-bp" placeholder="e.g., 120/80">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Temperature (°C)</label>
-                        <input type="text" class="form-control" id="vital-temp" placeholder="e.g., 37.2">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Pulse</label>
-                        <input type="text" class="form-control" id="vital-pulse" placeholder="e.g., 72">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">SpO2 (%)</label>
-                        <input type="text" class="form-control" id="vital-spo2" placeholder="e.g., 98">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Weight (kg)</label>
-                        <input type="text" class="form-control" id="vital-weight" placeholder="e.g., 70">
-                    </div>
-                </div>
-
-                <!-- Clinical Notes -->
-                <div class="mb-3">
-                    <label class="form-label">Chief Complaint</label>
-                    <textarea class="form-control" id="ward-chief-complaint" rows="2"></textarea>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Assessment</label>
-                    <textarea class="form-control" id="ward-assessment" rows="3"></textarea>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Diagnosis/Plan</label>
-                    <textarea class="form-control" id="ward-diagnosis" rows="3"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveWardRound()">Save</button>
-                <button type="button" class="btn btn-success" onclick="completeWardRound()">Complete</button>
-            </div>
+<div class="modal fade" id="wardRoundModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header modal-header-primary">
+        <h5 class="modal-title text-white"><i class="bi bi-file-medical"></i> Ward Round</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="ward-round-id">
+        <div class="mb-3">
+          <label class="form-label-sm">Chief Complaint</label>
+          <textarea class="form-control form-control-sm" id="wr-complaint" rows="2" placeholder="Current complaints..."></textarea>
         </div>
+        <div class="mb-3">
+          <label class="form-label-sm">Assessment / Examination</label>
+          <textarea class="form-control form-control-sm" id="wr-assessment" rows="3" placeholder="Clinical assessment and examination findings..."></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label-sm">Diagnosis / Plan</label>
+          <textarea class="form-control form-control-sm" id="wr-diagnosis" rows="3" placeholder="Working diagnosis and management plan..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="saveWardRound('in_progress')">
+          <i class="bi bi-save"></i> Save Draft
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveWardRound('completed')">
+          <i class="bi bi-check-circle"></i> Complete Round
+        </button>
+      </div>
     </div>
+  </div>
 </div>
 
-<!-- Drug Prescription Modal (WITH TASK GENERATION) -->
-<div class="modal fade" id="drugPrescriptionModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Prescribe Medications</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="prescription-list"></div>
-                <div class="mt-3">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="add-drug-btn">
-                        <i class="bi bi-plus-circle"></i> Add Drug from Inventory
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="add-external-drug-btn">
-                        <i class="bi bi-journal-plus"></i> Add Unavailable Drug
-                    </button>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="submit-prescriptions-btn">
-                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                    Save Prescriptions
-                </button>
-            </div>
+<!-- Add Task Modal -->
+<div class="modal fade" id="taskModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header modal-header-primary">
+        <h5 class="modal-title text-white"><i class="bi bi-list-check"></i> Add Task</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label-sm">Task Type</label>
+          <select class="form-select form-select-sm" id="task-type" onchange="onTaskTypeChange()">
+            <option value="general">General</option>
+            <option value="vitals">Vitals</option>
+            <option value="ward_round">Ward Round</option>
+            <option value="drug">Drug Administration</option>
+            <option value="lab">Lab Test</option>
+            <option value="scan">Scan</option>
+          </select>
         </div>
+        <div class="mb-3" id="drug-select-group" style="display:none">
+          <label class="form-label-sm">Select Drug Order</label>
+          <select class="form-select form-select-sm" id="task-drug-order">
+            <option value="">-- Select --</option>
+            {% for drug in drug_orders %}
+            {% if drug.status != 'cancelled' and drug.status != 'returned' %}
+            <option value="{{ drug.id }}"
+              data-ordered="{{ drug.quantity_ordered }}"
+              data-dispensed="{{ drug.quantity_dispensed }}">
+              {{ drug.drug.brand_name|default:drug.drug.generic_name }} ({{ drug.dosage_instructions|truncatewords:4 }}) — Dispensed: {{ drug.quantity_dispensed }}/{{ drug.quantity_ordered }}
+            </option>
+            {% endif %}
+            {% endfor %}
+          </select>
+          <small class="text-muted" id="drug-task-info"></small>
+        </div>
+        <div class="mb-3">
+          <label class="form-label-sm">Description</label>
+          <textarea class="form-control form-control-sm" id="task-desc" rows="2" placeholder="Task description..."></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label-sm">Scheduled Date & Time</label>
+          <input type="datetime-local" class="form-control form-control-sm" id="task-datetime">
+        </div>
+        <div class="mb-3">
+          <label class="form-label-sm">Priority</label>
+          <select class="form-select form-select-sm" id="task-priority">
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="submitTask()">
+          <i class="bi bi-check"></i> Add Task
+        </button>
+      </div>
     </div>
+  </div>
 </div>
 
-<!-- Lab Test Modal -->
-<div class="modal fade" id="labTestModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Order Lab Tests</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Filter by Category (Optional)</label>
-                    <select class="form-select" id="testCategoryFilter">
-                        <option value="">Search all categories...</option>
-                        {% for category in lab_categories %}
-                        <option value="{{ category.id }}">{{ category.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <hr>
-                <div id="lab-test-list"></div>
-                <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-lab-test-btn">
-                    <i class="bi bi-plus-circle"></i> Add Another Test
-                </button>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-info" id="submit-lab-orders-btn">Order Tests</button>
-            </div>
+<!-- Prescription Modal -->
+<div class="modal fade" id="drugPrescriptionModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header modal-header-primary">
+        <h5 class="modal-title text-white">Prescribe Medications</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="prescription-list"></div>
+        <div class="mt-3 d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-primary" id="add-drug-btn">
+            <i class="bi bi-plus-circle"></i> Add Drug from Inventory
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="add-external-drug-btn">
+            <i class="bi bi-journal-plus"></i> Add Unavailable Drug
+          </button>
         </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="submit-prescriptions-btn">
+          <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+          Save Prescriptions
+        </button>
+      </div>
     </div>
+  </div>
+</div>
+
+<!-- Lab Modal -->
+<div class="modal fade" id="labTestModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header modal-header-info">
+        <h5 class="modal-title text-white">Order Lab Tests</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <select class="form-select form-select-sm" id="testCategoryFilter">
+            <option value="">All categories...</option>
+            {% for cat in lab_categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div id="lab-test-list"></div>
+        <button class="btn btn-sm btn-outline-primary mt-2" id="add-lab-test-btn"><i class="bi bi-plus"></i> Add Test</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-info text-white btn-sm" id="submit-lab-orders-btn">Order Tests</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Scan Modal -->
-<div class="modal fade" id="scanModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Order Imaging</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Filter by Category (Optional)</label>
-                    <select class="form-select" id="imagingCategoryFilter">
-                        <option value="">Search all categories...</option>
-                        {% for category in scan_categories %}
-                        <option value="{{ category.id }}">{{ category.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <hr>
-                <div id="imaging-list"></div>
-                <button type="button" class="btn btn-sm btn-outline-warning mt-2" id="add-imaging-btn">
-                    <i class="bi bi-plus-circle"></i> Add Another Image Request
-                </button>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" id="submit-imaging-orders-btn">Order Imaging</button>
-            </div>
+<div class="modal fade" id="scanModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#d97706; color:white">
+        <h5 class="modal-title">Order Imaging</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <select class="form-select form-select-sm" id="imagingCategoryFilter">
+            <option value="">All categories...</option>
+            {% for cat in scan_categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+          </select>
         </div>
+        <div id="imaging-list"></div>
+        <button class="btn btn-sm btn-outline-warning mt-2" id="add-imaging-btn"><i class="bi bi-plus"></i> Add</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-warning btn-sm" id="submit-imaging-orders-btn">Order Imaging</button>
+      </div>
     </div>
+  </div>
 </div>
 
-<!-- Service Order Modal -->
-<div class="modal fade" id="serviceOrderModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Order Service</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Filter by Category (Optional)</label>
-                    <select class="form-select" id="serviceCategoryFilter">
-                        <option value="">Search all categories...</option>
-                        {% for category in service_categories %}
-                        <option value="{{ category.id }}">{{ category.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <hr>
-                <div id="service-order-form-list"></div>
-                <button type="button" class="btn btn-sm btn-outline-success mt-2" id="add-service-btn">
-                    <i class="bi bi-plus-circle"></i> Add Another Service
-                </button>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success" id="submit-service-orders-btn">Order Services</button>
-            </div>
+<!-- Service Modal -->
+<div class="modal fade" id="serviceOrderModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header modal-header-success">
+        <h5 class="modal-title text-white">Order Service</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <select class="form-select form-select-sm" id="serviceCategoryFilter">
+            <option value="">All categories...</option>
+            {% for cat in service_categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+          </select>
         </div>
+        <div id="service-order-form-list"></div>
+        <button class="btn btn-sm btn-outline-success mt-2" id="add-service-btn"><i class="bi bi-plus"></i> Add</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-success btn-sm" id="submit-service-orders-btn">Order Services</button>
+      </div>
     </div>
+  </div>
 </div>
 
-<!-- Item Order Modal -->
-<div class="modal fade" id="itemOrderModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Order Item</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Filter by Category (Optional)</label>
-                    <select class="form-select" id="itemCategoryFilter">
-                        <option value="">Search all categories...</option>
-                        {% for category in item_categories %}
-                        <option value="{{ category.id }}">{{ category.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <hr>
-                <div id="item-order-form-list"></div>
-                <button type="button" class="btn btn-sm btn-outline-dark mt-2" id="add-item-btn">
-                    <i class="bi bi-plus-circle"></i> Add Another Item
-                </button>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-dark" id="submit-item-orders-btn">Order Items</button>
-            </div>
+<!-- Item Modal -->
+<div class="modal fade" id="itemOrderModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1f2937; color:white">
+        <h5 class="modal-title">Order Item</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <select class="form-select form-select-sm" id="itemCategoryFilter">
+            <option value="">All categories...</option>
+            {% for cat in item_categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+          </select>
         </div>
+        <div id="item-order-form-list"></div>
+        <button class="btn btn-sm btn-outline-dark mt-2" id="add-item-btn"><i class="bi bi-plus"></i> Add</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-dark btn-sm" id="submit-item-orders-btn">Order Items</button>
+      </div>
     </div>
+  </div>
 </div>
 
-<!-- Confirmation Modal -->
+<!-- Confirm / Message Modals -->
 <div class="modal fade" id="confirmationModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Confirm Action</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="confirmationModalBody">
-                Are you sure you want to proceed?
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="confirmButton">Confirm</button>
-            </div>
-        </div>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" id="confModalLabel">Confirm</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" id="confModalBody">Are you sure?</div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="confModalBtn">Confirm</button>
+      </div>
     </div>
+  </div>
 </div>
 
-<!-- Message Modal -->
 <div class="modal fade" id="messageModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header text-white" id="messageModalHeader">
-                <h5 class="modal-title" id="messageModalLabel">Notification</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="messageModalBody"></div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
-            </div>
-        </div>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header text-white" id="msgModalHeader">
+        <h5 class="modal-title" id="msgModalTitle">Notice</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="msgModalBody"></div>
+      <div class="modal-footer"><button class="btn btn-primary btn-sm" data-bs-dismiss="modal">OK</button></div>
     </div>
+  </div>
 </div>
-
-<!-- Toast Container -->
-<div class="toast-container"></div>
 
 <!-- TEMPLATES -->
 <template id="available-drug-template">
-    <div class="card prescription-row mb-3" data-type="available">
-        <div class="card-body">
-            <div class="d-flex justify-content-end">
-                <button type="button" class="btn-close" onclick="removeDrugForm(this)"></button>
-            </div>
-            <div class="row g-2 mb-2">
-                <div class="col-md-12 position-relative">
-                    <label class="form-label">Search Drug</label>
-                    <input type="text" class="form-control drug-search-input" placeholder="Start typing drug name..." required>
-                    <input type="hidden" class="drug-id-input" name="drug_id">
-                    <input type="hidden" class="drug-pack-size-input" name="pack_size">
-                    <input type="hidden" class="drug-unit-input" name="unit">
-                    <div class="search-results list-group position-absolute w-100" style="z-index: 1050;"></div>
-                </div>
-            </div>
-            <div class="row g-2">
-                <div class="col-md-5">
-                    <label class="form-label">Dosage Instructions</label>
-                    <input type="text" class="form-control dosage-input" name="dosage" placeholder="e.g., 2 tablets twice daily" required>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Duration</label>
-                    <input type="text" class="form-control duration-input" name="duration" placeholder="e.g., 7 days or 1 week">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Total Quantity</label>
-                    <div class="input-group">
-                        <input type="number" class="form-control quantity-input" name="quantity" placeholder="Auto" min="1" required>
-                        <input type="text" class="form-control quantity-display" readonly style="max-width: 150px; font-size: 0.875rem;">
-                    </div>
-                </div>
-            </div>
-            <div class="row g-2 mt-2">
-                <div class="col-md-12">
-                    <label class="form-label">Notes (Optional)</label>
-                    <input type="text" class="form-control notes-input" name="notes" placeholder="Additional instructions...">
-                </div>
-            </div>
-
-            <!-- NEW: Task Generation Options -->
-            <div class="row g-2 mt-2 border-top pt-2">
-                <div class="col-md-12">
-                    <div class="form-check">
-                        <input class="form-check-input task-checkbox" type="checkbox" id="generate-tasks">
-                        <label class="form-check-label" for="generate-tasks">
-                            <strong>Automatically create administration tasks</strong>
-                        </label>
-                    </div>
-                </div>
-                <div class="col-md-6 task-time-container" style="display: none;">
-                    <label class="form-label">First Dose Time</label>
-                    <input type="time" class="form-control first-dose-time-input" name="first_dose_time" placeholder="HH:MM">
-                    <small class="text-muted">Tasks will be scheduled based on dosage frequency</small>
-                </div>
-            </div>
+  <div class="card prescription-row mb-3" data-type="available">
+    <div class="card-body">
+      <div class="d-flex justify-content-end"><button type="button" class="btn-close" onclick="this.closest('.prescription-row').remove()"></button></div>
+      <div class="row g-2">
+        <div class="col-12 position-relative">
+          <label class="form-label-sm">Search Drug</label>
+          <input type="text" class="form-control form-control-sm drug-search-input" placeholder="Start typing...">
+          <input type="hidden" class="drug-id-input"><input type="hidden" class="drug-pack-size-input"><input type="hidden" class="drug-unit-input">
+          <div class="search-results list-group position-absolute w-100" style="z-index:1050"></div>
         </div>
+        <div class="col-md-5"><label class="form-label-sm">Dosage Instructions</label><input type="text" class="form-control form-control-sm dosage-input" placeholder="e.g. 1 tab BD"></div>
+        <div class="col-md-4"><label class="form-label-sm">Duration</label><input type="text" class="form-control form-control-sm duration-input" placeholder="e.g. 7 days"></div>
+        <div class="col-md-3"><label class="form-label-sm">Quantity</label><input type="number" class="form-control form-control-sm quantity-input" min="1"></div>
+        <div class="col-12"><label class="form-label-sm">Notes</label><input type="text" class="form-control form-control-sm notes-input" placeholder="Optional"></div>
+        <div class="col-12 border-top pt-2">
+          <div class="form-check form-check-inline">
+            <input class="form-check-input task-checkbox" type="checkbox" id="gen-tasks-{{loop}}">
+            <label class="form-check-label small" for="gen-tasks-{{loop}}">Auto-generate administration tasks</label>
+          </div>
+          <div class="task-time-container mt-2" style="display:none">
+            <label class="form-label-sm">First Dose Time</label>
+            <input type="time" class="form-control form-control-sm first-dose-time-input">
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
 </template>
 
 <template id="external-drug-template">
-    <div class="card prescription-row mb-3" data-type="external">
-        <div class="card-body bg-light">
-            <div class="d-flex justify-content-end">
-                <button type="button" class="btn-close" onclick="removeDrugForm(this)"></button>
-            </div>
-            <div class="row g-2">
-                <div class="col-md-3">
-                    <label class="form-label">Drug Name</label>
-                    <input type="text" class="form-control drug-name-input" name="drug_name" placeholder="Enter drug name" required>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Dosage Instructions</label>
-                    <input type="text" class="form-control dosage-input" name="dosage" placeholder="e.g., 1 tablet once daily" required>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Duration</label>
-                    <input type="text" class="form-control duration-input" name="duration" placeholder="e.g., 10 days">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Quantity</label>
-                    <input type="text" class="form-control quantity-input" name="quantity" placeholder="e.g., 1 Card" required>
-                </div>
-            </div>
-            <div class="row g-2 mt-2">
-                <div class="col-md-12">
-                    <label class="form-label">Notes (Optional)</label>
-                    <input type="text" class="form-control notes-input" name="notes" placeholder="e.g., Purchase from external pharmacy">
-                </div>
-            </div>
-        </div>
+  <div class="card prescription-row mb-3 bg-light" data-type="external">
+    <div class="card-body">
+      <div class="d-flex justify-content-end"><button type="button" class="btn-close" onclick="this.closest('.prescription-row').remove()"></button></div>
+      <div class="row g-2">
+        <div class="col-md-3"><label class="form-label-sm">Drug Name</label><input type="text" class="form-control form-control-sm drug-name-input" placeholder="Drug name"></div>
+        <div class="col-md-4"><label class="form-label-sm">Dosage</label><input type="text" class="form-control form-control-sm dosage-input"></div>
+        <div class="col-md-2"><label class="form-label-sm">Duration</label><input type="text" class="form-control form-control-sm duration-input"></div>
+        <div class="col-md-3"><label class="form-label-sm">Quantity</label><input type="text" class="form-control form-control-sm quantity-input"></div>
+        <div class="col-12"><label class="form-label-sm">Notes</label><input type="text" class="form-control form-control-sm notes-input"></div>
+      </div>
     </div>
+  </div>
 </template>
 
 <template id="lab-test-row-template">
-    <div class="row g-2 align-items-center mb-3 order-row">
-        <div class="col-md-6 position-relative">
-            <input type="text" class="form-control search-input" placeholder="Search for a lab test...">
-            <input type="hidden" class="template-id-input" name="template_id">
-            <div class="search-results list-group position-absolute w-100" style="z-index: 1060;"></div>
-        </div>
-        <div class="col-md-5">
-            <input type="text" class="form-control instructions-input" name="special_instructions" placeholder="Clinical indication / Instructions (optional)">
-        </div>
-        <div class="col-md-1">
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()">
-                <i class="bi bi-trash"></i>
-            </button>
-        </div>
+  <div class="row g-2 align-items-center mb-2 order-row">
+    <div class="col-6 position-relative">
+      <input type="text" class="form-control form-control-sm search-input" placeholder="Search lab test...">
+      <input type="hidden" class="template-id-input">
+      <div class="search-results list-group position-absolute w-100" style="z-index:1060"></div>
     </div>
+    <div class="col-5"><input type="text" class="form-control form-control-sm instructions-input" placeholder="Instructions (optional)"></div>
+    <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()"><i class="bi bi-trash"></i></button></div>
+  </div>
 </template>
 
 <template id="imaging-row-template">
-    <div class="row g-2 align-items-center mb-3 order-row">
-        <div class="col-md-6 position-relative">
-            <input type="text" class="form-control search-input" placeholder="Search for an imaging request...">
-            <input type="hidden" class="template-id-input" name="template_id">
-            <div class="search-results list-group position-absolute w-100" style="z-index: 1060;"></div>
-        </div>
-        <div class="col-md-5">
-            <input type="text" class="form-control indication-input" name="clinical_indication" placeholder="Clinical indication (optional)">
-        </div>
-        <div class="col-md-1">
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()">
-                <i class="bi bi-trash"></i>
-            </button>
-        </div>
+  <div class="row g-2 align-items-center mb-2 order-row">
+    <div class="col-6 position-relative">
+      <input type="text" class="form-control form-control-sm search-input" placeholder="Search scan...">
+      <input type="hidden" class="template-id-input">
+      <div class="search-results list-group position-absolute w-100" style="z-index:1060"></div>
     </div>
+    <div class="col-5"><input type="text" class="form-control form-control-sm indication-input" placeholder="Indication (optional)"></div>
+    <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()"><i class="bi bi-trash"></i></button></div>
+  </div>
 </template>
 
 <template id="service-row-template">
-    <div class="row g-2 align-items-center mb-3 order-row">
-        <div class="col-md-5 position-relative">
-            <input type="text" class="form-control search-input" placeholder="Search for a service...">
-            <input type="hidden" class="template-id-input" name="template_id">
-            <div class="search-results list-group position-absolute w-100" style="z-index: 1060;"></div>
-        </div>
-        <div class="col-md-2">
-            <input type="number" class="form-control quantity-input" name="quantity" value="1" min="1">
-        </div>
-        <div class="col-md-4">
-            <input type="text" class="form-control notes-input" name="notes" placeholder="Notes (optional)">
-        </div>
-        <div class="col-md-1">
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()">
-                <i class="bi bi-trash"></i>
-            </button>
-        </div>
+  <div class="row g-2 align-items-center mb-2 order-row">
+    <div class="col-5 position-relative">
+      <input type="text" class="form-control form-control-sm search-input" placeholder="Search service...">
+      <input type="hidden" class="template-id-input">
+      <div class="search-results list-group position-absolute w-100" style="z-index:1060"></div>
     </div>
+    <div class="col-2"><input type="number" class="form-control form-control-sm quantity-input" value="1" min="1"></div>
+    <div class="col-4"><input type="text" class="form-control form-control-sm notes-input" placeholder="Notes"></div>
+    <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()"><i class="bi bi-trash"></i></button></div>
+  </div>
 </template>
 
 <template id="item-row-template">
-    <div class="row g-2 align-items-center mb-3 order-row">
-        <div class="col-md-5 position-relative">
-            <input type="text" class="form-control search-input" placeholder="Search for an item...">
-            <input type="hidden" class="template-id-input" name="template_id">
-            <div class="search-results list-group position-absolute w-100" style="z-index: 1060;"></div>
-        </div>
-        <div class="col-md-2">
-            <input type="number" class="form-control quantity-input" name="quantity" value="1" min="1">
-        </div>
-        <div class="col-md-4">
-            <input type="text" class="form-control notes-input" name="notes" placeholder="Notes (optional)">
-        </div>
-        <div class="col-md-1">
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()">
-                <i class="bi bi-trash"></i>
-            </button>
-        </div>
+  <div class="row g-2 align-items-center mb-2 order-row">
+    <div class="col-5 position-relative">
+      <input type="text" class="form-control form-control-sm search-input" placeholder="Search item...">
+      <input type="hidden" class="template-id-input">
+      <div class="search-results list-group position-absolute w-100" style="z-index:1060"></div>
     </div>
+    <div class="col-2"><input type="number" class="form-control form-control-sm quantity-input" value="1" min="1"></div>
+    <div class="col-4"><input type="text" class="form-control form-control-sm notes-input" placeholder="Notes"></div>
+    <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.order-row').remove()"><i class="bi bi-trash"></i></button></div>
+  </div>
 </template>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Toast container -->
+<div class="position-fixed top-0 end-0 p-3" style="z-index:9999" id="toast-container"></div>
+
 <script>
 const admissionId = {{ admission.id }};
 const patientId = {{ admission.patient.id }};
 const isActive = {{ admission.is_active|yesno:"true,false" }};
+const debtLimitReached = {{ admission.debt_limit_reached|yesno:"true,false" }};
+const currentUserId = {{ request.user.id }};
 
+let vitalsModal, wardRoundModal, taskModal, drugPrescriptionModal;
+let labTestModal, scanModal, serviceOrderModal, itemOrderModal;
 let confirmationModal, messageModal;
-let labTestModal, scanModal, serviceOrderModal, itemOrderModal, drugPrescriptionModal, wardRoundModal;
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize modals
-    confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
-    messageModal = new bootstrap.Modal(document.getElementById('messageModal'));
-    labTestModal = new bootstrap.Modal(document.getElementById('labTestModal'));
-    scanModal = new bootstrap.Modal(document.getElementById('scanModal'));
-    drugPrescriptionModal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
-    serviceOrderModal = new bootstrap.Modal(document.getElementById('serviceOrderModal'));
-    itemOrderModal = new bootstrap.Modal(document.getElementById('itemOrderModal'));
-    wardRoundModal = new bootstrap.Modal(document.getElementById('wardRoundModal'));
+document.addEventListener('DOMContentLoaded', () => {
+  vitalsModal         = new bootstrap.Modal(document.getElementById('vitalsModal'));
+  wardRoundModal      = new bootstrap.Modal(document.getElementById('wardRoundModal'));
+  taskModal           = new bootstrap.Modal(document.getElementById('taskModal'));
+  drugPrescriptionModal = new bootstrap.Modal(document.getElementById('drugPrescriptionModal'));
+  labTestModal        = new bootstrap.Modal(document.getElementById('labTestModal'));
+  scanModal           = new bootstrap.Modal(document.getElementById('scanModal'));
+  serviceOrderModal   = new bootstrap.Modal(document.getElementById('serviceOrderModal'));
+  itemOrderModal      = new bootstrap.Modal(document.getElementById('itemOrderModal'));
+  confirmationModal   = new bootstrap.Modal(document.getElementById('confirmationModal'));
+  messageModal        = new bootstrap.Modal(document.getElementById('messageModal'));
 
-    // Initialize modal workflows if admission is active
-    if (isActive) {
-        initializePrescriptionModal();
-        initializeOrderModals();
-        initializeServiceItemOrderModals();
-    }
+  initPrescriptionModal();
+  initOrderModals();
+  initServiceItemModals();
+
+  // Tab memory
+  const savedTab = sessionStorage.getItem('admTab');
+  if (savedTab) {
+    const btn = document.querySelector(`button[data-bs-target="#${savedTab}"]`);
+    if (btn) new bootstrap.Tab(btn).show();
+    sessionStorage.removeItem('admTab');
+  }
 });
 
-// ====================
-// WARD ROUND FUNCTIONS
-// ====================
+// ── UTILITIES ──────────────────────────────
+function getCookie(name) {
+  let v = null;
+  document.cookie.split(';').forEach(c => {
+    c = c.trim();
+    if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
+  });
+  return v;
+}
 
+function showMsg(message, type = 'success') {
+  const hdr = document.getElementById('msgModalHeader');
+  hdr.className = 'modal-header text-white bg-' + (type === 'danger' ? 'danger' : type === 'warning' ? 'warning' : type === 'success' ? 'success' : 'primary');
+  document.getElementById('msgModalTitle').textContent = type === 'danger' ? 'Error' : type === 'warning' ? 'Warning' : 'Success';
+  document.getElementById('msgModalBody').textContent = message;
+  messageModal.show();
+}
+
+function showToast(message, type = 'success') {
+  const id = 'toast-' + Date.now();
+  document.getElementById('toast-container').insertAdjacentHTML('beforeend', `
+    <div id="${id}" class="alert alert-${type} alert-dismissible shadow-sm" style="min-width:220px;animation:slideIn .3s ease">
+      ${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById(id)?.remove(), 3500);
+}
+
+function showConfirm(message, callback) {
+  document.getElementById('confModalBody').textContent = message;
+  const btn = document.getElementById('confModalBtn');
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+  newBtn.addEventListener('click', () => { confirmationModal.hide(); callback(); });
+  confirmationModal.show();
+}
+
+// ── VITALS ─────────────────────────────────
+function openVitalsModal(editId = null) {
+  document.getElementById('vitals-edit-id').value = editId || '';
+  ['v-bp-sys','v-bp-dia','v-temp','v-pulse','v-spo2','v-resp','v-weight','v-height','v-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  vitalsModal.show();
+}
+
+function editVitals(vitalsId) {
+  // Data is already in the DOM — just read it and populate the form
+  const card = document.getElementById(`vitals-${vitalsId}`);
+  document.getElementById('vitals-edit-id').value = vitalsId;
+
+  // Clear all fields first
+  ['v-bp-sys','v-bp-dia','v-temp','v-pulse','v-spo2','v-resp','v-weight','v-height','v-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+
+  // Read from vital chips already rendered in the card
+  card.querySelectorAll('.vital-chip').forEach(chip => {
+    const label = chip.querySelector('label').textContent.trim();
+    const value = chip.querySelector('span').textContent.trim();
+    if (label === 'BP') {
+      const parts = value.split('/');
+      if (parts.length === 2) {
+        document.getElementById('v-bp-sys').value = parts[0].trim();
+        document.getElementById('v-bp-dia').value = parts[1].trim();
+      }
+    }
+    else if (label === 'Temp °C')    document.getElementById('v-temp').value = value;
+    else if (label === 'Pulse')      document.getElementById('v-pulse').value = value;
+    else if (label === 'SpO₂ %')     document.getElementById('v-spo2').value = value;
+    else if (label === 'Resp/min')   document.getElementById('v-resp').value = value;
+    else if (label === 'Weight kg')  document.getElementById('v-weight').value = value;
+    else if (label === 'Height cm')  document.getElementById('v-height').value = value;
+  });
+
+  // Notes
+  const notesEl = card.querySelector('.ward-text em');
+  if (notesEl) document.getElementById('v-notes').value = notesEl.textContent.trim();
+
+  vitalsModal.show();
+}
+
+function saveVitals() {
+  const editId = document.getElementById('vitals-edit-id').value;
+  const fd = new FormData();
+  fd.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+  fd.append('blood_pressure_systolic', document.getElementById('v-bp-sys').value);
+  fd.append('blood_pressure_diastolic', document.getElementById('v-bp-dia').value);
+  fd.append('temperature', document.getElementById('v-temp').value);
+  fd.append('pulse_rate', document.getElementById('v-pulse').value);
+  fd.append('oxygen_saturation', document.getElementById('v-spo2').value);
+  fd.append('respiratory_rate', document.getElementById('v-resp').value);
+  fd.append('weight', document.getElementById('v-weight').value);
+  fd.append('height', document.getElementById('v-height').value);
+  fd.append('notes', document.getElementById('v-notes').value);
+
+  const url = editId
+    ? `/portal/inpatient/admission/vitals/${editId}/edit/`
+    : `/portal/inpatient/admission/${admissionId}/vitals/add/`;
+
+  fetch(url, { method: 'POST', body: fd })
+    .then(r => r.json()).then(d => {
+      if (d.success) {
+        vitalsModal.hide();
+        showToast('Vitals saved successfully');
+        sessionStorage.setItem('admTab', 'tab-clinical');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showMsg(d.error || 'Failed to save vitals', 'danger');
+      }
+    }).catch(() => showMsg('Network error', 'danger'));
+}
+
+// ── WARD ROUNDS ────────────────────────────
 function startWardRound() {
-    // Clear form
-    document.getElementById('ward-round-id').value = '';
-    document.getElementById('vital-bp').value = '';
-    document.getElementById('vital-temp').value = '';
-    document.getElementById('vital-pulse').value = '';
-    document.getElementById('vital-spo2').value = '';
-    document.getElementById('vital-weight').value = '';
-    document.getElementById('ward-chief-complaint').value = '';
-    document.getElementById('ward-assessment').value = '';
-    document.getElementById('ward-diagnosis').value = '';
+  document.getElementById('ward-round-id').value = '';
+  document.getElementById('wr-complaint').value = '';
+  document.getElementById('wr-assessment').value = '';
+  document.getElementById('wr-diagnosis').value = '';
 
-    // Make AJAX call to create new ward round
-    fetch(`/portal/inpatient/admission/${admissionId}/start-ward-round/`, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken'),
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            document.getElementById('ward-round-id').value = data.ward_round_id;
-            wardRoundModal.show();
-        } else {
-            showAlert(data.error || 'Failed to start ward round', 'danger');
-        }
-    })
-    .catch(error => {
-        showAlert('Network error occurred', 'danger');
-    });
-}
-
-function editWardRound(wardRoundId) {
-    // Load existing ward round data and show modal
-    // For now, just show modal with empty form
-    // You can add AJAX call to fetch existing data if needed
-    document.getElementById('ward-round-id').value = wardRoundId;
-    wardRoundModal.show();
-}
-
-function viewWardRound(wardRoundId) {
-    // Redirect to a view-only page or show in a read-only modal
-    // For now, just show alert
-    showAlert('View functionality coming soon', 'info');
-}
-
-function saveWardRound() {
-    const wardRoundId = document.getElementById('ward-round-id').value;
-    if (!wardRoundId) {
-        showAlert('Invalid ward round', 'danger');
-        return;
+  fetch(`/portal/inpatient/admission/${admissionId}/start-ward-round/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken'), 'Content-Type': 'application/json' }
+  }).then(r => r.json()).then(d => {
+    if (d.success) {
+      document.getElementById('ward-round-id').value = d.ward_round_id;
+      wardRoundModal.show();
+    } else {
+      showMsg(d.error || 'Failed to start ward round', 'danger');
     }
+  }).catch(() => showMsg('Network error', 'danger'));
+}
 
-    const formData = new FormData();
-    formData.append('chief_complaint', document.getElementById('ward-chief-complaint').value);
-    formData.append('assessment', document.getElementById('ward-assessment').value);
-    formData.append('diagnosis', document.getElementById('ward-diagnosis').value);
-    formData.append('bp', document.getElementById('vital-bp').value);
-    formData.append('temp', document.getElementById('vital-temp').value);
-    formData.append('pulse', document.getElementById('vital-pulse').value);
-    formData.append('spo2', document.getElementById('vital-spo2').value);
-    formData.append('weight', document.getElementById('vital-weight').value);
+function editWardRound(id, complaint, assessment, diagnosis, status) {
+  document.getElementById('ward-round-id').value = id;
+  document.getElementById('wr-complaint').value = complaint;
+  document.getElementById('wr-assessment').value = assessment;
+  document.getElementById('wr-diagnosis').value = diagnosis;
+  wardRoundModal.show();
+}
 
-    fetch(`/inpatient/ward-rounds/${wardRoundId}/save/`, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showMiniToast('Ward round notes saved', 'success');
+function saveWardRound(status) {
+  const wardRoundId = document.getElementById('ward-round-id').value;
+  if (!wardRoundId) { showMsg('No ward round loaded', 'danger'); return; }
+
+  const fd = new FormData();
+  fd.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+  fd.append('chief_complaint', document.getElementById('wr-complaint').value);
+  fd.append('assessment', document.getElementById('wr-assessment').value);
+  fd.append('diagnosis', document.getElementById('wr-diagnosis').value);
+  fd.append('status', status);
+
+  fetch(`/portal/inpatient/ward-round/${wardRoundId}/save/`, { method: 'POST', body: fd })
+    .then(r => r.json()).then(d => {
+      if (d.success) {
+        wardRoundModal.hide();
+        showToast(status === 'completed' ? 'Ward round completed' : 'Ward round saved');
+        sessionStorage.setItem('admTab', 'tab-clinical');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showMsg(d.error || 'Failed to save', 'danger');
+      }
+    }).catch(() => showMsg('Network error', 'danger'));
+}
+
+// ── TASKS ──────────────────────────────────
+function addTask() {
+  document.getElementById('task-type').value = 'general';
+  document.getElementById('task-desc').value = '';
+  document.getElementById('task-priority').value = 'normal';
+  document.getElementById('task-datetime').value = '';
+  document.getElementById('drug-select-group').style.display = 'none';
+  taskModal.show();
+}
+
+function onTaskTypeChange() {
+  const type = document.getElementById('task-type').value;
+  document.getElementById('drug-select-group').style.display = type === 'drug' ? 'block' : 'none';
+  if (type === 'drug') updateDrugTaskInfo();
+}
+
+function updateDrugTaskInfo() {
+  const sel = document.getElementById('task-drug-order');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt.value) { document.getElementById('drug-task-info').textContent = ''; return; }
+  const ordered = parseFloat(opt.dataset.ordered);
+  const dispensed = parseFloat(opt.dataset.dispensed);
+
+  fetch(`/portal/inpatient/admission/${admissionId}/task/drug-pending/?drug_order_id=${opt.value}`)
+    .then(r => r.json()).then(d => {
+      const pending = d.pending_tasks || 0;
+      const maxAddable = ordered - dispensed - pending;
+      document.getElementById('drug-task-info').textContent =
+        `Ordered: ${ordered} | Dispensed: ${dispensed} | Pending tasks: ${pending} | Max addable: ${Math.max(0, maxAddable)}`;
+    }).catch(() => {
+      document.getElementById('drug-task-info').textContent = `Ordered: ${ordered} | Dispensed: ${dispensed}`;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const drugSel = document.getElementById('task-drug-order');
+  if (drugSel) drugSel.addEventListener('change', updateDrugTaskInfo);
+});
+
+function submitTask() {
+  const taskType = document.getElementById('task-type').value;
+  const desc = document.getElementById('task-desc').value;
+  const dt = document.getElementById('task-datetime').value;
+  const priority = document.getElementById('task-priority').value;
+  const drugOrderId = document.getElementById('task-drug-order')?.value;
+
+  if (!dt) { showMsg('Please set a scheduled date and time', 'warning'); return; }
+
+  const fd = new FormData();
+  fd.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+  fd.append('task_type', taskType);
+  fd.append('description', desc);
+  fd.append('scheduled_datetime', dt);
+  fd.append('priority', priority);
+  if (taskType === 'drug' && drugOrderId) fd.append('drug_order_id', drugOrderId);
+
+  fetch(`/portal/inpatient/admission/${admissionId}/task/add/`, { method: 'POST', body: fd })
+    .then(r => r.json()).then(d => {
+      if (d.success) {
+        taskModal.hide();
+        showToast('Task added');
+        sessionStorage.setItem('admTab', 'tab-tasks');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showMsg(d.error || 'Failed to add task', 'danger');
+      }
+    }).catch(() => showMsg('Network error', 'danger'));
+}
+
+function completeTask(taskId) {
+  showConfirm('Mark this task as completed?', () => {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+    fetch(`/portal/inpatient/tasks/${taskId}/complete/`, { method: 'POST', body: fd })
+      .then(r => r.json()).then(d => {
+        if (d.success) {
+          showToast('Task completed');
+          sessionStorage.setItem('admTab', 'tab-tasks');
+          setTimeout(() => location.reload(), 1000);
         } else {
-            showAlert(data.error || 'Failed to save', 'danger');
+          showMsg(d.error || 'Failed', 'danger');
         }
-    })
-    .catch(error => {
-        showAlert('Network error occurred', 'danger');
-    });
+      }).catch(err => {
+        console.error(err);
+        showMsg('Network error', 'danger');
+      });
+  });
 }
 
-function completeWardRound() {
-    const wardRoundId = document.getElementById('ward-round-id').value;
-    if (!wardRoundId) {
-        showAlert('Invalid ward round', 'danger');
-        return;
-    }
-
-    showConfirmationModal('Complete this ward round?', () => {
-        fetch(`/inpatient/ward-rounds/${wardRoundId}/complete/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                wardRoundModal.hide();
-                showAlert('Ward round completed successfully', 'success');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to complete', 'danger');
-            }
-        })
-        .catch(error => {
-            confirmationModal.hide();
-            showAlert('Network error occurred', 'danger');
-        });
-    });
+function cancelTask(taskId) {
+  showConfirm('Cancel this task?', () => {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+    fetch(`/portal/inpatient/tasks/${taskId}/cancel/`, { method: 'POST', body: fd })
+      .then(r => r.json()).then(d => {
+        if (d.success) {
+          showToast('Task cancelled', 'warning');
+          sessionStorage.setItem('admTab', 'tab-tasks');
+          setTimeout(() => location.reload(), 1000);
+        } else {
+          showMsg(d.error || 'Failed', 'danger');
+        }
+      }).catch(err => {
+        console.error(err);
+        showMsg('Network error', 'danger');
+      });
+  });
 }
 
-// ====================
-// CONFIRM ADMISSION
-// ====================
-
+// ── CONFIRM ADMISSION ──────────────────────
 function confirmAdmission() {
-    const bedId = document.getElementById('bed_select').value;
-
-    if (!bedId) {
-        showAlert('Please select a bed before confirming admission', 'warning');
-        return;
-    }
-
-    showConfirmationModal('Confirm this admission? This will activate billing.', () => {
-        const formData = new FormData();
-        formData.append('bed_id', bedId);
-
-        fetch(`/inpatient/admissions/${admissionId}/confirm/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                confirmationModal.hide();
-                showAlert(data.message, 'success');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                confirmationModal.hide();
-                showAlert(data.error || 'Failed to confirm admission', 'danger');
-            }
-        })
-        .catch(error => {
-            confirmationModal.hide();
-            showAlert('Network error occurred', 'danger');
-        });
-    });
+  const bedId = document.getElementById('bed_select')?.value;
+  if (!bedId) { showMsg('Please select a bed', 'warning'); return; }
+  showConfirm('Confirm this admission? Billing will begin immediately.', () => {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+    fd.append('bed_id', bedId);
+    fetch(`/portal/inpatient/admission/${admissionId}/confirm/`, { method: 'POST', body: fd })
+      .then(r => r.json()).then(d => {
+        if (d.success) { showToast('Admission confirmed!'); setTimeout(() => location.reload(), 1500); }
+        else showMsg(d.error || 'Failed', 'danger');
+      });
+  });
 }
 
-// ====================
-// QUICK ACTIONS
-// ====================
+// ── DISCHARGE ──────────────────────────────
+function initiateDischarge() {
+  {% if admission.debt_balance > 0 %}
+  showMsg('Patient has an outstanding balance of ₦{{ admission.debt_balance|floatformat:2|intcomma }}. Balance must be cleared before discharge.', 'warning');
+  {% else %}
+  showConfirm('Discharge this patient? This action cannot be undone.', () => {
+    window.location.href = "{% url 'discharge_patient' admission.pk %}";
+  });
+  {% endif %}
+}
 
+// ── PRESCRIPTIONS ──────────────────────────
 function prescribeDrug() {
-    document.getElementById('prescription-list').innerHTML = '';
-    addDrugForm();
-    drugPrescriptionModal.show();
+  if (debtLimitReached) { showMsg('Debt limit reached. Patient must deposit before ordering drugs.', 'warning'); return; }
+  document.getElementById('prescription-list').innerHTML = '';
+  addDrugForm();
+  drugPrescriptionModal.show();
 }
 
-function orderLabTest() {
-    document.getElementById('lab-test-list').innerHTML = '';
-    addOrderForm('lab');
-    labTestModal.show();
-}
-
-function orderScan() {
-    document.getElementById('imaging-list').innerHTML = '';
-    addOrderForm('imaging');
-    scanModal.show();
-}
-
-function orderService() {
-    document.getElementById('service-order-form-list').innerHTML = '';
-    addServiceItemOrderForm('service');
-    serviceOrderModal.show();
-}
-
-function orderItem() {
-    document.getElementById('item-order-form-list').innerHTML = '';
-    addServiceItemOrderForm('item');
-    itemOrderModal.show();
-}
-
-// ====================
-// PRESCRIPTION FUNCTIONS
-// ====================
-
-function initializePrescriptionModal() {
-    document.getElementById('add-drug-btn').addEventListener('click', addDrugForm);
-    document.getElementById('add-external-drug-btn').addEventListener('click', addExternalDrugForm);
-    document.getElementById('submit-prescriptions-btn').addEventListener('click', () => submitPrescriptions(false));
+function initPrescriptionModal() {
+  document.getElementById('add-drug-btn').addEventListener('click', addDrugForm);
+  document.getElementById('add-external-drug-btn').addEventListener('click', addExternalDrugForm);
+  document.getElementById('submit-prescriptions-btn').addEventListener('click', submitPrescriptions);
 }
 
 function addDrugForm() {
-    const template = document.getElementById('available-drug-template');
-    const clone = template.content.cloneNode(true);
-    const formRow = clone.querySelector('.prescription-row');
-    document.getElementById('prescription-list').appendChild(clone);
-
-    const searchInput = formRow.querySelector('.drug-search-input');
-    const dosageInput = formRow.querySelector('.dosage-input');
-    const durationInput = formRow.querySelector('.duration-input');
-    const quantityInput = formRow.querySelector('.quantity-input');
-    const taskCheckbox = formRow.querySelector('.task-checkbox');
-    const taskTimeContainer = formRow.querySelector('.task-time-container');
-
-    searchInput.addEventListener('input', () => handleDrugSearch(searchInput));
-    dosageInput.addEventListener('input', () => calculateQuantity(formRow));
-    durationInput.addEventListener('input', () => calculateQuantity(formRow));
-    quantityInput.addEventListener('input', () => {
-        const packSize = parseInt(formRow.querySelector('.drug-pack-size-input')?.value || '1') || 1;
-        const unitType = formRow.querySelector('.drug-unit-input')?.value || 'tablet';
-        const quantityDisplay = formRow.querySelector('.quantity-display');
-        const totalUnits = parseInt(quantityInput.value) || 0;
-        updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
-    });
-
-    // NEW: Task generation checkbox toggle
-    taskCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-            taskTimeContainer.style.display = 'block';
-            taskTimeContainer.querySelector('.first-dose-time-input').required = true;
-        } else {
-            taskTimeContainer.style.display = 'none';
-            taskTimeContainer.querySelector('.first-dose-time-input').required = false;
-        }
-    });
+  const tmpl = document.getElementById('available-drug-template').content.cloneNode(true);
+  const row = tmpl.querySelector('.prescription-row');
+  document.getElementById('prescription-list').appendChild(tmpl);
+  const si = row.querySelector('.drug-search-input');
+  si.addEventListener('input', () => handleDrugSearch(si));
+  row.querySelector('.dosage-input').addEventListener('input', () => calcQty(row));
+  row.querySelector('.duration-input').addEventListener('input', () => calcQty(row));
+  row.querySelector('.task-checkbox').addEventListener('change', function() {
+    row.querySelector('.task-time-container').style.display = this.checked ? 'block' : 'none';
+  });
 }
 
 function addExternalDrugForm() {
-    const template = document.getElementById('external-drug-template');
-    const clone = template.content.cloneNode(true);
-    document.getElementById('prescription-list').appendChild(clone);
-}
-
-function removeDrugForm(buttonEl) {
-    buttonEl.closest('.prescription-row').remove();
+  const tmpl = document.getElementById('external-drug-template').content.cloneNode(true);
+  document.getElementById('prescription-list').appendChild(tmpl);
 }
 
 function handleDrugSearch(inputEl) {
-    const query = inputEl.value;
-    const resultsContainer = inputEl.parentElement.querySelector('.search-results');
-    const formRow = inputEl.closest('.prescription-row');
-
-    formRow.querySelector('.drug-id-input').value = '';
-    formRow.querySelector('.drug-pack-size-input').value = '';
-    formRow.querySelector('.drug-unit-input').value = '';
-
-    if (query.length < 2) {
-        resultsContainer.innerHTML = '';
-        return;
-    }
-
-    fetch(`/portal/consultation/ajax/search-drugs/?q=${encodeURIComponent(query)}`)
-        .then(response => response.json())
-        .then(data => {
-            resultsContainer.innerHTML = '';
-            if (data.drugs.length > 0) {
-                data.drugs.forEach(drug => {
-                    const item = document.createElement('a');
-                    item.href = '#';
-                    item.className = 'list-group-item list-group-item-action';
-                    item.textContent = `${drug.brand_name || drug.generic_name} (${drug.formulation}) - Stock: ${drug.pharmacy_quantity}`;
-
-                    item.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        formRow.querySelector('.drug-search-input').value = item.textContent;
-                        formRow.querySelector('.drug-id-input').value = drug.id;
-                        formRow.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
-                        formRow.querySelector('.drug-unit-input').value = drug.unit || 'tablet';
-                        resultsContainer.innerHTML = '';
-                        calculateQuantity(formRow);
-                    });
-                    resultsContainer.appendChild(item);
-                });
-            } else {
-                resultsContainer.innerHTML = '<span class="list-group-item">No drugs found</span>';
-            }
+  const q = inputEl.value;
+  const row = inputEl.closest('.prescription-row');
+  const results = inputEl.parentElement.querySelector('.search-results');
+  row.querySelector('.drug-id-input').value = '';
+  if (q.length < 2) { results.innerHTML = ''; return; }
+  fetch(`/portal/consultation/ajax/search-drugs/?q=${encodeURIComponent(q)}`)
+    .then(r => r.json()).then(d => {
+      results.innerHTML = '';
+      (d.drugs || []).forEach(drug => {
+        const a = document.createElement('a');
+        a.href = '#'; a.className = 'list-group-item list-group-item-action small';
+        a.textContent = `${drug.brand_name || drug.generic_name} (${drug.formulation}) — Stock: ${drug.pharmacy_quantity}`;
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          row.querySelector('.drug-search-input').value = a.textContent;
+          row.querySelector('.drug-id-input').value = drug.id;
+          row.querySelector('.drug-pack-size-input').value = drug.pack_size || 1;
+          row.querySelector('.drug-unit-input').value = drug.unit || 'tablet';
+          results.innerHTML = '';
+          calcQty(row);
         });
-}
-
-function calculateQuantity(formRowEl) {
-    const dosageText = formRowEl.querySelector('.dosage-input').value;
-    const cleanedDosage = dosageText.replace(/\./g, '').toLowerCase();
-    const durationText = formRowEl.querySelector('.duration-input').value.toLowerCase();
-    const packSize = parseInt(formRowEl.querySelector('.drug-pack-size-input')?.value || '1') || 1;
-    let unitType = (formRowEl.querySelector('.drug-unit-input')?.value || 'tablet').toLowerCase();
-    const quantityInput = formRowEl.querySelector('.quantity-input');
-    const quantityDisplay = formRowEl.querySelector('.quantity-display');
-
-    if (!quantityInput) return;
-
-    const alwaysOneTypes = ['cream', 'ointment', 'syrup', 'drop', 'drops'];
-    if (alwaysOneTypes.includes(unitType)) {
-        quantityInput.value = 1;
-        quantityInput.readOnly = false;
-        updateQuantityDisplay(1, packSize, unitType, quantityDisplay);
-        return;
-    }
-
-    let durationDays = 0;
-    const durationMatch = durationText.match(/^(\d+)/);
-    if (durationMatch) {
-        const num = parseInt(durationMatch[1]);
-        if (durationText.includes('week') || durationText.includes('w')) durationDays = num * 7;
-        else if (durationText.includes('month') || durationText.includes('m')) durationDays = num * 30;
-        else durationDays = num;
-    }
-
-    if (unitType === 'injection' || unitType === 'drip') {
-        if (durationDays > 0) {
-            const totalUnits = 1 * durationDays;
-            quantityInput.value = totalUnits;
-            quantityInput.readOnly = false;
-            updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
-        } else {
-            quantityInput.value = 1;
-            quantityInput.readOnly = false;
-            updateQuantityDisplay(1, packSize, unitType, quantityDisplay);
-        }
-        return;
-    }
-
-    let dailyDose = 0;
-    let dose = 0;
-    const doseMatch = cleanedDosage.match(/^(\d+(\.\d+)?)/);
-
-    if (doseMatch) {
-        dose = parseFloat(doseMatch[1]);
-    } else {
-        if (cleanedDosage.startsWith('iii')) dose = 3;
-        else if (cleanedDosage.startsWith('ii')) dose = 2;
-        else if (cleanedDosage.startsWith('iv')) dose = 4;
-        else if (cleanedDosage.startsWith('v')) dose = 5;
-        else if (cleanedDosage.startsWith('i')) dose = 1;
-    }
-
-    if (dose > 0) {
-        let frequency = 1;
-        if (/\b(bd|bid|twice|q12h)\b/.test(cleanedDosage)) frequency = 2;
-        else if (/\b(tds|tid|thrice|q8h)\b/.test(cleanedDosage)) frequency = 3;
-        else if (/\b(qds|qid|four times|q6h)\b/.test(cleanedDosage)) frequency = 4;
-        else if (/\b(q4h)\b/.test(cleanedDosage)) frequency = 6;
-        else if (/\b(od|daily|once)\b/.test(cleanedDosage)) frequency = 1;
-
-        const timesMatch = cleanedDosage.match(/(\d+)\s*time/);
-        if (timesMatch) frequency = parseInt(timesMatch[1]);
-
-        const slashMatch = dosageText.match(/\//g);
-        if (slashMatch) frequency = slashMatch.length + 1;
-
-        dailyDose = dose * frequency;
-    }
-
-    if (dailyDose > 0 && durationDays > 0) {
-        const totalUnits = Math.ceil(dailyDose * durationDays);
-        quantityInput.value = totalUnits;
-        quantityInput.readOnly = false;
-        updateQuantityDisplay(totalUnits, packSize, unitType, quantityDisplay);
-    } else {
-        quantityInput.value = '';
-        quantityInput.readOnly = false;
-        updateQuantityDisplay(0, packSize, unitType, quantityDisplay);
-    }
-}
-
-function getPackageTerminology(unitType) {
-    const terminology = {
-        'tablet': ['card', 'cards'],
-        'capsule': ['card', 'cards'],
-        'injection': ['pack', 'packs'],
-        'syrup': ['bottle', 'bottles'],
-        'cream': ['tube', 'tubes'],
-        'ointment': ['tube', 'tubes'],
-        'drop': ['bottle', 'bottles'],
-        'drops': ['bottle', 'bottles']
-    };
-    return terminology[unitType] || ['pack', 'packs'];
-}
-
-function updateQuantityDisplay(totalUnits, packSize, unitType, displayElement) {
-    if (!displayElement) return;
-
-    if (!totalUnits || totalUnits === 0) {
-        displayElement.value = '';
-        return;
-    }
-
-    if (packSize === 1 || totalUnits < packSize) {
-        displayElement.value = `${totalUnits} ${totalUnits === 1 ? unitType : unitType + 's'}`;
-        return;
-    }
-
-    const fullPacks = Math.floor(totalUnits / packSize);
-    const remainingUnits = totalUnits % packSize;
-    const [singularTerm, pluralTerm] = getPackageTerminology(unitType);
-    const packTerm = fullPacks === 1 ? singularTerm : pluralTerm;
-
-    if (remainingUnits === 0) {
-        displayElement.value = `${fullPacks} ${packTerm}`;
-    } else {
-        displayElement.value = `${fullPacks} ${packTerm} ${remainingUnits} ${remainingUnits === 1 ? unitType : unitType + 's'}`;
-    }
-}
-
-function submitPrescriptions(forceSave = false) {
-    const submitBtn = document.getElementById('submit-prescriptions-btn');
-    const spinner = submitBtn.querySelector('.spinner-border');
-    const payload = {
-        patient_id: patientId,
-        admission_id: admissionId,
-        available_drugs: [],
-        external_drugs: [],
-        force_save: false
-    };
-
-    const forms = document.querySelectorAll('.prescription-row');
-    let isValid = true;
-
-    forms.forEach(form => {
-        form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
-
-        const type = form.dataset.type;
-        const dosage = form.querySelector('.dosage-input').value;
-        const quantity = form.querySelector('.quantity-input').value;
-
-        if (!quantity) {
-            isValid = false;
-            form.querySelector('.quantity-input').classList.add('is-invalid');
-        }
-        if (!dosage) {
-            isValid = false;
-            form.querySelector('.dosage-input').classList.add('is-invalid');
-        }
-
-        if (type === 'available') {
-            const drugId = form.querySelector('.drug-id-input').value;
-
-            if (!drugId) {
-                isValid = false;
-                form.querySelector('.drug-search-input').classList.add('is-invalid');
-            }
-
-            // NEW: Get task generation data
-            const generateTasks = form.querySelector('.task-checkbox')?.checked || false;
-            const firstDoseTime = form.querySelector('.first-dose-time-input')?.value || '';
-
-            if (generateTasks && !firstDoseTime) {
-                isValid = false;
-                form.querySelector('.first-dose-time-input').classList.add('is-invalid');
-            }
-
-            payload.available_drugs.push({
-                drug_id: drugId,
-                dosage: dosage,
-                duration: form.querySelector('.duration-input').value,
-                quantity: quantity,
-                notes: form.querySelector('.notes-input').value,
-                generate_tasks: generateTasks,  // NEW
-                first_dose_time: firstDoseTime  // NEW
-            });
-
-        } else if (type === 'external') {
-            const drugName = form.querySelector('.drug-name-input').value;
-            if (!drugName) {
-                isValid = false;
-                form.querySelector('.drug-name-input').classList.add('is-invalid');
-            }
-
-            const externalQuantity = form.querySelector('.quantity-input').value;
-            if (!externalQuantity) {
-                isValid = false;
-                form.querySelector('.quantity-input').classList.add('is-invalid');
-            }
-
-            payload.external_drugs.push({
-                drug_name: drugName,
-                dosage: dosage,
-                duration: form.querySelector('.duration-input').value,
-                quantity: externalQuantity,
-                notes: form.querySelector('.notes-input').value
-            });
-        }
-    });
-
-    if (!isValid) {
-        showAlert('Please complete all required fields.', 'warning');
-        return;
-    }
-    if (payload.available_drugs.length === 0 && payload.external_drugs.length === 0) {
-        showAlert('Please add at least one medication.', 'info');
-        return;
-    }
-
-    submitBtn.disabled = true;
-    spinner.classList.remove('d-none');
-
-    fetch("{% url 'prescribe_multiple' %}", {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            drugPrescriptionModal.hide();
-            showAlert(data.message, 'success');
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            showAlert(data.error || 'An error occurred.', 'danger');
-        }
-    })
-    .catch(error => showAlert('A network error occurred.', 'danger'))
-    .finally(() => {
-        submitBtn.disabled = false;
-        spinner.classList.add('d-none');
+        results.appendChild(a);
+      });
+      if (!d.drugs?.length) results.innerHTML = '<span class="list-group-item small">No drugs found</span>';
     });
 }
 
-// Continue with Lab/Scan/Service/Item functions...
-// (Copy the same functions from consultation template)
+function calcQty(row) {
+  const dosage = row.querySelector('.dosage-input').value.toLowerCase().replace(/\./g,'');
+  const duration = row.querySelector('.duration-input').value.toLowerCase();
+  const qi = row.querySelector('.quantity-input');
 
-function initializeOrderModals() {
-    document.getElementById('add-lab-test-btn').addEventListener('click', () => addOrderForm('lab'));
-    document.getElementById('submit-lab-orders-btn').addEventListener('click', () => submitOrders('lab'));
-    document.getElementById('add-imaging-btn').addEventListener('click', () => addOrderForm('imaging'));
-    document.getElementById('submit-imaging-orders-btn').addEventListener('click', () => submitOrders('imaging'));
+  let days = 0;
+  const dm = duration.match(/(\d+)/);
+  if (dm) {
+    const n = parseInt(dm[1]);
+    days = duration.includes('week') ? n*7 : duration.includes('month') ? n*30 : n;
+  }
+
+  let dose = 0;
+  const numM = dosage.match(/^(\d+(\.\d+)?)/);
+  if (numM) dose = parseFloat(numM[1]);
+  else if (dosage.startsWith('iii')) dose=3;
+  else if (dosage.startsWith('ii')) dose=2;
+  else if (dosage.startsWith('iv')) dose=4;
+  else if (dosage.startsWith('i')) dose=1;
+
+  let freq = 1;
+  if (/\b(bd|bid|twice|q12h)\b/.test(dosage)) freq=2;
+  else if (/\b(tds|tid|thrice|q8h)\b/.test(dosage)) freq=3;
+  else if (/\b(qds|qid|four times|q6h)\b/.test(dosage)) freq=4;
+
+  if (dose > 0 && days > 0) qi.value = Math.ceil(dose * freq * days);
 }
 
-function addOrderForm(type) {
-    const isLab = type === 'lab';
-    const templateId = isLab ? 'lab-test-row-template' : 'imaging-row-template';
-    const listId = isLab ? 'lab-test-list' : 'imaging-list';
-    const clone = document.getElementById(templateId).content.cloneNode(true);
-    const formRow = clone.querySelector('.order-row');
-    document.getElementById(listId).appendChild(clone);
-    const searchInput = formRow.querySelector('.search-input');
-    searchInput.addEventListener('input', () => handleOrderSearch(searchInput, type));
+function submitPrescriptions() {
+  const btn = document.getElementById('submit-prescriptions-btn');
+  const spinner = btn.querySelector('.spinner-border');
+  const payload = { patient_id: patientId, admission_id: admissionId, available_drugs: [], external_drugs: [], force_save: false };
+  let valid = true;
+
+  document.querySelectorAll('.prescription-row').forEach(row => {
+    const type = row.dataset.type;
+    const dosage = row.querySelector('.dosage-input').value;
+    const qty = row.querySelector('.quantity-input').value;
+    if (!dosage || !qty) { valid = false; return; }
+
+    if (type === 'available') {
+      const drugId = row.querySelector('.drug-id-input').value;
+      if (!drugId) { valid = false; return; }
+      payload.available_drugs.push({
+        drug_id: drugId, dosage, duration: row.querySelector('.duration-input').value,
+        quantity: qty, notes: row.querySelector('.notes-input').value,
+        generate_tasks: row.querySelector('.task-checkbox')?.checked || false,
+        first_dose_time: row.querySelector('.first-dose-time-input')?.value || ''
+      });
+    } else {
+      const drugName = row.querySelector('.drug-name-input').value;
+      if (!drugName) { valid = false; return; }
+      payload.external_drugs.push({ drug_name: drugName, dosage, duration: row.querySelector('.duration-input').value, quantity: qty, notes: row.querySelector('.notes-input').value });
+    }
+  });
+
+  if (!valid) { showMsg('Please complete all required fields', 'warning'); return; }
+  if (!payload.available_drugs.length && !payload.external_drugs.length) { showMsg('Add at least one drug', 'info'); return; }
+
+  btn.disabled = true; spinner.classList.remove('d-none');
+  fetch("{% url 'prescribe_multiple' %}", {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify(payload)
+  }).then(r => r.json()).then(d => {
+    console.log('Response:', d);
+    if (d.success) {
+      drugPrescriptionModal.hide();
+      showToast(d.message || 'Prescriptions saved');
+      sessionStorage.setItem('admTab', 'tab-drugs');
+      setTimeout(() => location.reload(), 1500);
+    } else showMsg(d.error || 'Error saving prescriptions', 'danger');
+  }).catch(() => showMsg('Network error', 'danger'))
+  .finally(() => { btn.disabled = false; spinner.classList.add('d-none'); });
+}
+
+// ── LAB / SCAN ORDERS ──────────────────────
+function orderLabTest() {
+  if (debtLimitReached) { showMsg('Debt limit reached. Patient must deposit first.', 'warning'); return; }
+  document.getElementById('lab-test-list').innerHTML = '';
+  addOrderRow('lab');
+  labTestModal.show();
+}
+function orderScan() {
+  if (debtLimitReached) { showMsg('Debt limit reached. Patient must deposit first.', 'warning'); return; }
+  document.getElementById('imaging-list').innerHTML = '';
+  addOrderRow('imaging');
+  scanModal.show();
+}
+
+function initOrderModals() {
+  document.getElementById('add-lab-test-btn').addEventListener('click', () => addOrderRow('lab'));
+  document.getElementById('submit-lab-orders-btn').addEventListener('click', () => submitOrders('lab'));
+  document.getElementById('add-imaging-btn').addEventListener('click', () => addOrderRow('imaging'));
+  document.getElementById('submit-imaging-orders-btn').addEventListener('click', () => submitOrders('imaging'));
+}
+
+function addOrderRow(type) {
+  const isLab = type === 'lab';
+  const tmpl = document.getElementById(isLab ? 'lab-test-row-template' : 'imaging-row-template').content.cloneNode(true);
+  const row = tmpl.querySelector('.order-row');
+  document.getElementById(isLab ? 'lab-test-list' : 'imaging-list').appendChild(tmpl);
+  const si = row.querySelector('.search-input');
+  si.addEventListener('input', () => handleOrderSearch(si, type));
 }
 
 function handleOrderSearch(inputEl, type) {
-    const isLab = type === 'lab';
-    const query = inputEl.value;
-    const categoryId = document.getElementById(isLab ? 'testCategoryFilter' : 'imagingCategoryFilter').value;
-    const resultsContainer = inputEl.parentElement.querySelector('.search-results');
-    const searchUrl = isLab ? "{% url 'ajax_lab_templates_search' %}" : "{% url 'ajax_imaging_templates_search' %}";
-
-    if (query.length < 2) {
-        resultsContainer.innerHTML = '';
-        return;
-    }
-
-    fetch(`${searchUrl}?q=${encodeURIComponent(query)}&category_id=${categoryId}`)
-        .then(response => response.json())
-        .then(data => {
-            resultsContainer.innerHTML = '';
-            if (data.templates.length > 0) {
-                data.templates.forEach(template => {
-                    const item = document.createElement('a');
-                    item.href = '#';
-                    item.className = 'list-group-item list-group-item-action';
-                    item.innerHTML = template.is_active ? `${template.name} - ₦${template.price}` : `${template.name} <span class="badge bg-warning text-dark ms-2">External</span>`;
-
-                    item.addEventListener('click', e => {
-                        e.preventDefault();
-                        const formRow = inputEl.closest('.order-row');
-                        formRow.querySelector('.search-input').value = template.name;
-                        formRow.querySelector('.template-id-input').value = template.id;
-                        resultsContainer.innerHTML = '';
-                    });
-                    resultsContainer.appendChild(item);
-                });
-            } else {
-                resultsContainer.innerHTML = '<span class="list-group-item">No results found</span>';
-            }
+  const isLab = type === 'lab';
+  const q = inputEl.value;
+  const catId = document.getElementById(isLab ? 'testCategoryFilter' : 'imagingCategoryFilter').value;
+  const results = inputEl.parentElement.querySelector('.search-results');
+  const url = isLab ? "{% url 'ajax_lab_templates_search' %}" : "{% url 'ajax_imaging_templates_search' %}";
+  if (q.length < 2) { results.innerHTML = ''; return; }
+  fetch(`${url}?q=${encodeURIComponent(q)}&category_id=${catId}`)
+    .then(r => r.json()).then(d => {
+      results.innerHTML = '';
+      (d.templates || []).forEach(t => {
+        const a = document.createElement('a');
+        a.href='#'; a.className='list-group-item list-group-item-action small';
+        a.textContent = `${t.name} — ₦${t.price}`;
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          inputEl.closest('.order-row').querySelector('.search-input').value = t.name;
+          inputEl.closest('.order-row').querySelector('.template-id-input').value = t.id;
+          results.innerHTML = '';
         });
+        results.appendChild(a);
+      });
+    });
 }
 
 function submitOrders(type) {
-    const isLab = type === 'lab';
-    const modal = isLab ? labTestModal : scanModal;
-    const listId = isLab ? 'lab-test-list' : 'imaging-list';
-    const submitUrl = isLab ? "{% url 'order_multiple_lab_tests' %}" : "{% url 'order_multiple_imaging' %}";
-    const submitBtn = document.getElementById(isLab ? 'submit-lab-orders-btn' : 'submit-imaging-orders-btn');
-    const payload = {
-        patient_id: patientId,
-        admission_id: admissionId,
-        orders: []
-    };
+  const isLab = type === 'lab';
+  const modal = isLab ? labTestModal : scanModal;
+  const listId = isLab ? 'lab-test-list' : 'imaging-list';
+  const url = isLab ? "{% url 'order_multiple_lab_tests' %}" : "{% url 'order_multiple_imaging' %}";
+  const btn = document.getElementById(isLab ? 'submit-lab-orders-btn' : 'submit-imaging-orders-btn');
+  const payload = { patient_id: patientId, admission_id: admissionId, orders: [] };
+  let valid = true;
 
-    let isValid = true;
-    document.getElementById(listId).querySelectorAll('.order-row').forEach(row => {
-        row.querySelector('.search-input').classList.remove('is-invalid');
-        const templateId = row.querySelector('.template-id-input').value;
-        if (!templateId) {
-            isValid = false;
-            row.querySelector('.search-input').classList.add('is-invalid');
-            return;
-        }
-        const orderData = { template_id: templateId };
-        if (isLab) {
-            orderData.instructions = row.querySelector('.instructions-input').value;
-        } else {
-            orderData.indication = row.querySelector('.indication-input').value;
-        }
-        payload.orders.push(orderData);
-    });
+  document.getElementById(listId).querySelectorAll('.order-row').forEach(row => {
+    const tid = row.querySelector('.template-id-input').value;
+    if (!tid) { valid = false; row.querySelector('.search-input').classList.add('is-invalid'); return; }
+    const o = { template_id: tid };
+    if (isLab) o.instructions = row.querySelector('.instructions-input').value;
+    else o.indication = row.querySelector('.indication-input').value;
+    payload.orders.push(o);
+  });
 
-    if (!isValid) {
-        showAlert('Please select a valid test/image for all rows.', 'warning');
-        return;
-    }
-    if (payload.orders.length === 0) {
-        showAlert(`Please add at least one ${isLab ? 'test' : 'image request'}.`, 'info');
-        return;
-    }
-
-    submitBtn.disabled = true;
-
-    fetch(submitUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            modal.hide();
-            showAlert(data.message, 'success');
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            showAlert(data.error || 'An unknown error occurred.', 'danger');
-        }
-    })
-    .catch(error => showAlert('A network error occurred. Please try again.', 'danger'))
-    .finally(() => {
-        submitBtn.disabled = false;
-    });
+  if (!valid || !payload.orders.length) { showMsg('Please select valid items', 'warning'); return; }
+  btn.disabled = true;
+  fetch(url, { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')}, body:JSON.stringify(payload) })
+    .then(r => r.json()).then(d => {
+      if (d.success) {
+        modal.hide(); showToast(d.message);
+        sessionStorage.setItem('admTab', isLab ? 'tab-labs' : 'tab-scans');
+        setTimeout(() => location.reload(), 1500);
+      } else showMsg(d.error || 'Error', 'danger');
+    }).catch(() => showMsg('Network error','danger'))
+    .finally(() => btn.disabled = false);
 }
 
-function initializeServiceItemOrderModals() {
-    document.getElementById('add-service-btn').addEventListener('click', () => addServiceItemOrderForm('service'));
-    document.getElementById('submit-service-orders-btn').addEventListener('click', () => submitServiceItemOrders('service'));
-    document.getElementById('add-item-btn').addEventListener('click', () => addServiceItemOrderForm('item'));
-    document.getElementById('submit-item-orders-btn').addEventListener('click', () => submitServiceItemOrders('item'));
+// ── SERVICES & ITEMS ───────────────────────
+function orderService() {
+  if (debtLimitReached) { showMsg('Debt limit reached.', 'warning'); return; }
+  document.getElementById('service-order-form-list').innerHTML = '';
+  addServiceItemRow('service');
+  serviceOrderModal.show();
+}
+function orderItem() {
+  if (debtLimitReached) { showMsg('Debt limit reached.', 'warning'); return; }
+  document.getElementById('item-order-form-list').innerHTML = '';
+  addServiceItemRow('item');
+  itemOrderModal.show();
 }
 
-function addServiceItemOrderForm(type) {
-    const isService = type === 'service';
-    const templateId = isService ? 'service-row-template' : 'item-row-template';
-    const listId = isService ? 'service-order-form-list' : 'item-order-form-list';
-    const clone = document.getElementById(templateId).content.cloneNode(true);
-    const formRow = clone.querySelector('.order-row');
-    document.getElementById(listId).appendChild(clone);
-    const searchInput = formRow.querySelector('.search-input');
-    searchInput.addEventListener('input', () => handleServiceItemSearch(searchInput, type));
+function initServiceItemModals() {
+  document.getElementById('add-service-btn').addEventListener('click', () => addServiceItemRow('service'));
+  document.getElementById('submit-service-orders-btn').addEventListener('click', () => submitServiceItems('service'));
+  document.getElementById('add-item-btn').addEventListener('click', () => addServiceItemRow('item'));
+  document.getElementById('submit-item-orders-btn').addEventListener('click', () => submitServiceItems('item'));
+}
+
+function addServiceItemRow(type) {
+  const isService = type === 'service';
+  const tmpl = document.getElementById(isService ? 'service-row-template' : 'item-row-template').content.cloneNode(true);
+  const row = tmpl.querySelector('.order-row');
+  document.getElementById(isService ? 'service-order-form-list' : 'item-order-form-list').appendChild(tmpl);
+  const si = row.querySelector('.search-input');
+  si.addEventListener('input', () => handleServiceItemSearch(si, type));
 }
 
 function handleServiceItemSearch(inputEl, type) {
-    const isService = type === 'service';
-    const query = inputEl.value;
-    const categoryId = document.getElementById(isService ? 'serviceCategoryFilter' : 'itemCategoryFilter').value;
-    const resultsContainer = inputEl.parentElement.querySelector('.search-results');
-    const searchUrl = isService ? "{% url 'ajax_search_services' %}" : "{% url 'ajax_search_service_items' %}";
-
-    if (query.length < 2) {
-        resultsContainer.innerHTML = '';
-        return;
-    }
-
-    fetch(`${searchUrl}?q=${encodeURIComponent(query)}&category_id=${categoryId}`)
-        .then(response => response.json())
-        .then(data => {
-            resultsContainer.innerHTML = '';
-            if (data.templates.length > 0) {
-                data.templates.forEach(template => {
-                    const item = document.createElement('a');
-                    item.href = '#';
-                    item.className = 'list-group-item list-group-item-action';
-                    item.innerHTML = `${template.name} - ₦${template.price}`;
-
-                    item.addEventListener('click', e => {
-                        e.preventDefault();
-                        const formRow = inputEl.closest('.order-row');
-                        formRow.querySelector('.search-input').value = template.name;
-                        formRow.querySelector('.template-id-input').value = template.id;
-                        resultsContainer.innerHTML = '';
-                    });
-                    resultsContainer.appendChild(item);
-                });
-            } else {
-                resultsContainer.innerHTML = '<span class="list-group-item">No results found</span>';
-            }
+  const isService = type === 'service';
+  const q = inputEl.value;
+  const catId = document.getElementById(isService ? 'serviceCategoryFilter' : 'itemCategoryFilter').value;
+  const results = inputEl.parentElement.querySelector('.search-results');
+  const url = isService ? "{% url 'ajax_search_services' %}" : "{% url 'ajax_search_service_items' %}";
+  if (q.length < 2) { results.innerHTML = ''; return; }
+  fetch(`${url}?q=${encodeURIComponent(q)}&category_id=${catId}`)
+    .then(r => r.json()).then(d => {
+      results.innerHTML = '';
+      (d.templates || []).forEach(t => {
+        const a = document.createElement('a');
+        a.href='#'; a.className='list-group-item list-group-item-action small';
+        a.textContent = `${t.name} — ₦${t.price}`;
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          inputEl.closest('.order-row').querySelector('.search-input').value = t.name;
+          inputEl.closest('.order-row').querySelector('.template-id-input').value = t.id;
+          results.innerHTML = '';
         });
-}
-
-function submitServiceItemOrders(type) {
-    const isService = type === 'service';
-    const modal = isService ? serviceOrderModal : itemOrderModal;
-    const listId = isService ? 'service-order-form-list' : 'item-order-form-list';
-    const submitUrl = "{% url 'order_multiple_services_or_items' %}";
-    const submitBtn = document.getElementById(isService ? 'submit-service-orders-btn' : 'submit-item-orders-btn');
-    const payload = {
-        patient_id: patientId,
-        admission_id: admissionId,
-        orders: [],
-        order_type: type
-    };
-
-    let isValid = true;
-    document.getElementById(listId).querySelectorAll('.order-row').forEach(row => {
-        row.querySelector('.search-input').classList.remove('is-invalid');
-        const templateId = row.querySelector('.template-id-input').value;
-        if (!templateId) {
-            isValid = false;
-            row.querySelector('.search-input').classList.add('is-invalid');
-            return;
-        }
-        payload.orders.push({
-            template_id: templateId,
-            quantity: row.querySelector('.quantity-input').value,
-            notes: row.querySelector('.notes-input').value
-        });
-    });
-
-    if (!isValid) {
-        showAlert(`Please select a valid ${type} for all rows.`, 'warning');
-        return;
-    }
-    if (payload.orders.length === 0) {
-        showAlert(`Please add at least one ${type}.`, 'info');
-        return;
-    }
-
-    submitBtn.disabled = true;
-
-    fetch(submitUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            modal.hide();
-            showAlert(data.message, 'success');
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            showAlert(data.error || 'An unknown error occurred.', 'danger');
-        }
-    })
-    .catch(error => showAlert('A network error occurred. Please try again.', 'danger'))
-    .finally(() => {
-        submitBtn.disabled = false;
+        results.appendChild(a);
+      });
     });
 }
 
-// ====================
-// UTILITY FUNCTIONS
-// ====================
+function submitServiceItems(type) {
+  const isService = type === 'service';
+  const modal = isService ? serviceOrderModal : itemOrderModal;
+  const listId = isService ? 'service-order-form-list' : 'item-order-form-list';
+  const btn = document.getElementById(isService ? 'submit-service-orders-btn' : 'submit-item-orders-btn');
+  const payload = { patient_id: patientId, admission_id: admissionId, orders: [], order_type: type };
+  let valid = true;
 
-function showConfirmationModal(message, callback) {
-    document.getElementById('confirmationModalBody').textContent = message;
-    const confirmBtn = document.getElementById('confirmButton');
-    const newConfirmBtn = confirmBtn.cloneNode(true);
-    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-    newConfirmBtn.addEventListener('click', function() {
-        if (typeof callback === 'function') {
-            callback();
-        }
-    });
-    confirmationModal.show();
-}
+  document.getElementById(listId).querySelectorAll('.order-row').forEach(row => {
+    const tid = row.querySelector('.template-id-input').value;
+    if (!tid) { valid = false; return; }
+    payload.orders.push({ template_id: tid, quantity: row.querySelector('.quantity-input').value, notes: row.querySelector('.notes-input').value });
+  });
 
-function showAlert(message, type) {
-    const modalHeader = document.getElementById('messageModalHeader');
-    const modalTitle = document.getElementById('messageModalLabel');
-    document.getElementById('messageModalBody').textContent = message;
-    modalHeader.className = 'modal-header text-white';
-    switch (type) {
-        case 'success':
-            modalTitle.textContent = 'Success';
-            modalHeader.classList.add('bg-success');
-            break;
-        case 'danger':
-            modalTitle.textContent = 'Error';
-            modalHeader.classList.add('bg-danger');
-            break;
-        case 'warning':
-            modalTitle.textContent = 'Warning';
-            modalHeader.classList.add('bg-warning');
-            break;
-        default:
-            modalTitle.textContent = 'Information';
-            modalHeader.classList.add('bg-info');
-            break;
-    }
-    messageModal.show();
-}
-
-function showMiniToast(message, type = 'success') {
-    const toastContainer = document.querySelector('.toast-container');
-    if (!toastContainer) return;
-    const toastId = 'toast-' + Date.now();
-    const bgColor = type === 'success' ? 'bg-success' : 'bg-danger';
-    const icon = type === 'success' ? 'bi-check-circle' : 'bi-x-circle';
-    const toastHTML = `
-        <div class="alert alert-dismissible fade show mini-toast ${bgColor} text-white" role="alert" id="${toastId}">
-            <i class="bi ${icon} me-2"></i>${message}
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
-        </div>
-    `;
-    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
-    setTimeout(() => {
-        const toast = document.getElementById(toastId);
-        if (toast) {
-            toast.classList.add('hiding');
-            setTimeout(() => toast.remove(), 300);
-        }
-    }, 3000);
-}
-
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
+  if (!valid || !payload.orders.length) { showMsg('Please select valid items', 'warning'); return; }
+  btn.disabled = true;
+  fetch("{% url 'order_multiple_services_or_items' %}", { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')}, body:JSON.stringify(payload) })
+    .then(r => r.json()).then(d => {
+      if (d.success) {
+        modal.hide(); showToast(d.message);
+        sessionStorage.setItem('admTab', 'tab-services');
+        setTimeout(() => location.reload(), 1500);
+      } else showMsg(d.error || 'Error', 'danger');
+    }).catch(() => showMsg('Network error','danger'))
+    .finally(() => btn.disabled = false);
 }
 </script>
+
+<style>
+@keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.btn-xs { padding: 2px 8px; font-size: .72rem; }
+</style>
 
 {% endblock %}

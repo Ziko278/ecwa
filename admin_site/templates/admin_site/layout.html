@@ -396,60 +396,85 @@
       </li>
       {% endif %}
 
-      {% if perms.inpatient.view_admissionmodel or perms.inpatient.view_surgerymodel or perms.inpatient.view_wardmodel %}
-      <li class="nav-item">
-        <a class="nav-link collapsed" data-bs-target="#inpatient-nav" data-bs-toggle="collapse" href="#">
-            <i class="bi bi-clipboard2-pulse"></i><span>Inpatient</span><i class="bi bi-chevron-down ms-auto"></i>
-        </a>
-        <ul id="inpatient-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
-            {% if perms.inpatient.view_admissionmodel %}
-            <li>
+      {% if perms.inpatient.view_admission or perms.inpatient.add_admission or perms.inpatient.view_surgery or perms.inpatient.view_ward or perms.inpatient.view_surgerytype or perms.inpatient.change_inpatientsettings %}
+<li class="nav-item">
+    <a class="nav-link collapsed" data-bs-target="#inpatient-nav" data-bs-toggle="collapse" href="#">
+        <i class="bi bi-clipboard2-pulse"></i><span>Inpatient</span><i class="bi bi-chevron-down ms-auto"></i>
+    </a>
+    <ul id="inpatient-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+
+        {% if perms.inpatient.view_admission %}
+        <li>
             <a href="{% url 'inpatient_dashboard' %}">
                 <i class="bi bi-circle"></i><span>Dashboard</span>
             </a>
-            </li>
-            <li>
+        </li>
+        {% endif %}
+
+        {% if perms.inpatient.add_admission %}
+        <li>
+            <a href="{% url 'admission_search_patient' %}">
+                <i class="bi bi-circle"></i><span>Admit Patient</span>
+            </a>
+        </li>
+        {% endif %}
+
+        {% if perms.inpatient.view_admission %}
+        <li>
             <a href="{% url 'admission_index' %}">
                 <i class="bi bi-circle"></i><span>Admissions</span>
             </a>
-            </li>
-            {% endif %}
-            {% if perms.inpatient.view_surgerymodel %}
-            <li>
+        </li>
+        {% endif %}
+
+        {% if perms.inpatient.view_admissiontask %}
+        <li>
+            <a href="{% url 'admission_task_index' %}">
+                <i class="bi bi-circle"></i><span>Tasks</span>
+            </a>
+        </li>
+        {% endif %}
+
+        {% if perms.inpatient.view_surgery %}
+        <li>
             <a href="{% url 'surgery_index' %}">
                 <i class="bi bi-circle"></i><span>Surgeries</span>
             </a>
-            </li>
-            {% endif %}
-            {% if perms.inpatient.view_wardmodel %}
-            <li>
+        </li>
+        {% endif %}
+
+        {% if perms.inpatient.view_ward %}
+        <li>
             <a href="{% url 'ward_index' %}">
                 <i class="bi bi-circle"></i><span>Wards & Beds</span>
             </a>
-            </li>
-            {% endif %}
-            {% if perms.inpatient.view_surgerytypemodel %}
-            <li>
+        </li>
+        {% endif %}
+
+        {% if perms.inpatient.view_surgerytype %}
+        <li>
             <a href="{% url 'surgery_type_index' %}">
                 <i class="bi bi-circle"></i><span>Surgery Types</span>
             </a>
-            </li>
-            <li>
+        </li>
+        <li>
             <a href="{% url 'admission_type_index' %}">
                 <i class="bi bi-circle"></i><span>Admission Types</span>
             </a>
-            </li>
-            {% endif %}
-            {% if perms.inpatient.change_inpatientsettingmodel %}
-            <li>
+        </li>
+        {% endif %}
+
+        {% if perms.inpatient.change_inpatientsettings %}
+        <li>
             <a href="{% url 'inpatient_settings_detail' %}">
                 <i class="bi bi-circle"></i><span>Settings</span>
             </a>
-            </li>
-            {% endif %}
-        </ul>
-      </li>
-      {% endif %}
+        </li>
+        {% endif %}
+
+    </ul>
+</li>
+{% endif %}
 
       {% if perms.insurance.view_patientinsurancemodel or perms.insurance.view_insuranceprovidermodel %}
       <li class="nav-item">

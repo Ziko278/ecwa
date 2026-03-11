@@ -395,8 +395,9 @@ def verify_patient_ajax(request):
             defaults={'amount': Decimal('0.00')}
         )
 
-        # Calculate pending payments for last 30 days
-        thirty_days_ago = timezone.now() - timedelta(days=30)
+        # Calculate pending payments for last 3 days
+        # Changed from 30 to 3, but maintained thirty variable name
+        thirty_days_ago = timezone.now() - timedelta(days=3)
 
         # --- QUERIES ---
 
@@ -1301,7 +1302,7 @@ class AdmissionSurgeryFundingView(LoginRequiredMixin, PermissionRequiredMixin, T
             drug_orders = admission.drug_orders.all()
             lab_orders = admission.lab_test_orders.all()
             scan_orders = admission.scan_orders.all()
-            other_services = admission.service_drug_orders.all()
+            other_services = admission.service_orders.all()
 
             # --- THIS IS THE FIX ---
             # Apply ExpressionWrapper to the drug cost calculation
@@ -1348,7 +1349,7 @@ class AdmissionSurgeryFundingView(LoginRequiredMixin, PermissionRequiredMixin, T
             drug_orders = surgery.drug_orders.all()
             lab_orders = surgery.lab_test_orders.all()
             scan_orders = surgery.scan_orders.all()
-            other_services = surgery.service_drug_orders.all()
+            other_services = surgery.service_orders.all()
 
             # --- APPLY THE SAME FIX HERE ---
             drug_costs = drug_orders.aggregate(
@@ -1391,65 +1392,6 @@ class AdmissionSurgeryFundingView(LoginRequiredMixin, PermissionRequiredMixin, T
         return context
 
 
-@login_required
-@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
-def ajax_process_admission_funding(request):
-    if request.method == 'POST':
-        try:
-            patient_id = request.POST.get('patient_id')
-            admission_id = request.POST.get('admission_id')
-            surgery_id = request.POST.get('surgery_id')
-            amount = Decimal(request.POST.get('amount', '0'))
-
-            if amount <= 0:
-                return JsonResponse({'success': False, 'error': 'Amount must be a positive number.'}, status=400)
-
-            patient = get_object_or_404(PatientModel, pk=patient_id)
-            wallet = get_object_or_404(PatientWalletModel, patient=patient)
-
-            # Check for sufficient wallet balance
-            if wallet.amount < amount:
-                return JsonResponse({'success': False, 'error': 'Insufficient wallet balance.'}, status=400)
-
-            admission = get_object_or_404(Admission, pk=admission_id) if admission_id else None
-            surgery = get_object_or_404(Surgery, pk=surgery_id) if surgery_id else None
-
-            with transaction.atomic():
-                old_balance = wallet.amount
-
-                # Deduct funds from the wallet
-                wallet.amount -= amount
-                wallet.save()
-
-                new_balance = wallet.amount
-
-                PatientTransactionModel.objects.create(
-                    patient=patient,
-                    transaction_type='admission_payment' if admission else 'surgery_payment',
-                    transaction_direction='out',  # Direction is now 'out'
-                    admission=admission,
-                    surgery=surgery,
-                    amount=amount,
-                    old_balance=old_balance,  # Record old wallet balance
-                    new_balance=new_balance,  # Record new wallet balance
-                    date=timezone.now().date(),
-                    received_by=request.user,
-                    payment_method='wallet',  # Payment is from the wallet
-                    status='completed'
-                )
-
-            record_identifier = admission.admission_number if admission else surgery.surgery_number
-            success_message = f'Successfully paid ₦{amount:,.2f} for {record_identifier} from wallet.'
-
-            return JsonResponse({
-                'success': True,
-                'message': success_message
-            })
-
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=400)
-
-    return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
 
 
 @login_required
@@ -4671,13 +4613,13 @@ def ajax_get_admission_surgery_details(request):
     records = []
 
     if record_type == 'admission':
-        active_records = Admission.objects.filter(patient=patient, status='active')
+        active_records = Admission.objects.filter(patient=patient, status__in=['active', 'pending'])
 
         for admission in active_records:
             drug_orders = admission.drug_orders.all()
             lab_orders = admission.lab_test_orders.all()
             scan_orders = admission.scan_orders.all()
-            other_services = admission.service_drug_orders.all()
+            other_services = admission.service_orders.all()
 
             drug_costs = drug_orders.aggregate(
                 total=Sum(ExpressionWrapper(
@@ -4689,25 +4631,17 @@ def ajax_get_admission_surgery_details(request):
             lab_costs = lab_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
             scan_costs = scan_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
             other_services_costs = other_services.aggregate(total=Sum('total_amount'))['total'] or 0
-
-            base_fee = 1000 # (admission.admission_fee_charged or 0) + (admission.bed_fee_charged or 0)
+            if admission.status == 'pending':
+                base_fee = 0
+            else:
+                base_fee = (admission.admission_fee_charged or 0) # + (admission.bed_fee_charged or 0)
             total_bill = base_fee + drug_costs + lab_costs + scan_costs + other_services_costs
 
             total_paid = PatientTransactionModel.objects.filter(
                 admission=admission,
                 status='completed',
+                transaction_direction='in'
             ).aggregate(total=Sum('amount'))['total'] or 0
-
-            total_paid += sum(
-                order.drug.selling_price * Decimal(order.quantity_ordered)
-                for order in drug_orders if order.status in paid_statuses_drug
-            )
-            total_paid += sum(order.amount_charged for order in lab_orders if order.status in paid_statuses_lab_scan)
-            total_paid += sum(order.amount_charged for order in scan_orders if order.status in paid_statuses_lab_scan)
-            total_paid += sum(
-                service.total_amount for service in other_services
-                if service.status in ['paid', 'fully_dispensed', 'partially_dispensed']
-            )
 
             balance = total_paid - total_bill
 
@@ -4723,7 +4657,12 @@ def ajax_get_admission_surgery_details(request):
                 'total_paid': float(total_paid),
                 'balance': float(balance),
                 'abs_balance': float(abs(balance)),
-                'status': admission.status
+                'status': admission.status,
+                'minimum_deposit': admission.admission_type.minimum_deposit_amount,
+                'has_prior_payment': PatientTransactionModel.objects.filter(
+                    admission=admission,
+                    status='completed'
+                ).exists(),
             })
 
     elif record_type == 'surgery':
@@ -4733,7 +4672,7 @@ def ajax_get_admission_surgery_details(request):
             drug_orders = surgery.drug_orders.all()
             lab_orders = surgery.lab_test_orders.all()
             scan_orders = surgery.scan_orders.all()
-            other_services = surgery.service_drug_orders.all()
+            other_services = surgery.service_orders.all()
 
             drug_costs = drug_orders.aggregate(
                 total=Sum(ExpressionWrapper(
@@ -4753,17 +4692,6 @@ def ajax_get_admission_surgery_details(request):
                 surgery=surgery,
                 status='completed',
             ).aggregate(total=Sum('amount'))['total'] or 0
-
-            total_paid += sum(
-                order.drug.selling_price * Decimal(order.quantity_ordered)
-                for order in drug_orders if order.status in paid_statuses_drug
-            )
-            total_paid += sum(order.amount_charged for order in lab_orders if order.status in paid_statuses_lab_scan)
-            total_paid += sum(order.amount_charged for order in scan_orders if order.status in paid_statuses_lab_scan)
-            total_paid += sum(
-                service.total_amount for service in other_services
-                if service.status in ['paid', 'fully_dispensed', 'partially_dispensed']
-            )
 
             balance = total_paid - total_bill
 
@@ -4875,75 +4803,111 @@ def ajax_process_consultation_payment(request):
 
 @login_required
 @permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+@require_http_methods(["POST"])
 def ajax_process_admission_funding(request):
-    """Process admission/surgery funding with direct payment or wallet"""
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=400)
-
     try:
         patient_id = request.POST.get('patient_id')
         admission_id = request.POST.get('admission_id')
         surgery_id = request.POST.get('surgery_id')
-        amount = Decimal(request.POST.get('amount', '0'))
+        amount = _to_decimal(request.POST.get('amount', '0'))
         payment_method = request.POST.get('payment_method', 'cash')
-        use_wallet = request.POST.get('use_wallet', 'false').lower() == 'true'
+        use_wallet_raw = request.POST.get('use_wallet', 'false')
+        use_wallet = use_wallet_raw in ('true', 'True', '1')
 
         if amount <= 0:
             return JsonResponse({'success': False, 'error': 'Amount must be a positive number.'}, status=400)
 
         patient = get_object_or_404(PatientModel, pk=patient_id)
-        wallet = get_object_or_404(PatientWalletModel, patient=patient)
-
         admission = get_object_or_404(Admission, pk=admission_id) if admission_id else None
         surgery = get_object_or_404(Surgery, pk=surgery_id) if surgery_id else None
 
-        wallet_used = Decimal('0.00')
-        direct_payment = amount
-
-        # Calculate wallet usage
-        if use_wallet and wallet.amount > 0:
-            wallet_used = min(wallet.amount, amount)
-            direct_payment = amount - wallet_used
+        # Minimum deposit check for pending admissions
+        if admission and admission.status == 'pending' and admission.admission_type:
+            has_prior_payment = PatientTransactionModel.objects.filter(
+                admission=admission,
+                status='completed'
+            ).exists()
+            if not has_prior_payment:
+                min_deposit = admission.admission_type.minimum_deposit_amount
+                if amount < min_deposit:
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'Minimum initial deposit required is ₦{min_deposit:,.2f}. You entered ₦{amount:,.2f}.'
+                    }, status=400)
 
         with transaction.atomic():
-            old_balance = wallet.amount
+            wallet = PatientWalletModel.objects.select_for_update().get_or_create(patient=patient)[0]
+            wallet = PatientWalletModel.objects.select_for_update().get(pk=wallet.pk)
+            old_wallet_balance = _to_decimal(wallet.amount)
 
-            # Deduct from wallet if applicable
-            if wallet_used > 0:
-                wallet.amount -= wallet_used
+            wallet_amount_to_use = Decimal('0.00')
+            if use_wallet and old_wallet_balance > Decimal('0.00'):
+                wallet_amount_to_use = min(old_wallet_balance, amount)
+
+            direct_amount = (amount - wallet_amount_to_use).quantize(Decimal('0.01'))
+
+            transaction_type = 'admission_payment' if admission else 'surgery_payment'
+
+            wallet_withdrawal_transaction = None
+            direct_transaction = None
+
+            # Deduct wallet
+            if wallet_amount_to_use > Decimal('0.00'):
+                wallet.amount = (old_wallet_balance - wallet_amount_to_use).quantize(Decimal('0.01'))
                 wallet.save()
 
-            new_balance = wallet.amount
+                wallet_withdrawal_transaction = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type='wallet_withdrawal',
+                    transaction_direction='out',
+                    admission=admission,
+                    surgery=surgery,
+                    amount=wallet_amount_to_use,
+                    old_balance=old_wallet_balance,
+                    new_balance=wallet.amount,
+                    payment_method='wallet',
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    wallet_amount_used=wallet_amount_to_use,
+                    direct_payment_amount=Decimal('0.00')
+                )
 
-            payment_transaction = PatientTransactionModel.objects.create(
-                patient=patient,
-                transaction_type='admission_payment' if admission else 'surgery_payment',
-                transaction_direction='out',
-                admission=admission,
-                surgery=surgery,
-                amount=amount,
-                wallet_amount_used=wallet_used,
-                direct_payment_amount=direct_payment,
-                old_balance=old_balance,
-                new_balance=new_balance,
-                date=timezone.now().date(),
-                received_by=request.user,
-                payment_method=payment_method,
-                status='completed'
-            )
+            # Direct payment transaction
+            if direct_amount > Decimal('0.00'):
+                direct_transaction = PatientTransactionModel.objects.create(
+                    patient=patient,
+                    transaction_type=transaction_type,
+                    transaction_direction='in',
+                    admission=admission,
+                    surgery=surgery,
+                    amount=direct_amount,
+                    old_balance=wallet.amount,
+                    new_balance=wallet.amount,
+                    payment_method=payment_method,
+                    received_by=request.user,
+                    status='completed',
+                    date=timezone.now().date(),
+                    wallet_amount_used=Decimal('0.00'),
+                    direct_payment_amount=direct_amount
+                )
+
+            # Update admission deposit balance
+            if admission:
+                admission.deposit_balance += amount
+                admission.total_paid += amount
+                admission.save(update_fields=['deposit_balance', 'total_paid'])
 
         record_identifier = admission.admission_number if admission else surgery.surgery_number
-        success_message = f'Successfully paid ₦{amount:,.2f} for {record_identifier}.'
-
+        detail_id = direct_transaction.id if direct_transaction else wallet_withdrawal_transaction.id
         return JsonResponse({
             'success': True,
-            'message': success_message,
-            'redirect_url': reverse('transaction_detail', kwargs={'transaction_id': payment_transaction.pk})
+            'message': f'Successfully funded ₦{amount:,.2f} for {record_identifier}.',
+            'redirect_url': reverse('transaction_detail', args=[detail_id])
         })
 
     except Exception as e:
-        logger.error(f"Error processing admission/surgery funding: {str(e)}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return JsonResponse({'success': False, 'error': f'Error: {type(e).__name__}: {str(e)}'}, status=500)
 
 
 @login_required

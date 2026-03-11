@@ -5,7 +5,7 @@
             Consultation Date: {{ consultation.created_at|date:"F d, Y @ P" }}
         </h5>
         <small class="text-muted">
-            Consultant: {{ consultation.queue_entry.consultant.staff|title }}
+            Consultant: {{ consultation.doctor|title }}
         </small>
     </div>
     <div class="card-body">
@@ -35,7 +35,7 @@
             </div>
             {% endif %}
         {% endwith %}
-        
+
         <div class="mb-4">
             <h6 class="text-primary">Clinical Notes</h6>
             <p><strong>Chief Complaint:</strong> {{ consultation.chief_complaint|default:"N/A" }}</p>
@@ -45,7 +45,6 @@
                 {{ consultation.assessment|safe|linebreaks }}
             </div>
         </div>
-
 
         {% with all_prescriptions=consultation.drug_consultation_order.all external_prescriptions=consultation.external_prescriptions.all %}
             {% if all_prescriptions or external_prescriptions %}
@@ -71,14 +70,14 @@
             {% endif %}
         {% endwith %}
 
-        {% if consultation.lab_consultation_order.all %}
+        {% if consultation.all_lab_orders %}
             <div class="mb-4">
                 <h6 class="text-primary">Lab Tests</h6>
-                {% for test_order in consultation.lab_consultation_order.all %}
+                {% for test_order in consultation.all_lab_orders %}
                     <div class="border rounded p-3 mb-2">
-                        <strong>{{ test_order.template.name }}</strong> - 
+                        <strong>{{ test_order.template.name }}</strong> -
                         <span class="badge bg-secondary">{{ test_order.get_status_display }}</span>
-                        
+
                         {% if test_order.status == 'completed' and test_order.result %}
                             <div class="mt-3">
                                 <table class="table table-bordered table-sm">
@@ -88,6 +87,7 @@
                                             <th>Result</th>
                                             <th>Unit</th>
                                             <th>Normal Range</th>
+                                            <th>Flag</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -96,7 +96,28 @@
                                                 <td>{{ result_item.parameter_name }}</td>
                                                 <td class="fw-bold">{{ result_item.value }}</td>
                                                 <td>{{ result_item.unit|default:"-" }}</td>
-                                                <td>{{ result_item.normal_range|default:"-" }}</td>
+                                                <td>
+                                                    {% if result_item.normal_range %}
+                                                        {% if result_item.normal_range.gender_specific %}
+                                                            <small>
+                                                                {% if consultation.patient.gender|lower == 'male' %}
+                                                                    {{ result_item.normal_range.male.min }}{% if result_item.normal_range.male.min and result_item.normal_range.male.max %}-{% endif %}{{ result_item.normal_range.male.max }}
+                                                                {% else %}
+                                                                    {{ result_item.normal_range.female.min }}{% if result_item.normal_range.female.min and result_item.normal_range.female.max %}-{% endif %}{{ result_item.normal_range.female.max }}
+                                                                {% endif %}
+                                                            </small>
+                                                        {% else %}
+                                                            {{ result_item.normal_range.min }}{% if result_item.normal_range.min and result_item.normal_range.max %} - {% endif %}{{ result_item.normal_range.max }}
+                                                        {% endif %}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <span class="text-{% if result_item.status == 'normal' %}success{% elif result_item.status == 'high' %}danger{% elif result_item.status == 'low' %}warning{% else %}secondary{% endif %}">
+                                                        {{ result_item.status|capfirst|default:"-" }}
+                                                    </span>
+                                                </td>
                                             </tr>
                                         {% endfor %}
                                     </tbody>
@@ -114,21 +135,21 @@
             </div>
         {% endif %}
 
-        {% if consultation.scan_consultation_order.all %}
+        {% if consultation.all_scan_orders %}
             <div>
                 <h6 class="text-primary">Imaging</h6>
-                {% for scan_order in consultation.scan_consultation_order.all %}
+                {% for scan_order in consultation.all_scan_orders %}
                     <div class="border rounded p-3 mb-2">
-                        <strong>{{ scan_order.template.name }}</strong> - 
+                        <strong>{{ scan_order.template.name }}</strong> -
                         <span class="badge bg-secondary">{{ scan_order.get_status_display }}</span>
-                        
+
                         {% if scan_order.status == 'completed' and scan_order.result %}
                             <div class="mt-3">
                                 {% with result=scan_order.result %}
                                     {% if result.findings %}<p class="mb-1"><strong>Findings:</strong> {{ result.findings|safe }}</p>{% endif %}
                                     {% if result.impression %}<p class="mb-1"><strong>Impression:</strong> {{ result.impression|safe }}</p>{% endif %}
                                     {% if result.recommendations %}<p class="mb-1"><strong>Recommendations:</strong> {{ result.recommendations|safe }}</p>{% endif %}
-                                    
+
                                     {% if result.images.all %}
                                         <p class="mt-2 mb-1"><strong>Images:</strong></p>
                                         <ul class="list-inline">

@@ -141,11 +141,11 @@ class PatientServiceTransaction(models.Model):
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
 
     admission = models.ForeignKey(
-        'inpatient.Admission', on_delete=models.SET_NULL, null=True, blank=True, related_name='service_drug_orders',
+        'inpatient.Admission', on_delete=models.SET_NULL, null=True, blank=True, related_name='service_orders',
         help_text="Link to an admission record if applicable"
     )
     surgery = models.ForeignKey(
-        'inpatient.Surgery', on_delete=models.SET_NULL, null=True, blank=True, related_name='service_drug_orders',
+        'inpatient.Surgery', on_delete=models.SET_NULL, null=True, blank=True, related_name='service_orders',
         help_text="Link to a surgery record if applicable"
     )
 

@@ -32,7 +32,7 @@ from human_resource.models import StaffModel
 from pharmacy.models import DrugOrderModel, DrugModel, ExternalPrescription
 from scan.models import ScanOrderModel, ScanCategoryModel, ScanTemplateModel, ExternalScanOrder
 from service.models import Service, ServiceItem, PatientServiceTransaction, ServiceResult, ServiceCategory
-
+from collections import defaultdict
 logger = logging.getLogger(__name__)
 
 
@@ -3404,20 +3404,56 @@ def patient_history_view(request, patient_id):
     """Renders the initial patient history page."""
     patient = get_object_or_404(PatientModel, id=patient_id)
 
-    # Get all completed consultations for the patient, ordered by most recent
     all_consultations = ConsultationSessionModel.objects.filter(
-        queue_entry__patient=patient,
-        #status='completed'
+        Q(queue_entry__patient=patient) | Q(admission__patient=patient)
     ).order_by('-created_at').prefetch_related(
-        'drug_consultation_order',  # Renamed from drug_orders in DrugOrderModel
+        'drug_consultation_order',
         'external_prescriptions',
-        'lab_consultation_order',  # Renamed from lab_test_orders in LabTestOrderModel
-        'scan_consultation_order'  # Renamed from scan_orders in ScanOrderModel
+        'lab_consultation_order',
+        'scan_consultation_order'
     )
 
-    # Paginate the results, 3 per page
+    # Collect admission IDs from inpatient consultations
+    admission_ids = [
+        c.admission_id for c in all_consultations if c.admission_id
+    ]
+
+    # Fetch admission-linked orders that have no consultation set
+    orphan_labs = defaultdict(list)
+    orphan_scans = defaultdict(list)
+
+    if admission_ids:
+        for order in LabTestOrderModel.objects.filter(
+            admission_id__in=admission_ids, consultation__isnull=True
+        ):
+            orphan_labs[order.admission_id].append(order)
+
+        for order in ScanOrderModel.objects.filter(
+            admission_id__in=admission_ids, consultation__isnull=True
+        ):
+            orphan_scans[order.admission_id].append(order)
+
+    # Attach merged orders to each consultation to avoid extra queries in template
+    for consultation in all_consultations:
+        consultation.all_lab_orders = list(consultation.lab_consultation_order.all())
+        consultation.all_scan_orders = list(consultation.scan_consultation_order.all())
+
+        if consultation.admission_id:
+            # Merge orphan orders, avoiding duplicates by ID
+            existing_lab_ids = {o.id for o in consultation.all_lab_orders}
+            existing_scan_ids = {o.id for o in consultation.all_scan_orders}
+
+            consultation.all_lab_orders += [
+                o for o in orphan_labs[consultation.admission_id]
+                if o.id not in existing_lab_ids
+            ]
+            consultation.all_scan_orders += [
+                o for o in orphan_scans[consultation.admission_id]
+                if o.id not in existing_scan_ids
+            ]
+
     paginator = Paginator(all_consultations, 6)
-    page_obj = paginator.get_page(1)  # Get the first page
+    page_obj = paginator.get_page(1)
 
     context = {
         'patient': patient,
@@ -4065,18 +4101,30 @@ def ajax_imaging_templates_search(request):
 @login_required
 @require_POST
 def ajax_order_multiple_lab_tests(request):
-    """Order multiple lab tests for a patient in a single transaction."""
     try:
         data = json.loads(request.body)
         patient_id = data.get('patient_id')
         consultation_id = data.get('consultation_id')
+        admission_id = data.get('admission_id')
         orders = data.get('orders', [])
 
-        if not all([patient_id, consultation_id, orders]):
+        if not patient_id or not orders:
             return JsonResponse({'success': False, 'error': 'Missing required data.'}, status=400)
 
+        if not consultation_id and not admission_id:
+            return JsonResponse({'success': False, 'error': 'Either consultation_id or admission_id is required.'}, status=400)
+
         patient = get_object_or_404(PatientModel, id=patient_id)
-        consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
+
+        # Resolve consultation or admission context
+        consultation = None
+        admission = None
+
+        if consultation_id:
+            consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
+        elif admission_id:
+            from inpatient.models import Admission
+            admission = get_object_or_404(Admission, id=admission_id)
 
         internal_count = 0
         external_count = 0
@@ -4085,30 +4133,33 @@ def ajax_order_multiple_lab_tests(request):
             for order_data in orders:
                 template = get_object_or_404(LabTestTemplateModel, id=order_data.get('template_id'))
 
-                # NEW: Route based on is_active
                 if template.is_active:
-                    exists = LabTestOrderModel.objects.filter(
-                        consultation=consultation,
-                        template=template
-                    ).exists()
-                    if exists:
+                    # Duplicate check
+                    dup_filter = {'patient': patient, 'template': template}
+                    if consultation:
+                        dup_filter['consultation'] = consultation
+                    elif admission:
+                        dup_filter['admission'] = admission
+
+                    if LabTestOrderModel.objects.filter(**dup_filter).exists():
                         return JsonResponse({
                             'success': False,
-                            'error': f'{template.name} already ordered for this consultation'
+                            'error': f'{template.name} already ordered for this patient'
                         }, status=400)
 
-                    # Internal order
                     LabTestOrderModel.objects.create(
                         patient=patient,
                         consultation=consultation,
+                        admission=admission,
                         template=template,
                         ordered_by=request.user,
                         special_instructions=order_data.get('instructions', ''),
                         source='doctor',
+                        payment_method='admission' if admission else 'cash',
+                        status='paid' if admission else 'pending',
                     )
                     internal_count += 1
                 else:
-                    # External order
                     ExternalLabTestOrder.objects.create(
                         patient=patient,
                         consultation=consultation,
@@ -4120,16 +4171,11 @@ def ajax_order_multiple_lab_tests(request):
                     )
                     external_count += 1
 
-        # NEW: Build message showing internal vs external
         message_parts = []
-        if internal_count > 0:
-            message_parts.append(f'{internal_count} internal lab test(s)')
-        if external_count > 0:
-            message_parts.append(f'{external_count} external lab test(s)')
+        if internal_count: message_parts.append(f'{internal_count} internal lab test(s)')
+        if external_count: message_parts.append(f'{external_count} external lab test(s)')
 
-        message = ' and '.join(message_parts) + ' ordered successfully.'
-
-        return JsonResponse({'success': True, 'message': message})
+        return JsonResponse({'success': True, 'message': ' and '.join(message_parts) + ' ordered successfully.'})
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -4138,18 +4184,29 @@ def ajax_order_multiple_lab_tests(request):
 @login_required
 @require_POST
 def ajax_order_multiple_imaging(request):
-    """Order multiple imaging (scans) for a patient in a single transaction."""
     try:
         data = json.loads(request.body)
         patient_id = data.get('patient_id')
         consultation_id = data.get('consultation_id')
+        admission_id = data.get('admission_id')
         orders = data.get('orders', [])
 
-        if not all([patient_id, consultation_id, orders]):
+        if not patient_id or not orders:
             return JsonResponse({'success': False, 'error': 'Missing required data.'}, status=400)
 
+        if not consultation_id and not admission_id:
+            return JsonResponse({'success': False, 'error': 'Either consultation_id or admission_id is required.'}, status=400)
+
         patient = get_object_or_404(PatientModel, id=patient_id)
-        consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
+
+        consultation = None
+        admission = None
+
+        if consultation_id:
+            consultation = get_object_or_404(ConsultationSessionModel, id=consultation_id)
+        elif admission_id:
+            from inpatient.models import Admission
+            admission = get_object_or_404(Admission, id=admission_id)
 
         internal_count = 0
         external_count = 0
@@ -4158,30 +4215,32 @@ def ajax_order_multiple_imaging(request):
             for order_data in orders:
                 template = get_object_or_404(ScanTemplateModel, id=order_data.get('template_id'))
 
-                # NEW: Route based on is_active
                 if template.is_active:
-                    exists = ScanOrderModel.objects.filter(
-                        consultation=consultation,
-                        template=template
-                    ).exists()
-                    if exists:
+                    dup_filter = {'patient': patient, 'template': template}
+                    if consultation:
+                        dup_filter['consultation'] = consultation
+                    elif admission:
+                        dup_filter['admission'] = admission
+
+                    if ScanOrderModel.objects.filter(**dup_filter).exists():
                         return JsonResponse({
                             'success': False,
-                            'error': f'{template.name} already ordered for this consultation'
+                            'error': f'{template.name} already ordered for this patient'
                         }, status=400)
 
-                    # Internal order
                     ScanOrderModel.objects.create(
                         patient=patient,
                         consultation=consultation,
+                        admission=admission,
                         template=template,
                         ordered_by=request.user,
                         clinical_indication=order_data.get('indication', ''),
                         special_instructions=order_data.get('instructions', ''),
+                        payment_method='admission' if admission else 'cash',
+                        status='paid' if admission else 'pending',
                     )
                     internal_count += 1
                 else:
-                    # External order
                     ExternalScanOrder.objects.create(
                         patient=patient,
                         consultation=consultation,
@@ -4194,20 +4253,15 @@ def ajax_order_multiple_imaging(request):
                     )
                     external_count += 1
 
-        # NEW: Build message showing internal vs external
         message_parts = []
-        if internal_count > 0:
-            message_parts.append(f'{internal_count} internal scan(s)')
-        if external_count > 0:
-            message_parts.append(f'{external_count} external scan(s)')
+        if internal_count: message_parts.append(f'{internal_count} internal scan(s)')
+        if external_count: message_parts.append(f'{external_count} external scan(s)')
 
-        message = ' and '.join(message_parts) + ' ordered successfully.'
-
-        return JsonResponse({'success': True, 'message': message})
+        return JsonResponse({'success': True, 'message': ' and '.join(message_parts) + ' ordered successfully.'})
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
-
+    
 
 @login_required
 def ajax_consultation_details(request, consultation_id):
@@ -4825,15 +4879,44 @@ def prescribe_multiple_view(request):
         data = json.loads(request.body)
         patient_id = data.get('patient_id')
         consultation_id = data.get('consultation_id')
-        force_save = data.get('force_save', False)  # NEW: Allow override
+        admission_id = data.get('admission_id')
+        force_save = data.get('force_save', False)
 
         available_drugs = data.get('available_drugs', [])
         external_drugs = data.get('external_drugs', [])
 
         patient = PatientModel.objects.get(id=patient_id)
-        consultation = ConsultationSessionModel.objects.get(id=consultation_id)
 
-        # NEW: Check for duplicates
+        # Resolve consultation
+        if consultation_id:
+            consultation = ConsultationSessionModel.objects.get(id=consultation_id)
+        elif admission_id:
+            consultation = ConsultationSessionModel.objects.filter(
+                admission_id=admission_id,
+            ).order_by('-created_at').first()
+
+            if not consultation:
+                return JsonResponse(
+                    {'success': False, 'error': 'No active consultation found for this admission.'},
+                    status=404
+                )
+        else:
+            return JsonResponse(
+                {'success': False, 'error': 'Either consultation_id or admission_id is required.'},
+                status=400
+            )
+
+        # Security check
+        if consultation.patient.id != patient.id:
+            return JsonResponse(
+                {'success': False, 'error': 'Consultation does not belong to this patient.'},
+                status=400
+            )
+
+        is_ward_round = consultation.is_ward_round
+        linked_admission = consultation.admission if is_ward_round else None
+
+        # Check for duplicates
         if not force_save:
             duplicates = []
             for drug_data in available_drugs:
@@ -4844,7 +4927,7 @@ def prescribe_multiple_view(request):
                 ).exists()
                 if exists:
                     drug = DrugModel.objects.get(id=drug_data.get('drug_id'))
-                    duplicates.append(f"{drug.brand_name or drug.generic_name}")
+                    duplicates.append(drug.brand_name or drug.generic_name)
 
             if duplicates:
                 return JsonResponse({
@@ -4855,37 +4938,56 @@ def prescribe_multiple_view(request):
                 })
 
         with transaction.atomic():
-            # Process drugs from inventory
             for drug_data in available_drugs:
                 drug = DrugModel.objects.get(id=drug_data.get('drug_id'))
+
+                # Parse first_dose_time safely
+                first_dose_time = None
+                raw_time = drug_data.get('first_dose_time', '')
+                if raw_time:
+                    try:
+                        from datetime import datetime
+                        first_dose_time = datetime.strptime(raw_time, '%H:%M').time()
+                    except (ValueError, TypeError):
+                        first_dose_time = None
+
                 DrugOrderModel.objects.create(
                     patient=patient,
                     consultation=consultation,
+                    admission=linked_admission,
+                    source='admission' if is_ward_round else 'consultation',
                     ordered_by=request.user,
                     drug=drug,
-                    dosage_instructions=drug_data.get('dosage'),
-                    duration=drug_data.get('duration'),
+                    dosage_instructions=drug_data.get('dosage', ''),
+                    duration=drug_data.get('duration', ''),
                     quantity_ordered=float(drug_data.get('quantity', 0)),
-                    notes=drug_data.get('notes'),
+                    notes=drug_data.get('notes', ''),
                     status='pending',
+                    generate_tasks=drug_data.get('generate_tasks', False),
+                    first_dose_time=first_dose_time,
                 )
 
-            # Process drugs not in inventory
             for drug_data in external_drugs:
                 ExternalPrescription.objects.create(
                     patient=patient,
                     consultation=consultation,
                     ordered_by=request.user,
-                    drug_name=drug_data.get('drug_name'),
-                    dosage_instructions=drug_data.get('dosage'),
-                    duration=drug_data.get('duration'),
+                    drug_name=drug_data.get('drug_name', ''),
+                    dosage_instructions=drug_data.get('dosage', ''),
+                    duration=drug_data.get('duration', ''),
                     quantity=drug_data.get('quantity'),
-                    notes=drug_data.get('notes'),
+                    notes=drug_data.get('notes', ''),
                 )
 
         return JsonResponse({'success': True, 'message': 'Prescriptions saved successfully.'})
 
+    except PatientModel.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Patient not found.'}, status=404)
+    except ConsultationSessionModel.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Consultation not found.'}, status=404)
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # log full traceback to console
         return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=500)
 
 

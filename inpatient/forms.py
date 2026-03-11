@@ -36,7 +36,7 @@ class InpatientSettingsForm(forms.ModelForm):
             'admission_billing_type', 'admission_amount',
             'surgery_billing_type', 'surgery_amount', 'bed_daily_cost',
             'compile_surgery_drugs', 'compile_surgery_labs', 'compile_surgery_scans',
-            'charge_admission_fee', 'admission_fee_amount', 'default_max_debt'
+            'default_max_debt'
         ]
         widgets = {
             'bed_billing_for_admission': forms.Select(attrs={'class': 'form-control'}),
@@ -58,12 +58,7 @@ class InpatientSettingsForm(forms.ModelForm):
                 'step': '0.01',
                 'min': '0'
             }),
-            'charge_admission_fee': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'admission_fee_amount': forms.NumberInput(attrs={
-                'class': 'form-control',
-                'step': '0.01',
-                'min': '0'
-            }),
+
             'default_max_debt': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'step': '0.01',
@@ -218,19 +213,14 @@ class SurgeryTypeForm(forms.ModelForm):
 
 
 class AdmissionForm(forms.ModelForm):
-    attending_doctor = UserFullNameModelChoiceField(
-        queryset=User.objects.filter(is_active=True).order_by('first_name', 'last_name'),
-        widget=forms.Select(attrs={'class': 'form-control'}),
-        empty_label="Select Attending Doctor",
-        required=False
-    )
+
 
     class Meta:
         model = Admission
         fields = [
-            'patient', 'admission_type', 'chief_complaint',
-            'admission_diagnosis', 'bed', 'expected_discharge_date',
-            'attending_doctor', 'admission_notes'
+            'admission_type', 'chief_complaint',
+            'admission_diagnosis', 'bed',
+             'admission_notes'
         ]
         widgets = {
             'patient': forms.Select(attrs={'class': 'form-control'}),
@@ -246,11 +236,7 @@ class AdmissionForm(forms.ModelForm):
                 'placeholder': 'Admission diagnosis'
             }),
             'bed': forms.Select(attrs={'class': 'form-control'}),
-            'expected_discharge_date': forms.DateInput(attrs={
-                'class': 'form-control',
-                'type': 'date'
-            }),
-            'attending_doctor': forms.Select(attrs={'class': 'form-control'}),
+
             'admission_notes': forms.Textarea(attrs={
                 'class': 'form-control',
                 'rows': 4,
@@ -269,39 +255,23 @@ class AdmissionForm(forms.ModelForm):
         # Make bed optional (can be assigned later during confirmation)
         self.fields['bed'].required = False
 
-        # Only show active staff for attending doctor
-        self.fields['attending_doctor'].queryset = User.objects.filter(
-            is_active=True
-        ).order_by('first_name', 'last_name')
-
     def clean(self):
         cleaned_data = super().clean()
         bed = cleaned_data.get('bed')
-        expected_discharge = cleaned_data.get('expected_discharge_date')
 
         # Validate bed availability if provided
         if bed and bed.status not in ['available', 'reserved']:
             raise ValidationError(f"Bed {bed} is not available")
 
-        # Validate expected discharge date
-        if expected_discharge and expected_discharge <= timezone.now().date():
-            raise ValidationError("Expected discharge date must be in the future")
-
         return cleaned_data
 
 
 class AdmissionUpdateForm(forms.ModelForm):
-    attending_doctor = UserFullNameModelChoiceField(
-        queryset=User.objects.filter(is_active=True).order_by('first_name', 'last_name'),
-        widget = forms.Select(attrs={'class': 'form-control'}),
-        empty_label = "Select Attending Doctor", required=False
-    )
-
     class Meta:
         model = Admission
         fields = [
-            'status', 'actual_discharge_date', 'discharge_notes',
-            'attending_doctor', 'admission_notes', 'bed'
+            'status', 'discharge_notes',
+            'admission_notes', 'bed'
         ]
         widgets = {
             'status': forms.Select(attrs={'class': 'form-control'}),
@@ -314,7 +284,6 @@ class AdmissionUpdateForm(forms.ModelForm):
                 'rows': 4,
                 'placeholder': 'Discharge notes and instructions'
             }),
-            'attending_doctor': forms.Select(attrs={'class': 'form-control'}),
             'bed': forms.Select(attrs={'class': 'form-control'}),
             'admission_notes': forms.Textarea(attrs={
                 'class': 'form-control',
@@ -335,10 +304,6 @@ class AdmissionUpdateForm(forms.ModelForm):
         ).exclude(
             status='cleaning'
         )
-
-        self.fields['attending_doctor'].queryset = User.objects.filter(
-            is_active=True
-        ).order_by('first_name', 'last_name')
 
     def clean(self):
         cleaned_data = super().clean()

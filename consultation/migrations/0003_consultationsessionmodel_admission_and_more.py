@@ -44,6 +44,9 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='consultationsessionmodel',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('admission__isnull', True), ('queue_entry__isnull', False)), models.Q(('admission__isnull', False), ('queue_entry__isnull', True)), _connector='OR'), name='either_queue_or_admission'),
+            constraint=models.CheckConstraint(
+                condition=models.Q(models.Q(('admission__isnull', True), ('queue_entry__isnull', False)),
+                                   models.Q(('admission__isnull', False), ('queue_entry__isnull', True)),
+                                   _connector='OR'), name='either_queue_or_admission'),
         ),
     ]

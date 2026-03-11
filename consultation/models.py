@@ -282,8 +282,11 @@ class PatientQueueModel(models.Model):
 # 7. PATIENT VITALS (Pre-consultation)
 class PatientVitalsModel(models.Model):
     """Patient vitals taken by nurses before consultation"""
-    queue_entry = models.OneToOneField(PatientQueueModel, on_delete=models.CASCADE, related_name='vitals')
-
+    queue_entry = models.OneToOneField(PatientQueueModel, on_delete=models.CASCADE, related_name='vitals',
+                                       null=True, blank=True)
+    admission = models.ForeignKey('inpatient.Admission', on_delete=models.CASCADE,
+        related_name='vitals', null=True, blank=True,
+    )
     # Basic vitals
     temperature = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True, help_text="°C")
     blood_pressure_systolic = models.IntegerField(null=True, blank=True)
@@ -450,7 +453,7 @@ class ConsultationSessionModel(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                         Q(queue_entry__isnull=False, admission__isnull=True) |
                         Q(queue_entry__isnull=True, admission__isnull=False)
                 ),
@@ -505,7 +508,7 @@ class ConsultationSessionModel(models.Model):
         """Get doctor from either queue_entry or admission"""
         if self.queue_entry:
             return self.queue_entry.doctor
-        return self.admission.attending_doctor
+        return ''
 
     @property
     def is_ward_round(self):

@@ -93,18 +93,6 @@ class InpatientSettings(models.Model):
         default=True,
         help_text="Automatically include scans from surgery packages?"
     )
-    # NEW: Admission fee settings
-    charge_admission_fee = models.BooleanField(
-        default=False,
-        help_text="Charge one-time admission fee when patient is admitted?"
-    )
-    admission_fee_amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0)],
-        help_text="One-time admission fee amount"
-    )
 
     # NEW: Default debt limit
     default_max_debt = models.DecimalField(
@@ -230,6 +218,9 @@ class AdmissionTask(models.Model):
             ('wound_care', 'Wound Care'),
             ('feeding', 'Feeding/Nutrition'),
             ('physiotherapy', 'Physiotherapy'),
+            ('vitals', 'Vitals'),  # NEW
+            ('ward_round', 'Ward Round'),  # NEW
+            ('general', 'General'),
             ('other', 'Other')
         ],
         help_text="Type of task to be performed"
@@ -435,17 +426,10 @@ class Admission(models.Model):
         help_text="Date when admission was confirmed and billing started"
     )
 
-    expected_discharge_date = models.DateField(null=True, blank=True)
     actual_discharge_date = models.DateTimeField(null=True, blank=True)
 
     # Staff assignments
-    attending_doctor = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='attending_admissions'
-    )
+
     admitted_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -457,6 +441,25 @@ class Admission(models.Model):
     # Notes
     admission_notes = models.TextField(blank=True, null=True)
     discharge_notes = models.TextField(blank=True, null=True)
+    # Snapshotted rates at confirmation time
+    bed_rate_used = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Bed rate snapshotted at confirmation time"
+    )
+    admission_fee_charged = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="One-time admission fee charged at confirmation"
+    )
+    consultation_fee_used = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Consultation fee rate snapshotted at confirmation time"
+    )
 
     # Financial tracking
     deposit_balance = models.DecimalField(
@@ -682,7 +685,6 @@ class Ward(models.Model):
         if self.capacity > 0:
             return round((self.occupied_beds / self.capacity) * 100, 2)
         return 0
-
 
 
 class Bed(models.Model):

@@ -13,59 +13,53 @@
             <li class="breadcrumb-item active">Update</li>
         </ol>
     </nav>
-</div><!-- End Page Title -->
+</div>
 
 <section class="section">
     <div class="row">
-        <div class="col-lg-10">
+        <div class="col-lg-12">
+            <div class="alert alert-info alert-dismissible fade show" role="alert">
+                <h4 class="alert-heading">{{ admission.patient|title }}</h4>
+                <p>
+                    <strong>Card Number:</strong> {{ admission.patient.card_number }} |
+                    <strong>Admission #:</strong> {{ admission.admission_number }} |
+                    <strong>Status:</strong> <span class="badge bg-{{ admission.status|yesno:'success,warning' }}">{{ admission.get_status_display }}</span>
+                </p>
+            </div>
+        </div>
+
+        <!-- Edit Form -->
+        <div class="col-lg-7">
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Update Admission for: {{ admission.patientModel.get_full_name }}</h5>
-                    <p>Use this form to update the patient's admission status, for example, to discharge them.</p>
-
+                    <h5 class="card-title">Admission Details</h5>
                     {% include 'admin_site/partials/error.html' %}
 
-                    <form method="post" action="{% url 'admission_edit' admission.pk %}" class="row g-3">
+                    <form method="post" class="row g-3">
                         {% csrf_token %}
 
-                        <div class="col-md-6">
-                            <div class="form-floating">
-                                {{ form.status }}
-                                <label for="{{ form.status.id_for_label }}">Admission Status</label>
-                            </div>
-                        </div>
-
-                        <div class="col-md-6">
-                            <div class="form-floating">
-                                {{ form.bed }}
-                                <label for="{{ form.bed.id_for_label }}">Bed</label>
-                            </div>
-                        </div>
-
-                        <div class="col-md-6">
-                            <div class="form-floating">
-                                {{ form.attending_doctor }}
-                                <label for="{{ form.attending_doctor.id_for_label }}">Attending Doctor</label>
-                            </div>
-                        </div>
-
-                        <div class="col-md-12">
-                            <label for="{{ form.actual_discharge_date.id_for_label }}" class="col-form-label">Actual Discharge Date & Time</label>
-                            {{ form.actual_discharge_date }}
-                            <small class="text-muted">Required when status is 'Discharged'.</small>
-                        </div>
-
                         <div class="col-md-12">
                             <div class="form-floating">
-                                {{ form.discharge_notes }}
-                                <label for="{{ form.discharge_notes.id_for_label }}">Discharge Notes</label>
+                                {{ form.admission_type }}
+                                <label for="{{ form.admission_type.id_for_label }}">Admission Type <span class="text-danger">*</span></label>
                             </div>
                         </div>
-
-                         <div class="col-md-12">
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.chief_complaint }}
+                                <label for="{{ form.chief_complaint.id_for_label }}">Chief Complaint <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-floating">
+                                {{ form.admission_diagnosis }}
+                                <label for="{{ form.admission_diagnosis.id_for_label }}">Admission Diagnosis <span class="text-danger">*</span></label>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
                             <div class="form-floating">
                                 {{ form.admission_notes }}
-                                <label for="{{ form.admission_notes.id_for_label }}">Update/Add Admission Notes</label>
+                                <label for="{{ form.admission_notes.id_for_label }}">Admission Notes</label>
                             </div>
                         </div>
 
@@ -77,7 +71,127 @@
                 </div>
             </div>
         </div>
+
+        <!-- Bed Assignment -->
+        {% if admission.status == 'pending' %}
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Bed Assignment</h5>
+
+                    {% if not has_deposit %}
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            <strong>No deposit recorded.</strong><br>
+                            Please direct patient to <strong>Finance</strong> to make the admission deposit before assigning a bed.
+                        </div>
+                    {% else %}
+                        {% if current_bed %}
+                            <div class="alert alert-success">
+                                Currently assigned: <strong>{{ current_bed }}</strong>
+                            </div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label">Select Ward <span class="text-danger">*</span></label>
+                            <select id="ward_select" class="form-control">
+                                <option value="">-- Select Ward --</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Select Bed <span class="text-danger">*</span></label>
+                            <select id="bed_select" class="form-control" disabled>
+                                <option value="">-- Select Bed --</option>
+                            </select>
+                        </div>
+
+                        <button id="confirm_btn" class="btn btn-success w-100" disabled>
+                            <i class="bi bi-check-circle me-1"></i> Confirm Admission & Assign Bed
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </section>
+
+<script>
+    const wardsData = {{ wards_data|safe }};
+    const confirmUrl = "{% url 'confirm_admission' admission.pk %}";
+    const csrfToken = "{{ csrf_token }}";
+
+    const wardSelect = document.getElementById('ward_select');
+    const bedSelect = document.getElementById('bed_select');
+    const confirmBtn = document.getElementById('confirm_btn');
+
+    if (wardSelect) {
+        // Populate wards
+        wardsData.forEach(ward => {
+            const opt = document.createElement('option');
+            opt.value = ward.id;
+            opt.textContent = ward.name;
+            wardSelect.appendChild(opt);
+        });
+
+        wardSelect.addEventListener('change', function () {
+            const wardId = parseInt(this.value);
+            bedSelect.innerHTML = '<option value="">-- Select Bed --</option>';
+            bedSelect.disabled = true;
+            confirmBtn.disabled = true;
+
+            if (!wardId) return;
+
+            const ward = wardsData.find(w => w.id === wardId);
+            if (ward && ward.beds.length > 0) {
+                ward.beds.forEach(bed => {
+                    const opt = document.createElement('option');
+                    opt.value = bed.id;
+                    opt.textContent = bed.label;
+                    bedSelect.appendChild(opt);
+                });
+                bedSelect.disabled = false;
+            } else {
+                bedSelect.innerHTML = '<option value="">No available beds in this ward</option>';
+            }
+        });
+
+        bedSelect.addEventListener('change', function () {
+            confirmBtn.disabled = !this.value;
+        });
+
+        confirmBtn.addEventListener('click', function () {
+            const bedId = bedSelect.value;
+            if (!bedId) return;
+
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Confirming...';
+
+            fetch(confirmUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: `bed_id=${bedId}`
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = "{% url 'admission_detail' admission.pk %}";
+                } else {
+                    alert(data.error || 'Failed to confirm admission.');
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Confirm Admission & Assign Bed';
+                }
+            })
+            .catch(() => {
+                alert('An error occurred. Please try again.');
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Confirm Admission & Assign Bed';
+            });
+        });
+    }
+</script>
 
 {% endblock %}

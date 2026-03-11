@@ -627,216 +627,267 @@
         });
     }
 
-    // === ADMISSION FUNDING ===
-    function loadAdmissionRecords() {
-        $('#admission-records-list').html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Loading admissions...</p></div>');
+   // === ADMISSION FUNDING ===
+let currentAdmissionRecords = [];
 
-        $.ajax({
-            url: "{% url 'ajax_get_admission_surgery_details' %}",
-            method: 'GET',
-            data: {
-                patient_id: patientData.id,
-                type: 'admission'
-            },
-            success: function(response) {
-                if (response.success && response.count > 0) {
-                    displayAdmissionRecords(response.records);
-                } else {
-                    $('#admission-records-list').html(`
-                        <div class="text-center py-4">
-                            <i class="fas fa-info-circle fa-3x text-muted mb-3"></i>
-                            <h5>No Active Admissions Found</h5>
-                            <p class="text-muted">This patient has no active admissions.</p>
-                            <button class="btn btn-primary mt-3" onclick="goBackToTypeSelection()">
-                                <i class="fas fa-arrow-left"></i> Go Back
-                            </button>
-                        </div>
-                    `);
-                }
-            },
-            error: function(xhr) {
-                showModal('Error', xhr.responseJSON?.error || 'Error loading admissions', true);
-                $('#admission-records-list').html('<div class="alert alert-danger">Error loading admissions</div>');
-            }
-        });
-    }
+function loadAdmissionRecords() {
+    $('#admission-records-list').html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Loading admissions...</p></div>');
 
-    function displayAdmissionRecords(records) {
-        let html = '';
-        records.forEach((record, index) => {
-            const isOwing = record.balance < 0;
-            html += `
-                <div class="record-card ${records.length === 1 ? 'selected' : ''}" data-record-id="${record.id}" onclick="selectAdmissionRecord(${record.id}, ${index})">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                            <h5 class="mb-1">${record.identifier}</h5>
-                            <span class="badge bg-info">Active</span>
-                        </div>
-                        <div class="text-end">
-                            <div class="text-muted small">Total Bill</div>
-                            <div class="h5 mb-0">${formatCurrency(record.total_bill)}</div>
-                        </div>
-                    </div>
-                    <div class="row mt-3">
-                        <div class="col-md-3">
-                            <small class="text-muted">Base Fee</small>
-                            <div><strong>${formatCurrency(record.base_fee)}</strong></div>
-                        </div>
-                        <div class="col-md-3">
-                            <small class="text-muted">Drugs</small>
-                            <div><strong>${formatCurrency(record.drug_costs)}</strong></div>
-                        </div>
-                        <div class="col-md-3">
-                            <small class="text-muted">Labs</small>
-                            <div><strong>${formatCurrency(record.lab_costs)}</strong></div>
-                        </div>
-                        <div class="col-md-3">
-                            <small class="text-muted">Scans</small>
-                            <div><strong>${formatCurrency(record.scan_costs)}</strong></div>
-                        </div>
-                    </div>
-                    <hr>
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <small class="text-muted">Total Paid</small>
-                            <div><strong>${formatCurrency(record.total_paid)}</strong></div>
-                        </div>
-                        <div class="text-end">
-                            <small class="text-muted">Balance</small>
-                            <div class="${isOwing ? 'text-danger' : 'text-success'}">
-                                <strong>${isOwing ? '-' : '+'}${formatCurrency(record.abs_balance)}</strong>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-
-        html += '<div id="admission-payment-form" class="mt-4"></div>';
-        $('#admission-records-list').html(html);
-
-        if (records.length === 1) {
-            selectAdmissionRecord(records[0].id, 0);
-        }
-    }
-
-    function selectAdmissionRecord(recordId, index) {
-        $('.record-card').removeClass('selected');
-        $(`.record-card[data-record-id="${recordId}"]`).addClass('selected');
-        selectedRecord = { id: recordId, type: 'admission' };
-        displayAdmissionPaymentForm();
-    }
-
-    function displayAdmissionPaymentForm() {
-        const canUseWallet = walletBalance > 0;
-
-        $('#admission-payment-form').html(`
-            <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h6 class="mb-0">Fund Admission</h6>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label for="admission-amount" class="form-label">Amount to Pay (₦)</label>
-                        <input type="number" class="form-control form-control-lg" id="admission-amount" 
-                               step="0.01" min="0.01" placeholder="Enter amount" required>
-                    </div>
-
-                    ${canUseWallet ? `
-                    <div class="payment-breakdown-card mb-3" id="admission-breakdown" style="display:none;">
-                        <div class="p-2 bg-info text-white">
-                            <small>Payment Breakdown</small>
-                        </div>
-                        <div class="breakdown-row">
-                            <span>
-                                <input type="checkbox" id="admission-use-wallet" checked>
-                                <label for="admission-use-wallet" class="ms-2">Use Wallet Balance</label>
-                            </span>
-                            <strong class="text-success" id="admission-wallet-amount">₦0.00</strong>
-                        </div>
-                        <div class="breakdown-row">
-                            <span>Amount to Pay Now:</span>
-                            <strong class="text-primary" id="admission-remaining">₦0.00</strong>
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    <div class="mb-3">
-                        <label for="admission-payment-method" class="form-label">Payment Method</label>
-                        <select class="form-control form-control-lg" id="admission-payment-method">
-                            <option value="cash">CASH</option>
-                            <option value="transfer">BANK TRANSFER</option>
-                            <option value="card">CARD (POS)</option>
-                        </select>
-                    </div>
-
-                    <button class="btn btn-success btn-lg w-100" onclick="processAdmissionPayment()">
-                        <i class="fas fa-check-circle"></i> Process Payment
-                    </button>
-                </div>
-            </div>
-        `);
-
-        $('#admission-amount').on('input', function() {
-            const amount = parseFloat($(this).val()) || 0;
-            if (amount > 0 && canUseWallet) {
-                $('#admission-breakdown').show();
-                updateAdmissionBreakdown();
+    $.ajax({
+        url: "{% url 'ajax_get_admission_surgery_details' %}",
+        method: 'GET',
+        data: {
+            patient_id: patientData.id,
+            type: 'admission'
+        },
+        success: function(response) {
+            if (response.success && response.count > 0) {
+                currentAdmissionRecords = response.records;
+                displayAdmissionRecords(response.records);
             } else {
-                $('#admission-breakdown').hide();
+                $('#admission-records-list').html(`
+                    <div class="text-center py-4">
+                        <i class="fas fa-info-circle fa-3x text-muted mb-3"></i>
+                        <h5>No Active Admissions Found</h5>
+                        <p class="text-muted">This patient has no active admissions.</p>
+                        <button class="btn btn-primary mt-3" onclick="goBackToTypeSelection()">
+                            <i class="fas fa-arrow-left"></i> Go Back
+                        </button>
+                    </div>
+                `);
             }
-        });
-
-        if (canUseWallet) {
-            $('#admission-use-wallet').on('change', updateAdmissionBreakdown);
+        },
+        error: function(xhr) {
+            showModal('Error', xhr.responseJSON?.error || 'Error loading admissions', true);
+            $('#admission-records-list').html('<div class="alert alert-danger">Error loading admissions</div>');
         }
+    });
+}
+
+function displayAdmissionRecords(records) {
+    let html = '';
+
+    records.forEach((record, index) => {
+        const isOwing = record.balance < 0;
+        html += `
+            <div class="record-card ${records.length === 1 ? 'selected' : ''}" data-record-id="${record.id}" onclick="selectAdmissionRecord(${record.id})">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h5 class="mb-1">${record.identifier}</h5>
+                        <span class="badge bg-info">${record.status}</span>
+                    </div>
+                    <div class="text-end">
+                        <div class="text-muted small">Total Bill</div>
+                        <div class="h5 mb-0">${formatCurrency(record.total_bill)}</div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-3">
+                        <small class="text-muted">Base Fee</small>
+                        <div><strong>${formatCurrency(record.base_fee)}</strong></div>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Drugs</small>
+                        <div><strong>${formatCurrency(record.drug_costs)}</strong></div>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Labs</small>
+                        <div><strong>${formatCurrency(record.lab_costs)}</strong></div>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Scans</small>
+                        <div><strong>${formatCurrency(record.scan_costs)}</strong></div>
+                    </div>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <small class="text-muted">Total Paid</small>
+                        <div><strong>${formatCurrency(record.total_paid)}</strong></div>
+                    </div>
+                    <div class="text-end">
+                        <small class="text-muted">Balance</small>
+                        <div class="${isOwing ? 'text-danger' : 'text-success'}">
+                            <strong>${isOwing ? '-' : '+'}${formatCurrency(record.abs_balance)}</strong>
+                        </div>
+                    </div>
+                </div>
+                ${record.status === 'pending' && !record.has_prior_payment ? `
+                    <div class="alert alert-info mt-2 mb-0 py-1 px-2">
+                        <small><strong>Minimum deposit required:</strong> ₦${parseFloat(record.minimum_deposit).toLocaleString()}</small>
+                    </div>` : ''}
+            </div>
+        `;
+    });
+
+    html += '<div id="admission-payment-form" class="mt-4"></div>';
+    $('#admission-records-list').html(html);
+
+    if (records.length === 1) {
+        selectAdmissionRecord(records[0].id);
+    }
+}
+
+function selectAdmissionRecord(recordId) {
+    $('.record-card').removeClass('selected');
+    $(`.record-card[data-record-id="${recordId}"]`).addClass('selected');
+
+    const record = currentAdmissionRecords.find(r => r.id === recordId);
+    selectedRecord = {
+        id: recordId,
+        type: 'admission',
+        minimum_deposit: record ? record.minimum_deposit : null,
+        has_prior_payment: record ? record.has_prior_payment : false,
+        status: record ? record.status : null
+    };
+
+    displayAdmissionPaymentForm();
+}
+
+function displayAdmissionPaymentForm() {
+    const canUseWallet = walletBalance > 0;
+    const minDeposit = selectedRecord.minimum_deposit;
+    const isPending = selectedRecord.status === 'pending';
+
+    $('#admission-payment-form').html(`
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h6 class="mb-0">Fund Admission</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="admission-amount" class="form-label">Enter Amount to Pay (₦)</label>
+                    ${isPending && minDeposit && !selectedRecord.has_prior_payment ? `
+                        <div class="alert alert-info py-1 px-2 mb-2">
+                            <small><strong>Minimum deposit required:</strong> ₦${parseFloat(minDeposit).toLocaleString()}</small>
+                        </div>` : ''}
+                    <input type="number" class="form-control form-control-lg" id="admission-amount"
+                           step="0.01" min="0.01" placeholder="Enter amount" required>
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                        ${[20000, 30000, 40000, 50000, 100000].map(amt =>
+                            `<button type="button" class="btn btn-sm btn-outline-secondary quick-amount" data-amount="${amt}">
+                                ₦${amt.toLocaleString()}
+                            </button>`
+                        ).join('')}
+                    </div>
+                </div>
+
+                ${canUseWallet ? `
+                <div class="payment-breakdown-card mb-3" id="admission-breakdown" style="display:none;">
+                    <div class="p-2 bg-info text-white">
+                        <small>Payment Breakdown</small>
+                    </div>
+                    <div class="breakdown-row">
+                        <span>
+                            <input type="checkbox" id="admission-use-wallet" checked>
+                            <label for="admission-use-wallet" class="ms-2">Use Wallet Balance (₦${parseFloat(walletBalance).toLocaleString()})</label>
+                        </span>
+                        <strong class="text-success" id="admission-wallet-amount">₦0.00</strong>
+                    </div>
+                    <div class="breakdown-row">
+                        <span>Amount to Pay Now:</span>
+                        <strong class="text-primary" id="admission-remaining">₦0.00</strong>
+                    </div>
+                </div>
+                ` : ''}
+
+                <div class="mb-3">
+                    <label for="admission-payment-method" class="form-label">Payment Method</label>
+                    <select class="form-control form-control-lg" id="admission-payment-method">
+                        <option value="cash">CASH</option>
+                        <option value="transfer">BANK TRANSFER</option>
+                        <option value="card">CARD (POS)</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-success btn-lg w-100" onclick="processAdmissionPayment()">
+                    <i class="fas fa-check-circle"></i> Process Payment
+                </button>
+            </div>
+        </div>
+    `);
+
+    $('#admission-amount').on('input', function() {
+        const amount = parseFloat($(this).val()) || 0;
+        if (amount > 0 && canUseWallet) {
+            $('#admission-breakdown').show();
+            updateAdmissionBreakdown();
+        } else {
+            $('#admission-breakdown').hide();
+        }
+    });
+
+    if (canUseWallet) {
+        $('#admission-use-wallet').on('change', updateAdmissionBreakdown);
     }
 
-    function updateAdmissionBreakdown() {
-        const amount = parseFloat($('#admission-amount').val()) || 0;
-        const useWallet = $('#admission-use-wallet').is(':checked');
-        const walletUsed = useWallet ? Math.min(walletBalance, amount) : 0;
-        const remaining = amount - walletUsed;
+    $(document).off('click', '.quick-amount').on('click', '.quick-amount', function() {
+        const amt = $(this).data('amount');
+        $('#admission-amount').val(amt).trigger('input');
+    });
+}
 
-        $('#admission-wallet-amount').text('- ' + formatCurrency(walletUsed));
-        $('#admission-remaining').text(formatCurrency(remaining));
+function updateAdmissionBreakdown() {
+    const amount = parseFloat($('#admission-amount').val()) || 0;
+    const useWallet = $('#admission-use-wallet').is(':checked');
+    const walletUsed = useWallet ? Math.min(walletBalance, amount) : 0;
+    const remaining = amount - walletUsed;
+
+    $('#admission-wallet-amount').text('- ' + formatCurrency(walletUsed));
+    $('#admission-remaining').text(formatCurrency(remaining));
+}
+
+function processAdmissionPayment() {
+    const amount = parseFloat($('#admission-amount').val());
+
+    if (!amount || amount <= 0) {
+        showModal('Error', 'Please enter a valid amount.', true);
+        return;
     }
 
-    function processAdmissionPayment() {
-        const amount = parseFloat($('#admission-amount').val());
-        if (!amount || amount <= 0) {
-            showModal('Error', 'Please enter a valid amount.', true);
+    // Minimum deposit check
+    if (selectedRecord.status === 'pending' && selectedRecord.minimum_deposit && !selectedRecord.has_prior_payment) {
+        if (amount < parseFloat(selectedRecord.minimum_deposit)) {
+            showModal('Error', `Minimum initial deposit required is ₦${parseFloat(selectedRecord.minimum_deposit).toLocaleString()}. You entered ₦${amount.toLocaleString()}.`, true);
             return;
         }
-
-        const paymentMethod = $('#admission-payment-method').val();
-        const useWallet = $('#admission-use-wallet').is(':checked');
-
-        const formData = new FormData();
-        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-        formData.append('patient_id', patientData.id);
-        formData.append('admission_id', selectedRecord.id);
-        formData.append('amount', amount);
-        formData.append('payment_method', paymentMethod);
-        formData.append('use_wallet', useWallet);
-
-        $.ajax({
-            url: "{% url 'ajax_process_admission_funding' %}",
-            method: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                if (response.success) {
-                    showModal('Success', response.message);
-                    setTimeout(() => window.location.href = response.redirect_url, 2000);
-                }
-            },
-            error: function(xhr) {
-                showModal('Error', xhr.responseJSON?.error || 'Error processing payment', true);
-            }
-        });
     }
+
+    // Large amount confirmation
+    if (amount >= 500000) {
+        if (!confirm(`You are about to fund ₦${formatCurrency(amount)} for this admission. Are you sure?`)) {
+            return;
+        }
+    }
+
+    const paymentMethod = $('#admission-payment-method').val();
+    const useWallet = $('#admission-use-wallet').is(':checked');
+
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    formData.append('patient_id', patientData.id);
+    formData.append('admission_id', selectedRecord.id);
+    formData.append('amount', amount);
+    formData.append('payment_method', paymentMethod);
+    formData.append('use_wallet', useWallet);
+
+    $.ajax({
+        url: "{% url 'ajax_process_admission_funding' %}",
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            if (response.success) {
+                showModal('Success', response.message);
+                setTimeout(() => window.location.href = response.redirect_url, 2000);
+            }
+        },
+        error: function(xhr) {
+            showModal('Error', xhr.responseJSON?.error || 'Error processing payment', true);
+        }
+    });
+}
 
     // === SURGERY FUNDING ===
     function loadSurgeryRecords() {

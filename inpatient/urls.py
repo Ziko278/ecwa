@@ -50,7 +50,7 @@ urlpatterns = [
     path('admissions/create/<int:patient_id>/', admission_create_for_patient,
          name='admission_create_for_patient'),
     path('admissions/<int:pk>/', AdmissionDetailView.as_view(), name='admission_detail'),
-    path('admissions/<int:pk>/edit/', AdmissionUpdateView.as_view(), name='admission_edit'),
+    path('admissions/<int:pk>/edit/', admission_update, name='admission_edit'),
 
     # NEW: Deposit & Discharge
     path('admissions/<int:admission_id>/deposit/', process_admission_deposit, name='process_admission_deposit'),
@@ -72,6 +72,13 @@ urlpatterns = [
     path('tasks/create/', AdmissionTaskCreateView.as_view(), name='admission_task_create'),
     path('tasks/<int:pk>/complete/', mark_task_completed, name='mark_task_completed'),
     path('tasks/<int:pk>/cancel/', cancel_task, name='cancel_task'),
+
+    path('admission/<int:admission_id>/vitals/add/', ajax_add_admission_vitals, name='ajax_add_admission_vitals'),
+    path('admission/vitals/<int:vitals_id>/edit/', ajax_edit_admission_vitals, name='ajax_edit_admission_vitals'),
+    path('ward-round/<int:pk>/save/', ajax_save_ward_round, name='ajax_save_ward_round'),
+    path('ward-round/<int:pk>/edit/', ajax_edit_ward_round, name='ajax_edit_ward_round'),
+    path('admission/<int:admission_id>/task/add/', ajax_add_admission_task, name='ajax_add_admission_task'),
+    path('admission/<int:admission_id>/status/change/', ajax_change_admission_status, name='ajax_change_admission_status'),
 
     # Surgeries
     path('surgeries/', SurgeryListView.as_view(), name='surgery_index'),

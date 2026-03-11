@@ -1,5 +1,6 @@
 import json
-
+import math
+from django.db.models import Prefetch
 from django.db import transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
@@ -15,7 +16,7 @@ from django.core.paginator import Paginator
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 import logging
-
+from itertools import chain
 from consultation.models import ConsultationSessionModel
 from finance.models import PatientTransactionModel
 from laboratory.models import LabTestOrderModel, LabTestTemplateModel, LabTestCategoryModel
@@ -451,11 +452,11 @@ def admission_search_patient(request):
             # Check for active admission
             active_admission = Admission.objects.filter(
                 patient=patient,
-                status='active'
+                status__in=['active', 'pending']
             ).first()
 
             if active_admission:
-                messages.info(request, f'Patient already has an active admission: {active_admission.admission_number}')
+                messages.info(request, f'Patient already has an ongoing admission: {active_admission.admission_number}')
                 return redirect('admission_detail', pk=active_admission.pk)
 
             # No active admission, proceed to create new one
@@ -473,20 +474,38 @@ def admission_create_for_patient(request, patient_id):
     """Create admission for specific patient"""
     patient = get_object_or_404(PatientModel, pk=patient_id)
 
+    # Auto-fill from consultation session if provided
+    session_id = request.GET.get('consultation_session')
+    initial_data = {}
+    if session_id:
+        try:
+            session = ConsultationSessionModel.objects.get(pk=session_id)
+            initial_data = {
+                'chief_complaint': session.chief_complaint,
+                'admission_diagnosis': (
+                    session.primary_diagnosis.name if session.primary_diagnosis
+                    else session.diagnosis
+                ),
+            }
+        except ConsultationSessionModel.DoesNotExist:
+            pass
+
     if request.method == 'POST':
         form = AdmissionForm(request.POST)
         if form.is_valid():
             admission = form.save(commit=False)
             admission.patient = patient
             admission.admitted_by = request.user
+            admission.status = 'pending'
             admission.save()
 
-            messages.success(request, f'Admission {admission.admission_number} created successfully')
-            return redirect('admission_detail', pk=admission.pk)
+            messages.success(
+                request,
+                f'Admission {admission.admission_number} created. Please direct patient to Finance to make the admission deposit.'
+            )
+            return redirect(f"{reverse('admission_index')}?status=pending")
     else:
-        form = AdmissionForm()
-        form.fields['patient'].initial = patient
-        form.fields['patient'].widget.attrs['readonly'] = True
+        form = AdmissionForm(initial=initial_data)
 
     return render(request, 'inpatient/admission/create.html', {
         'form': form,
@@ -503,7 +522,7 @@ class AdmissionListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
     def get_queryset(self):
         queryset = Admission.objects.select_related(
-            'patient', 'bed__ward', 'attending_doctor'
+            'patient', 'bed__ward',
         ).all()
 
         # Status filter
@@ -597,104 +616,312 @@ def confirm_admission(request, admission_id):
         }, status=500)
 
 
-# -------------------------
-# UPDATE: Admission Detail View - Add more context
-# -------------------------
+"""
+Replace / merge this into inpatient/views.py
+All context variables used in admission_detail.html are built here.
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BILLING SUMMARY HELPER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_billing_summary(admission):
+    """
+    Returns a dict of subtotals for the cost breakdown tab.
+
+    Bed total         : bed_rate_used × length_of_stay_days
+    Consultation total: consultation_fee_used × ceil(days / fee_duration_days)
+    Drug total        : sum of drug_order.total_amount
+    Lab total         : sum of lab template prices
+    Scan total        : sum of scan template prices
+    Service total     : sum of service/item transaction amounts
+    """
+    days = admission.length_of_stay_days  # already correct from model property
+
+    # ── Bed
+    bed_total = admission.bed_rate_used * days
+
+    # ── Consultations
+    # Billing is per period (consultation_fee_duration_days), not per ward round
+    consultation_total = Decimal('0.00')
+    billable_periods = 0
+    if admission.consultation_fee_used and admission.admission_type:
+        duration_days = admission.admission_type.consultation_fee_duration_days or 1
+        billable_periods = math.ceil(days / duration_days)
+        consultation_total = admission.consultation_fee_used * billable_periods
+
+    # ── Drugs
+    drug_total = Decimal('0.00')
+    for drug in admission.drug_orders.exclude(status='cancelled').exclude(status='returned'):
+        drug_total += drug.total_amount
+
+    # ── Labs
+    lab_total = Decimal('0.00')
+    for lab in admission.lab_test_orders.exclude(status='cancelled'):
+        try:
+            lab_total += lab.template.price
+        except Exception:
+            pass
+
+    # ── Scans
+    scan_total = Decimal('0.00')
+    for scan in admission.scan_orders.exclude(status='cancelled'):
+        try:
+            scan_total += scan.template.price
+        except Exception:
+            pass
+
+    # ── Services & items
+    service_total = Decimal('0.00')
+    for tx in admission.service_orders.exclude(status='cancelled'):
+        try:
+            service_total += tx.total_amount
+        except Exception:
+            pass
+
+    return {
+        'bed_total': bed_total,
+        'consultation_total': consultation_total,
+        'billable_consultation_periods': billable_periods,
+        'drug_total': drug_total,
+        'lab_total': lab_total,
+        'scan_total': scan_total,
+        'service_total': service_total,
+        'grand_total': (
+            admission.admission_fee_charged
+            + bed_total
+            + consultation_total
+            + drug_total
+            + lab_total
+            + scan_total
+            + service_total
+        ),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLINICAL TIMELINE BUILDER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_clinical_timeline(admission):
+    """
+    Merges vitals and ward rounds into a single chronological list.
+    Each entry: { 'type': 'vitals'|'ward_round', 'obj': <model instance>, 'dt': <datetime> }
+    Sorted newest first.
+    """
+    from consultation.models import PatientVitalsModel, ConsultationSessionModel
+
+    vitals_qs = PatientVitalsModel.objects.filter(
+        admission=admission
+    ).select_related('recorded_by').order_by('-recorded_at')
+
+    rounds_qs = ConsultationSessionModel.objects.filter(
+        admission=admission
+    ).order_by('-created_at')
+
+    vitals_entries = [{'type': 'vitals', 'obj': v, 'dt': v.recorded_at} for v in vitals_qs]
+    round_entries  = [{'type': 'ward_round', 'obj': r, 'dt': r.created_at} for r in rounds_qs]
+
+    merged = sorted(
+        chain(vitals_entries, round_entries),
+        key=lambda x: x['dt'],
+        reverse=True
+    )
+    return merged
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETAIL VIEW
+# ─────────────────────────────────────────────────────────────────────────────
+
 class AdmissionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = Admission
-    permission_required = 'inpatient.view_admission'
     template_name = 'inpatient/admission/detail.html'
     context_object_name = 'admission'
+    permission_required = 'inpatient.view_admission'
+
+    def get(self, request, *args, **kwargs):
+        admission = self.get_object()
+
+        # Block detail page for pending admissions — redirect to edit/update
+        if admission.is_pending:
+            from django.contrib import messages
+            messages.info(request, 'This admission is still pending confirmation. Please confirm it first.')
+            return redirect('admission_update', pk=admission.pk)
+
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        ctx = super().get_context_data(**kwargs)
         admission = self.object
 
-        # Get associated surgeries
-        context['surgeries'] = admission.surgeries.all().select_related('surgery_type')
+        # ── Core related data
+        drug_orders = admission.drug_orders.exclude(
+            status__in=['cancelled', 'returned']
+        ).select_related('drug__formulation__generic_drug', 'ordered_by').order_by('-ordered_at')
 
-        # Get ward rounds (consultations)
-        context['ward_rounds'] = admission.consultations.all().select_related(
-            'primary_diagnosis'
-        ).prefetch_related('secondary_diagnoses').order_by('-created_at')
+        lab_tests = admission.lab_test_orders.exclude(
+            status='cancelled'
+        ).select_related('template', 'ordered_by').order_by('-ordered_at')
 
-        # Get orders
-        context['drug_orders'] = admission.drug_orders.all().select_related(
-            'drug', 'ordered_by'
-        ).order_by('-ordered_at')
+        scans = admission.scan_orders.exclude(
+            status='cancelled'
+        ).select_related('template', 'ordered_by').order_by('-ordered_at')
 
-        context['lab_tests'] = admission.lab_test_orders.all().select_related(
-            'template', 'ordered_by'
-        ).order_by('-ordered_at')
+        service_transactions = admission.service_orders.exclude(
+            status='cancelled'
+        ).order_by('-created_at')
 
-        context['scans'] = admission.scan_orders.all().select_related(
-            'template', 'ordered_by'
-        ).order_by('-ordered_at')
+        surgeries = admission.surgeries.all().order_by('-created_at') if hasattr(admission, 'surgeries') else []
 
-        # context['service_transactions'] = admission.service_transactions.all().select_related(
-        #     'service', 'service_item', 'performed_by'
-        # ).order_by('-created_at')
+        # ── Tasks
+        all_tasks = AdmissionTask.objects.filter(
+            admission=admission
+        ).select_related('drug_order__drug', 'assigned_to', 'created_by').order_by('scheduled_datetime')
 
-        # Get tasks
-        context['pending_tasks'] = admission.tasks.filter(
-            status__in=['pending', 'in_progress']
-        ).order_by('scheduled_datetime')
+        pending_tasks = all_tasks.filter(status='pending')
 
-        # Available beds for confirmation (if pending)
-        if admission.is_pending:
-            context['available_beds'] = Bed.objects.filter(
-                status='available',
-                is_active=True,
-                ward__is_active=True
-            ).select_related('ward').order_by('ward__name', 'bed_number')
+        # Mark overdue tasks (access via property or annotate)
+        now = timezone.now()
+        for task in all_tasks:
+            task.overdue = (
+                task.status == 'pending' and
+                task.scheduled_datetime < now
+            )
 
-        # Categories for ordering modals
-        context['lab_categories'] = LabTestCategoryModel.objects.all()
-        context['scan_categories'] = ScanCategoryModel.objects.all()
-        context['service_categories'] = ServiceCategory.objects.filter(
-            category_type__in=['service', 'mixed']
-        )
-        context['item_categories'] = ServiceCategory.objects.filter(
-            category_type__in=['item', 'mixed']
-        )
+        # ── Clinical timeline (vitals + ward rounds merged)
+        clinical_timeline = build_clinical_timeline(admission)
 
-        # Billing summary
-        context['billing_summary'] = self.get_billing_summary(admission)
+        # Also expose these separately for tab badges
+        from consultation.models import ConsultationSessionModel
+        from consultation.models import PatientVitalsModel
+        ward_rounds = ConsultationSessionModel.objects.filter(admission=admission)
+        vitals_list = PatientVitalsModel.objects.filter(admission=admission)
 
-        # Forms
-        context['update_form'] = AdmissionUpdateForm(instance=admission)
+        # ── Billing summary for cost breakdown tab
+        billing_summary = build_billing_summary(admission)
 
-        return context
+        # ── Available beds (for pending confirmation in overview)
+        available_beds = Bed.objects.filter(status='available').select_related('ward')
 
-    def get_billing_summary(self, admission):
-        """Calculate billing summary for admission"""
-        return {
-            'total_charges': admission.total_charges,
-            'total_paid': admission.total_paid,
-            'deposit_balance': admission.deposit_balance,
-            'balance_due': admission.debt_balance,
-            'can_be_confirmed': admission.can_be_confirmed if admission.is_pending else False,
-            'minimum_deposit_required': admission.admission_type.minimum_deposit_amount if admission.admission_type else Decimal(
-                '0.00')
+        # ── Search categories for order modals (pass empty querysets as fallback)
+        try:
+            from laboratory.models import LabTestCategoryModel
+            lab_categories = LabTestCategoryModel.objects.filter(is_active=True)
+        except Exception:
+            lab_categories = []
+
+        try:
+            from scan.models import ScanCategoryModel
+            scan_categories = ScanCategoryModel.objects.filter(is_active=True)
+        except Exception:
+            scan_categories = []
+
+        try:
+            from service.models import ServiceCategoryModel
+            service_categories = ServiceCategoryModel.objects.filter(is_active=True)
+        except Exception:
+            service_categories = []
+
+        try:
+            from service.models import ServiceItemCategoryModel
+            item_categories = ServiceItemCategoryModel.objects.filter(is_active=True)
+        except Exception:
+            item_categories = []
+
+        ctx.update({
+            # Orders
+            'drug_orders':           drug_orders,
+            'lab_tests':             lab_tests,
+            'scans':                 scans,
+            'service_transactions':  service_transactions,
+            'surgeries':             surgeries,
+
+            # Tasks
+            'all_tasks':             all_tasks,
+            'pending_tasks':         pending_tasks,
+
+            # Clinical timeline
+            'clinical_timeline':     clinical_timeline,
+            'ward_rounds':           ward_rounds,
+            'vitals_list':           vitals_list,
+
+            # Billing
+            'billing_summary':       billing_summary,
+
+            # Bed assignment (pending confirmations)
+            'available_beds':        available_beds,
+
+            # Modal search categories
+            'lab_categories':        lab_categories,
+            'scan_categories':       scan_categories,
+            'service_categories':    service_categories,
+            'item_categories':       item_categories,
+        })
+
+        # Compute live balances using grand_total from billing_summary
+        live_grand_total = billing_summary['grand_total']
+        live_debt = live_grand_total - admission.total_paid
+        live_excess = admission.total_paid - live_grand_total
+
+        ctx.update({
+            'billing_summary': billing_summary,
+            'live_grand_total': live_grand_total,
+            'live_debt': live_debt if live_debt > 0 else 0,
+            'live_excess': live_excess if live_excess > 0 else 0,
+        })
+
+        return ctx
+
+
+@login_required
+@permission_required('inpatient.change_admission')
+def admission_update(request, pk):
+    admission = get_object_or_404(Admission, pk=pk)
+
+    # Check deposit
+    has_deposit = (
+            PatientTransactionModel.objects.filter(
+                admission=admission,
+                transaction_type='admission_payment',
+                status='completed'
+            ).exists()
+            or (admission.admission_type and not admission.admission_type.requires_deposit)
+    )
+
+    # Build wards with available beds as JSON
+    wards = Ward.objects.filter(is_active=True).prefetch_related(
+        Prefetch('beds', queryset=Bed.objects.filter(status='available', is_active=True))
+    ).order_by('name')
+
+    wards_data = [
+        {
+            'id': ward.id,
+            'name': ward.name,
+            'beds': [
+                {'id': bed.id, 'label': f"Bed {bed.bed_number} ({bed.get_bed_type_display()})"}
+                for bed in ward.beds.all()
+            ]
         }
+        for ward in wards
+    ]
 
+    if request.method == 'POST':
+        form = AdmissionForm(request.POST, instance=admission)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Admission updated successfully')
+            return redirect('admission_detail', pk=admission.pk)
+    else:
+        form = AdmissionForm(instance=admission)
 
-
-class AdmissionUpdateView(
-    LoginRequiredMixin, PermissionRequiredMixin, UpdateView
-):
-    model = Admission
-    permission_required = 'inpatient.change_admission'
-    form_class = AdmissionUpdateForm
-    template_name = 'inpatient/admission/update.html'
-    success_message = 'Admission Successfully Updated'
-
-    def get_success_url(self):
-        return reverse('admission_detail', kwargs={'pk': self.object.pk})
-
-    def form_valid(self, form):
-        messages.success(self.request, self.success_message)
-        return super().form_valid(form)
+    return render(request, 'inpatient/admission/update.html', {
+        'form': form,
+        'admission': admission,
+        'has_deposit': has_deposit,
+        'wards_data': json.dumps(wards_data),
+        'current_bed': admission.bed,
+    })
 
 
 # -------------------------
@@ -2217,63 +2444,60 @@ def discharge_patient(request, admission_id):
 @login_required
 @permission_required('inpatient.view_admission')
 def inpatient_dashboard(request):
-    """Enhanced dashboard with tasks and notifications"""
     today = date.today()
     now = timezone.now()
 
-    # Basic statistics
     stats = {
         'total_wards': Ward.objects.filter(is_active=True).count(),
         'total_beds': Bed.objects.filter(is_active=True).count(),
         'occupied_beds': Bed.objects.filter(status='occupied').count(),
         'available_beds': Bed.objects.filter(status='available').count(),
+        'reserved_beds': Bed.objects.filter(status='reserved').count(),
         'active_admissions': Admission.objects.filter(status='active').count(),
+        'pending_admissions': Admission.objects.filter(status='pending').count(),
         'surgeries_today': Surgery.objects.filter(scheduled_date__date=today).count(),
         'surgeries_pending': Surgery.objects.filter(status='scheduled').count(),
+        'tasks_overdue': AdmissionTask.objects.filter(
+            scheduled_datetime__lt=now,
+            status__in=['pending', 'in_progress']
+        ).count(),
+        'tasks_today': AdmissionTask.objects.filter(
+            scheduled_datetime__date=today,
+            status__in=['pending', 'in_progress']
+        ).count(),
     }
 
-    # Task statistics
-    stats['tasks_overdue'] = AdmissionTask.objects.filter(
-        scheduled_datetime__lt=now,
-        status__in=['pending', 'in_progress']
-    ).count()
-
-    stats['tasks_today'] = AdmissionTask.objects.filter(
-        scheduled_datetime__date=today,
-        status__in=['pending', 'in_progress']
-    ).count()
-
-    # Calculate occupancy rate
     if stats['total_beds'] > 0:
         stats['occupancy_rate'] = round((stats['occupied_beds'] / stats['total_beds']) * 100, 1)
     else:
         stats['occupancy_rate'] = 0
 
-    # Recent admissions
     recent_admissions = Admission.objects.filter(
         admission_date__gte=today - timedelta(days=7)
     ).select_related('patient', 'bed__ward', 'admission_type').order_by('-admission_date')[:10]
 
-    # Upcoming surgeries
     upcoming_surgeries = Surgery.objects.filter(
         scheduled_date__gte=now,
         status='scheduled'
-    ).select_related('patient', 'surgery_type').order_by('scheduled_date')[:10]
+    ).select_related('patient', 'surgery_type').order_by('scheduled_date')[:8]
 
-    # Ward occupancy
+    # FIX: Use different annotation names to avoid clashing with @property on Ward model
     ward_occupancy = Ward.objects.filter(is_active=True).annotate(
-        total_beds=Count('beds', filter=Q(beds__is_active=True)),
-        occupied_beds=Count('beds', filter=Q(beds__status='occupied')),
-        available_beds=Count('beds', filter=Q(beds__status='available'))
+        bed_count=Count('beds', filter=Q(beds__is_active=True)),
+        beds_occupied=Count('beds', filter=Q(beds__status='occupied')),
+        beds_available=Count('beds', filter=Q(beds__status='available')),
+        beds_reserved=Count('beds', filter=Q(beds__status='reserved')),
     ).order_by('name')
 
-    # Overdue tasks
+    # Compute occupancy_rate as a plain attribute (not annotation to avoid conflicts)
+    for ward in ward_occupancy:
+        ward.occ_rate = round((ward.beds_occupied / ward.bed_count) * 100, 1) if ward.bed_count > 0 else 0
+
     overdue_tasks = AdmissionTask.objects.filter(
         scheduled_datetime__lt=now,
         status__in=['pending', 'in_progress']
     ).select_related('admission__patient', 'drug_order__drug').order_by('scheduled_datetime')[:10]
 
-    # Today's tasks
     todays_tasks = AdmissionTask.objects.filter(
         scheduled_datetime__date=today,
         status__in=['pending', 'in_progress']
@@ -2289,3 +2513,260 @@ def inpatient_dashboard(request):
     }
 
     return render(request, 'inpatient/dashboard.html', context)
+
+
+# ─────────────────────────────────────────
+# VITALS
+# ─────────────────────────────────────────
+
+@login_required
+@require_POST
+def ajax_add_admission_vitals(request, admission_id):
+    admission = get_object_or_404(Admission, pk=admission_id)
+
+    from consultation.models import PatientVitalsModel
+
+    try:
+        bp_systolic = request.POST.get('blood_pressure_systolic') or None
+        bp_diastolic = request.POST.get('blood_pressure_diastolic') or None
+        temperature = request.POST.get('temperature') or None
+        pulse_rate = request.POST.get('pulse_rate') or None
+        respiratory_rate = request.POST.get('respiratory_rate') or None
+        oxygen_saturation = request.POST.get('oxygen_saturation') or None
+        height = request.POST.get('height') or None
+        weight = request.POST.get('weight') or None
+        notes = request.POST.get('notes', '')
+
+        vitals = PatientVitalsModel.objects.create(
+            admission=admission,
+            queue_entry=None,
+            blood_pressure_systolic=bp_systolic,
+            blood_pressure_diastolic=bp_diastolic,
+            temperature=temperature,
+            pulse_rate=pulse_rate,
+            respiratory_rate=respiratory_rate,
+            oxygen_saturation=oxygen_saturation,
+            height=height,
+            weight=weight,
+            notes=notes,
+            recorded_by=request.user,
+        )
+
+        return JsonResponse({
+            'success': True,
+            'vitals': {
+                'id': vitals.id,
+                'bp': vitals.blood_pressure,
+                'temperature': str(vitals.temperature) if vitals.temperature else None,
+                'pulse_rate': vitals.pulse_rate,
+                'oxygen_saturation': vitals.oxygen_saturation,
+                'respiratory_rate': vitals.respiratory_rate,
+                'weight': str(vitals.weight) if vitals.weight else None,
+                'height': str(vitals.height) if vitals.height else None,
+                'bmi': str(vitals.bmi) if vitals.bmi else None,
+                'notes': vitals.notes,
+                'recorded_by': request.user.get_full_name() or request.user.username,
+                'recorded_at': vitals.recorded_at.strftime('%d %b %Y %H:%M'),
+            }
+        })
+    except Exception as e:
+        logger.exception("Error adding vitals")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def ajax_edit_admission_vitals(request, vitals_id):
+    from consultation.models import PatientVitalsModel
+    vitals = get_object_or_404(PatientVitalsModel, pk=vitals_id)
+
+    try:
+        vitals.blood_pressure_systolic = request.POST.get('blood_pressure_systolic') or None
+        vitals.blood_pressure_diastolic = request.POST.get('blood_pressure_diastolic') or None
+        vitals.temperature = request.POST.get('temperature') or None
+        vitals.pulse_rate = request.POST.get('pulse_rate') or None
+        vitals.respiratory_rate = request.POST.get('respiratory_rate') or None
+        vitals.oxygen_saturation = request.POST.get('oxygen_saturation') or None
+        vitals.height = request.POST.get('height') or None
+        vitals.weight = request.POST.get('weight') or None
+        vitals.notes = request.POST.get('notes', '')
+        vitals.save()
+
+        return JsonResponse({
+            'success': True,
+            'vitals': {
+                'id': vitals.id,
+                'bp': vitals.blood_pressure,
+                'temperature': str(vitals.temperature) if vitals.temperature else None,
+                'pulse_rate': vitals.pulse_rate,
+                'oxygen_saturation': vitals.oxygen_saturation,
+                'respiratory_rate': vitals.respiratory_rate,
+                'weight': str(vitals.weight) if vitals.weight else None,
+                'height': str(vitals.height) if vitals.height else None,
+                'bmi': str(vitals.bmi) if vitals.bmi else None,
+                'notes': vitals.notes,
+                'recorded_by': vitals.recorded_by.get_full_name() or vitals.recorded_by.username,
+                'recorded_at': vitals.recorded_at.strftime('%d %b %Y %H:%M'),
+            }
+        })
+    except Exception as e:
+        logger.exception("Error editing vitals")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ─────────────────────────────────────────
+# WARD ROUNDS
+# ─────────────────────────────────────────
+
+@login_required
+@require_POST
+def ajax_save_ward_round(request, pk):
+    ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+
+    if not ward_round.admission:
+        return JsonResponse({'success': False, 'error': 'Not a ward round'}, status=400)
+
+    ward_round.chief_complaint = request.POST.get('chief_complaint', '')
+    ward_round.assessment = request.POST.get('assessment', '')
+    ward_round.diagnosis = request.POST.get('diagnosis', '')
+
+    status = request.POST.get('status', 'in_progress')
+    if status == 'completed':
+        ward_round.status = 'completed'
+        ward_round.completed_at = timezone.now()
+        # Trigger consultation fee
+        from .signals import check_and_charge_consultation_fee
+        check_and_charge_consultation_fee(ward_round)
+    else:
+        ward_round.status = 'in_progress'
+
+    ward_round.save()
+
+    return JsonResponse({
+        'success': True,
+        'ward_round': {
+            'id': ward_round.id,
+            'chief_complaint': ward_round.chief_complaint,
+            'assessment': ward_round.assessment,
+            'diagnosis': ward_round.diagnosis,
+            'status': ward_round.status,
+            'doctor': request.user.get_full_name() or request.user.username,
+            'created_at': ward_round.created_at.strftime('%d %b %Y %H:%M'),
+        }
+    })
+
+
+@login_required
+@require_POST
+def ajax_edit_ward_round(request, pk):
+    ward_round = get_object_or_404(ConsultationSessionModel, pk=pk)
+
+    if not ward_round.admission:
+        return JsonResponse({'success': False, 'error': 'Not a ward round'}, status=400)
+
+    # Only the authoring doctor can edit
+    if ward_round.doctor != request.user:
+        return JsonResponse({'success': False, 'error': 'You can only edit your own ward rounds'}, status=403)
+
+    ward_round.chief_complaint = request.POST.get('chief_complaint', '')
+    ward_round.assessment = request.POST.get('assessment', '')
+    ward_round.diagnosis = request.POST.get('diagnosis', '')
+    ward_round.save()
+
+    return JsonResponse({'success': True, 'message': 'Ward round updated'})
+
+
+# ─────────────────────────────────────────
+# TASKS
+# ─────────────────────────────────────────
+
+@login_required
+@require_POST
+def ajax_add_admission_task(request, admission_id):
+    admission = get_object_or_404(Admission, pk=admission_id)
+
+    task_type = request.POST.get('task_type')
+    description = request.POST.get('description', '')
+    scheduled_datetime_str = request.POST.get('scheduled_datetime')
+    priority = request.POST.get('priority', 'normal')
+    drug_order_id = request.POST.get('drug_order_id')
+    quantity = request.POST.get('quantity')
+
+    if not task_type or not scheduled_datetime_str:
+        return JsonResponse({'success': False, 'error': 'Task type and scheduled time are required'}, status=400)
+
+    try:
+        scheduled_datetime = timezone.datetime.fromisoformat(scheduled_datetime_str)
+        if timezone.is_naive(scheduled_datetime):
+            scheduled_datetime = timezone.make_aware(scheduled_datetime)
+    except ValueError:
+        return JsonResponse({'success': False, 'error': 'Invalid datetime format'}, status=400)
+
+    drug_order = None
+    if task_type == 'drug' and drug_order_id:
+        drug_order = get_object_or_404(DrugOrderModel, pk=drug_order_id, admission=admission)
+
+        # Constraint check
+        pending_task_qty = AdmissionTask.objects.filter(
+            drug_order=drug_order,
+            status='pending'
+        ).count()  # each task = 1 dose
+
+        administered = drug_order.quantity_dispensed
+        max_addable = drug_order.quantity_ordered - administered - pending_task_qty
+
+        requested_qty = int(quantity or 1)
+        if requested_qty > max_addable:
+            return JsonResponse({
+                'success': False,
+                'error': f'Cannot add {requested_qty} dose task(s). Max addable: {int(max_addable)}'
+            }, status=400)
+
+    task = AdmissionTask.objects.create(
+        admission=admission,
+        task_type=task_type,
+        description=description,
+        scheduled_datetime=scheduled_datetime,
+        priority=priority,
+        drug_order=drug_order,
+        status='pending',
+        created_by=request.user,
+    )
+
+    return JsonResponse({
+        'success': True,
+        'task': {
+            'id': task.id,
+            'task_type': task.get_task_type_display(),
+            'description': task.description,
+            'scheduled_datetime': task.scheduled_datetime.strftime('%d %b %Y %H:%M'),
+            'priority': task.priority,
+            'status': task.status,
+        }
+    })
+
+
+# ─────────────────────────────────────────
+# ADMISSION STATUS CHANGE (index level)
+# ─────────────────────────────────────────
+
+@login_required
+@require_POST
+def ajax_change_admission_status(request, admission_id):
+    admission = get_object_or_404(Admission, pk=admission_id)
+
+    new_status = request.POST.get('status')
+    allowed = ['absconded', 'transferred', 'deceased']
+
+    if new_status not in allowed:
+        return JsonResponse({'success': False, 'error': 'Invalid status'}, status=400)
+
+    # Free bed
+    if admission.bed:
+        admission.bed.status = 'available'
+        admission.bed.save()
+
+    admission.status = new_status
+    admission.save(update_fields=['status'])
+
+    return JsonResponse({'success': True, 'message': f'Admission marked as {new_status}'})
