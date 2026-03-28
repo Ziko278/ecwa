@@ -397,7 +397,7 @@ def verify_patient_ajax(request):
 
         # Calculate pending payments for last 3 days
         # Changed from 30 to 3, but maintained thirty variable name
-        thirty_days_ago = timezone.now() - timedelta(days=3)
+        thirty_days_ago = timezone.now() - timedelta(days=5)
 
         # --- QUERIES ---
 
@@ -1072,7 +1072,7 @@ def process_wallet_payment(request):
         }, status=500)
 
 
-THIRTY_DAYS = 30
+THIRTY_DAYS = 5
 
 
 def _to_decimal(v):
@@ -3446,7 +3446,7 @@ def finance_dashboard(request):
     current_month_start = today.replace(day=1)
     last_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
     last_month_end = current_month_start - timedelta(days=1)
-    thirty_days_ago = today - timedelta(days=30)
+    thirty_days_ago = today - timedelta(days=5)
 
     # Basic transaction metrics
     total_transactions = PatientTransactionModel.objects.filter(status='completed')
@@ -6787,7 +6787,7 @@ def verify_customer_for_sales(request):
             )
 
             # Get pending walk-in orders (from last 30 days, no consultation/admission)
-            thirty_days_ago = timezone.now() - timedelta(days=30)
+            thirty_days_ago = timezone.now() - timedelta(days=5)
 
             pending_drugs = DrugOrderModel.objects.filter(
                 patient=patient,

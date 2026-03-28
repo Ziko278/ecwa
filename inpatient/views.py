@@ -747,7 +747,7 @@ class AdmissionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVie
         if admission.is_pending:
             from django.contrib import messages
             messages.info(request, 'This admission is still pending confirmation. Please confirm it first.')
-            return redirect('admission_update', pk=admission.pk)
+            return redirect('admission_edit', pk=admission.pk)
 
         return super().get(request, *args, **kwargs)
 

@@ -98,15 +98,19 @@ def update_summary_on_claim_delete(sender, instance, **kwargs):
     """
     Update claim summary when a claim is deleted.
     """
-    if instance.claim_summary:
-        summary = instance.claim_summary
-        # Check if summary still has claims
-        if summary.claims.count() == 0:
-            # Delete empty summary
-            summary.delete()
-        else:
-            # Recalculate totals
-            summary.recalculate_totals()
+    try:
+        if instance.claim_summary:
+
+            summary = instance.claim_summary
+            # Check if summary still has claims
+            if summary.claims.count() == 0:
+                # Delete empty summary
+                summary.delete()
+            else:
+                # Recalculate totals
+                summary.recalculate_totals()
+    except Exception:
+        pass
 
 
 # -------------------------

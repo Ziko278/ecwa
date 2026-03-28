@@ -314,7 +314,9 @@ class PatientVitalsModel(models.Model):
         db_table = 'patient_vitals'
 
     def __str__(self):
-        return f"Vitals: {self.queue_entry.patient} - {self.recorded_at.strftime('%Y-%m-%d')}"
+        if self.queue_entry:
+            return f"Vitals: {self.queue_entry.patient} - {self.recorded_at.strftime('%Y-%m-%d')}"
+        return f"Vitals: - {self.recorded_at.strftime('%Y-%m-%d')}"
 
     def save(self, *args, **kwargs):
         # Calculate BMI if height and weight are provided
@@ -507,7 +509,8 @@ class ConsultationSessionModel(models.Model):
     def doctor(self):
         """Get doctor from either queue_entry or admission"""
         if self.queue_entry:
-            return self.queue_entry.doctor
+            if self.queue_entry.consultant:
+                return self.queue_entry.consultant
         return ''
 
     @property

@@ -1749,9 +1749,11 @@ def drug_dispense_page(request):
     return render(request, 'pharmacy/dispense/dispense.html')
 
 
+from datetime import timedelta
+from django.utils import timezone
+
 @login_required
 def verify_patient_pharmacy_ajax(request):
-    """Verify patient and get drug orders for dispensing - CLAIM-BASED VERSION"""
     card_number = request.GET.get('card_number', '').strip()
 
     if not card_number:
@@ -1760,13 +1762,11 @@ def verify_patient_pharmacy_ajax(request):
     try:
         patient = PatientModel.objects.get(card_number__iexact=card_number)
 
-        # Get or create wallet
         wallet, created = PatientWalletModel.objects.get_or_create(
             patient=patient,
             defaults={'amount': Decimal('0.00')}
         )
 
-        # Get active insurance for display
         active_insurance = None
         try:
             policies_qs = patient.insurance_policies.all()
@@ -1781,21 +1781,33 @@ def verify_patient_pharmacy_ajax(request):
             valid_to__gte=timezone.now().date()
         ).select_related('hmo', 'coverage_plan').first()
 
-        # Get ready to dispense orders (paid but not fully dispensed)
+        today = timezone.now().date()
+        five_days_ago = today - timedelta(days=5)
+
+        # --- PENDING: ordered_at within last 5 days ---
+        unpaid_orders_qs = DrugOrderModel.objects.filter(
+            patient=patient,
+            status='pending',
+            ordered_at__date__gte=five_days_ago  # 5 days from order date
+        ).select_related('drug').order_by('-ordered_at')
+
+        # --- PAID: find drug_order IDs that have a transaction within last 5 days ---
+        paid_within_window = PatientTransactionModel.objects.filter(
+            patient=patient,
+            transaction_type='drug_payment',
+            drug_order__isnull=False,
+            date__gte=five_days_ago  # 5 days from payment date
+        ).values_list('drug_order_id', flat=True)
+
         ready_to_dispense_qs = DrugOrderModel.objects.filter(
             patient=patient,
-            status__in=['paid', 'partially_dispensed']
+            status__in=['paid', 'partially_dispensed'],
+            id__in=paid_within_window  # only orders paid within 5 days
         ).exclude(
             quantity_dispensed__gte=F('quantity_ordered')
         ).select_related('drug').order_by('-ordered_at')
 
-        # Get unpaid orders
-        unpaid_orders_qs = DrugOrderModel.objects.filter(
-            patient=patient,
-            status='pending'
-        ).select_related('drug').order_by('-ordered_at')
-
-        # Process ready_to_dispense with claim info (for display context)
+        # --- Build ready_items ---
         ready_items = []
         for order in ready_to_dispense_qs:
             ready_items.append({
@@ -1812,7 +1824,7 @@ def verify_patient_pharmacy_ajax(request):
                 'ordered_date': order.ordered_at.strftime('%Y-%m-%d')
             })
 
-        # Process unpaid orders with claim-based logic
+        # --- Build unpaid_items ---
         unpaid_results = get_orders_with_claim_info(unpaid_orders_qs, 'drug')
 
         unpaid_items = []
@@ -1827,7 +1839,7 @@ def verify_patient_pharmacy_ajax(request):
                 'base_amount': float(result['base_amount']),
                 'patient_amount': float(result['patient_amount']),
                 'covered_amount': float(result['covered_amount']),
-                'total_amount': float(result['patient_amount']),  # Use patient_amount instead
+                'total_amount': float(result['patient_amount']),
                 'dosage_instructions': order.dosage_instructions,
                 'duration': order.duration,
                 'status': order.status,
@@ -1839,7 +1851,6 @@ def verify_patient_pharmacy_ajax(request):
                 'pending_claim_number': result['pending_claim_number'],
             })
 
-        # Count pending claims
         pending_claims_count = sum(1 for item in unpaid_items if item.get('has_pending_claim'))
 
         return JsonResponse({
@@ -1870,14 +1881,10 @@ def verify_patient_pharmacy_ajax(request):
         })
 
     except PatientModel.DoesNotExist:
-        return JsonResponse({
-            'error': 'Patient not found with this card number'
-        }, status=404)
+        return JsonResponse({'error': 'Patient not found with this card number'}, status=404)
     except Exception as e:
-        return JsonResponse({
-            'error': f'Error verifying patient: {str(e)}'
-        }, status=500)
-
+        return JsonResponse({'error': f'Error verifying patient: {str(e)}'}, status=500)
+    
 
 @login_required
 @permission_required('pharmacy.change_drugordermodel', raise_exception=True)
