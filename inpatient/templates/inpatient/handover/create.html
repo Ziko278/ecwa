@@ -1,0 +1,593 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<style>
+:root {
+  --blue: #1a56db;
+  --blue-light: #eff4ff;
+  --blue-mid: #3b72ef;
+  --green: #057a55;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-700: #374151;
+  --gray-900: #111827;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --shadow: 0 4px 12px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
+}
+
+.ho-page { max-width: 860px; margin: 0 auto; }
+
+/* ── Header ── */
+.ho-header {
+  background: linear-gradient(135deg, #1a56db 0%, #1e3a8a 100%);
+  border-radius: var(--radius);
+  padding: 22px 28px;
+  color: white;
+  margin-bottom: 22px;
+  position: relative;
+  overflow: hidden;
+}
+.ho-header::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.ho-header h4 { font-size: .78rem; font-weight: 500; opacity: .7; margin: 0 0 4px; letter-spacing: .07em; text-transform: uppercase; position: relative; }
+.ho-header h2 { font-size: 1.45rem; font-weight: 700; margin: 0 0 5px; position: relative; }
+.ho-header p  { font-size: .82rem; opacity: .7; margin: 0; position: relative; }
+
+/* ── Toolbar ── */
+.toolbar-card {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  box-shadow: var(--shadow-sm);
+}
+.toolbar-divider { width: 1px; height: 28px; background: var(--gray-200); flex-shrink: 0; }
+
+.shift-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; }
+.shift-wrap label {
+  font-size: .75rem; font-weight: 600; color: var(--gray-500);
+  text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; flex-shrink: 0;
+}
+.shift-select {
+  border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm);
+  padding: 7px 30px 7px 12px; font-size: .84rem; color: var(--gray-900);
+  background: var(--gray-50) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 10px center;
+  flex: 1; outline: none; appearance: none; transition: border-color .2s, box-shadow .2s;
+}
+.shift-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,219,.12); background-color: white; }
+
+.btn-draft {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--gray-200); background: white; color: var(--gray-700);
+  font-size: .82rem; font-weight: 500; cursor: pointer; transition: all .15s;
+}
+.btn-draft:hover { border-color: var(--gray-400); background: var(--gray-50); }
+
+.btn-submit {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px; border-radius: var(--radius-sm);
+  border: none; background: linear-gradient(135deg, var(--green) 0%, #065f46 100%);
+  color: white; font-size: .82rem; font-weight: 600; cursor: pointer;
+  transition: opacity .15s, transform .1s; box-shadow: 0 2px 6px rgba(5,122,85,.3);
+}
+.btn-submit:hover { opacity: .9; transform: translateY(-1px); }
+
+/* ── Entry cards ── */
+.entry-card {
+  background: white; border: 1px solid var(--gray-200);
+  border-radius: var(--radius); margin-bottom: 14px;
+  box-shadow: var(--shadow-sm); overflow: hidden;
+  animation: slideIn .2s ease;
+}
+@keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+.entry-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 16px; border-bottom: 1px solid var(--gray-100);
+}
+.entry-card.patient-type .entry-card-header { background: linear-gradient(90deg, var(--blue-light), #f9fafb); }
+.entry-card.general-type .entry-card-header { background: var(--gray-50); }
+.entry-card-body { padding: 16px; }
+
+.entry-type-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; padding: 3px 10px; border-radius: 20px;
+}
+.badge-patient { background: var(--blue-light); color: var(--blue); }
+.badge-general { background: var(--gray-100); color: var(--gray-500); }
+
+.btn-remove {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid var(--gray-200); background: white; color: var(--gray-400);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: .8rem; transition: all .15s; flex-shrink: 0;
+}
+.btn-remove:hover { border-color: #fca5a5; background: #fff5f5; color: #ef4444; }
+
+/* ── Patient search ── */
+.patient-search-wrap { position: relative; margin-bottom: 12px; }
+.patient-search-input {
+  width: 100%; border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm);
+  padding: 9px 14px 9px 36px; font-size: .84rem; color: var(--gray-900);
+  background: var(--gray-50); outline: none; box-sizing: border-box;
+  transition: border-color .2s, box-shadow .2s;
+}
+.patient-search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,219,.12); background: white; }
+.patient-search-input::placeholder { color: var(--gray-400); }
+.search-icon {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--gray-400); font-size: .85rem; pointer-events: none;
+}
+.search-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: white; border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm); z-index: 200;
+  max-height: 220px; overflow-y: auto; box-shadow: var(--shadow);
+}
+.admission-result {
+  padding: 10px 14px; font-size: .83rem; cursor: pointer;
+  border-bottom: 1px solid var(--gray-100); transition: background .12s;
+}
+.admission-result:hover { background: var(--blue-light); }
+.admission-result:last-child { border-bottom: none; }
+.admission-result .res-name { font-weight: 600; color: var(--gray-900); margin-bottom: 2px; }
+.admission-result .res-meta { font-size: .75rem; color: var(--gray-500); }
+
+.selected-patient-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--blue-light); color: var(--blue);
+  border-radius: 20px; padding: 4px 10px;
+  font-size: .78rem; font-weight: 600; margin-bottom: 10px;
+}
+.selected-patient-pill .ward-pill {
+  background: rgba(26,86,219,.12); border-radius: 10px;
+  padding: 1px 7px; font-size: .7rem;
+}
+
+/* ── Note textarea ── */
+.note-textarea {
+  width: 100%; min-height: 140px;
+  border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm);
+  padding: 12px 14px; font-size: .875rem; line-height: 1.7;
+  color: var(--gray-900); background: var(--gray-50);
+  resize: vertical; outline: none; box-sizing: border-box;
+  font-family: inherit; transition: border-color .2s, box-shadow .2s, background .2s;
+}
+.note-textarea:focus {
+  border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,219,.1);
+  background: white;
+}
+.note-textarea::placeholder { color: var(--gray-400); }
+
+/* Formatting toolbar above textarea */
+.fmt-bar {
+  display: flex; gap: 2px; padding: 6px 8px;
+  background: var(--gray-50); border: 1.5px solid var(--gray-200);
+  border-bottom: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.fmt-bar + .note-textarea {
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+.fmt-btn {
+  width: 28px; height: 28px; border-radius: 5px;
+  border: none; background: transparent; color: var(--gray-500);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: .8rem; font-weight: 700; transition: all .12s;
+}
+.fmt-btn:hover { background: var(--gray-200); color: var(--gray-900); }
+.fmt-btn.active { background: var(--blue-light); color: var(--blue); }
+.fmt-divider { width: 1px; background: var(--gray-200); margin: 4px 3px; }
+
+/* ── Add buttons ── */
+.add-buttons { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+.btn-add {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 16px; border-radius: var(--radius-sm);
+  font-size: .82rem; font-weight: 500; cursor: pointer;
+  transition: all .15s; border: 1.5px dashed;
+}
+.btn-add-general { border-color: var(--gray-300); color: var(--gray-600); background: transparent; }
+.btn-add-general:hover { border-color: var(--gray-400); background: var(--gray-50); }
+.btn-add-patient { border-color: rgba(26,86,219,.35); color: var(--blue); background: transparent; }
+.btn-add-patient:hover { border-color: var(--blue); background: var(--blue-light); }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center; padding: 40px 20px; color: var(--gray-400);
+  border: 2px dashed var(--gray-200); border-radius: var(--radius);
+  margin-bottom: 18px;
+}
+.empty-state i { font-size: 2rem; margin-bottom: 8px; display: block; }
+.empty-state p { font-size: .85rem; margin: 0; }
+
+/* ── Toast ── */
+.ho-toast {
+  position: fixed; bottom: 24px; right: 24px;
+  padding: 10px 18px; border-radius: var(--radius-sm);
+  font-size: .83rem; font-weight: 500;
+  display: flex; align-items: center; gap: 8px;
+  z-index: 9999; animation: toastIn .25s ease;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2); color: white;
+}
+@keyframes toastIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+</style>
+
+<div class="ho-page">
+
+  <!-- Header -->
+  <div class="ho-header">
+    <div class="d-flex justify-content-between align-items-start">
+      <div>
+        <h4>Inpatient</h4>
+        <h2>Create Handover Note</h2>
+        <p>Write notes for the incoming shift. Submit when done to capture the census snapshot.</p>
+      </div>
+      <a href="{% url 'handover_list' %}" class="btn btn-sm btn-outline-light" style="font-size:.8rem; border-color:rgba(255,255,255,.35); position:relative">
+        <i class="bi bi-arrow-left me-1"></i> Back
+      </a>
+    </div>
+  </div>
+
+  <form id="handover-form">
+    {% csrf_token %}
+    <input type="hidden" id="handover-id" value="">
+
+    <!-- Toolbar -->
+    <div class="toolbar-card">
+      <div class="shift-wrap">
+        <label><i class="bi bi-clock me-1"></i> Shift</label>
+        <select class="shift-select" id="shift-select" required>
+          <option value="">— Select shift —</option>
+          {% for key, label in shifts %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="toolbar-divider"></div>
+      <button type="button" class="btn-draft" onclick="saveDraft()">
+        <i class="bi bi-cloud-arrow-up"></i> Save Draft
+      </button>
+      <button type="button" class="btn-submit" onclick="submitHandover()">
+        <i class="bi bi-check-circle"></i> Submit Handover
+      </button>
+    </div>
+
+    <!-- Entries -->
+    <div id="entries-container"></div>
+
+    <div class="empty-state" id="empty-state">
+      <i class="bi bi-journal-text"></i>
+      <p>No entries yet. Add a general note or a patient-specific note below.</p>
+    </div>
+
+    <!-- Add buttons -->
+    <div class="add-buttons">
+      <button type="button" class="btn-add btn-add-general" onclick="addEntry('general')">
+        <i class="bi bi-plus-circle"></i> Add General Note
+      </button>
+      <button type="button" class="btn-add btn-add-patient" onclick="addEntry('patient')">
+        <i class="bi bi-person-plus"></i> Add Patient Note
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Submit confirm modal -->
+<div class="modal fade" id="submitModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#057a55; color:white">
+        <h5 class="modal-title" style="font-size:.92rem">
+          <i class="bi bi-check-circle me-2"></i> Submit Handover
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:.875rem; color:var(--gray-700)">
+        <p class="mb-2">Are you sure you want to submit this handover?</p>
+        <ul class="ps-3 mb-0" style="line-height:1.9">
+          <li>A census snapshot will be captured at this moment</li>
+          <li>The handover <strong>cannot be edited</strong> after submission</li>
+          <li>It will be visible to the incoming shift immediately</li>
+        </ul>
+      </div>
+      <div class="modal-footer gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x me-1"></i> Cancel
+        </button>
+        <button type="button" class="btn btn-sm btn-success" id="confirm-submit-btn">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="submit-spinner"></span>
+          <i class="bi bi-check-circle me-1" id="submit-icon"></i> Confirm & Submit
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let entryCounter = 0;
+const entries = [];
+let submitModal;
+
+document.addEventListener('DOMContentLoaded', () => {
+  submitModal = new bootstrap.Modal(document.getElementById('submitModal'));
+
+  document.getElementById('confirm-submit-btn').addEventListener('click', () => {
+    document.getElementById('submit-spinner').classList.remove('d-none');
+    document.getElementById('submit-icon').classList.add('d-none');
+    document.getElementById('confirm-submit-btn').disabled = true;
+    postHandover('submit');
+  });
+
+  addEntry('general');
+});
+
+function updateEmptyState() {
+  document.getElementById('empty-state').style.display = entries.length ? 'none' : 'block';
+}
+
+function makeEditorHTML(editorId, placeholder) {
+  return `
+    <div class="fmt-bar" data-editor="${editorId}">
+      <button type="button" class="fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
+      <button type="button" class="fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
+      <button type="button" class="fmt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
+      <div class="fmt-divider"></div>
+      <button type="button" class="fmt-btn" data-cmd="insertUnorderedList" title="Bullet list">
+        <i class="bi bi-list-ul"></i>
+      </button>
+      <button type="button" class="fmt-btn" data-cmd="insertOrderedList" title="Numbered list">
+        <i class="bi bi-list-ol"></i>
+      </button>
+    </div>
+    <div
+      id="${editorId}"
+      class="note-textarea"
+      contenteditable="true"
+      data-placeholder="${placeholder}"
+    ></div>
+  `;
+}
+
+function addEntry(type) {
+  const idx = entryCounter++;
+  const editorId = `entry-editor-${idx}`;
+
+  const card = document.createElement('div');
+  card.className = `entry-card ${type}-type`;
+  card.id = `entry-card-${idx}`;
+
+  if (type === 'general') {
+    card.innerHTML = `
+      <div class="entry-card-header">
+        <span class="entry-type-badge badge-general">
+          <i class="bi bi-journal-text"></i> General Note
+        </span>
+        <button type="button" class="btn-remove" onclick="removeEntry(${idx})" title="Remove">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+      <div class="entry-card-body">
+        ${makeEditorHTML(editorId, 'Write your general note here…')}
+      </div>
+    `;
+    entries.push({ idx, entry_type: 'general', admission_id: null, editorId });
+  } else {
+    card.innerHTML = `
+      <div class="entry-card-header">
+        <span class="entry-type-badge badge-patient">
+          <i class="bi bi-person-badge"></i> Patient Note
+        </span>
+        <button type="button" class="btn-remove" onclick="removeEntry(${idx})" title="Remove">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+      <div class="entry-card-body">
+        <div class="patient-search-wrap">
+          <i class="bi bi-search search-icon"></i>
+          <input
+            type="text"
+            class="patient-search-input"
+            id="patient-search-${idx}"
+            placeholder="Search by patient name or admission number…"
+            autocomplete="off"
+            oninput="searchAdmission(${idx}, this.value)"
+          >
+          <div class="search-dropdown d-none" id="dropdown-${idx}"></div>
+          <input type="hidden" id="admission-id-${idx}">
+        </div>
+        <div id="selected-admission-${idx}"></div>
+        ${makeEditorHTML(editorId, 'Write your note for this patient here…')}
+      </div>
+    `;
+    entries.push({ idx, entry_type: 'patient', admission_id: null, editorId });
+  }
+
+  document.getElementById('entries-container').appendChild(card);
+  updateEmptyState();
+
+  // Wire up the formatting toolbar
+  card.querySelectorAll('.fmt-btn').forEach(btn => {
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault(); // keep focus in editor
+      const cmd = btn.dataset.cmd;
+      document.execCommand(cmd, false, null);
+      document.getElementById(editorId).focus();
+    });
+  });
+
+  // Placeholder behaviour on contenteditable
+  const editor = document.getElementById(editorId);
+  editor.addEventListener('focus', () => { if (!editor.textContent.trim()) editor.innerHTML = ''; });
+  editor.addEventListener('blur',  () => { /* placeholder shown via CSS */ });
+
+  // Auto-grow
+  editor.addEventListener('input', () => {
+    editor.style.minHeight = Math.max(140, editor.scrollHeight) + 'px';
+  });
+}
+
+function removeEntry(idx) {
+  const card = document.getElementById(`entry-card-${idx}`);
+  if (card) {
+    card.style.transition = 'opacity .18s, transform .18s';
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(-6px)';
+    setTimeout(() => card.remove(), 180);
+  }
+  const i = entries.findIndex(e => e.idx === idx);
+  if (i !== -1) entries.splice(i, 1);
+  setTimeout(updateEmptyState, 200);
+}
+
+let searchTimers = {};
+function searchAdmission(idx, q) {
+  clearTimeout(searchTimers[idx]);
+  const dropdown = document.getElementById(`dropdown-${idx}`);
+  if (q.length < 2) { dropdown.classList.add('d-none'); return; }
+
+  searchTimers[idx] = setTimeout(() => {
+    fetch(`/portal/inpatient/admission/handover/ajax/search-admissions/?q=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then(d => {
+        dropdown.innerHTML = '';
+        if (!d.results?.length) {
+          dropdown.innerHTML = '<div class="admission-result"><span class="res-meta">No active admissions found</span></div>';
+        } else {
+          d.results.forEach(r => {
+            const div = document.createElement('div');
+            div.className = 'admission-result';
+            div.innerHTML = `
+              <div class="res-name">${r.label}</div>
+              <div class="res-meta">${r.ward} &mdash; ${r.condition}</div>
+            `;
+            div.onclick = () => selectAdmission(idx, r);
+            dropdown.appendChild(div);
+          });
+        }
+        dropdown.classList.remove('d-none');
+      });
+  }, 300);
+}
+
+function selectAdmission(idx, result) {
+  document.getElementById(`patient-search-${idx}`).value = result.label;
+  document.getElementById(`admission-id-${idx}`).value = result.id;
+  document.getElementById(`dropdown-${idx}`).classList.add('d-none');
+  document.getElementById(`selected-admission-${idx}`).innerHTML = `
+    <div class="selected-patient-pill">
+      <i class="bi bi-person-check" style="font-size:.8rem"></i>
+      ${result.label}
+      <span class="ward-pill">${result.ward}</span>
+    </div>
+  `;
+  const entry = entries.find(e => e.idx === idx);
+  if (entry) entry.admission_id = result.id;
+}
+
+function collectEntries() {
+  return entries.map(entry => {
+    const editor = document.getElementById(entry.editorId);
+    const note = editor ? editor.innerHTML : '';
+    return { entry_type: entry.entry_type, admission_id: entry.admission_id, note };
+  });
+}
+
+function postHandover(action) {
+  const shift = document.getElementById('shift-select').value;
+  if (!shift) { showToast('Please select a shift', 'error'); return; }
+
+  const entriesData = collectEntries();
+  if (!entriesData.length) { showToast('Add at least one note entry', 'error'); return; }
+
+  const formData = new FormData();
+  formData.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+  formData.append('action', action);
+  formData.append('shift', shift);
+  formData.append('handover_id', document.getElementById('handover-id').value);
+  formData.append('entries', JSON.stringify(entriesData));
+
+  fetch("{% url 'handover_create' %}", { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) {
+        if (d.redirect) {
+          window.location.href = d.redirect;
+        } else {
+          document.getElementById('handover-id').value = d.handover_id;
+          showToast('Draft saved successfully');
+        }
+      } else {
+        showToast(d.error || 'Error saving', 'error');
+        resetSubmitBtn();
+        submitModal?.hide();
+      }
+    })
+    .catch(() => { showToast('Network error', 'error'); resetSubmitBtn(); });
+}
+
+function resetSubmitBtn() {
+  document.getElementById('submit-spinner')?.classList.add('d-none');
+  document.getElementById('submit-icon')?.classList.remove('d-none');
+  const btn = document.getElementById('confirm-submit-btn');
+  if (btn) btn.disabled = false;
+}
+
+function saveDraft() { postHandover('save_draft'); }
+
+function submitHandover() {
+  if (!document.getElementById('shift-select').value) { showToast('Please select a shift first', 'error'); return; }
+  if (!entries.length) { showToast('Add at least one note entry', 'error'); return; }
+  submitModal.show();
+}
+
+function getCookie(name) {
+  let v = null;
+  document.cookie.split(';').forEach(c => {
+    c = c.trim();
+    if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
+  });
+  return v;
+}
+
+function showToast(msg, type = 'success') {
+  document.querySelector('.ho-toast')?.remove();
+  const t = document.createElement('div');
+  t.className = 'ho-toast';
+  t.style.background = type === 'error' ? '#991b1b' : '#065f46';
+  t.innerHTML = `<i class="bi bi-${type === 'error' ? 'exclamation-circle' : 'check-circle'}"></i> ${msg}`;
+  document.body.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'opacity .3s';
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 300);
+  }, 3000);
+}
+</script>
+
+<!-- Placeholder styling for contenteditable -->
+<style>
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--gray-400);
+  pointer-events: none;
+}
+</style>
+
+{% endblock %}

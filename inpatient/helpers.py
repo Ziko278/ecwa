@@ -122,8 +122,8 @@ def process_admission_service_payment(order, order_type, admission, ordered_by):
         'direct_payment_amount': debt_portion,
         'payment_method': 'admission',
         'received_by': ordered_by,
-        'old_balance': admission.patient.wallet_balance,
-        'new_balance': admission.patient.wallet_balance,
+        'old_balance': admission.patient.wallet.amount,
+        'new_balance': admission.patient.wallet.amount,
         'status': 'completed',
         'date': timezone.now().date()
     }

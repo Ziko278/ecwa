@@ -238,6 +238,21 @@ def charge_initial_admission_fees(admission):
     )
 
 
+def _notify_new_admission(admission):
+    from .views import create_admission_notifications
+    msg = f"New admission: {admission.patient} ({admission.admission_number})"
+    create_admission_notifications(admission, 'new_admission', msg)
+
+
+def _notify_first_deposit(admission):
+    from .views import create_admission_notifications
+    msg = (
+        f"First deposit received for {admission.patient} "
+        f"({admission.admission_number}) — awaiting confirmation"
+    )
+    create_admission_notifications(admission, 'first_deposit', msg)
+
+
 # MODIFY the existing signal to only charge when status becomes 'active'
 @receiver(post_save, sender=Admission)
 def handle_admission_activation(sender, instance, created, **kwargs):
@@ -260,6 +275,14 @@ def handle_admission_activation(sender, instance, created, **kwargs):
 
     if instance.status == 'active' and instance.admission_activated_date:
         transaction.on_commit(lambda: charge_initial_admission_fees(instance))
+
+    if created:
+        from .views import create_broadcast_notification
+        transaction.on_commit(lambda: create_broadcast_notification(
+          'new_admission',
+          f"New admission: {instance.patient} ({instance.admission_number})",
+          admission=instance
+        ))
 
 
 def parse_dosage_frequency(dosage_instructions):
@@ -421,13 +444,24 @@ def generate_drug_administration_tasks(drug_order, first_dose_time):
 def handle_drug_order_for_admission(sender, instance, created, **kwargs):
     """
     When a drug is ordered for an admitted patient:
-    1. Charge from admission deposit (if admission exists)
+    1. Charge from admission deposit via process_admission_service_payment
     2. Generate administration tasks (if requested)
     """
     if not instance.admission:
         return  # Not an admission-related order
 
     if created:
+        from .helpers import process_admission_service_payment
+
+        transaction.on_commit(
+            lambda: process_admission_service_payment(
+                order=instance,
+                order_type='drug',
+                admission=instance.admission,
+                ordered_by=instance.ordered_by
+            )
+        )
+
         # Generate tasks if requested
         if instance.generate_tasks and instance.first_dose_time:
             transaction.on_commit(
@@ -522,3 +556,32 @@ def create_orders_from_surgery_package(sender, instance, created, **kwargs):
                         'admission': instance.admission
                     }
                 )
+
+
+# ── FIRST DEPOSIT notification ────────────────────────────────────────────────
+# Hook into PatientTransactionModel post_save.
+# Fire when: transaction_direction='in', admission is set,
+# and it is the first completed 'in' transaction for that admission.
+
+
+
+@receiver(post_save, sender=PatientTransactionModel)
+def handle_first_deposit_notification(sender, instance, created, **kwargs):
+    if not created or instance.transaction_direction != 'in':
+        return
+    if not instance.admission or instance.status != 'completed':
+        return
+    prior = PatientTransactionModel.objects.filter(
+        admission=instance.admission,
+        transaction_direction='in',
+        status='completed'
+    ).exclude(pk=instance.pk).count()
+    if prior == 0:
+        from .views import create_broadcast_notification
+        transaction.on_commit(lambda: create_broadcast_notification(
+            'first_deposit',
+            f"First deposit for {instance.admission.patient} ({instance.admission.admission_number}) — awaiting confirmation",
+            admission=instance.admission
+        ))
+
+

@@ -1,0 +1,271 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<style>
+.cost-row {
+  display:flex; justify-content:space-between;
+  padding:8px 0; border-bottom:1px solid #f3f4f6;
+  font-size:.85rem;
+}
+.cost-row:last-child { border-bottom:none; }
+.cost-total {
+  display:flex; justify-content:space-between;
+  padding:12px 0 0; font-weight:700; font-size:1rem;
+  border-top:2px solid #e5e7eb; margin-top:8px;
+}
+.balance-box {
+  border-radius:10px; padding:16px 20px;
+  display:flex; align-items:center; gap:14px;
+  margin-bottom:20px;
+}
+.balance-box.danger  { background:#fff5f5; border:1px solid #fca5a5; }
+.balance-box.success { background:#f0fff4; border:1px solid #6ee7b7; }
+.balance-box.neutral { background:#f9fafb; border:1px solid #e5e7eb; }
+.balance-box .icon   { font-size:2rem; flex-shrink:0; }
+.balance-box h5      { margin:0 0 4px; font-size:1rem; font-weight:700; }
+.balance-box p       { margin:0; font-size:.85rem; color:#6b7280; }
+</style>
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-1">Discharge Patient</h4>
+    <p class="text-muted mb-0" style="font-size:.85rem">
+      {{ admission.patient|title }} &nbsp;|&nbsp; {{ admission.admission_number }}
+      &nbsp;|&nbsp; Day {{ admission.length_of_stay_days }} of stay
+    </p>
+  </div>
+  <a href="{% url 'admission_detail' admission.pk %}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i> Back
+  </a>
+</div>
+
+<div class="row g-3">
+
+  <!-- Left: Bill summary -->
+  <div class="col-md-5">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2" style="background:#1a56db; color:white">
+        <h6 class="mb-0" style="font-size:.85rem"><i class="bi bi-receipt"></i> Final Bill Summary</h6>
+      </div>
+      <div class="card-body p-3">
+        <div class="cost-row">
+          <span class="text-muted">Total Charges</span>
+          <strong>₦{{ billing_summary.total_charges|floatformat:2|intcomma }}</strong>
+        </div>
+        <div class="cost-row">
+          <span class="text-muted">Total Paid</span>
+          <strong class="text-success">₦{{ billing_summary.total_paid|floatformat:2|intcomma }}</strong>
+        </div>
+        <div class="cost-row">
+          <span class="text-muted">Deposit Balance</span>
+          <strong>₦{{ billing_summary.deposit_remaining|floatformat:2|intcomma }}</strong>
+        </div>
+
+        {% if billing_summary.balance_due > 0 %}
+        <div class="cost-total">
+          <span class="text-danger">Outstanding Balance</span>
+          <span class="text-danger">₦{{ billing_summary.balance_due|floatformat:2|intcomma }}</span>
+        </div>
+        {% elif billing_summary.deposit_remaining > 0 %}
+        <div class="cost-total">
+          <span class="text-success">Refund Due to Patient</span>
+          <span class="text-success">₦{{ billing_summary.deposit_remaining|floatformat:2|intcomma }}</span>
+        </div>
+        {% else %}
+        <div class="cost-total">
+          <span>Balance</span>
+          <span>₦0.00</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Balance status box -->
+    {% if billing_summary.balance_due > 0 %}
+    <div class="balance-box danger">
+      <div class="icon">⚠️</div>
+      <div>
+        <h5 class="text-danger">Outstanding Balance</h5>
+        <p>Patient owes ₦{{ billing_summary.balance_due|floatformat:2|intcomma }}. You can still discharge but the balance will remain on record.</p>
+      </div>
+    </div>
+    {% elif billing_summary.deposit_remaining > 0 %}
+    <div class="balance-box success">
+      <div class="icon">💰</div>
+      <div>
+        <h5 class="text-success">Refund on Discharge</h5>
+        <p>₦{{ billing_summary.deposit_remaining|floatformat:2|intcomma }} will be transferred to the patient's wallet automatically on discharge.</p>
+      </div>
+    </div>
+    {% else %}
+    <div class="balance-box neutral">
+      <div class="icon">✅</div>
+      <div>
+        <h5>All Settled</h5>
+        <p>No outstanding balance. Patient is clear to discharge.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right: Discharge form -->
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-header py-2" style="background:#057a55; color:white">
+        <h6 class="mb-0" style="font-size:.85rem"><i class="bi bi-box-arrow-right"></i> Discharge Details</h6>
+      </div>
+      <div class="card-body p-3">
+
+        {% if messages %}
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} py-2 mb-3" style="font-size:.85rem">
+          {{ message }}
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <!-- The form has no submit button — the modal's confirm button submits it -->
+        <form method="POST" id="discharge-form">
+          {% csrf_token %}
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:.85rem">
+              Discharge Date & Time <span class="text-danger">*</span>
+            </label>
+            {{ form.actual_discharge_date }}
+            {% if form.actual_discharge_date.errors %}
+            <div class="text-danger mt-1" style="font-size:.8rem">
+              {{ form.actual_discharge_date.errors.0 }}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold" style="font-size:.85rem">
+              Discharge Notes <span class="text-danger">*</span>
+            </label>
+            {{ form.discharge_notes }}
+            <div class="form-text" style="font-size:.75rem">
+              Include discharge summary, medications, follow-up appointments, and any instructions.
+            </div>
+            {% if form.discharge_notes.errors %}
+            <div class="text-danger mt-1" style="font-size:.8rem">
+              {{ form.discharge_notes.errors.0 }}
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Confirm and submit -->
+          <div class="border rounded p-3 bg-light mb-3" style="font-size:.82rem">
+            <strong>On discharge:</strong>
+            <ul class="mb-0 mt-1 ps-3">
+              <li>Patient's bed will be freed</li>
+              {% if billing_summary.deposit_remaining > 0 %}
+              <li>₦{{ billing_summary.deposit_remaining|floatformat:2|intcomma }} will be credited to patient's wallet</li>
+              {% endif %}
+              {% if billing_summary.balance_due > 0 %}
+              <li class="text-danger">Outstanding balance of ₦{{ billing_summary.balance_due|floatformat:2|intcomma }} will remain on record</li>
+              {% endif %}
+              <li>All pending tasks will be cancelled automatically</li>
+              <li>A discharge notification will be sent to ward staff</li>
+            </ul>
+          </div>
+
+          <!-- Triggers the modal instead of submitting directly -->
+          <button type="button" class="btn btn-success w-100" id="open-discharge-modal">
+            <i class="bi bi-box-arrow-right"></i> Confirm Discharge
+          </button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ── DISCHARGE CONFIRMATION MODAL ── -->
+<div class="modal fade" id="dischargeConfirmModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header" style="background:#057a55; color:white">
+        <h5 class="modal-title" style="font-size:.95rem">
+          <i class="bi bi-box-arrow-right me-2"></i> Confirm Discharge
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="font-size:.875rem">
+        <p class="mb-3">
+          You are about to discharge <strong>{{ admission.patient|title }}</strong>
+          (<span class="text-muted">{{ admission.admission_number }}</span>).
+          This action <strong>cannot be undone.</strong>
+        </p>
+
+        <ul class="ps-3 mb-0" style="line-height:1.9">
+          <li>Bed will be released back to available pool</li>
+          {% if billing_summary.deposit_remaining > 0 %}
+          <li class="text-success">
+            <i class="bi bi-wallet2"></i>
+            ₦{{ billing_summary.deposit_remaining|floatformat:2|intcomma }} will be refunded to patient's wallet
+          </li>
+          {% endif %}
+          {% if billing_summary.balance_due > 0 %}
+          <li class="text-danger">
+            <i class="bi bi-exclamation-triangle"></i>
+            Outstanding balance of ₦{{ billing_summary.balance_due|floatformat:2|intcomma }} will remain on record
+          </li>
+          {% endif %}
+          <li>All pending tasks will be cancelled</li>
+          <li>Ward staff will be notified</li>
+        </ul>
+      </div>
+
+      <div class="modal-footer gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+          <i class="bi bi-x"></i> Cancel
+        </button>
+        <button type="button" class="btn btn-success btn-sm" id="confirm-discharge-btn">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="discharge-spinner" role="status"></span>
+          <i class="bi bi-check-circle" id="discharge-icon"></i> Yes, Discharge Patient
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const modal      = new bootstrap.Modal(document.getElementById('dischargeConfirmModal'));
+  const form       = document.getElementById('discharge-form');
+  const openBtn    = document.getElementById('open-discharge-modal');
+  const confirmBtn = document.getElementById('confirm-discharge-btn');
+  const spinner    = document.getElementById('discharge-spinner');
+  const icon       = document.getElementById('discharge-icon');
+
+  // Validate the form fields before opening the modal
+  openBtn.addEventListener('click', () => {
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    modal.show();
+  });
+
+  // Submit the form when the user confirms inside the modal
+  confirmBtn.addEventListener('click', () => {
+    spinner.classList.remove('d-none');
+    icon.classList.add('d-none');
+    confirmBtn.disabled = true;
+    form.submit();
+  });
+});
+</script>
+
+{% endblock %}

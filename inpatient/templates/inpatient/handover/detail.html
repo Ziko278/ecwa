@@ -1,0 +1,555 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<style>
+:root {
+  --blue: #1a56db;
+  --blue-light: #eff4ff;
+  --blue-mid: #3b72ef;
+  --green: #057a55;
+  --green-light: #d1fae5;
+  --yellow: #c27803;
+  --yellow-light: #fef3c7;
+  --red: #dc2626;
+  --red-light: #fee2e2;
+  --orange: #ea580c;
+  --orange-light: #ffedd5;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-900: #111827;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --shadow: 0 4px 12px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
+}
+
+.ho-detail-page { max-width: 1200px; margin: 0 auto; }
+
+/* ── Header ── */
+.ho-detail-header {
+  background: linear-gradient(135deg, #1a56db 0%, #1e3a8a 100%);
+  border-radius: var(--radius);
+  padding: 22px 28px;
+  color: white;
+  margin-bottom: 22px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.ho-detail-header::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.ho-detail-header-content { position: relative; flex: 1; }
+.ho-detail-header h4 { font-size: .78rem; font-weight: 500; opacity: .7; margin: 0 0 4px; letter-spacing: .07em; text-transform: uppercase; }
+.ho-detail-header h2 { font-size: 1.45rem; font-weight: 700; margin: 0 0 8px; }
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: .82rem;
+  opacity: .85;
+  position: relative;
+}
+.header-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.header-meta-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(255,255,255,.3);
+}
+
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid rgba(255,255,255,.35);
+  background: rgba(255,255,255,.12);
+  color: white;
+  font-size: .82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+  text-decoration: none;
+  position: relative;
+}
+.btn-back:hover {
+  background: rgba(255,255,255,.2);
+  border-color: rgba(255,255,255,.5);
+  color: white;
+  transform: translateX(-2px);
+}
+
+.status-badge-large {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  background: rgba(255,255,255,.2);
+  border: 1.5px solid rgba(255,255,255,.3);
+}
+
+/* ── Content Grid ── */
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+  align-items: start;
+}
+
+/* ── Entry cards ── */
+.detail-entry-card {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: slideIn .2s ease;
+}
+@keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+.detail-entry-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--gray-100);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.detail-entry-card.patient-type .detail-entry-header {
+  background: linear-gradient(90deg, var(--blue-light), #f9fafb);
+  border-left: 4px solid var(--blue);
+}
+.detail-entry-card.general-type .detail-entry-header {
+  background: var(--gray-50);
+  border-left: 4px solid var(--gray-400);
+}
+
+.entry-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+.badge-patient { background: var(--blue-light); color: var(--blue); }
+.badge-general { background: var(--gray-200); color: var(--gray-600); }
+
+.patient-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: .82rem;
+}
+.patient-name {
+  font-weight: 700;
+  color: var(--gray-900);
+}
+.admission-number-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: white;
+  border: 1px solid var(--gray-300);
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+.bed-info {
+  color: var(--gray-600);
+  font-size: .78rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.condition-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.condition-critical { background: var(--red-light); color: var(--red); }
+.condition-recovering { background: var(--orange-light); color: var(--orange); }
+.condition-stable { background: var(--yellow-light); color: var(--yellow); }
+.condition-healthy { background: var(--green-light); color: var(--green); }
+
+.detail-entry-body {
+  padding: 18px;
+}
+.entry-note-content {
+  font-size: .875rem;
+  line-height: 1.7;
+  color: var(--gray-900);
+}
+.entry-note-content p { margin-bottom: 12px; }
+.entry-note-content p:last-child { margin-bottom: 0; }
+.entry-note-content ul, .entry-note-content ol {
+  margin: 12px 0;
+  padding-left: 24px;
+}
+.entry-note-content li { margin-bottom: 6px; }
+.entry-note-content strong { font-weight: 700; color: var(--gray-900); }
+.entry-note-content em { font-style: italic; }
+.entry-note-content u { text-decoration: underline; }
+
+/* ── Empty state ── */
+.empty-entries {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border: 2px dashed var(--gray-200);
+  border-radius: var(--radius);
+  color: var(--gray-400);
+}
+.empty-entries i {
+  font-size: 3rem;
+  margin-bottom: 12px;
+  display: block;
+  opacity: .5;
+}
+.empty-entries p {
+  font-size: .85rem;
+  margin: 0;
+}
+
+/* ── Snapshot sidebar ── */
+.snapshot-card {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 20px;
+}
+.snapshot-header {
+  background: linear-gradient(135deg, var(--blue) 0%, #1e40af 100%);
+  color: white;
+  padding: 14px 18px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.snapshot-header h6 {
+  font-size: .85rem;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.snapshot-timestamp {
+  font-size: .7rem;
+  opacity: .7;
+  font-weight: 400;
+}
+.snapshot-body {
+  padding: 18px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+.stat-row:last-child { border-bottom: none; }
+.stat-label {
+  font-size: .82rem;
+  color: var(--gray-600);
+  font-weight: 500;
+}
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.snapshot-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid var(--gray-100);
+}
+.snapshot-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+.snapshot-section-title {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 700;
+  color: var(--gray-500);
+  margin-bottom: 12px;
+}
+
+.ward-breakdown-item {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.ward-breakdown-item:last-child { margin-bottom: 0; }
+.ward-name {
+  font-weight: 700;
+  color: var(--gray-900);
+  font-size: .85rem;
+  margin-bottom: 8px;
+}
+.ward-stats {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: .78rem;
+}
+.ward-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--gray-700);
+}
+.ward-stat strong {
+  font-weight: 700;
+  color: var(--gray-900);
+}
+.ward-stat.critical {
+  color: var(--red);
+}
+.ward-stat.critical strong {
+  color: var(--red);
+}
+
+.no-snapshot {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--gray-400);
+}
+.no-snapshot i {
+  font-size: 2rem;
+  margin-bottom: 8px;
+  display: block;
+  opacity: .4;
+}
+.no-snapshot p {
+  font-size: .82rem;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+  .snapshot-card {
+    position: static;
+  }
+}
+</style>
+
+<div class="ho-detail-page">
+
+  <!-- Header -->
+  <div class="ho-detail-header">
+    <div class="ho-detail-header-content">
+      <h4>Inpatient</h4>
+      <h2>Handover — {{ handover.get_shift_display }}</h2>
+      <div class="header-meta">
+        <div class="header-meta-item">
+          <i class="bi bi-person"></i>
+          <span>{{ handover.created_by.user_staff_profile.staff|default:handover.created_by.username }}</span>
+        </div>
+        <span class="header-meta-divider"></span>
+        <div class="header-meta-item">
+          <i class="bi bi-calendar"></i>
+          <span>{{ handover.submitted_at|date:"d M Y, H:i"|default:handover.created_at|date:"d M Y, H:i" }}</span>
+        </div>
+        <span class="header-meta-divider"></span>
+        <span class="status-badge-large">
+          <i class="bi bi-{% if handover.status == 'submitted' %}check-circle{% else %}pencil{% endif %}"></i>
+          {{ handover.get_status_display }}
+        </span>
+      </div>
+    </div>
+    <a href="{% url 'handover_list' %}" class="btn-back">
+      <i class="bi bi-arrow-left"></i> All Handovers
+    </a>
+  </div>
+
+  <div class="content-grid">
+
+    <!-- Entries column -->
+    <div class="entries-column">
+      {% for entry in handover.entries.all %}
+      <div class="detail-entry-card {% if entry.entry_type == 'patient' %}patient-type{% else %}general-type{% endif %}">
+        <div class="detail-entry-header">
+          {% if entry.entry_type == 'patient' %}
+            <span class="entry-type-badge badge-patient">
+              <i class="bi bi-person-badge"></i> Patient Note
+            </span>
+            {% if entry.admission %}
+              <div class="patient-info">
+                <span class="patient-name">{{ entry.admission.patient|title }}</span>
+                <span class="admission-number-badge">
+                  <i class="bi bi-hash"></i>{{ entry.admission.admission_number }}
+                </span>
+                {% if entry.admission.bed %}
+                  <span class="bed-info">
+                    <i class="bi bi-hospital"></i>
+                    {{ entry.admission.bed.ward.name }} — Bed {{ entry.admission.bed.bed_number }}
+                  </span>
+                {% endif %}
+                <span class="condition-badge condition-{{ entry.admission.condition }}">
+                  <i class="bi bi-{% if entry.admission.condition == 'critical' %}exclamation-triangle{% elif entry.admission.condition == 'recovering' %}arrow-up-circle{% elif entry.admission.condition == 'healthy' %}check-circle{% else %}circle{% endif %}"></i>
+                  {{ entry.admission.get_condition_display }}
+                </span>
+              </div>
+            {% endif %}
+          {% else %}
+            <span class="entry-type-badge badge-general">
+              <i class="bi bi-journal-text"></i> General Note
+            </span>
+          {% endif %}
+        </div>
+        <div class="detail-entry-body">
+          <div class="entry-note-content">{{ entry.note|safe }}</div>
+        </div>
+      </div>
+      {% empty %}
+      <div class="empty-entries">
+        <i class="bi bi-journal-x"></i>
+        <p>No entries in this handover.</p>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Snapshot sidebar -->
+    <div class="snapshot-sidebar">
+      {% if handover.snapshot %}
+      {% with snap=handover.snapshot %}
+      <div class="snapshot-card">
+        <div class="snapshot-header">
+          <h6>
+            <i class="bi bi-clipboard-data"></i>
+            Census Snapshot
+          </h6>
+          <span class="snapshot-timestamp">
+            {{ snap.captured_at|date:"H:i" }}
+          </span>
+        </div>
+        <div class="snapshot-body">
+
+          <!-- Overview stats -->
+          <div class="stat-row">
+            <span class="stat-label">Total Admissions</span>
+            <span class="stat-value">{{ snap.total_admissions }}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Male</span>
+            <span class="stat-value">{{ snap.male }}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Female</span>
+            <span class="stat-value">{{ snap.female }}</span>
+          </div>
+
+          {% if snap.condition_breakdown %}
+          <div class="snapshot-section">
+            <div class="snapshot-section-title">By Condition</div>
+            {% for label, count in snap.condition_breakdown.items %}
+            <div class="stat-row">
+              <span class="stat-label">{{ label }}</span>
+              <span class="stat-value">{{ count }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if snap.ward_breakdown %}
+          <div class="snapshot-section">
+            <div class="snapshot-section-title">By Ward</div>
+            {% for ward in snap.ward_breakdown %}
+            <div class="ward-breakdown-item">
+              <div class="ward-name">{{ ward.ward }}</div>
+              <div class="ward-stats">
+                <span class="ward-stat">
+                  Total: <strong>{{ ward.total }}</strong>
+                </span>
+                <span class="ward-stat">
+                  M: <strong>{{ ward.male }}</strong>
+                </span>
+                <span class="ward-stat">
+                  F: <strong>{{ ward.female }}</strong>
+                </span>
+                {% if ward.critical > 0 %}
+                <span class="ward-stat critical">
+                  <i class="bi bi-exclamation-triangle"></i>
+                  Critical: <strong>{{ ward.critical }}</strong>
+                </span>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+      {% endwith %}
+      {% else %}
+      <div class="snapshot-card">
+        <div class="snapshot-header">
+          <h6>
+            <i class="bi bi-clipboard-data"></i>
+            Census Snapshot
+          </h6>
+        </div>
+        <div class="snapshot-body">
+          <div class="no-snapshot">
+            <i class="bi bi-hourglass-split"></i>
+            <p>Census snapshot not yet available. Snapshot is captured when handover is submitted.</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+</div>
+
+{% endblock %}

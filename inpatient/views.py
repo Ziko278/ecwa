@@ -11,11 +11,14 @@ from django.http import JsonResponse
 from django.urls import reverse, reverse_lazy
 from django.contrib import messages
 from django.db.models import Q, Count, Sum, F
+from django.db import models
 from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 import logging
+from django.contrib.auth.models import User
+from django.utils import timezone
 from itertools import chain
 from consultation.models import ConsultationSessionModel
 from finance.models import PatientTransactionModel
@@ -33,7 +36,7 @@ from .forms import (
     AdmissionUpdateForm, SurgeryForm, SurgeryUpdateForm, SurgeryDrugForm,
     SurgeryLabForm, SurgeryScanForm, AdmissionTypeForm, AdmissionTaskForm, AdmissionDepositForm, DischargeForm
 )
-from patient.models import PatientModel
+from patient.models import PatientModel, PatientWalletModel
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +151,7 @@ class WardUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = Ward
-    permission_required = 'inpatient.change_ward'
+    permission_required = 'inpatient.add_ward'
     form_class = WardForm
     template_name = 'inpatient/ward/index.html'
     success_message = 'Ward Successfully Updated'
@@ -194,7 +197,7 @@ class WardDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
 class WardDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = Ward
-    permission_required = 'inpatient.delete_ward'
+    permission_required = 'inpatient.add_ward'
     template_name = 'inpatient/ward/delete.html'
     context_object_name = 'ward'
     success_url = reverse_lazy('ward_index')
@@ -211,7 +214,7 @@ class BedCreateView(
     LoginRequiredMixin, PermissionRequiredMixin, CreateView
 ):
     model = Bed
-    permission_required = 'inpatient.add_bed'
+    permission_required = 'inpatient.add_ward'
     form_class = BedForm
     template_name = 'inpatient/bed/create.html'
     success_message = 'Bed Successfully Created'
@@ -258,7 +261,7 @@ class BedUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = Bed
-    permission_required = 'inpatient.change_bed'
+    permission_required = 'inpatient.add_ward'
     form_class = BedForm
     template_name = 'inpatient/bed/create.html'
     success_message = 'Bed Successfully Updated'
@@ -276,7 +279,7 @@ class BedUpdateView(
 
 class BedDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = Bed
-    permission_required = 'inpatient.delete_bed'
+    permission_required = 'inpatient.add_ward'
     template_name = 'inpatient/ward/delete_bed.html'
     context_object_name = 'bed'
     success_message = "Bed has been successfully deleted."
@@ -301,7 +304,7 @@ class BedDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
 # -------------------------
 class SurgeryTypeListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = SurgeryType
-    permission_required = 'inpatient.view_surgerytype'
+    permission_required = 'inpatient.view_ward'
     template_name = 'inpatient/surgery_type/index.html'
     context_object_name = 'surgery_type_list'
     paginate_by = 20
@@ -337,7 +340,7 @@ class SurgeryTypeCreateView(
     LoginRequiredMixin, PermissionRequiredMixin, CreateView
 ):
     model = SurgeryType
-    permission_required = 'inpatient.add_surgerytype'
+    permission_required = 'inpatient.add_ward'
     form_class = SurgeryTypeForm
     template_name = 'inpatient/surgery_type/create.html'
     success_message = 'Surgery Type Successfully Created'
@@ -355,7 +358,7 @@ class SurgeryTypeUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, UpdateView
 ):
     model = SurgeryType
-    permission_required = 'inpatient.change_surgerytype'
+    permission_required = 'inpatient.add_ward'
     form_class = SurgeryTypeForm
     template_name = 'inpatient/surgery_type/create.html'
     success_message = 'Surgery Type Successfully Updated'
@@ -370,7 +373,7 @@ class SurgeryTypeUpdateView(
 
 class SurgeryTypeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = SurgeryType
-    permission_required = 'inpatient.view_surgerytype'
+    permission_required = 'inpatient.view_ward'
     template_name = 'inpatient/surgery_type/detail.html'
     context_object_name = 'surgery_type'
 
@@ -475,7 +478,7 @@ def admission_create_for_patient(request, patient_id):
     patient = get_object_or_404(PatientModel, pk=patient_id)
 
     # Auto-fill from consultation session if provided
-    session_id = request.GET.get('consultation_session')
+    session_id = request.GET.get('consultation_session') or request.POST.get('consultation_session')
     initial_data = {}
     if session_id:
         try:
@@ -493,16 +496,31 @@ def admission_create_for_patient(request, patient_id):
     if request.method == 'POST':
         form = AdmissionForm(request.POST)
         if form.is_valid():
-            admission = form.save(commit=False)
-            admission.patient = patient
-            admission.admitted_by = request.user
-            admission.status = 'pending'
-            admission.save()
+            existing = Admission.objects.filter(
+                patient=patient,
+                status__in=['pending', 'active']
+            ).first()
 
-            messages.success(
-                request,
-                f'Admission {admission.admission_number} created. Please direct patient to Finance to make the admission deposit.'
-            )
+            if existing:
+                messages.error(
+                    request,
+                    f'Patient already has a {existing.status} admission ({existing.admission_number}). '
+                    f'Please resolve it before creating a new one.'
+                )
+            else:
+                admission = form.save(commit=False)
+                admission.patient = patient
+                admission.admitted_by = request.user
+                admission.status = 'pending'
+                admission.save()
+
+                messages.success(
+                    request,
+                    f'Admission {admission.admission_number} created. Please direct patient to Finance to make the admission deposit.'
+                )
+
+            if session_id:
+                return redirect('consultation_page', consultation_id=session_id)
             return redirect(f"{reverse('admission_index')}?status=pending")
     else:
         form = AdmissionForm(initial=initial_data)
@@ -551,7 +569,7 @@ class AdmissionListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 
 
 @login_required
-@permission_required('inpatient.change_admission')
+@permission_required('inpatient.add_admission')
 @require_POST
 def confirm_admission(request, admission_id):
     """
@@ -864,6 +882,9 @@ class AdmissionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVie
         live_debt = live_grand_total - admission.total_paid
         live_excess = admission.total_paid - live_grand_total
 
+        print(live_grand_total)
+        print(admission.total_paid)
+
         ctx.update({
             'billing_summary': billing_summary,
             'live_grand_total': live_grand_total,
@@ -875,7 +896,7 @@ class AdmissionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVie
 
 
 @login_required
-@permission_required('inpatient.change_admission')
+@permission_required('inpatient.add_admission')
 def admission_update(request, pk):
     admission = get_object_or_404(Admission, pk=pk)
 
@@ -1052,7 +1073,7 @@ class SurgeryUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, UpdateView
 ):
     model = Surgery
-    permission_required = 'inpatient.change_surgery'
+    permission_required = 'inpatient.add_surgery'
     form_class = SurgeryUpdateForm
     template_name = 'inpatient/surgery/update.html'
     success_message = 'Surgery Successfully Updated'
@@ -1069,7 +1090,7 @@ class SurgeryUpdateView(
 # AJAX Views for Surgery Package Management
 # -------------------------
 @login_required
-@permission_required('inpatient.change_surgerytype')
+@permission_required('inpatient.add_ward')
 def add_drug_to_surgery(request, pk):
     """Add drug to surgery type package"""
     if request.method != 'POST':
@@ -1121,7 +1142,7 @@ def add_drug_to_surgery(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_surgerytype')
+@permission_required('inpatient.add_ward')
 def remove_drug_from_surgery(request, pk, drug_id):
     """Remove drug from surgery type package"""
     if request.method != 'POST':
@@ -1144,7 +1165,7 @@ def remove_drug_from_surgery(request, pk, drug_id):
 
 
 @login_required
-@permission_required('inpatient.change_surgerytype')
+@permission_required('inpatient.add_ward')
 def add_lab_to_surgery(request, pk):
     """Add lab test to surgery type package"""
     if request.method != 'POST':
@@ -1191,7 +1212,7 @@ def add_lab_to_surgery(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_surgerytype')
+@permission_required('inpatient.add_ward')
 def remove_lab_from_surgery(request, pk, lab_id):
     """Remove lab test from surgery type package"""
     if request.method != 'POST':
@@ -1271,7 +1292,7 @@ def inpatient_dashboard(request):
 # Surgery Package Management (AJAX)
 # -------------------------
 @login_required
-@permission_required('inpatient.change_surgerytype')
+@permission_required('inpatient.add_ward')
 def add_scan_to_surgery(request, pk):
     """Add scan to surgery type package"""
     if request.method != 'POST':
@@ -1320,7 +1341,7 @@ def add_scan_to_surgery(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_surgerytype')
+@permission_required('inpatient.add_ward')
 def remove_scan_from_surgery(request, pk, scan_id):
     """Remove scan from surgery type package"""
     if request.method != 'POST':
@@ -1346,7 +1367,7 @@ def remove_scan_from_surgery(request, pk, scan_id):
 # Admission Services Management (AJAX)
 # -------------------------
 @login_required
-@permission_required('inpatient.change_admission')
+@permission_required('inpatient.add_admission')
 def add_drug_to_admission(request, pk):
     """Add drug order to admission"""
     if request.method != 'POST':
@@ -1398,7 +1419,7 @@ def add_drug_to_admission(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_admission')
+@permission_required('inpatient.add_admission')
 def add_lab_to_admission(request, pk):
     """Add lab test order to admission"""
     if request.method != 'POST':
@@ -1440,7 +1461,7 @@ def add_lab_to_admission(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_admission')
+@permission_required('inpatient.add_admission')
 def add_scan_to_admission(request, pk):
     """Add scan order to admission"""
     if request.method != 'POST':
@@ -1588,7 +1609,7 @@ def get_surgery_type_details_ajax(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_surgery')
+@permission_required('inpatient.add_surgery')
 def add_service_order_to_surgery(request, pk):
     """Add a new drug, lab, or scan order to a specific surgery."""
     if request.method != 'POST':
@@ -1641,7 +1662,7 @@ def add_service_order_to_surgery(request, pk):
 
 
 @login_required
-@permission_required('inpatient.change_surgery')
+@permission_required('inpatient.add_surgery')
 def remove_service_order_from_surgery(request, pk, order_id):
     """Remove a drug, lab, or scan order from a surgery if it is still in a removable state."""
     if request.method != 'POST':
@@ -1774,7 +1795,7 @@ def surgery_order_multiple_imaging(request):
 # -------------------------
 class AdmissionTypeListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     model = AdmissionType
-    permission_required = 'inpatient.view_admissiontype'
+    permission_required = 'inpatient.view_ward'
     template_name = 'inpatient/admission_type/index.html'
     context_object_name = 'admission_type_list'
     paginate_by = 20
@@ -1801,7 +1822,7 @@ class AdmissionTypeCreateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, CreateView
 ):
     model = AdmissionType
-    permission_required = 'inpatient.add_admissiontype'
+    permission_required = 'inpatient.add_ward'
     form_class = AdmissionTypeForm
     template_name = 'inpatient/admission_type/create.html'
     success_message = 'Admission Type Successfully Created'
@@ -1819,7 +1840,7 @@ class AdmissionTypeUpdateView(
     LoginRequiredMixin, PermissionRequiredMixin, FlashFormErrorsMixin, UpdateView
 ):
     model = AdmissionType
-    permission_required = 'inpatient.change_admissiontype'
+    permission_required = 'inpatient.add_ward'
     form_class = AdmissionTypeForm
     template_name = 'inpatient/admission_type/create.html'
     success_message = 'Admission Type Successfully Updated'
@@ -1834,7 +1855,7 @@ class AdmissionTypeUpdateView(
 
 class AdmissionTypeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     model = AdmissionType
-    permission_required = 'inpatient.view_admissiontype'
+    permission_required = 'inpatient.view_ward'
     template_name = 'inpatient/admission_type/detail.html'
     context_object_name = 'admission_type'
 
@@ -1983,6 +2004,11 @@ def save_ward_round(request, pk):
     # Update fields
     ward_round.chief_complaint = request.POST.get('chief_complaint', '')
     ward_round.assessment = request.POST.get('assessment', '')
+    ward_round.status = request.POST.get('status', ward_round.status)
+
+    diagnosis = request.POST.get('diagnosis', '')
+    if diagnosis:
+        ward_round.diagnosis = diagnosis
 
     # Handle vitals (JSON)
     vitals = {}
@@ -2222,11 +2248,11 @@ class AdmissionTaskListView(LoginRequiredMixin, PermissionRequiredMixin, ListVie
 
         # Filter by status
         status = self.request.GET.get('status')
-        if status:
+        if status and status != 'all':
             queryset = queryset.filter(status=status)
         else:
             # Default: show pending and in_progress
-            queryset = queryset.filter(status__in=['pending', 'in_progress'])
+            queryset = queryset
 
         # Filter by date
         date_filter = self.request.GET.get('date_filter')
@@ -2336,68 +2362,8 @@ def cancel_task(request, pk):
 # Admission Deposit & Discharge Views
 # -------------------------
 @login_required
-@permission_required('finance.add_patienttransactionmodel')
-def process_admission_deposit(request, admission_id):
-    """Process admission deposit payment"""
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST method required'}, status=405)
-
-    admission = get_object_or_404(Admission, pk=admission_id)
-
-    form = AdmissionDepositForm(request.POST)
-    if not form.is_valid():
-        return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
-
-    deposit_amount = form.cleaned_data['deposit_amount']
-    payment_method = form.cleaned_data['payment_method']
-    notes = form.cleaned_data.get('notes', '')
-
-    try:
-        with transaction.atomic():
-            # Get old balance
-            old_deposit = admission.deposit_balance
-
-            # Update admission
-            admission.deposit_balance += deposit_amount
-            admission.total_paid += deposit_amount
-            admission.save()
-
-            # Create transaction
-            PatientTransactionModel.objects.create(
-                patient=admission.patient,
-                transaction_type='admission_payment',
-                transaction_direction='in',
-                amount=deposit_amount,
-                admission=admission,
-                payment_method=payment_method,
-                received_by=request.user,
-                old_balance=admission.patient.wallet_balance,
-                new_balance=admission.patient.wallet_balance,
-                status='completed',
-                date=timezone.now().date()
-            )
-
-            # Clear pending orders if any
-            pending_result = clear_pending_admission_orders(admission, deposit_amount)
-
-            return JsonResponse({
-                'success': True,
-                'message': f'Deposit of ₦{deposit_amount:,.2f} received successfully',
-                'new_deposit_balance': float(admission.deposit_balance),
-                'old_deposit_balance': float(old_deposit),
-                'orders_cleared': pending_result['orders_cleared'],
-                'amount_used_for_orders': float(pending_result['amount_used'])
-            })
-
-    except Exception as e:
-        logger.exception("Error processing admission deposit")
-        return JsonResponse({'error': str(e)}, status=500)
-
-
-@login_required
 @permission_required('inpatient.change_admission')
 def discharge_patient(request, admission_id):
-    """Discharge patient from admission"""
     admission = get_object_or_404(Admission, pk=admission_id, status='active')
 
     if request.method == 'POST':
@@ -2405,34 +2371,87 @@ def discharge_patient(request, admission_id):
         if form.is_valid():
             admission = form.save(commit=False)
             admission.status = 'discharged'
+            admission.actual_discharge_date = admission.actual_discharge_date or timezone.now()
 
-            # Free up the bed
+            # ── Free the bed ──────────────────────────────────────────────
             if admission.bed:
                 admission.bed.status = 'available'
                 admission.bed.save()
 
             admission.save()
 
-            messages.success(request, f'Patient {admission.patient} discharged successfully')
+            # ── Cancel all pending tasks ──────────────────────────────────
+            admission.tasks.filter(status='pending').update(status='cancelled')
+
+            # ── Refund excess deposit to patient wallet ───────────────────
+            billing_summary   = build_billing_summary(admission)
+            grand_total       = billing_summary['grand_total']
+            total_paid        = admission.total_paid
+            excess            = total_paid - grand_total
+
+            if excess > 0:
+                wallet, _ = PatientWalletModel.objects.get_or_create(
+                    patient=admission.patient
+                )
+                old_wallet_balance = wallet.amount
+                wallet.add_funds(excess)  # uses the safe add_funds method
+
+                PatientTransactionModel.objects.create(
+                    patient=admission.patient,
+                    transaction_type='refund_to_wallet',       # valid choice, maps to 'in'
+                    transaction_direction='in',
+                    source='admission',
+                    amount=excess,
+                    admission=admission,
+                    wallet_amount_used=Decimal('0.00'),
+                    direct_payment_amount=Decimal('0.00'),
+                    payment_method='wallet',
+                    received_by=request.user,
+                    old_balance=old_wallet_balance,
+                    new_balance=wallet.amount,                 # already updated by add_funds
+                    status='completed',
+                    date=timezone.now().date(),
+                )
+
+            # ── Broadcast discharge notification ──────────────────────────
+            from .views import create_broadcast_notification
+            create_broadcast_notification(
+                'discharged',
+                f"{admission.patient} ({admission.admission_number}) has been discharged.",
+                admission=admission,
+            )
+
+            messages.success(
+                request,
+                f'Patient {admission.patient} has been discharged successfully.'
+                + (f' ₦{excess:,.2f} has been refunded to their wallet.' if excess > 0 else '')
+            )
             return redirect('admission_detail', pk=admission.pk)
+
         else:
-            # Show errors
             for field, errors in form.errors.items():
                 for error in errors:
                     messages.error(request, f"{field}: {error}")
+
     else:
         form = DischargeForm(instance=admission)
 
-    # Calculate final bill
+    # ── Build billing context (consistent with detail view) ───────────────
+    billing_summary   = build_billing_summary(admission)
+    grand_total       = billing_summary['grand_total']
+    total_paid        = admission.total_paid
+    balance_due       = max(grand_total - total_paid, Decimal('0.00'))
+    deposit_remaining = max(total_paid - grand_total, Decimal('0.00'))
+
     context = {
         'admission': admission,
         'form': form,
         'billing_summary': {
-            'total_charges': admission.total_charges,
-            'total_paid': admission.total_paid,
-            'deposit_remaining': admission.deposit_balance,
-            'balance_due': admission.debt_balance,
-        }
+            'total_charges':      grand_total,
+            'total_paid':         total_paid,
+            'deposit_remaining':  deposit_remaining,
+            'balance_due':        balance_due,
+        },
     }
 
     return render(request, 'inpatient/admission/discharge.html', context)
@@ -2770,3 +2789,302 @@ def ajax_change_admission_status(request, admission_id):
     admission.save(update_fields=['status'])
 
     return JsonResponse({'success': True, 'message': f'Admission marked as {new_status}'})
+
+
+@login_required
+def handover_list_view(request):
+    from .models import HandoverNote
+    handovers = HandoverNote.objects.select_related('created_by').prefetch_related('entries')
+    return render(request, 'inpatient/handover/list.html', {'handovers': handovers})
+
+
+@login_required
+def handover_create_view(request):
+    """
+    Create a new handover note (starts as draft).
+    Entries are added via AJAX; submission captures the snapshot.
+    """
+    from .models import HandoverNote, HandoverEntry, Admission
+
+    if request.method == 'POST':
+        action = request.POST.get('action')  # 'save_draft' or 'submit'
+        shift = request.POST.get('shift')
+        handover_id = request.POST.get('handover_id')
+
+        if handover_id:
+            handover = get_object_or_404(HandoverNote, pk=handover_id, created_by=request.user, status='draft')
+        else:
+            handover = HandoverNote.objects.create(
+                created_by=request.user,
+                shift=shift,
+                status='draft'
+            )
+
+        # Save/update entries sent as JSON
+        entries_json = request.POST.get('entries', '[]')
+        try:
+            entries_data = json.loads(entries_json)
+        except (json.JSONDecodeError, ValueError):
+            entries_data = []
+
+        # Replace all entries (simplest approach for draft editing)
+        handover.entries.all().delete()
+        for entry in entries_data:
+            admission = None
+            if entry.get('entry_type') == 'patient' and entry.get('admission_id'):
+                try:
+                    admission = Admission.objects.get(pk=entry['admission_id'])
+                except Admission.DoesNotExist:
+                    pass
+            HandoverEntry.objects.create(
+                handover=handover,
+                entry_type=entry.get('entry_type', 'general'),
+                admission=admission,
+                note=entry.get('note', '')
+            )
+
+        if action == 'submit':
+            handover.submit()
+            # Notify incoming staff (those with get_task_notification)
+            _notify_handover_submitted(handover)
+            return JsonResponse({
+                'success': True,
+                'redirect': f'/portal/inpatient/admission/handover/{handover.pk}/'
+            })
+
+        return JsonResponse({'success': True, 'handover_id': handover.pk})
+
+    # GET — show the create form
+    from .models import Admission
+    active_admissions = Admission.objects.filter(
+        status='active'
+    ).select_related('patient', 'bed__ward').order_by('bed__ward__name', 'patient__first_name')
+
+    return render(request, 'inpatient/handover/create.html', {
+        'active_admissions': active_admissions,
+        'shifts': HandoverNote.SHIFT_CHOICES,
+    })
+
+
+def _notify_handover_submitted(handover):
+    """Create notifications for all staff with get_task_notification permission."""
+    from django.contrib.auth.models import Permission
+    from django.contrib.auth import get_user_model
+    from communication.models import StaffNotification
+
+    perm = Permission.objects.filter(codename='get_task_notification').first()
+    if not perm:
+        return
+
+    # Users with direct permission or via group
+    recipients = User.objects.filter(
+        is_active=True
+    ).filter(
+        models.Q(user_permissions=perm) | models.Q(groups__permissions=perm)
+    ).exclude(pk=handover.created_by.pk).distinct()
+
+    staff_name = handover.created_by.get_full_name() or handover.created_by.username
+    for user in recipients:
+        StaffNotification.objects.create(
+            recipient=user,
+            notification_type='new_admission',  # reuse as 'handover' if you add the type
+            message=f"New handover submitted by {staff_name} — {handover.get_shift_display()}",
+            admission=None,
+        )
+
+
+@login_required
+def handover_detail_view(request, pk):
+    from .models import HandoverNote
+    handover = get_object_or_404(HandoverNote, pk=pk)
+    return render(request, 'inpatient/handover/detail.html', {'handover': handover})
+
+
+@login_required
+def ajax_search_active_admissions(request):
+    """Search active admissions for handover patient-specific entry."""
+    from .models import Admission
+    q = request.GET.get('q', '').strip()
+    if len(q) < 2:
+        return JsonResponse({'results': []})
+
+    admissions = Admission.objects.filter(
+        status='active'
+    ).filter(
+        models.Q(patient__first_name__icontains=q) |
+        models.Q(patient__last_name__icontains=q) |
+        models.Q(patient__card_number__icontains=q) |
+        models.Q(admission_number__icontains=q)
+    ).select_related('patient', 'bed__ward')[:10]
+
+    results = []
+    for adm in admissions:
+        results.append({
+            'id': adm.id,
+            'label': f"{adm.patient} — {adm.admission_number}",
+            'ward': adm.bed.ward.name if adm.bed else 'Unassigned',
+            'condition': adm.get_condition_display(),
+        })
+
+    return JsonResponse({'results': results})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. VIEWS — add to inpatient/views.py
+# ═══════════════════════════════════════════════════════════════════════════
+
+import json
+import time as time_module
+from django.http import StreamingHttpResponse
+from django.db import models as dj_models
+
+
+def _get_eligible_users():
+    """Users with get_task_notification permission (direct or via group)."""
+    from django.contrib.auth.models import Permission
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    perm = Permission.objects.filter(codename='get_task_notification').first()
+    if not perm:
+        return User.objects.none()
+    return User.objects.filter(
+        is_active=True
+    ).filter(
+        dj_models.Q(user_permissions=perm) | dj_models.Q(groups__permissions=perm)
+    ).distinct()
+
+
+def create_broadcast_notification(notification_type, message, admission=None, task=None):
+    """
+    Create a single broadcast notification visible to all eligible staff.
+    Returns the created notification.
+    """
+    from communication.models import StaffNotification
+    return StaffNotification.objects.create(
+        notification_type=notification_type,
+        message=message,
+        admission=admission,
+        task=task,
+        is_broadcast=True,
+        recipient=None,
+    )
+
+
+def create_targeted_notification(recipient_user, notification_type, message, admission=None, task=None):
+    """
+    Create a notification for a specific user only.
+    """
+    from communication.models import StaffNotification
+    return StaffNotification.objects.create(
+        notification_type=notification_type,
+        message=message,
+        admission=admission,
+        task=task,
+        is_broadcast=False,
+        recipient=recipient_user,
+    )
+
+
+@login_required
+def notification_sse(request):
+    """
+    Server-Sent Events stream.
+    - Checks permission on every poll cycle
+    - For broadcast: sends unhandled notifications this user hasn't seen yet
+    - For targeted: sends unhandled notifications addressed to this user
+    - Also checks for tasks just becoming due (within last 2 min, no notification yet)
+    - Reconnects automatically on client side if disconnected
+    """
+    from communication.models import StaffNotification, NotificationDeliveryLog
+    from inpatient.models import AdmissionTask
+
+    def event_stream():
+        yield ": connected\n\n"
+
+        while True:
+            try:
+                # Check permission on every cycle (shift change may revoke it)
+                if not request.user.has_perm('inpatient.get_task_notification'):
+                    yield ": no_permission\n\n"
+                    time_module.sleep(30)
+                    continue
+
+                # ── Broadcast: unhandled, not yet delivered to this user ──
+                broadcast_qs = StaffNotification.objects.filter(
+                    is_broadcast=True,
+                    handled_at__isnull=True,
+                ).exclude(
+                    delivered_to=request.user
+                ).select_related('admission__patient', 'task')
+
+                # ── Targeted: addressed to this user, not yet handled ──
+                targeted_qs = StaffNotification.objects.filter(
+                    is_broadcast=False,
+                    recipient=request.user,
+                    handled_at__isnull=True,
+                ).exclude(
+                    delivered_to=request.user
+                ).select_related('admission__patient', 'task')
+
+                for notif in list(broadcast_qs) + list(targeted_qs):
+                    data = {
+                        'id': notif.id,
+                        'type': notif.notification_type,
+                        'message': notif.message,
+                        'admission_id': notif.admission_id,
+                        'admission_number': notif.admission.admission_number if notif.admission else None,
+                        'task_id': notif.task_id,
+                        'is_broadcast': notif.is_broadcast,
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+
+                    # Record delivery
+                    NotificationDeliveryLog.objects.get_or_create(
+                        notification=notif,
+                        user=request.user
+                    )
+
+                # ── Check for tasks just becoming due ──
+                two_min_ago = timezone.now() - timezone.timedelta(minutes=2)
+                due_tasks = AdmissionTask.objects.filter(
+                    status='pending',
+                    scheduled_datetime__lte=timezone.now(),
+                    notifications__isnull=True,  # no notification yet
+                ).select_related('admission__patient', 'drug_order__drug')
+
+                for task in due_tasks:
+                    suffix = ''
+                    if task.drug_order:
+                        suffix = f" — {task.drug_order.drug.brand_name or task.drug_order.drug.generic_name}"
+                    msg = f"Task due: {task.get_task_type_display()}{suffix} for {task.admission.patient}"
+                    create_broadcast_notification('task_due', msg, admission=task.admission, task=task)
+                    # The notification will be picked up on next poll cycle
+
+            except Exception:
+                pass  # Never crash the stream
+
+            yield ": ping\n\n"
+            time_module.sleep(15)
+
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@login_required
+@require_POST
+def handle_notification(request, notification_id):
+    """
+    Mark a broadcast notification as handled (stops it for everyone),
+    or mark a targeted notification as seen (stops it for this user only).
+    """
+    from communication.models import StaffNotification
+    try:
+        notif = StaffNotification.objects.get(pk=notification_id)
+    except StaffNotification.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Not found'}, status=404)
+
+    notif.mark_handled(request.user)
+    return JsonResponse({'success': True})
+

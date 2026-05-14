@@ -4929,7 +4929,7 @@ def prescribe_multiple_view(request):
                     drug = DrugModel.objects.get(id=drug_data.get('drug_id'))
                     duplicates.append(drug.brand_name or drug.generic_name)
 
-            if duplicates:
+            if duplicates and not admission_id:
                 return JsonResponse({
                     'success': False,
                     'duplicate': True,
@@ -4961,6 +4961,7 @@ def prescribe_multiple_view(request):
                     dosage_instructions=drug_data.get('dosage', ''),
                     duration=drug_data.get('duration', ''),
                     quantity_ordered=float(drug_data.get('quantity', 0)),
+                    quantity_paid=0,
                     notes=drug_data.get('notes', ''),
                     status='pending',
                     generate_tasks=drug_data.get('generate_tasks', False),

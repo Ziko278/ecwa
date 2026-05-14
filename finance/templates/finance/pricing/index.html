@@ -1,0 +1,452 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block 'main' %}
+<style>
+/* ── Type badge colours ── */
+.type-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.type-drug    { background: #fef3c7; color: #92400e; }
+.type-lab     { background: #e0e7ff; color: #3730a3; }
+.type-scan    { background: #fce7f3; color: #9d174d; }
+.type-service { background: #d1fae5; color: #065f46; }
+.type-item    { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+
+/* ── Filter bar ── */
+.filter-bar {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.filter-btn {
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: .8rem;
+  font-weight: 500;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.filter-btn:hover  { border-color: #1a56db; color: #1a56db; }
+.filter-btn.active { background: #1a56db; border-color: #1a56db; color: white; }
+
+/* ── Table ── */
+.pricing-table { font-size: .84rem; }
+.pricing-table th {
+  background: #f9fafb;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #6b7280;
+  padding: 10px 14px;
+  border-bottom: 2px solid #e5e7eb;
+  font-weight: 700;
+}
+.pricing-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+.pricing-table tbody tr:hover { background: #f9fafb; }
+
+.price-cell {
+  font-weight: 700;
+  font-size: .9rem;
+  color: #057a55;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-btn {
+  padding: 4px 12px;
+  font-size: .76rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.update-btn:hover {
+  border-color: #1a56db;
+  color: #1a56db;
+  background: #f0f5ff;
+}
+
+/* ── Modal ── */
+.modal-price-input {
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  width: 100%;
+  transition: border-color .2s;
+}
+.modal-price-input:focus {
+  outline: none;
+  border-color: #1a56db;
+}
+.modal-item-name {
+  font-size: .85rem;
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 16px;
+}
+.modal-current-price {
+  text-align: center;
+  font-size: .8rem;
+  color: #9ca3af;
+  margin-top: 8px;
+}
+
+/* ── Feedback toast ── */
+.price-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  min-width: 260px;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: .85rem;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  animation: toastIn .25s ease;
+}
+.price-toast.success { background: #057a55; color: white; }
+.price-toast.error   { background: #e02424; color: white; }
+@keyframes toastIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ── Search ── */
+.search-input {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: .84rem;
+  min-width: 220px;
+  transition: border-color .2s;
+}
+.search-input:focus { outline: none; border-color: #1a56db; }
+</style>
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-1">Price Management</h4>
+    <p class="text-muted mb-0" style="font-size:.85rem">
+      {{ total_count }} item{{ total_count|pluralize }} &nbsp;·&nbsp;
+      Showing page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+    </p>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="filter-bar">
+  <!-- Type filters -->
+  <span style="font-size:.78rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:.05em">Type:</span>
+
+  {% with base_url="?search="|add:search %}
+  <a href="?search={{ search }}"
+     class="filter-btn {% if not type_filter %}active{% endif %}">All</a>
+  <a href="?type=drug&search={{ search }}"
+     class="filter-btn {% if type_filter == 'drug' %}active{% endif %}">💊 Drugs</a>
+  <a href="?type=lab&search={{ search }}"
+     class="filter-btn {% if type_filter == 'lab' %}active{% endif %}">🧪 Lab Tests</a>
+  <a href="?type=scan&search={{ search }}"
+     class="filter-btn {% if type_filter == 'scan' %}active{% endif %}">📷 Scans</a>
+  <a href="?type=service&search={{ search }}"
+     class="filter-btn {% if type_filter == 'service' %}active{% endif %}">⚙️ Services</a>
+  <a href="?type=item&search={{ search }}"
+     class="filter-btn {% if type_filter == 'item' %}active{% endif %}">📦 Items</a>
+  {% endwith %}
+
+  <!-- Search -->
+  <form method="GET" class="ms-auto d-flex gap-2 align-items-center" id="search-form">
+    {% if type_filter %}
+    <input type="hidden" name="type" value="{{ type_filter }}">
+    {% endif %}
+    <input type="text" name="search" value="{{ search }}"
+           class="search-input" placeholder="Search name or category…"
+           id="search-input">
+    <button type="submit" class="filter-btn active" style="padding:6px 14px">
+      Search
+    </button>
+    {% if search %}
+    <a href="?{% if type_filter %}type={{ type_filter }}{% endif %}"
+       class="filter-btn" style="color:#e02424; border-color:#fca5a5">✕ Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+<!-- Table -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table pricing-table mb-0">
+        <thead>
+          <tr>
+            <th style="width:100px">Type</th>
+            <th>Item</th>
+            <th>Category</th>
+            <th style="width:140px">Current Price</th>
+            <th style="width:100px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in page_obj %}
+          <tr id="row-{{ item.type }}-{{ item.id }}">
+            <td>
+              <span class="type-badge type-{{ item.type }}">{{ item.type_label }}</span>
+            </td>
+            <td>
+              <span style="font-weight:500; color:#111827">{{ item.name }}</span>
+            </td>
+            <td>
+              <span style="font-size:.8rem; color:#6b7280">{{ item.category }}</span>
+            </td>
+            <td>
+              <span class="price-cell" id="price-{{ item.type }}-{{ item.id }}">
+                ₦{{ item.price|floatformat:2|intcomma }}
+              </span>
+            </td>
+            <td>
+              <button class="update-btn"
+                      onclick="openPriceModal('{{ item.type }}', {{ item.id }}, '{{ item.name|escapejs }}', '{{ item.price }}')">
+                <i class="bi bi-pencil"></i> Update
+              </button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-5">
+              <i class="bi bi-search" style="font-size:2rem; opacity:.25; display:block; margin-bottom:8px"></i>
+              No items found{% if search %} for "{{ search }}"{% endif %}.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="d-flex justify-content-center mt-4">
+  <nav>
+    <ul class="pagination pagination-sm">
+      {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link"
+           href="?page={{ page_obj.previous_page_number }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}">
+          &laquo; Prev
+        </a>
+      </li>
+      {% endif %}
+
+      {% for num in page_obj.paginator.page_range %}
+        {% if page_obj.number == num %}
+        <li class="page-item active">
+          <span class="page-link">{{ num }}</span>
+        </li>
+        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+        <li class="page-item">
+          <a class="page-link"
+             href="?page={{ num }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}">
+            {{ num }}
+          </a>
+        </li>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link"
+           href="?page={{ page_obj.next_page_number }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}">
+          Next &raquo;
+        </a>
+      </li>
+      {% endif %}
+    </ul>
+  </nav>
+</div>
+{% endif %}
+
+<!-- Update Price Modal -->
+<div class="modal fade" id="priceModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:380px">
+    <div class="modal-content" style="border-radius:12px; overflow:hidden">
+      <div class="modal-header py-3" style="background:#1a56db; border:none">
+        <h6 class="modal-title text-white mb-0">
+          <i class="bi bi-pencil-square me-2"></i>Update Price
+        </h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="modal-item-name" id="modal-item-name"></p>
+
+        <div class="mb-1">
+          <div style="position:relative">
+            <span style="
+              position:absolute; left:14px; top:50%; transform:translateY(-50%);
+              font-size:1.3rem; font-weight:700; color:#6b7280;
+            ">₦</span>
+            <input type="number" id="new-price-input" class="modal-price-input"
+                   style="padding-left:36px" min="0" step="0.01"
+                   placeholder="0.00">
+          </div>
+        </div>
+        <p class="modal-current-price" id="modal-current-price"></p>
+
+        <div id="modal-error" class="alert alert-danger py-2 mt-3 d-none" style="font-size:.82rem"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0 px-4 pb-4">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm px-4" id="save-price-btn" onclick="savePrice()">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="price-spinner"></span>
+          Save Price
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let _currentType = null;
+let _currentId   = null;
+let _priceModal  = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  _priceModal = new bootstrap.Modal(document.getElementById('priceModal'));
+
+  // Submit on Enter key in price input
+  document.getElementById('new-price-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') savePrice();
+  });
+});
+
+function openPriceModal(type, id, name, currentPrice) {
+  _currentType = type;
+  _currentId   = id;
+
+  document.getElementById('modal-item-name').textContent = name;
+  document.getElementById('modal-current-price').textContent =
+    'Current price: ₦' + parseFloat(currentPrice).toLocaleString('en-NG', {minimumFractionDigits: 2});
+  document.getElementById('new-price-input').value = parseFloat(currentPrice).toFixed(2);
+  document.getElementById('modal-error').classList.add('d-none');
+
+  _priceModal.show();
+
+  // Select input text after modal opens
+  setTimeout(() => {
+    const inp = document.getElementById('new-price-input');
+    inp.focus();
+    inp.select();
+  }, 300);
+}
+
+function getCookie(name) {
+  let v = null;
+  document.cookie.split(';').forEach(c => {
+    c = c.trim();
+    if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
+  });
+  return v;
+}
+
+function showToast(message, type = 'success') {
+  const t = document.createElement('div');
+  t.className = `price-toast ${type}`;
+  t.textContent = message;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function savePrice() {
+  const rawPrice = document.getElementById('new-price-input').value.trim();
+  const price    = parseFloat(rawPrice);
+  const errEl    = document.getElementById('modal-error');
+  const spinner  = document.getElementById('price-spinner');
+  const saveBtn  = document.getElementById('save-price-btn');
+
+  errEl.classList.add('d-none');
+
+  if (!rawPrice || isNaN(price) || price < 0) {
+    errEl.textContent = 'Please enter a valid price (0 or more).';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  // Loading state
+  spinner.classList.remove('d-none');
+  saveBtn.disabled = true;
+
+  fetch("{% url 'ajax_update_price' %}", {
+    method:  'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken':  getCookie('csrftoken'),
+    },
+    body: JSON.stringify({ type: _currentType, id: _currentId, price }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      _priceModal.hide();
+      showToast('✓ ' + d.message);
+
+      // Update price cell in table without full reload
+      const cell = document.getElementById(`price-${_currentType}-${_currentId}`);
+      if (cell) {
+        cell.textContent = d.new_price;
+        cell.style.animation = 'none';
+        cell.offsetHeight; // reflow
+        cell.style.animation = 'priceFlash .6s ease';
+      }
+    } else {
+      errEl.textContent = d.error || 'Failed to update price.';
+      errEl.classList.remove('d-none');
+    }
+  })
+  .catch(() => {
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.classList.remove('d-none');
+  })
+  .finally(() => {
+    spinner.classList.add('d-none');
+    saveBtn.disabled = false;
+  });
+}
+</script>
+
+<style>
+@keyframes priceFlash {
+  0%   { color: #057a55; background: #d1fae5; border-radius: 4px; padding: 2px 4px; }
+  100% { color: #057a55; background: transparent; }
+}
+</style>
+
+{% endblock %}

@@ -192,7 +192,9 @@
 <div class="adm-header">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
     <div>
-      <h4>Admission Record</h4>
+      <h4>Admission Record <span class="badge {% if admission.condition == 'critical' %}bg-danger{% elif admission.condition == 'serious' %}bg-warning text-dark{% elif admission.condition == 'recovering' %}bg-info{% elif admission.condition == 'stable' %}bg-primary{% elif admission.condition == 'healthy' %}bg-success{% endif %}">
+  {{ admission.get_condition_display|upper }}
+</span></h4>
       <h2>{{ admission.patient|title }}</h2>
       <div class="meta">
         Card: {{ admission.patient.card_number }} &nbsp;|&nbsp;
@@ -840,7 +842,7 @@
             {% if admission.debt_balance > 0 %}
             <div class="cost-total" style="border-top:none; padding-top:4px; font-size:.9rem; color:var(--danger)">
               <span>Outstanding</span>
-              <span>₦{{ admission.debt_balance|floatformat:2|intcomma }}</span>
+              <span>₦{{ live_debt|floatformat:2|intcomma }}</span>
             </div>
             {% endif %}
           </div>
@@ -1647,7 +1649,7 @@ function confirmAdmission() {
 // ── DISCHARGE ──────────────────────────────
 function initiateDischarge() {
   {% if admission.debt_balance > 0 %}
-  showMsg('Patient has an outstanding balance of ₦{{ admission.debt_balance|floatformat:2|intcomma }}. Balance must be cleared before discharge.', 'warning');
+  showMsg('Patient has an outstanding balance of ₦{{ live_debt|floatformat:2|intcomma }}. Balance must be cleared before discharge.', 'warning');
   {% else %}
   showConfirm('Discharge this patient? This action cannot be undone.', () => {
     window.location.href = "{% url 'discharge_patient' admission.pk %}";

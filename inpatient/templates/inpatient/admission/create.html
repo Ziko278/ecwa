@@ -42,6 +42,9 @@
                         {% csrf_token %}
                         <!-- This field is set by the view, so we don't need to show it -->
                         {{ form.patient.as_hidden }}
+                        {% if request.GET.consultation_session %}
+                            <input type="hidden" name="consultation_session" value="{{ request.GET.consultation_session }}">
+                        {% endif %}
 
                         <!-- Admission Details Section -->
                         <div class="col-12">
@@ -77,7 +80,7 @@
 
 
                         <div class="text-end mt-4">
-                            <a href="{% url 'admission_search_patient' %}" class="btn btn-secondary">Cancel</a>
+                            <a href="{% if request.GET.consultation_session %}{% url 'consultation_page' request.GET.consultation_session %}{% else %}{% url 'admission_search_patient' %}{% endif %}" class="btn btn-secondary">Cancel</a>
                             <button type="submit" class="btn btn-primary">Create Admission</button>
                         </div>
 

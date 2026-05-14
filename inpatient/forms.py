@@ -213,18 +213,17 @@ class SurgeryTypeForm(forms.ModelForm):
 
 
 class AdmissionForm(forms.ModelForm):
-
-
     class Meta:
         model = Admission
         fields = [
             'admission_type', 'chief_complaint',
             'admission_diagnosis', 'bed',
-             'admission_notes'
+             'admission_notes', 'condition'
         ]
         widgets = {
             'patient': forms.Select(attrs={'class': 'form-control'}),
             'admission_type': forms.Select(attrs={'class': 'form-control'}),
+            'condition': forms.Select(attrs={'class': 'form-control'}),
             'chief_complaint': forms.Textarea(attrs={
                 'class': 'form-control',
                 'rows': 3,
@@ -271,10 +270,11 @@ class AdmissionUpdateForm(forms.ModelForm):
         model = Admission
         fields = [
             'status', 'discharge_notes',
-            'admission_notes', 'bed'
+            'admission_notes', 'bed', 'condition'
         ]
         widgets = {
             'status': forms.Select(attrs={'class': 'form-control'}),
+            'condition': forms.Select(attrs={'class': 'form-control'}),
             'actual_discharge_date': forms.DateTimeInput(attrs={
                 'class': 'form-control',
                 'type': 'datetime-local'

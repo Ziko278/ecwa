@@ -1,8 +1,86 @@
 from django.db import models
 from django.conf import settings
+from django.contrib.auth.models import User
 
 
 # -------------------- INTERNAL MESSAGING --------------------
+
+class StaffNotification(models.Model):
+    NOTIFICATION_TYPE_CHOICES = [
+        ('new_admission', 'New Admission'),
+        ('first_deposit', 'First Deposit — Awaiting Confirmation'),
+        ('task_due', 'Task Due'),
+        ('discharged', 'Patient Discharged'),
+        ('handover', 'Handover Submitted'),
+    ]
+
+    notification_type = models.CharField(max_length=30, choices=NOTIFICATION_TYPE_CHOICES)
+    message = models.CharField(max_length=500)
+
+    # Context links
+    admission = models.ForeignKey(
+        'inpatient.Admission', null=True, blank=True,
+        on_delete=models.CASCADE, related_name='notifications'
+    )
+    task = models.ForeignKey(
+        'inpatient.AdmissionTask', null=True, blank=True,
+        on_delete=models.CASCADE, related_name='notifications'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Broadcast vs targeted
+    is_broadcast = models.BooleanField(
+        default=True,
+        help_text="True = any eligible staff can handle. False = specific recipient only."
+    )
+    recipient = models.ForeignKey(
+        User, null=True, blank=True,
+        on_delete=models.CASCADE,
+        related_name='targeted_notifications',
+        help_text="Only set when is_broadcast=False"
+    )
+
+    # Handling — once handled, stop showing to everyone
+    handled_by = models.ForeignKey(
+        User, null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='handled_notifications'
+    )
+    handled_at = models.DateTimeField(null=True, blank=True)
+
+    # Delivery tracking (who has already seen it)
+    delivered_to = models.ManyToManyField(
+        User, blank=True,
+        related_name='received_notifications',
+        through='NotificationDeliveryLog'
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['is_broadcast', 'handled_at']),
+            models.Index(fields=['recipient', 'handled_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_notification_type_display()} — {self.created_at.strftime('%d %b %Y %H:%M')}"
+
+    def mark_handled(self, user):
+        self.handled_by = user
+        self.handled_at = timezone.now()
+        self.save(update_fields=['handled_by', 'handled_at'])
+
+
+class NotificationDeliveryLog(models.Model):
+    """Through table — records when a notification was delivered to a user."""
+    notification = models.ForeignKey(StaffNotification, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    delivered_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['notification', 'user']
+
 
 class Message(models.Model):
     subject = models.CharField(max_length=200)

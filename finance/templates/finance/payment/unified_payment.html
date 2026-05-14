@@ -106,6 +106,11 @@
         background: #f0fff4;
         border-width: 2px;
     }
+
+    .cost-summary { font-size: .85rem; border-top: 1px solid #dee2e6; padding-top: 10px; }
+.cs-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f1f1f1; }
+.cs-row:last-child { border-bottom: none; }
+.cs-total { font-weight: 700; font-size: .95rem; border-top: 2px solid #dee2e6; margin-top: 4px; padding-top: 8px; }
 </style>
 
 <div class="container-fluid mt-4">
@@ -667,55 +672,51 @@ function loadAdmissionRecords() {
 function displayAdmissionRecords(records) {
     let html = '';
 
-    records.forEach((record, index) => {
-        const isOwing = record.balance < 0;
+    records.forEach((record) => {
+        const isOwing = record.live_debt > 0;
         html += `
-            <div class="record-card ${records.length === 1 ? 'selected' : ''}" data-record-id="${record.id}" onclick="selectAdmissionRecord(${record.id})">
+            <div class="record-card ${records.length === 1 ? 'selected' : ''}"
+                 data-record-id="${record.id}" onclick="selectAdmissionRecord(${record.id})">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
                         <h5 class="mb-1">${record.identifier}</h5>
                         <span class="badge bg-info">${record.status}</span>
                     </div>
                     <div class="text-end">
-                        <div class="text-muted small">Total Bill</div>
-                        <div class="h5 mb-0">${formatCurrency(record.total_bill)}</div>
+                        <div class="text-muted small">Grand Total</div>
+                        <div class="h5 mb-0">${formatCurrency(record.grand_total)}</div>
                     </div>
                 </div>
-                <div class="row mt-3">
-                    <div class="col-md-3">
-                        <small class="text-muted">Base Fee</small>
-                        <div><strong>${formatCurrency(record.base_fee)}</strong></div>
-                    </div>
-                    <div class="col-md-3">
-                        <small class="text-muted">Drugs</small>
-                        <div><strong>${formatCurrency(record.drug_costs)}</strong></div>
-                    </div>
-                    <div class="col-md-3">
-                        <small class="text-muted">Labs</small>
-                        <div><strong>${formatCurrency(record.lab_costs)}</strong></div>
-                    </div>
-                    <div class="col-md-3">
-                        <small class="text-muted">Scans</small>
-                        <div><strong>${formatCurrency(record.scan_costs)}</strong></div>
-                    </div>
+
+                <!-- Summary breakdown (like the detail page summary card) -->
+                <div class="cost-summary mt-2">
+                    ${record.admission_fee > 0 ? `
+                    <div class="cs-row"><span>Admission Fee</span><span>${formatCurrency(record.admission_fee)}</span></div>` : ''}
+                    ${record.bed_total > 0 ? `
+                    <div class="cs-row"><span>Bed (${record.bed_rate}/day × ${record.length_of_stay} day(s))</span><span>${formatCurrency(record.bed_total)}</span></div>` : ''}
+                    ${record.consultation_total > 0 ? `
+                    <div class="cs-row"><span>Consultations (${record.billable_consultation_periods} period(s))</span><span>${formatCurrency(record.consultation_total)}</span></div>` : ''}
+                    <div class="cs-row"><span>Drugs</span><span>${formatCurrency(record.drug_total)}</span></div>
+                    <div class="cs-row"><span>Labs</span><span>${formatCurrency(record.lab_total)}</span></div>
+                    <div class="cs-row"><span>Scans</span><span>${formatCurrency(record.scan_total)}</span></div>
+                    <div class="cs-row"><span>Services & Items</span><span>${formatCurrency(record.service_total)}</span></div>
+                    <div class="cs-row cs-total"><span>Grand Total</span><span>${formatCurrency(record.grand_total)}</span></div>
+                    <div class="cs-row" style="color:#057a55"><span>Total Paid</span><span>${formatCurrency(record.total_paid)}</span></div>
+                    ${record.live_debt > 0
+                        ? `<div class="cs-row" style="color:#e02424"><span>Outstanding</span><span>${formatCurrency(record.live_debt)}</span></div>`
+                        : `<div class="cs-row" style="color:#057a55"><span>Excess Balance</span><span>${formatCurrency(record.live_excess)}</span></div>`
+                    }
                 </div>
-                <hr>
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <small class="text-muted">Total Paid</small>
-                        <div><strong>${formatCurrency(record.total_paid)}</strong></div>
-                    </div>
-                    <div class="text-end">
-                        <small class="text-muted">Balance</small>
-                        <div class="${isOwing ? 'text-danger' : 'text-success'}">
-                            <strong>${isOwing ? '-' : '+'}${formatCurrency(record.abs_balance)}</strong>
-                        </div>
-                    </div>
-                </div>
+
+                <button class="btn btn-sm btn-outline-secondary mt-2"
+                        onclick="event.stopPropagation(); showFullBreakdown(${record.id})">
+                    <i class="fas fa-list-ul"></i> View Full Breakdown
+                </button>
+
                 ${record.status === 'pending' && !record.has_prior_payment ? `
-                    <div class="alert alert-info mt-2 mb-0 py-1 px-2">
-                        <small><strong>Minimum deposit required:</strong> ₦${parseFloat(record.minimum_deposit).toLocaleString()}</small>
-                    </div>` : ''}
+                <div class="alert alert-info mt-2 mb-0 py-1 px-2">
+                    <small><strong>Minimum deposit required:</strong> ${formatCurrency(record.minimum_deposit)}</small>
+                </div>` : ''}
             </div>
         `;
     });
@@ -726,6 +727,74 @@ function displayAdmissionRecords(records) {
     if (records.length === 1) {
         selectAdmissionRecord(records[0].id);
     }
+}
+
+function showFullBreakdown(recordId) {
+    const record = currentAdmissionRecords.find(r => r.id === recordId);
+    if (!record) return;
+
+    const renderRows = (items, amountKey = 'amount') =>
+        items.length ? items.map(i => `
+            <div class="breakdown-row">
+                <span>${i.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}${i.type ? ` <small class="text-muted">(${i.type})</small>` : ''}</span>
+                <strong>${formatCurrency(i[amountKey])}</strong>
+            </div>`).join('')
+        : `<div class="breakdown-row text-muted"><span>None</span><span>₦0.00</span></div>`;
+
+    const body = `
+        <div class="payment-breakdown-card">
+            ${record.admission_fee > 0 ? `
+            <div class="p-2 bg-secondary text-white"><small><strong>Admission Fee</strong></small></div>
+            <div class="breakdown-row"><span>One-time admission fee</span><strong>${formatCurrency(record.admission_fee)}</strong></div>` : ''}
+
+            ${record.bed_total > 0 ? `
+            <div class="p-2 bg-secondary text-white"><small><strong>Bed Charges</strong></small></div>
+            <div class="breakdown-row"><span>Bed rate</span><strong>${formatCurrency(record.bed_rate)}/day</strong></div>
+            <div class="breakdown-row"><span>Length of stay</span><strong>${record.length_of_stay} day(s)</strong></div>
+            <div class="breakdown-row"><span><strong>Bed subtotal</strong></span><strong>${formatCurrency(record.bed_total)}</strong></div>` : ''}
+
+            ${record.consultation_total > 0 ? `
+            <div class="p-2 bg-secondary text-white"><small><strong>Consultation Charges</strong></small></div>
+            <div class="breakdown-row"><span>Fee per period</span><strong>${formatCurrency(record.consultation_fee)}</strong></div>
+            <div class="breakdown-row"><span>Covers (days)</span><strong>${record.consultation_fee_duration}</strong></div>
+            <div class="breakdown-row"><span>Billable periods</span><strong>${record.billable_consultation_periods}</strong></div>
+            <div class="breakdown-row"><span><strong>Consultation subtotal</strong></span><strong>${formatCurrency(record.consultation_total)}</strong></div>` : ''}
+
+            <div class="p-2 bg-secondary text-white"><small><strong>Drugs</strong></small></div>
+            ${renderRows(record.drugs)}
+            <div class="breakdown-row"><span><strong>Drugs subtotal</strong></span><strong>${formatCurrency(record.drug_total)}</strong></div>
+
+            <div class="p-2 bg-secondary text-white"><small><strong>Lab Tests</strong></small></div>
+            ${renderRows(record.labs)}
+            <div class="breakdown-row"><span><strong>Labs subtotal</strong></span><strong>${formatCurrency(record.lab_total)}</strong></div>
+
+            <div class="p-2 bg-secondary text-white"><small><strong>Scans</strong></small></div>
+            ${renderRows(record.scans)}
+            <div class="breakdown-row"><span><strong>Scans subtotal</strong></span><strong>${formatCurrency(record.scan_total)}</strong></div>
+
+            ${record.services.length ? `
+            <div class="p-2 bg-secondary text-white"><small><strong>Services & Items</strong></small></div>
+            ${renderRows(record.services)}
+            <div class="breakdown-row"><span><strong>Services subtotal</strong></span><strong>${formatCurrency(record.service_total)}</strong></div>` : ''}
+
+            <div class="breakdown-row" style="font-size:1.05rem;background:#e9ecef">
+                <span><strong>Grand Total</strong></span><strong>${formatCurrency(record.grand_total)}</strong>
+            </div>
+            <div class="breakdown-row" style="color:#057a55">
+                <span>Total Paid</span><strong>${formatCurrency(record.total_paid)}</strong>
+            </div>
+            ${record.live_debt > 0
+                ? `<div class="breakdown-row" style="color:#e02424"><span>Outstanding</span><strong>${formatCurrency(record.live_debt)}</strong></div>`
+                : `<div class="breakdown-row" style="color:#057a55"><span>Excess Balance</span><strong>${formatCurrency(record.live_excess)}</strong></div>`
+            }
+        </div>
+    `;
+
+    $('#modalTitle').text(`Full Breakdown — ${record.identifier}`);
+    $('#modalBody').html(body);
+    $('#modalHeader').removeClass('bg-success bg-danger').addClass('bg-primary');
+    $('#modalHeader h5, #modalHeader button').css('color', 'white');
+    centralModal.show();
 }
 
 function selectAdmissionRecord(recordId) {

@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from django.utils import timezone
 from patient.models import PatientModel  # Assuming you have a PatientModel model
+from django.db.models import Q, Count, Sum, F
 
 
 class InpatientSettings(models.Model):
@@ -337,6 +338,9 @@ class AdmissionTask(models.Model):
         ordering = ['scheduled_datetime', 'priority']
         verbose_name = "Admission Task"
         verbose_name_plural = "Admission Tasks"
+        permissions = [
+            ('get_task_notification', 'Receives real-time admission task notifications'),
+        ]
         indexes = [
             models.Index(fields=['admission', 'status']),
             models.Index(fields=['scheduled_datetime']),
@@ -393,6 +397,21 @@ class Admission(models.Model):
 
     chief_complaint = models.TextField()
     admission_diagnosis = models.TextField()
+
+    CONDITION_CHOICES = [
+        ('stable',     'Stable'),
+        ('critical',   'Critical'),
+        ('serious',    'Serious'),
+        ('recovering', 'Recovering'),
+        ('healthy',    'Healthy — Ready for Discharge'),
+    ]
+
+    condition = models.CharField(
+        max_length=20,
+        choices=CONDITION_CHOICES,
+        default='stable',
+        help_text="Current clinical condition of the patient"
+    )
 
     # Bed assignment
     bed = models.ForeignKey(
@@ -552,9 +571,18 @@ class Admission(models.Model):
 
     @property
     def debt_limit_reached(self):
-        """Check if debt limit has been reached"""
+        from inpatient.views import build_billing_summary  # adjust import path
+        from decimal import Decimal
+
         max_debt = self.admission_type.max_debt_allowed if self.admission_type else Decimal('50000.00')
-        return self.debt_balance >= max_debt
+
+        billing_summary = build_billing_summary(self)
+        live_grand_total = billing_summary['grand_total']
+        live_debt = live_grand_total - self.total_paid
+
+        live_debt = live_debt if live_debt > Decimal('0.00') else Decimal('0.00')
+
+        return live_debt >= max_debt
 
     @property
     def length_of_stay_days(self):
@@ -1022,3 +1050,151 @@ class Surgery(models.Model):
     @property
     def surgeon_name(self):
         return f"{self.primary_surgeon.__str__()}" if self.primary_surgeon else None
+
+
+class HandoverNote(models.Model):
+    """
+    A handover document created by a nurse/staff when signing out.
+    Contains free-text entries (general or patient-specific) plus
+    an automated census snapshot captured at submission time.
+    """
+    SHIFT_CHOICES = [
+        ('morning', 'Morning Shift'),
+        ('afternoon', 'Afternoon Shift'),
+        ('night', 'Night Shift'),
+    ]
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('submitted', 'Submitted'),
+    ]
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='handover_notes'
+    )
+    shift = models.CharField(max_length=20, choices=SHIFT_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    # Automated census captured at submission time (frozen record)
+    snapshot = models.JSONField(
+        null=True, blank=True,
+        help_text="Auto-captured census at time of handover submission"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Handover Note'
+        verbose_name_plural = 'Handover Notes'
+
+    def __str__(self):
+        return f"Handover by {self.created_by.get_full_name() or self.created_by.username} — {self.get_shift_display()} ({self.created_at.strftime('%d %b %Y')})"
+
+    def build_snapshot(self):
+        """
+        Build automated census data at submission time.
+        Returns a dict that gets stored in self.snapshot.
+        """
+        from django.db.models import Count, Q
+
+        active_admissions = Admission.objects.filter(status='active').select_related(
+            'patient', 'bed__ward'
+        )
+
+        total = active_admissions.count()
+        male = active_admissions.filter(patient__gender='male').count()
+        female = active_admissions.filter(patient__gender='female').count()
+
+        # Condition breakdown
+        condition_counts = {}
+        for choice_key, choice_label in Admission.CONDITION_CHOICES:
+            count = active_admissions.filter(condition=choice_key).count()
+            if count > 0:
+                condition_counts[choice_label] = count
+
+        # Per-ward breakdown
+        ward_breakdown = []
+        ward_ids = active_admissions.exclude(
+            bed__isnull=True
+        ).values_list('bed__ward', flat=True).distinct()
+
+        from .models import Ward
+        for ward in Ward.objects.filter(id__in=ward_ids, is_active=True):
+            ward_admissions = active_admissions.filter(bed__ward=ward)
+            ward_breakdown.append({
+                'ward': ward.name,
+                'total': ward_admissions.count(),
+                'male': ward_admissions.filter(patient__gender='male').count(),
+                'female': ward_admissions.filter(patient__gender='female').count(),
+                'critical': ward_admissions.filter(condition='critical').count(),
+                'stable': ward_admissions.filter(condition='stable').count(),
+            })
+
+        # Admissions without bed assignment
+        no_bed = active_admissions.filter(bed__isnull=True).count()
+        if no_bed > 0:
+            ward_breakdown.append({
+                'ward': 'Unassigned',
+                'total': no_bed,
+                'male': active_admissions.filter(bed__isnull=True, patient__gender='male').count(),
+                'female': active_admissions.filter(bed__isnull=True, patient__gender='female').count(),
+                'critical': active_admissions.filter(bed__isnull=True, condition='critical').count(),
+                'stable': active_admissions.filter(bed__isnull=True, condition='stable').count(),
+            })
+
+        return {
+            'total_admissions': total,
+            'male': male,
+            'female': female,
+            'condition_breakdown': condition_counts,
+            'ward_breakdown': ward_breakdown,
+            'captured_at': timezone.now().isoformat(),
+        }
+
+    def submit(self):
+        self.snapshot = self.build_snapshot()
+        self.status = 'submitted'
+        self.submitted_at = timezone.now()
+        self.save()
+
+
+class HandoverEntry(models.Model):
+    """
+    Individual note within a handover — either general or patient-specific.
+    """
+    ENTRY_TYPE_CHOICES = [
+        ('general', 'General Note'),
+        ('patient', 'Patient Specific'),
+    ]
+
+    handover = models.ForeignKey(
+        HandoverNote,
+        on_delete=models.CASCADE,
+        related_name='entries'
+    )
+    entry_type = models.CharField(max_length=20, choices=ENTRY_TYPE_CHOICES, default='general')
+
+    # Only set when entry_type == 'patient'
+    admission = models.ForeignKey(
+        Admission,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='handover_entries'
+    )
+
+    note = models.TextField(help_text="TinyMCE rich text content")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = 'Handover Entry'
+
+    def __str__(self):
+        if self.entry_type == 'patient' and self.admission:
+            return f"Note for {self.admission.patient}"
+        return "General note"
+

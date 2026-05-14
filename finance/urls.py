@@ -20,6 +20,7 @@ from .views import (
     PatientTransactionListView,
     PatientTransactionDetailView,
 
+    pricing_index_view, ajax_update_price,
     # Finance Settings
     FinanceSettingCreateView,
     FinanceSettingDetailView,
@@ -235,6 +236,9 @@ urlpatterns = [
     path('api/verify-customer/', verify_customer_for_sales, name='verify_customer_for_sales'),
     path('api/add-order-item/', add_order_item_ajax, name='add_order_item_ajax'),
     path('api/process-direct-sales-payment/', process_direct_sales_payment, name='process_direct_sales_payment'),
+
+    path('pricing/', pricing_index_view, name='pricing_index'),
+    path('pricing/update/', ajax_update_price, name='ajax_update_price'),
 
 ]
 

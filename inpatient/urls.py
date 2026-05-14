@@ -53,7 +53,6 @@ urlpatterns = [
     path('admissions/<int:pk>/edit/', admission_update, name='admission_edit'),
 
     # NEW: Deposit & Discharge
-    path('admissions/<int:admission_id>/deposit/', process_admission_deposit, name='process_admission_deposit'),
     path('admissions/<int:admission_id>/discharge/', discharge_patient, name='discharge_patient'),
 
     path('admission/<int:admission_id>/confirm/', confirm_admission, name='confirm_admission'),
@@ -79,6 +78,16 @@ urlpatterns = [
     path('ward-round/<int:pk>/edit/', ajax_edit_ward_round, name='ajax_edit_ward_round'),
     path('admission/<int:admission_id>/task/add/', ajax_add_admission_task, name='ajax_add_admission_task'),
     path('admission/<int:admission_id>/status/change/', ajax_change_admission_status, name='ajax_change_admission_status'),
+
+    path('admission/handover/', handover_list_view, name='handover_list'),
+    path('admission/handover/create/', handover_create_view, name='handover_create'),
+    path('admission/handover/<int:pk>/', handover_detail_view, name='handover_detail'),
+    path('admission/handover/ajax/search-admissions/', ajax_search_active_admissions, name='ajax_search_active_admissions'),
+
+    # Notifications (SSE)
+
+    path('notifications/stream/', notification_sse, name='notification_sse'),
+    path('notifications/<int:notification_id>/handle/', handle_notification, name='handle_notification'),
 
     # Surgeries
     path('surgeries/', SurgeryListView.as_view(), name='surgery_index'),

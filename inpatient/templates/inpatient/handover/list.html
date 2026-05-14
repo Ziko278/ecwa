@@ -1,0 +1,415 @@
+{% extends 'admin_site/layout.html' %}
+{% load static %}
+
+{% block 'main' %}
+<style>
+:root {
+  --blue: #1a56db;
+  --blue-light: #eff4ff;
+  --blue-mid: #3b72ef;
+  --green: #057a55;
+  --green-light: #d1fae5;
+  --yellow: #c27803;
+  --yellow-light: #fef3c7;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-700: #374151;
+  --gray-900: #111827;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --shadow: 0 4px 12px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
+}
+
+.ho-list-page { max-width: 1140px; margin: 0 auto; }
+
+/* ── Header ── */
+.ho-list-header {
+  background: linear-gradient(135deg, #1a56db 0%, #1e3a8a 100%);
+  border-radius: var(--radius);
+  padding: 22px 28px;
+  color: white;
+  margin-bottom: 22px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ho-list-header::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.ho-list-header-content { position: relative; flex: 1; }
+.ho-list-header h4 { font-size: .78rem; font-weight: 500; opacity: .7; margin: 0 0 4px; letter-spacing: .07em; text-transform: uppercase; }
+.ho-list-header h2 { font-size: 1.45rem; font-weight: 700; margin: 0 0 5px; }
+.ho-list-header p  { font-size: .82rem; opacity: .7; margin: 0; }
+
+.btn-new-handover {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border-radius: var(--radius-sm);
+  border: 1.5px solid rgba(255,255,255,.35);
+  background: rgba(255,255,255,.12);
+  color: white; font-size: .82rem; font-weight: 600;
+  cursor: pointer; transition: all .15s; position: relative;
+  text-decoration: none;
+}
+.btn-new-handover:hover {
+  background: rgba(255,255,255,.2);
+  border-color: rgba(255,255,255,.5);
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* ── Filters ── */
+.filter-bar {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  box-shadow: var(--shadow-sm);
+}
+.filter-label {
+  font-size: .75rem; font-weight: 600; color: var(--gray-500);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.filter-select {
+  border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm);
+  padding: 7px 30px 7px 12px; font-size: .84rem; color: var(--gray-900);
+  background: var(--gray-50) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 10px center;
+  outline: none; appearance: none; transition: border-color .2s, box-shadow .2s;
+  min-width: 140px;
+}
+.filter-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,219,.12); background-color: white; }
+
+/* ── Table ── */
+.handover-table-card {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.handover-table {
+  width: 100%;
+  font-size: .85rem;
+  border-collapse: collapse;
+}
+.handover-table thead {
+  background: linear-gradient(to bottom, var(--gray-50), #fefefe);
+  border-bottom: 2px solid var(--gray-200);
+}
+.handover-table th {
+  padding: 12px 16px;
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--gray-700);
+  text-align: left;
+  white-space: nowrap;
+}
+.handover-table tbody tr {
+  border-bottom: 1px solid var(--gray-100);
+  transition: background .12s;
+}
+.handover-table tbody tr:hover { background: var(--gray-50); }
+.handover-table tbody tr:last-child { border-bottom: none; }
+.handover-table td {
+  padding: 14px 16px;
+  color: var(--gray-900);
+}
+
+/* Staff info */
+.staff-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.staff-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue-mid), var(--blue));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: .75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.staff-name {
+  font-weight: 600;
+  color: var(--gray-900);
+  line-height: 1.3;
+}
+
+/* Shift badge */
+.shift-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: .75rem;
+  font-weight: 600;
+  background: var(--blue-light);
+  color: var(--blue);
+  white-space: nowrap;
+}
+
+/* Status badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+.status-submitted {
+  background: var(--green-light);
+  color: var(--green);
+}
+.status-draft {
+  background: var(--yellow-light);
+  color: var(--yellow);
+}
+
+/* Entry count */
+.entry-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .82rem;
+  color: var(--gray-700);
+  font-weight: 500;
+}
+.entry-count i { color: var(--gray-400); }
+
+/* Date info */
+.date-info {
+  font-size: .82rem;
+  color: var(--gray-700);
+}
+.date-time {
+  font-weight: 600;
+  color: var(--gray-900);
+  display: block;
+}
+.date-relative {
+  font-size: .75rem;
+  color: var(--gray-500);
+  margin-top: 2px;
+  display: block;
+}
+
+/* View button */
+.btn-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--gray-200);
+  background: white;
+  color: var(--gray-700);
+  font-size: .78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn-view:hover {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue);
+  transform: translateY(-1px);
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--gray-400);
+}
+.empty-state i {
+  font-size: 3rem;
+  margin-bottom: 12px;
+  display: block;
+  opacity: .5;
+}
+.empty-state h5 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: 6px;
+}
+.empty-state p {
+  font-size: .85rem;
+  margin: 0 0 20px;
+}
+.empty-state a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--blue);
+  color: white;
+  font-size: .82rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all .15s;
+}
+.empty-state a:hover {
+  background: var(--blue-mid);
+  transform: translateY(-1px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .ho-list-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .handover-table {
+    font-size: .8rem;
+  }
+  .handover-table th,
+  .handover-table td {
+    padding: 10px 12px;
+  }
+  .staff-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: .7rem;
+  }
+}
+</style>
+
+<div class="ho-list-page">
+
+  <!-- Header -->
+  <div class="ho-list-header">
+    <div class="ho-list-header-content">
+      <h4>Inpatient</h4>
+      <h2>Handover Notes</h2>
+      <p>View and manage shift handovers with automated census snapshots</p>
+    </div>
+    <a href="{% url 'handover_create' %}" class="btn-new-handover">
+      <i class="bi bi-plus-circle"></i> New Handover
+    </a>
+  </div>
+
+  <!-- Filters (optional - uncomment to enable) -->
+  <!--
+  <div class="filter-bar">
+    <span class="filter-label"><i class="bi bi-funnel me-1"></i> Filter</span>
+    <select class="filter-select">
+      <option>All Shifts</option>
+      <option>Morning</option>
+      <option>Evening</option>
+      <option>Night</option>
+    </select>
+    <select class="filter-select">
+      <option>All Status</option>
+      <option>Submitted</option>
+      <option>Draft</option>
+    </select>
+  </div>
+  -->
+
+  <!-- Table -->
+  <div class="handover-table-card">
+    <table class="handover-table">
+      <thead>
+        <tr>
+          <th>Staff Member</th>
+          <th>Shift</th>
+          <th>Status</th>
+          <th>Entries</th>
+          <th>Date & Time</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in handovers %}
+        <tr>
+          <td>
+            <div class="staff-info">
+              <div class="staff-avatar">
+                {{ h.created_by.user_staff_profile.staff.first_name.0|default:h.created_by.username.0|upper }}{{ h.created_by.last_name.0|default:""|upper }}
+              </div>
+              <div class="staff-name">
+                {{ h.created_by.user_staff_profile.staff|default:h.created_by.username }}
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="shift-badge">
+              <i class="bi bi-clock"></i>
+              {{ h.get_shift_display }}
+            </span>
+          </td>
+          <td>
+            <span class="status-badge {% if h.status == 'submitted' %}status-submitted{% else %}status-draft{% endif %}">
+              <i class="bi bi-{% if h.status == 'submitted' %}check-circle{% else %}pencil{% endif %}"></i>
+              {{ h.get_status_display }}
+            </span>
+          </td>
+          <td>
+            <span class="entry-count">
+              <i class="bi bi-journal-text"></i>
+              {{ h.entries.count }}
+            </span>
+          </td>
+          <td>
+            <div class="date-info">
+              <span class="date-time">{{ h.created_at|date:"d M Y, H:i" }}</span>
+              <span class="date-relative">{{ h.created_at|timesince }} ago</span>
+            </div>
+          </td>
+          <td>
+            <a href="{% url 'handover_detail' h.pk %}" class="btn-view">
+              <i class="bi bi-eye"></i> View
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="p-0">
+            <div class="empty-state">
+              <i class="bi bi-journal-text"></i>
+              <h5>No handover notes yet</h5>
+              <p>Create your first handover note to get started</p>
+              <a href="{% url 'handover_create' %}">
+                <i class="bi bi-plus-circle"></i> Create First Handover
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+{% endblock %}

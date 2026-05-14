@@ -16,7 +16,10 @@ from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.timezone import now
+from django.views.decorators.http import require_POST
+from decimal import Decimal, InvalidOperation
 from django.views import View
+from django.core.paginator import Paginator
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, ListView, DetailView, UpdateView, DeleteView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -58,6 +61,7 @@ import uuid
 from pharmacy.models import DrugOrderModel
 from scan.models import ScanOrderModel
 from service.models import PatientServiceTransaction, ServiceCategory, ServiceItem, Service
+from inpatient.views import build_billing_summary
 import logging
 
 logger = logging.getLogger(__name__)
@@ -4616,54 +4620,82 @@ def ajax_get_admission_surgery_details(request):
         active_records = Admission.objects.filter(patient=patient, status__in=['active', 'pending'])
 
         for admission in active_records:
-            drug_orders = admission.drug_orders.all()
-            lab_orders = admission.lab_test_orders.all()
-            scan_orders = admission.scan_orders.all()
-            other_services = admission.service_orders.all()
+            billing = build_billing_summary(admission)  # reuse exact same function
 
-            drug_costs = drug_orders.aggregate(
-                total=Sum(ExpressionWrapper(
-                    F('quantity_ordered') * F('drug__selling_price'),
-                    output_field=DecimalField()
-                ))
-            )['total'] or 0
+            # Full itemized data for the modal
+            drug_orders = admission.drug_orders.exclude(
+                status__in=['cancelled', 'returned']
+            ).select_related('drug__formulation__generic_drug').order_by('-ordered_at')
 
-            lab_costs = lab_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
-            scan_costs = scan_orders.aggregate(total=Sum('amount_charged'))['total'] or 0
-            other_services_costs = other_services.aggregate(total=Sum('total_amount'))['total'] or 0
-            if admission.status == 'pending':
-                base_fee = 0
-            else:
-                base_fee = (admission.admission_fee_charged or 0) # + (admission.bed_fee_charged or 0)
-            total_bill = base_fee + drug_costs + lab_costs + scan_costs + other_services_costs
+            lab_tests = admission.lab_test_orders.exclude(
+                status='cancelled'
+            ).select_related('template').order_by('-ordered_at')
 
-            total_paid = PatientTransactionModel.objects.filter(
-                admission=admission,
-                status='completed',
-                transaction_direction='in'
-            ).aggregate(total=Sum('amount'))['total'] or 0
+            scans = admission.scan_orders.exclude(
+                status='cancelled'
+            ).select_related('template').order_by('-ordered_at')
 
-            balance = total_paid - total_bill
+            service_transactions = admission.service_orders.exclude(
+                status='cancelled'
+            ).order_by('-created_at')
+
+            live_debt = billing['grand_total'] - admission.total_paid
+            live_excess = admission.total_paid - billing['grand_total']
 
             records.append({
                 'id': admission.id,
                 'identifier': admission.admission_number,
-                'base_fee': float(base_fee),
-                'drug_costs': float(drug_costs),
-                'lab_costs': float(lab_costs),
-                'scan_costs': float(scan_costs),
-                'other_costs': float(other_services_costs),
-                'total_bill': float(total_bill),
-                'total_paid': float(total_paid),
-                'balance': float(balance),
-                'abs_balance': float(abs(balance)),
                 'status': admission.status,
-                'minimum_deposit': admission.admission_type.minimum_deposit_amount,
+                'minimum_deposit': float(admission.admission_type.minimum_deposit_amount),
                 'has_prior_payment': PatientTransactionModel.objects.filter(
-                    admission=admission,
-                    status='completed'
+                    admission=admission, status='completed'
                 ).exists(),
+
+                # Summary totals (for breakdown card)
+                'admission_fee': float(admission.admission_fee_charged or 0),
+                'bed_rate': float(admission.bed_rate_used or 0),
+                'length_of_stay': admission.length_of_stay_days,
+                'bed_total': float(billing['bed_total']),
+                'consultation_fee': float(admission.consultation_fee_used or 0),
+                'consultation_fee_duration': admission.admission_type.consultation_fee_duration_days,
+                'billable_consultation_periods': billing['billable_consultation_periods'],
+                'consultation_total': float(billing['consultation_total']),
+                'drug_total': float(billing['drug_total']),
+                'lab_total': float(billing['lab_total']),
+                'scan_total': float(billing['scan_total']),
+                'service_total': float(billing['service_total']),
+                'grand_total': float(billing['grand_total']),
+                'total_paid': float(admission.total_paid),
+                'live_debt': float(live_debt) if live_debt > 0 else 0,
+                'live_excess': float(live_excess) if live_excess > 0 else 0,
+
+                # Itemized (for modal)
+                'drugs': [
+                    {
+                        'name': d.drug.brand_name or d.drug.generic_name,
+                        'formulation': str(d.drug.formulation),
+                        'quantity': d.quantity_ordered,
+                        'amount': float(d.total_amount),
+                    } for d in drug_orders
+                ],
+                'labs': [
+                    {'name': l.template.name, 'amount': float(l.amount_charged or l.template.price)}
+                    for l in lab_tests
+                ],
+                'scans': [
+                    {'name': s.template.name, 'amount': float(s.amount_charged or s.template.price)}
+                    for s in scans
+                ],
+                'services': [
+                    {
+                        'name': tx.service.name if tx.service else tx.service_item.name,
+                        'type': 'Service' if tx.service else 'Item',
+                        'quantity': tx.quantity,
+                        'amount': float(tx.total_amount),
+                    } for tx in service_transactions
+                ],
             })
+
 
     elif record_type == 'surgery':
         active_records = Surgery.objects.filter(patient=patient, status__in=['scheduled', 'in_progress'])
@@ -7797,3 +7829,183 @@ def process_direct_sales_payment(request):
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)  # adjust permission to match yours
+def pricing_index_view(request):
+    """
+    Aggregates all priceable items across Drug, Lab, Scan, Service, ServiceItem
+    into a single alphabetically sorted, filterable, paginated list.
+    """
+    from pharmacy.models import DrugModel
+    from laboratory.models import LabTestTemplateModel
+    from scan.models import ScanTemplateModel
+    from service.models import Service, ServiceItem
+
+    type_filter = request.GET.get('type', '')  # drug/lab/scan/service/item/''
+    search = request.GET.get('search', '').strip()
+
+    items = []
+
+    # ── Drugs ──────────────────────────────────────────────────────────────
+    if not type_filter or type_filter == 'drug':
+        qs = DrugModel.objects.filter(is_active=True).select_related(
+            'formulation__generic_drug', 'manufacturer'
+        )
+        if search:
+            qs = qs.filter(
+                Q(brand_name__icontains=search) |
+                Q(formulation__generic_drug__generic_name__icontains=search) |
+                Q(formulation__generic_drug__category__name__icontains=search)
+            )
+        for obj in qs:
+            items.append({
+                'id': obj.pk,
+                'type': 'drug',
+                'type_label': 'Drug',
+                'name': str(obj),
+                'price': obj.selling_price,
+                'category': obj.formulation.generic_drug.category.name if obj.formulation.generic_drug.category else '—',
+            })
+
+    # ── Lab Tests ──────────────────────────────────────────────────────────
+    if not type_filter or type_filter == 'lab':
+        qs = LabTestTemplateModel.objects.filter(is_active=True).select_related('category')
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(category__name__icontains=search)
+            )
+        for obj in qs:
+            items.append({
+                'id': obj.pk,
+                'type': 'lab',
+                'type_label': 'Lab Test',
+                'name': str(obj),
+                'price': obj.price,
+                'category': obj.category.name if obj.category else '—',
+            })
+
+    # ── Scans ──────────────────────────────────────────────────────────────
+    if not type_filter or type_filter == 'scan':
+        qs = ScanTemplateModel.objects.filter(is_active=True).select_related('category')
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(category__name__icontains=search)
+            )
+        for obj in qs:
+            items.append({
+                'id': obj.pk,
+                'type': 'scan',
+                'type_label': 'Scan',
+                'name': str(obj),
+                'price': obj.price,
+                'category': obj.category.name if obj.category else '—',
+            })
+
+    # ── Services ───────────────────────────────────────────────────────────
+    if not type_filter or type_filter == 'service':
+        qs = Service.objects.filter(is_active=True).select_related('category')
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(category__name__icontains=search)
+            )
+        for obj in qs:
+            items.append({
+                'id': obj.pk,
+                'type': 'service',
+                'type_label': 'Service',
+                'name': str(obj),
+                'price': obj.price,
+                'category': obj.category.name if obj.category else '—',
+            })
+
+    # ── Service Items ──────────────────────────────────────────────────────
+    if not type_filter or type_filter == 'item':
+        qs = ServiceItem.objects.filter(is_active=True).select_related('category')
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(category__name__icontains=search)
+            )
+        for obj in qs:
+            items.append({
+                'id': obj.pk,
+                'type': 'item',
+                'type_label': 'Item',
+                'name': str(obj),
+                'price': obj.price,
+                'category': obj.category.name if obj.category else '—',
+            })
+
+    # ── Sort all alphabetically by name ───────────────────────────────────
+    items.sort(key=lambda x: x['name'].lower())
+
+    # ── Paginate ──────────────────────────────────────────────────────────
+    paginator = Paginator(items, 50)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    return render(request, 'finance/pricing/index.html', {
+        'page_obj': page_obj,
+        'type_filter': type_filter,
+        'search': search,
+        'total_count': len(items),
+    })
+
+
+@login_required
+@permission_required('finance.add_patienttransactionmodel', raise_exception=True)
+@require_POST
+def ajax_update_price(request):
+    """Update price for any item type via AJAX."""
+    from pharmacy.models import DrugModel
+    from laboratory.models import LabTestTemplateModel
+    from scan.models import ScanTemplateModel
+    from service.models import Service, ServiceItem
+
+    try:
+        data = json.loads(request.body)
+        item_type = data.get('type')
+        item_id = data.get('id')
+        new_price = data.get('price')
+
+        if not all([item_type, item_id, new_price is not None]):
+            return JsonResponse({'success': False, 'error': 'Missing required fields'}, status=400)
+
+        try:
+            new_price = Decimal(str(new_price))
+            if new_price < 0:
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            return JsonResponse({'success': False, 'error': 'Invalid price value'}, status=400)
+
+        MODEL_MAP = {
+            'drug': (DrugModel, 'selling_price'),
+            'lab': (LabTestTemplateModel, 'price'),
+            'scan': (ScanTemplateModel, 'price'),
+            'service': (Service, 'price'),
+            'item': (ServiceItem, 'price'),
+        }
+
+        if item_type not in MODEL_MAP:
+            return JsonResponse({'success': False, 'error': 'Unknown item type'}, status=400)
+
+        model_class, price_field = MODEL_MAP[item_type]
+        obj = model_class.objects.get(pk=item_id)
+        old_price = getattr(obj, price_field)
+        setattr(obj, price_field, new_price)
+        obj.save(update_fields=[price_field])
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Price updated from ₦{old_price:,.2f} to ₦{new_price:,.2f}',
+            'new_price': f'₦{new_price:,.2f}',
+        })
+
+    except model_class.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Item not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
